@@ -41,9 +41,20 @@ export default function LoginForm() {
   const [users, setUsers] = React.useState<User[]>([adminUser]);
 
   React.useEffect(() => {
-    // We only load operator users from storage. The admin user is always present.
-    const operatorUsers = getUsersFromStorage();
-    setUsers([adminUser, ...operatorUsers]);
+    const loadUsers = () => {
+        // We only load operator users from storage. The admin user is always present.
+        const operatorUsers = getUsersFromStorage();
+        setUsers([adminUser, ...operatorUsers]);
+    };
+    
+    loadUsers();
+
+    // Listen for storage changes to update the user list in real-time
+    window.addEventListener('storage', loadUsers);
+
+    return () => {
+        window.removeEventListener('storage', loadUsers);
+    };
   }, []);
 
   const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
