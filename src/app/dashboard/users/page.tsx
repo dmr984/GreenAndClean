@@ -20,6 +20,7 @@ type User = {
   name: string;
   code: string;
   location: string;
+  role: string;
 };
 
 // Function to get users from localStorage
@@ -60,15 +61,25 @@ export default function UsersPage() {
   const router = useRouter();
 
   React.useEffect(() => {
-    setUsers(getUsersFromStorage());
+    const storedUsers = getUsersFromStorage();
+    if (storedUsers.length > 0) {
+      setUsers(storedUsers);
+    } else {
+        // Initialize with some default users if storage is empty
+        const defaultUsers: User[] = [
+             { id: 'USR001', name: 'Catia', code: '1234', location: 'Condominio A', role: 'operator' },
+             { id: 'USR002', name: 'Laura', code: '5678', location: 'Ufficio B', role: 'operator' },
+             { id: 'USR003', name: 'Paola', code: '9876', location: 'Scuola C', role: 'operator' },
+        ];
+        setUsers(defaultUsers);
+        saveUsersToStorage(defaultUsers);
+    }
   }, []);
 
   // Save users to localStorage whenever they change
   React.useEffect(() => {
-    // Only save if users is not the initial empty array, to avoid overwriting on first render.
-    if (users.length > 0 || localStorage.getItem('app-users')) {
-      saveUsersToStorage(users);
-    }
+    // This effect now correctly depends on `users` and will save any change.
+    saveUsersToStorage(users);
   }, [users]);
 
 
@@ -84,6 +95,7 @@ export default function UsersPage() {
       name,
       code,
       location,
+      role: 'operator' // Role is fixed to 'operator'
     };
 
     setUsers(prevUsers => [...prevUsers, newUser]);
@@ -155,7 +167,7 @@ export default function UsersPage() {
             <DialogHeader>
                 <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                 <DialogDescription>
-                Compila i campi per creare un nuovo operatore e assegnare un codice di accesso.
+                Compila i campi per creare un nuovo operatore.
                 </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser} className="grid gap-4 py-4">
