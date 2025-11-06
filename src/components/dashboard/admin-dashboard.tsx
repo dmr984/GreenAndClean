@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, CheckCircle, Package } from 'lucide-react';
+import { Users, CheckCircle, Package, Warehouse } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
@@ -92,6 +92,16 @@ export function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-6 pt-0">
                     <CardTitle className="text-2xl">Gestisci Richieste Forniture</CardTitle>
+                </CardContent>
+            </Card>
+        </Link>
+        <Link href="/dashboard/warehouse" className="h-full">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
+                <CardHeader>
+                    <Warehouse className="h-16 w-16 mx-auto text-primary"/>
+                </CardHeader>
+                <CardContent className="p-6 pt-0">
+                    <CardTitle className="text-2xl">Gestione Magazzino</CardTitle>
                 </CardContent>
             </Card>
         </Link>

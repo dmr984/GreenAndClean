@@ -6,14 +6,13 @@ import { PlusCircle, MoreHorizontal, Check, X, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Request = {
   id: string;
@@ -25,10 +24,16 @@ type Request = {
   fulfilledQuantity?: number;
 }
 
-// Function to get requests from localStorage
-const getRequestsFromStorage = (): Request[] => {
+type WarehouseItem = {
+  id: string;
+  name: string;
+  quantity: number;
+};
+
+// Function to get data from localStorage
+const getFromStorage = <T,>(key: string): T[] => {
   if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('supply-requests');
+  const stored = localStorage.getItem(key);
   try {
     return stored ? JSON.parse(stored) : [];
   } catch (e) {
@@ -36,38 +41,46 @@ const getRequestsFromStorage = (): Request[] => {
   }
 };
 
-// Function to save requests to localStorage
-const saveRequestsToStorage = (requests: Request[]) => {
+// Function to save data to localStorage
+const saveToStorage = <T,>(key: string, data: T[]) => {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('supply-requests', JSON.stringify(requests));
+  localStorage.setItem(key, JSON.stringify(data));
   window.dispatchEvent(new Event('storage')); // Trigger storage event for other components
 };
 
 
 export default function SupplyRequestsPage() {
   const [requests, setRequests] = React.useState<Request[]>([]);
+  const [warehouseItems, setWarehouseItems] = React.useState<WarehouseItem[]>([]);
   const [isNewRequestDialogOpen, setIsNewRequestDialogOpen] = React.useState(false);
   const [isManageRequestDialogOpen, setIsManageRequestDialogOpen] = React.useState(false);
   const [selectedRequest, setSelectedRequest] = React.useState<Request | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
-    setRequests(getRequestsFromStorage());
+    setRequests(getFromStorage<Request>('supply-requests'));
+    setWarehouseItems(getFromStorage<WarehouseItem>('warehouse-items'));
   }, []);
 
   React.useEffect(() => {
-    saveRequestsToStorage(requests);
+    saveToStorage<Request>('supply-requests', requests);
   }, [requests]);
 
   const handleNewRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const formData = new FormData(form);
+    const itemName = formData.get('item') as string;
+    
+    if (!itemName) {
+        toast({ title: "Errore", description: "Seleziona un prodotto.", variant: "destructive" });
+        return;
+    }
 
     const newRequest: Request = {
         id: `SR${Date.now()}`,
         user: localStorage.getItem('userName') || 'Operatore',
-        item: formData.get('item') as string,
+        item: itemName,
         quantity: Number(formData.get('quantity') as string),
         status: 'In attesa',
     };
@@ -155,13 +168,22 @@ export default function SupplyRequestsPage() {
                     <DialogHeader>
                         <DialogTitle>Nuova Richiesta Forniture</DialogTitle>
                         <DialogDescription>
-                            Specifica il prodotto e la quantità necessari.
+                            Seleziona il prodotto e la quantità necessari.
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleNewRequestSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="item" className="text-right">Prodotto</Label>
-                            <Input id="item" name="item" placeholder="Es. Detergente Multiuso" className="col-span-3" required/>
+                            <Select name="item" required>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Seleziona un prodotto" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {warehouseItems.length > 0 ? warehouseItems.map(item => (
+                                        <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
+                                    )) : <SelectItem value="disabled" disabled>Nessun prodotto in magazzino</SelectItem>}
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="quantity" className="text-right">Quantità</Label>
