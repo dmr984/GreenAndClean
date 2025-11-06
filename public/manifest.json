@@ -1,7 +1,11 @@
 {
-  "name": "WorkForce Hub",
-  "short_name": "WorkForce Hub",
+  "name": "Serveco Cleaning",
+  "short_name": "Serveco Cleaning",
   "description": "Gestisci le tue operazioni di pulizia con facilità.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
   "icons": [
     {
       "src": "https://i.ibb.co/cKq6nWLR/1762432288621.png",
@@ -13,10 +17,5 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ],
-  "theme_color": "#1a1a1a",
-  "background_color": "#1a1a1a",
-  "start_url": "/",
-  "display": "standalone",
-  "orientation": "portrait"
+  ]
 }
