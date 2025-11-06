@@ -65,33 +65,18 @@ export function AdminDashboard() {
                 </CardContent>
             </Card>
         </Link>
-         <Link href="/dashboard/leave-requests" className="h-full">
+         <Link href="/dashboard/requests" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
-                {pendingLeaveRequests > 0 && 
+                {(pendingLeaveRequests > 0 || pendingSupplyRequests > 0) &&
                   <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
-                    {pendingLeaveRequests}
+                    {pendingLeaveRequests + pendingSupplyRequests}
                   </Badge>
                 }
                 <CardHeader>
                     <CheckCircle className="h-16 w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Gestisci Richieste Ferie</CardTitle>
-                </CardContent>
-            </Card>
-        </Link>
-         <Link href="/dashboard/supply-requests" className="h-full">
-            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
-               {pendingSupplyRequests > 0 && 
-                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
-                    {pendingSupplyRequests}
-                  </Badge>
-                }
-                <CardHeader>
-                    <Package className="h-16 w-16 mx-auto text-primary"/>
-                </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Gestisci Richieste Forniture</CardTitle>
+                    <CardTitle className="text-2xl">Gestisci Richieste</CardTitle>
                 </CardContent>
             </Card>
         </Link>
