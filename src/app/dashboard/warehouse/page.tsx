@@ -186,7 +186,7 @@ export default function WarehousePage() {
                           <DropdownMenuLabel>Azioni</DropdownMenuLabel>
                           <DropdownMenuItem onSelect={() => openDialog(item, true)}>
                             <Edit className="mr-2 h-4 w-4" />
-                            Modifica Nome
+                            Modifica Prodotto
                           </DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(item)}>
                             <Trash className="mr-2 h-4 w-4" />
@@ -209,7 +209,7 @@ export default function WarehousePage() {
           <DialogHeader>
             <DialogTitle>{isEditing ? 'Modifica Prodotto' : 'Aggiungi Nuovo Prodotto'}</DialogTitle>
             <DialogDescription>
-              {isEditing ? 'Aggiorna i dettagli del prodotto.' : 'Compila i campi per aggiungere un nuovo prodotto al magazzino.'}
+              {isEditing ? 'Aggiorna il nome o la quantità totale del prodotto.' : 'Compila i campi per aggiungere un nuovo prodotto al magazzino.'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
@@ -219,7 +219,7 @@ export default function WarehousePage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="quantity" className="text-right">Quantità</Label>
-              <Input id="quantity" name="quantity" type="number" className="col-span-3" defaultValue={selectedItem?.quantity ?? 0} required />
+              <Input id="quantity" name="quantity" type="number" className="col-span-3" defaultValue={selectedItem?.quantity ?? 0} required min="0" />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsItemDialogOpen(false)}>Annulla</Button>
