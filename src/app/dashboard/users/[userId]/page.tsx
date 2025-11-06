@@ -5,17 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle, Package, Fingerprint } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 // Mock users data, in a real app this would come from a database/API
-const users = [
-  { id: "USR001", name: "Mario Rossi", role: "Operatore" },
-  { id: "USR002", name: "Anna Bianchi", role: "Operatore" },
-  { id: "USR003", name: "Luca Verdi", role: "Operatore" },
-  { id: "USR004", name: "Giulia Neri", role: "Supervisore" },
-];
+const getUsersFromStorage = (): any[] => {
+  if (typeof window === 'undefined') return [];
+  const storedUsers = localStorage.getItem('app-users');
+  return storedUsers ? JSON.parse(storedUsers) : [];
+};
 
 const getAvatarFallback = (name: string) => {
+    if (!name) return "??";
     const parts = name.split(' ');
     if (parts.length > 1) {
         return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
@@ -27,7 +28,9 @@ const getAvatarFallback = (name: string) => {
 export default function UserProfilePage() {
   const params = useParams();
   const userId = params.userId as string;
+  const router = useRouter();
 
+  const users = getUsersFromStorage();
   const user = users.find(u => u.id === userId);
 
   if (!user) {
@@ -36,9 +39,9 @@ export default function UserProfilePage() {
         <h2 className="text-2xl font-bold mb-4">Utente non trovato</h2>
         <p className="text-muted-foreground mb-4">L'utente che stai cercando non esiste.</p>
          <Button asChild>
-          <Link href="/dashboard">
+          <Link href="/dashboard/users">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Torna alla Dashboard
+            Torna agli Operatori
           </Link>
         </Button>
       </div>
@@ -49,7 +52,7 @@ export default function UserProfilePage() {
     <>
         <div className="flex items-center gap-4 mb-4">
             <Button variant="outline" size="icon" asChild>
-                <Link href="/dashboard">
+                <Link href="/dashboard/users">
                     <ArrowLeft className="h-4 w-4" />
                 </Link>
             </Button>
@@ -64,11 +67,28 @@ export default function UserProfilePage() {
                 </Avatar>
                 <div>
                     <CardTitle className="text-3xl">{user.name}</CardTitle>
-                    <CardDescription className="text-lg">{user.role}</CardDescription>
+                    <CardDescription className="text-lg">Codice: {user.code} | Luogo: {user.location}</CardDescription>
                 </div>
             </CardHeader>
             <CardContent>
-                <p>Questa è la pagina del profilo di {user.name}. A breve qui potrai visualizzare timbrature, calendario, richieste e altro ancora.</p>
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
+                      <Fingerprint className="mr-4 h-8 w-8 text-primary"/>
+                      Timbrature
+                  </Button>
+                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/calendar')}>
+                      <Calendar className="mr-4 h-8 w-8 text-primary"/>
+                      Calendario
+                  </Button>
+                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/requests?tab=leave')}>
+                      <CheckCircle className="mr-4 h-8 w-8 text-primary"/>
+                      Richieste
+                  </Button>
+                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/requests?tab=supply')}>
+                      <Package className="mr-4 h-8 w-8 text-primary"/>
+                      Prodotti
+                  </Button>
+               </div>
             </CardContent>
         </Card>
     </>

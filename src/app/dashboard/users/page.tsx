@@ -1,13 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, File, Trash, Edit } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { PlusCircle, MoreHorizontal, File, Trash, Edit, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import placeholder from '@/lib/placeholder-images.json';
 import { Input } from "@/components/ui/input";
@@ -15,13 +12,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import Link from "next/link";
+import { useRouter } from 'next/navigation';
+
 
 type User = {
   id: string;
   name: string;
   code: string;
-  role: string;
-  status: string;
   location: string;
 };
 
@@ -38,15 +36,29 @@ const saveUsersToStorage = (users: User[]) => {
   localStorage.setItem('app-users', JSON.stringify(users));
 };
 
+const getAvatarFallback = (name: string) => {
+    if (!name) return "??";
+    const parts = name.split(' ');
+    if (parts.length > 1) {
+        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+};
+
 
 export default function UsersPage() {
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
   const { toast } = useToast();
-  const [users, setUsers] = React.useState<User[]>(getUsersFromStorage);
+  const [users, setUsers] = React.useState<User[]>([]);
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
+  const router = useRouter();
+
+  React.useEffect(() => {
+    setUsers(getUsersFromStorage());
+  }, []);
 
   // Save users to localStorage whenever they change
   React.useEffect(() => {
@@ -65,9 +77,7 @@ export default function UsersPage() {
       id: `USR${String(Date.now()).slice(-6)}`,
       name,
       code,
-      role: 'Operatore',
       location,
-      status: 'Attivo',
     };
 
     setUsers(prevUsers => [...prevUsers, newUser]);
@@ -124,136 +134,107 @@ export default function UsersPage() {
 
   return (
     <>
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Gestione Utenti</h2>
-      </div>
-      <Tabs defaultValue="all">
-        <div className="flex items-center">
-          <TabsList>
-            <TabsTrigger value="all">Tutti</TabsTrigger>
-            <TabsTrigger value="active">Attivi</TabsTrigger>
-            <TabsTrigger value="inactive">Inattivi</TabsTrigger>
-          </TabsList>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="outline" className="h-8 gap-1">
-              <File className="h-3.5 w-3.5" />
-              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                Esporta
-              </span>
+      <div className="flex items-center justify-between space-y-2 mb-4">
+        <h2 className="text-3xl font-bold tracking-tight">Gestione Operatori</h2>
+        <Dialog open={isNewUserDialogOpen} onOpenChange={setIsNewUserDialogOpen}>
+            <DialogTrigger asChild>
+            <Button size="sm" className="h-8 gap-1">
+                <PlusCircle className="h-3.5 w-3.5" />
+                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                Aggiungi Operatore
+                </span>
             </Button>
-            <Dialog open={isNewUserDialogOpen} onOpenChange={setIsNewUserDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="h-8 gap-1">
-                  <PlusCircle className="h-3.5 w-3.5" />
-                  <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                    Aggiungi Utente
-                  </span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
-                  <DialogDescription>
-                    Compila i campi per creare un nuovo operatore e assegnare un codice di accesso.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleAddUser} className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">Nome</Label>
-                    <Input id="name" name="name" className="col-span-3" required />
-                  </div>
-                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="code" className="text-right">Codice</Label>
-                    <Input id="code" name="code" className="col-span-3" required />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="location" className="text-right">Luogo</Label>
-                    <Input id="location" name="location" className="col-span-3" required />
-                  </div>
-                  <DialogFooter>
-                    <Button type="submit">Crea Utente</Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-        <TabsContent value="all">
-          <Card>
-            <CardHeader>
-              <CardTitle>Operatori</CardTitle>
-              <CardDescription>
-                Gestisci gli operatori del sistema, visualizza i loro ruoli e lo stato.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="hidden w-[100px] sm:table-cell">
-                      <span className="sr-only">Avatar</span>
-                    </TableHead>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Codice</TableHead>
-                    <TableHead>Luogo</TableHead>
-                    <TableHead>Stato</TableHead>
-                    <TableHead>
-                      <span className="sr-only">Azioni</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.length > 0 ? users.filter(user => user.role !== 'admin').map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="hidden sm:table-cell">
-                        <Avatar className="h-9 w-9">
-                          {userAvatar && <AvatarImage src={userAvatar.imageUrl} alt="Avatar" />}
-                          <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                      </TableCell>
-                      <TableCell className="font-medium">{user.name}</TableCell>
-                       <TableCell className="font-mono">******</TableCell>
-                       <TableCell>{user.location}</TableCell>
-                      <TableCell>
-                        <Badge variant={user.status === 'Attivo' ? 'default' : 'outline'}>{user.status}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Apri menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => openEditDialog(user)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Modifica
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
-                              <Trash className="mr-2 h-4 w-4" />
-                              Elimina
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )) : (
-                    <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
-                            Nessun operatore trovato. Inizia aggiungendone uno.
-                        </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </DialogTrigger>
+            <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
+                <DialogDescription>
+                Compila i campi per creare un nuovo operatore e assegnare un codice di accesso.
+                </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleAddUser} className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">Nome</Label>
+                <Input id="name" name="name" className="col-span-3" required />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="location" className="text-right">Luogo</Label>
+                <Input id="location" name="location" className="col-span-3" required />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="code" className="text-right">Codice</Label>
+                <Input id="code" name="code" className="col-span-3" required />
+                </div>
+                <DialogFooter>
+                <Button type="submit">Crea Utente</Button>
+                </DialogFooter>
+            </form>
+            </DialogContent>
+        </Dialog>
+      </div>
       
+      {users.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {users.map((user) => (
+            <Card key={user.id} className="flex flex-col">
+                <CardHeader className="flex flex-row items-center gap-4">
+                    <Avatar className="h-12 w-12">
+                         <AvatarFallback>{getAvatarFallback(user.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <CardTitle>{user.name}</CardTitle>
+                        <CardDescription>{user.location}</CardDescription>
+                    </div>
+                    <div className="ml-auto">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button aria-haspopup="true" size="icon" variant="ghost">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Apri menu</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+                                <DropdownMenuItem onSelect={() => openEditDialog(user)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Modifica
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
+                                <Trash className="mr-2 h-4 w-4" />
+                                Elimina
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                    <p className="text-sm text-muted-foreground">Codice: {user.code}</p>
+                </CardContent>
+                <CardFooter>
+                    <Button asChild className="w-full">
+                        <Link href={`/dashboard/users/${user.id}`}>
+                            <User className="mr-2 h-4 w-4" />
+                            Visualizza Profilo
+                        </Link>
+                    </Button>
+                </CardFooter>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed shadow-sm h-64">
+          <h3 className="text-2xl font-bold tracking-tight">Nessun operatore trovato</h3>
+          <p className="text-sm text-muted-foreground">Inizia aggiungendo un nuovo operatore.</p>
+          <DialogTrigger asChild>
+             <Button className="mt-4">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Aggiungi Operatore
+            </Button>
+          </DialogTrigger>
+        </div>
+      )}
+
       {/* Edit User Dialog */}
       <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
         <DialogContent>
@@ -270,12 +251,12 @@ export default function UsersPage() {
                 <Input id="edit-name" name="name" defaultValue={selectedUser.name} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-code" className="text-right">Codice</Label>
-                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-3" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-location" className="text-right">Luogo</Label>
                 <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-3" required />
+              </div>
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-code" className="text-right">Codice</Label>
+                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-3" required />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Annulla</Button>
@@ -304,5 +285,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
