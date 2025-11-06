@@ -58,41 +58,69 @@ export default function UserProfilePage() {
             </Button>
             <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
         </div>
-        <Card>
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <Avatar className="h-20 w-20">
-                    <AvatarFallback className="text-3xl">
-                    {getAvatarFallback(user.name)}
-                    </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                    <CardTitle className="text-3xl">{user.name}</CardTitle>
-                    <CardDescription className="text-lg">Codice: {user.code} | Luogo: {user.location}</CardDescription>
-                </div>
-            </CardHeader>
-            <CardContent>
-               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
-                      <Fingerprint className="mr-4 h-8 w-8 text-primary"/>
-                      Timbrature
-                  </Button>
-                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/calendar')}>
-                      <Calendar className="mr-4 h-8 w-8 text-primary"/>
-                      Calendario
-                  </Button>
-                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/requests?tab=leave')}>
-                      <CheckCircle className="mr-4 h-8 w-8 text-primary"/>
-                      Richieste
-                  </Button>
-                  <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/requests?tab=supply')}>
-                      <Package className="mr-4 h-8 w-8 text-primary"/>
-                      Prodotti
-                  </Button>
-               </div>
-            </CardContent>
-        </Card>
+        <div className="grid gap-8">
+            <Card>
+                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <Avatar className="h-20 w-20">
+                        <AvatarFallback className="text-3xl">
+                        {getAvatarFallback(user.name)}
+                        </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                        <CardTitle className="text-3xl">{user.name}</CardTitle>
+                        <CardDescription className="text-lg">Codice: {user.code} | Luogo: {user.location}</CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
+                          <Fingerprint className="mr-4 h-8 w-8 text-primary"/>
+                          Timbrature
+                      </Button>
+                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/calendar')}>
+                          <Calendar className="mr-4 h-8 w-8 text-primary"/>
+                          Calendario
+                      </Button>
+                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/leave-requests')}>
+                          <CheckCircle className="mr-4 h-8 w-8 text-primary"/>
+                          Richieste Ferie
+                      </Button>
+                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/supply-requests')}>
+                          <Package className="mr-4 h-8 w-8 text-primary"/>
+                          Richieste Prodotti
+                      </Button>
+                   </div>
+                </CardContent>
+            </Card>
+
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               <Card>
+                <CardHeader>
+                  <CardTitle>Riepilogo Attività Recenti</CardTitle>
+                  <CardDescription>Ultime timbrature, richieste e note.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center text-muted-foreground py-8">
+                    <p>Nessuna attività recente da mostrare.</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Note Amministrative</CardTitle>
+                  <CardDescription>Note private visibili solo agli amministratori.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                   <div className="text-center text-muted-foreground py-8">
+                    <p>Nessuna nota presente.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+            </div>
+        </div>
+
+
     </>
   );
 }
-
-    
