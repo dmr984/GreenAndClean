@@ -14,9 +14,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     // Controlla se l'utente ha già effettuato l'accesso e reindirizza alla dashboard
-    const userRole = localStorage.getItem('userRole');
-    if (userRole) {
-      router.push('/dashboard');
+    // Questo viene eseguito solo sul client, dopo l'idratazione iniziale.
+    if (typeof window !== 'undefined') {
+        const userRole = localStorage.getItem('userRole');
+        if (userRole) {
+            router.push('/dashboard');
+        }
     }
   }, [router]);
 
