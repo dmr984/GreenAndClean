@@ -1,5 +1,5 @@
 'use client';
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import React from 'react';
 import { LogOut, Settings, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ import {
 import placeholder from '@/lib/placeholder-images.json';
 
 export function UserNav() {
+  const router = useRouter();
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
   const [userName, setUserName] = React.useState<string | null>(null);
   const [userRole, setUserRole] = React.useState<string | null>(null);
@@ -26,6 +27,12 @@ export function UserNav() {
     setUserRole(role);
     setUserName(name);
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userName');
+    router.push('/');
+  }
 
   const getEmail = () => {
     if (userRole === 'admin') return 'admin@workforce.hub';
@@ -75,11 +82,9 @@ export function UserNav() {
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/">
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>Esci</span>
-          </Link>
+        <DropdownMenuItem onClick={handleLogout}>
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Esci</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
