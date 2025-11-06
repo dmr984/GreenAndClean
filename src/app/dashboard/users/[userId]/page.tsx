@@ -124,11 +124,11 @@ export default function UserProfilePage() {
                           <Calendar className="mr-4 h-8 w-8 text-primary"/>
                           Calendario
                       </Button>
-                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/requests')}>
+                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/leave-requests')}>
                           <CheckCircle className="mr-4 h-8 w-8 text-primary"/>
-                          Richieste
+                          Richieste Ferie
                       </Button>
-                       <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/requests')}>
+                       <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/supply-requests')}>
                           <Package className="mr-4 h-8 w-8 text-primary"/>
                           Richieste Prodotti
                       </Button>

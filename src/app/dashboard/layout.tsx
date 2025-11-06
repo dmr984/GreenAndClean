@@ -19,8 +19,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       // Privacy enforcement
       if (role === 'operator') {
-          if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements') {
-              router.replace('/dashboard');
+          if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements' || pathname === '/dashboard/leave-requests' || pathname === '/dashboard/supply-requests') {
+              const userId = localStorage.getItem('userId');
+              // Operators can only access their own requests, but not the main admin pages for requests
+              // Let's redirect them to their profile page, which has links to create their requests
+              if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(userId ?? '')) {
+                  // This is the operator's own profile, allow it
+              } else if (pathname === '/dashboard/leave-requests' || pathname === '/dashboard/supply-requests') {
+                 // allow operator to create requests but not view all
+              }
+              else {
+                 router.replace('/dashboard');
+              }
           }
       }
     }

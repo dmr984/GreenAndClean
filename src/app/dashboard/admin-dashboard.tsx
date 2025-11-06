@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, CheckCircle, Warehouse, Megaphone } from 'lucide-react';
+import { Users, CheckCircle, Warehouse, Megaphone, CalendarText, Package } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
@@ -65,18 +65,33 @@ export function AdminDashboard() {
                 </CardContent>
             </Card>
         </Link>
-         <Link href="/dashboard/requests" className="h-full">
+         <Link href="/dashboard/leave-requests" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
-                {(pendingLeaveRequests > 0 || pendingSupplyRequests > 0) &&
+                {pendingLeaveRequests > 0 &&
                   <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
-                    {pendingLeaveRequests + pendingSupplyRequests}
+                    {pendingLeaveRequests}
                   </Badge>
                 }
                 <CardHeader>
-                    <CheckCircle className="h-16 w-16 mx-auto text-primary"/>
+                    <CalendarText className="h-16 w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Gestisci Richieste</CardTitle>
+                    <CardTitle className="text-2xl">Richieste Ferie</CardTitle>
+                </CardContent>
+            </Card>
+        </Link>
+        <Link href="/dashboard/supply-requests" className="h-full">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
+                {pendingSupplyRequests > 0 &&
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
+                    {pendingSupplyRequests}
+                  </Badge>
+                }
+                <CardHeader>
+                    <Package className="h-16 w-16 mx-auto text-primary"/>
+                </CardHeader>
+                <CardContent className="p-6 pt-0">
+                    <CardTitle className="text-2xl">Richieste Forniture</CardTitle>
                 </CardContent>
             </Card>
         </Link>
