@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
+import { InstallPWA } from '@/components/install-pwa';
 
 export const metadata: Metadata = {
   title: 'WorkForce Hub',
   description: 'Gestisci le tue operazioni di pulizia con facilità.',
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -23,10 +25,12 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap"
           rel="stylesheet"
         />
+        <meta name="theme-color" content="#1a1a1a" />
       </head>
       <body className="font-body antialiased">
         {children}
         <Toaster />
+        <InstallPWA />
       </body>
     </html>
   );

@@ -1,0 +1,22 @@
+{
+  "name": "WorkForce Hub",
+  "short_name": "WorkForce Hub",
+  "description": "Gestisci le tue operazioni di pulizia con facilità.",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/cKq6nWLR/1762432288621.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://i.ibb.co/cKq6nWLR/1762432288621.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#1a1a1a",
+  "background_color": "#1a1a1a",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait"
+}
