@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, File, ListFilter, Search, Trash, Edit } from "lucide-react";
+import { PlusCircle, MoreHorizontal, File, Trash, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,8 +14,17 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-const initialUsers = [
+type User = {
+  id: string;
+  name: string;
+  code: string;
+  role: string;
+  status: string;
+};
+
+const initialUsers: User[] = [
   {
     id: "USR001",
     name: "Mario Rossi",
@@ -58,6 +67,9 @@ export default function UsersPage() {
   const { toast } = useToast();
   const [users, setUsers] = React.useState(initialUsers);
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
+  const [isEditUserDialogOpen, setIsEditUserDialogOpen] = React.useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
 
   const handleAddUser = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -66,7 +78,7 @@ export default function UsersPage() {
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const role = (form.elements.namedItem('role') as HTMLInputElement).value;
 
-    const newUser = {
+    const newUser: User = {
       id: `USR${String(users.length + 1).padStart(3, '0')}`,
       name,
       code,
@@ -81,15 +93,52 @@ export default function UsersPage() {
       description: `L'utente ${name} è stato aggiunto con successo.`,
     });
   };
+
+  const handleEditUser = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedUser) return;
+
+    const form = event.currentTarget;
+    const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+    const code = (form.elements.namedItem('code') as HTMLInputElement).value;
+    const role = (form.elements.namedItem('role') as HTMLInputElement).value;
+    const status = (form.elements.namedItem('status') as HTMLInputElement).value;
+
+    const updatedUser: User = { ...selectedUser, name, code, role, status };
+
+    setUsers(prevUsers => prevUsers.map(u => u.id === selectedUser.id ? updatedUser : u));
+    setIsEditUserDialogOpen(false);
+    setSelectedUser(null);
+    toast({
+      title: "Utente Modificato",
+      description: `I dati di ${name} sono stati aggiornati.`,
+    });
+  };
   
-  const handleDeleteUser = (userId: string) => {
-    setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-     toast({
+  const handleDeleteUser = () => {
+    if (!selectedUser) return;
+    
+    setUsers(prevUsers => prevUsers.filter(user => user.id !== selectedUser.id));
+    toast({
       title: "Utente Eliminato",
       description: `L'utente è stato rimosso dal sistema.`,
       variant: "destructive"
     });
+    setIsDeleteDialogOpen(false);
+    setSelectedUser(null);
   }
+  
+  const openEditDialog = (user: User) => {
+    setSelectedUser(user);
+    setIsEditUserDialogOpen(true);
+  }
+
+  const openDeleteDialog = (user: User) => {
+    setSelectedUser(user);
+    setIsDeleteDialogOpen(true);
+  }
+  
+  const displayedUsers = users.filter(user => user.role !== 'Admin');
 
   return (
     <>
@@ -154,14 +203,6 @@ export default function UsersPage() {
               <CardDescription>
                 Gestisci gli utenti del sistema, visualizza i loro ruoli e lo stato.
               </CardDescription>
-              <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    placeholder="Cerca utenti per nome..."
-                    className="w-full appearance-none bg-background pl-8 shadow-none md:w-2/3 lg:w-1/3"
-                  />
-                </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -180,7 +221,7 @@ export default function UsersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {displayedUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="hidden sm:table-cell">
                         <Avatar className="h-9 w-9">
@@ -206,12 +247,12 @@ export default function UsersPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openEditDialog(user)}>
                               <Edit className="mr-2 h-4 w-4" />
                               Modifica
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteUser(user.id)}>
+                            <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
                               <Trash className="mr-2 h-4 w-4" />
                               Elimina
                             </DropdownMenuItem>
@@ -226,6 +267,58 @@ export default function UsersPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* Edit User Dialog */}
+      <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifica Utente</DialogTitle>
+            <DialogDescription>
+              Aggiorna i dettagli dell'utente.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <form onSubmit={handleEditUser} className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-right">Nome</Label>
+                <Input id="edit-name" name="name" defaultValue={selectedUser.name} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-code" className="text-right">Codice</Label>
+                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-role" className="text-right">Ruolo</Label>
+                <Input id="edit-role" name="role" defaultValue={selectedUser.role} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-status" className="text-right">Stato</Label>
+                <Input id="edit-status" name="status" defaultValue={selectedUser.status} className="col-span-3" required />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Annulla</Button>
+                <Button type="submit">Salva Modifiche</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+      
+      {/* Delete User Confirmation */}
+       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Questa azione non può essere annullata. L'utente verrà eliminato in modo permanente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSelectedUser(null)}>Annulla</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteUser}>Conferma Eliminazione</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
