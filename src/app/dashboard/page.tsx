@@ -2,23 +2,7 @@ import { ClockWidget } from "@/components/dashboard/clock-widget";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Megaphone, CheckCircle } from "lucide-react";
 
-const announcements = [
-  {
-    title: "Nuovo Protocollo di Pulizia per la Zona C",
-    date: "2 giorni fa",
-    content: "Si prega di prendere visione dei nuovi protocolli di pulizia per tutte le aree della Zona C, con effetto immediato. Domani alle 8:00 si terrà una breve sessione di formazione."
-  },
-  {
-    title: "Aggiornamento Calendario Festività",
-    date: "5 giorni fa",
-    content: "È stato pubblicato il calendario delle festività per il prossimo mese. Si prega di controllare i turni assegnati e di segnalare eventuali conflitti entro la fine della settimana."
-  },
-  {
-    title: "Rifornimento Scorte Completato",
-    date: "1 settimana fa",
-    content: "Il magazzino è stato rifornito di tutti i materiali di pulizia standard. Si prega di aggiornare il proprio inventario di conseguenza."
-  },
-];
+const announcements: { title: string; date: string; content: string; }[] = [];
 
 export default function Dashboard() {
   return (
@@ -42,24 +26,30 @@ export default function Dashboard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-6">
-            {announcements.map((ann, index) => (
-              <li key={index} className="flex items-start gap-4">
-                <div className="p-1 rounded-full bg-secondary mt-1">
-                  <CheckCircle className="h-5 w-5 text-secondary-foreground" />
-                </div>
-                <div className="grid gap-1">
-                  <p className="text-base font-medium leading-none">
-                    {ann.title}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {ann.content}
-                  </p>
-                  <p className="text-xs text-muted-foreground pt-1">{ann.date}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {announcements.length > 0 ? (
+            <ul className="space-y-6">
+              {announcements.map((ann, index) => (
+                <li key={index} className="flex items-start gap-4">
+                  <div className="p-1 rounded-full bg-secondary mt-1">
+                    <CheckCircle className="h-5 w-5 text-secondary-foreground" />
+                  </div>
+                  <div className="grid gap-1">
+                    <p className="text-base font-medium leading-none">
+                      {ann.title}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {ann.content}
+                    </p>
+                    <p className="text-xs text-muted-foreground pt-1">{ann.date}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-center text-muted-foreground py-12">
+                <p>Nessun annuncio presente.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, File, Trash, Edit, User } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Trash, Edit, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -62,23 +62,11 @@ export default function UsersPage() {
 
   React.useEffect(() => {
     const storedUsers = getUsersFromStorage();
-    if (storedUsers.length > 0) {
-      setUsers(storedUsers);
-    } else {
-        // Initialize with some default users if storage is empty
-        const defaultUsers: User[] = [
-             { id: 'USR001', name: 'Catia', code: '1234', location: 'Condominio A', role: 'operator' },
-             { id: 'USR002', name: 'Laura', code: '5678', location: 'Ufficio B', role: 'operator' },
-             { id: 'USR003', name: 'Paola', code: '9876', location: 'Scuola C', role: 'operator' },
-        ];
-        setUsers(defaultUsers);
-        saveUsersToStorage(defaultUsers);
-    }
+    setUsers(storedUsers);
   }, []);
 
   // Save users to localStorage whenever they change
   React.useEffect(() => {
-    // This effect now correctly depends on `users` and will save any change.
     saveUsersToStorage(users);
   }, [users]);
 
