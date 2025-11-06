@@ -110,22 +110,46 @@ export default function SupplyRequestsPage() {
   
     if (action === 'reject') {
       status = 'Rifiutata';
-      toastMessage = "Richiesta Rifiutata";
+      setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status, fulfilledQuantity: 0, notes } : r));
+      toast({ title: "Richiesta Rifiutata" });
     } else {
-      if (fulfilledQuantity >= selectedRequest.quantity) {
-        status = 'Approvata';
-        toastMessage = "Richiesta Approvata Completamente";
-      } else if (fulfilledQuantity > 0) {
-        status = 'Parziale';
-        toastMessage = "Richiesta Approvata Parzialmente";
-      } else {
-        status = 'Approvata'; // Still approved even if 0 is sent
-        toastMessage = "Richiesta Approvata";
-      }
+        const currentItems = getFromStorage<WarehouseItem>('warehouse-items');
+        const itemInStock = currentItems.find(item => item.name === selectedRequest.item);
+
+        if (!itemInStock || itemInStock.quantity < fulfilledQuantity) {
+            toast({
+                title: "Quantità non disponibile",
+                description: `Disponibilità in magazzino: ${itemInStock?.quantity ?? 0}. Non è possibile assegnare ${fulfilledQuantity} unità.`,
+                variant: "destructive"
+            });
+            return;
+        }
+
+        if (fulfilledQuantity >= selectedRequest.quantity) {
+            status = 'Approvata';
+            toastMessage = "Richiesta Approvata Completamente";
+        } else if (fulfilledQuantity > 0) {
+            status = 'Parziale';
+            toastMessage = "Richiesta Approvata Parzialmente";
+        } else { // fulfilledQuantity is 0 or less
+            status = 'Approvata';
+            toastMessage = "Richiesta Approvata (0 unità fornite)";
+        }
+
+        // Update warehouse
+        const updatedWarehouseItems = currentItems.map(item =>
+            item.name === selectedRequest.item
+                ? { ...item, quantity: item.quantity - fulfilledQuantity }
+                : item
+        );
+        saveToStorage<WarehouseItem>('warehouse-items', updatedWarehouseItems);
+        setWarehouseItems(updatedWarehouseItems);
+
+        // Update request
+        setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status, fulfilledQuantity, notes } : r));
+        toast({ title: toastMessage, description: `Prodotto: ${selectedRequest.item}, Quantità: ${fulfilledQuantity}` });
     }
-  
-    setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status, fulfilledQuantity, notes } : r));
-    toast({ title: toastMessage, description: `Prodotto: ${selectedRequest.item}` });
+
     setIsManageRequestDialogOpen(false);
     setSelectedRequest(null);
   }
@@ -180,14 +204,16 @@ export default function SupplyRequestsPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {warehouseItems.length > 0 ? warehouseItems.map(item => (
-                                        <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
+                                        <SelectItem key={item.id} value={item.name} disabled={item.quantity <= 0}>
+                                            {item.name} {item.quantity <= 0 ? '(Esaurito)' : ''}
+                                        </SelectItem>
                                     )) : <SelectItem value="disabled" disabled>Nessun prodotto in magazzino</SelectItem>}
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="quantity" className="text-right">Quantità</Label>
-                            <Input id="quantity" name="quantity" type="number" placeholder="Es. 5" className="col-span-3" required/>
+                            <Input id="quantity" name="quantity" type="number" placeholder="Es. 5" className="col-span-3" required min="1"/>
                         </div>
                         <DialogFooter>
                             <Button type="submit">Invia Richiesta</Button>
@@ -257,6 +283,7 @@ export default function SupplyRequestsPage() {
                       className="col-span-3"
                       defaultValue={selectedRequest?.quantity}
                       required
+                      min="0"
                     />
                 </div>
                  <div className="grid grid-cols-4 items-start gap-4">
@@ -284,3 +311,5 @@ export default function SupplyRequestsPage() {
     </>
   );
 }
+
+    
