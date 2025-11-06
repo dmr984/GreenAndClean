@@ -35,7 +35,7 @@ export default function UserProfilePage() {
 
   if (!user) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center">
+      <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <h2 className="text-2xl font-bold mb-4">Utente non trovato</h2>
         <p className="text-muted-foreground mb-4">L'utente che stai cercando non esiste.</p>
          <Button asChild>
@@ -59,19 +59,19 @@ export default function UserProfilePage() {
             <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
         </div>
         <Card>
-            <CardHeader className="flex flex-row items-center gap-4">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <Avatar className="h-20 w-20">
                     <AvatarFallback className="text-3xl">
                     {getAvatarFallback(user.name)}
                     </AvatarFallback>
                 </Avatar>
-                <div>
+                <div className="flex-1">
                     <CardTitle className="text-3xl">{user.name}</CardTitle>
                     <CardDescription className="text-lg">Codice: {user.code} | Luogo: {user.location}</CardDescription>
                 </div>
             </CardHeader>
             <CardContent>
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
                       <Fingerprint className="mr-4 h-8 w-8 text-primary"/>
                       Timbrature
@@ -94,3 +94,5 @@ export default function UserProfilePage() {
     </>
   );
 }
+
+    

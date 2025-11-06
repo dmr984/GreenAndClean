@@ -51,7 +51,7 @@ export function SupplyRequests() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <CardTitle>Richieste Forniture</CardTitle>
                 <CardDescription>Richiedi prodotti e forniture per la pulizia.</CardDescription>
@@ -97,9 +97,9 @@ export function SupplyRequests() {
           <TableHeader>
             <TableRow>
               <TableHead>Prodotto</TableHead>
-              <TableHead className="w-[100px]">Quantità</TableHead>
-              <TableHead className="w-[120px]">Stato</TableHead>
-              <TableHead className="w-[80px]"><span className="sr-only">Azioni</span></TableHead>
+              <TableHead className="w-auto sm:w-[100px]">Quantità</TableHead>
+              <TableHead className="w-auto sm:w-[120px]">Stato</TableHead>
+              <TableHead className="w-auto sm:w-[80px]"><span className="sr-only">Azioni</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,3 +138,5 @@ export function SupplyRequests() {
     </Card>
   );
 }
+
+    

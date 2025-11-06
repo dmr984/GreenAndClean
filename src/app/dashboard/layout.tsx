@@ -35,10 +35,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              <UserNav />
           </div>
         </header>
-        <main className="grid flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
+        <main className="flex-1 p-4 sm:px-6 sm:py-0">
            {isAdminDashboardPage ? <AdminDashboard /> : children}
         </main>
       </div>
     </div>
   );
 }
+
+    

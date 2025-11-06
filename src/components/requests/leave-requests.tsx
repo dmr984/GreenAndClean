@@ -80,7 +80,7 @@ export function LeaveRequests() {
     <>
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <CardTitle>Richieste di Ferie/Permessi</CardTitle>
                 <CardDescription>Gestisci le tue richieste di ferie e permessi.</CardDescription>
@@ -140,10 +140,10 @@ export function LeaveRequests() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[120px]">Tipo</TableHead>
+                <TableHead className="w-auto sm:w-[120px]">Tipo</TableHead>
                 <TableHead>Dal</TableHead>
                 <TableHead>Al</TableHead>
-                <TableHead>Motivo</TableHead>
+                <TableHead className="hidden md:table-cell">Motivo</TableHead>
                 <TableHead>Stato</TableHead>
                 <TableHead><span className="sr-only">Azioni</span></TableHead>
               </TableRow>
@@ -154,7 +154,7 @@ export function LeaveRequests() {
                   <TableCell className="font-medium">{req.type}</TableCell>
                   <TableCell>{req.from}</TableCell>
                   <TableCell>{req.to}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{req.reason}</TableCell>
+                  <TableCell className="hidden md:table-cell max-w-[200px] truncate">{req.reason}</TableCell>
                   <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -203,3 +203,5 @@ export function LeaveRequests() {
     </>
   );
 }
+
+    

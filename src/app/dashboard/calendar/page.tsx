@@ -5,15 +5,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 
-const shiftEvents = [
-  { date: '2024-08-01', type: 'Turno di Mattina', location: 'Edificio A' },
-  { date: '2024-08-02', type: 'Turno di Sera', location: 'Edificio C' },
-  { date: '2024-08-05', type: 'Turno di Notte', location: 'Edificio B' },
-  { date: '2024-08-06', type: 'Ferie', location: 'N/A' },
-  { date: '2024-08-08', type: 'Turno di Mattina', location: 'Edificio A' },
-  { date: '2024-08-12', type: 'Turno di Mattina', location: 'Edificio D' },
-  { date: '2024-08-13', type: 'Turno di Sera', location: 'Edificio B' },
-  { date: '2024-08-14', type: 'Turno di Notte', location: 'Edificio C' },
+const shiftEvents: { date: string; type: string; location: string; }[] = [
+  // Data removed to be empty by default
 ]
 
 // Helper to parse dates safely for modifiers
@@ -40,11 +33,7 @@ export default function CalendarPage() {
   React.useEffect(() => {
     const initialDate = new Date();
     setDate(initialDate);
-    const eventForToday = shiftEvents.find(e => {
-        const eventDate = parseDate(e.date);
-        return format(eventDate, 'yyyy-MM-dd') === format(initialDate, 'yyyy-MM-dd');
-    });
-    setSelectedEvent(eventForToday || null);
+    handleDateSelect(initialDate);
   }, []);
 
   const handleDateSelect = (selectedDate: Date | undefined) => {
@@ -74,6 +63,8 @@ export default function CalendarPage() {
             modifiers={modifiers}
             modifiersStyles={modifiersStyles}
             locale={it}
+            month={date} // Start calendar on the currently selected month
+            onMonthChange={setDate} // Allow month navigation
           />
         </CardContent>
       </Card>
@@ -106,3 +97,5 @@ export default function CalendarPage() {
     </div>
   );
 }
+
+    
