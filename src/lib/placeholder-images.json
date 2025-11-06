@@ -1,3 +1,16 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "login-background",
+      "description": "A professional cleaner working in a modern office.",
+      "imageUrl": "https://images.unsplash.com/photo-1747659365190-c4ceea97aff7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxjbGVhbmluZyUyMHByb2Zlc3Npb25hbHxlbnwwfHx8fDE3NjI0MTcxNDB8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "cleaning professional"
+    },
+    {
+      "id": "user-avatar",
+      "description": "Avatar for a user",
+      "imageUrl": "https://images.unsplash.com/photo-1542630994-f2d8bed7de65?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxwb3J0cmFpdCUyMHBlcnNvbnxlbnwwfHx8fDE3NjIzMjA1NTB8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "portrait person"
+    }
+  ]
 }
