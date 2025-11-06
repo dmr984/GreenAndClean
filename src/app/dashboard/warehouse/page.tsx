@@ -48,20 +48,17 @@ export default function WarehousePage() {
     setItems(getItemsFromStorage());
   }, []);
 
-  React.useEffect(() => {
-    saveItemsToStorage(items);
-  }, [items]);
-
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const quantity = Number((form.elements.namedItem('quantity') as HTMLInputElement).value);
 
+    let updatedItems: WarehouseItem[];
+
     if (isEditing && selectedItem) {
       // Edit item
-      const updatedItem = { ...selectedItem, name, quantity };
-      setItems(items.map(i => i.id === selectedItem.id ? updatedItem : i));
+      updatedItems = items.map(i => i.id === selectedItem.id ? { ...i, name, quantity } : i);
       toast({ title: "Prodotto Modificato", description: `"${name}" è stato aggiornato.` });
     } else {
       // Add new item
@@ -70,9 +67,12 @@ export default function WarehousePage() {
         name,
         quantity,
       };
-      setItems([...items, newItem]);
+      updatedItems = [...items, newItem];
       toast({ title: "Prodotto Aggiunto", description: `"${name}" è stato aggiunto al magazzino.` });
     }
+    
+    setItems(updatedItems);
+    saveItemsToStorage(updatedItems);
 
     setIsItemDialogOpen(false);
     setSelectedItem(null);
@@ -83,7 +83,10 @@ export default function WarehousePage() {
   const handleDeleteItem = () => {
     if (!selectedItem) return;
     
-    setItems(items.filter(item => item.id !== selectedItem.id));
+    const updatedItems = items.filter(item => item.id !== selectedItem.id)
+    setItems(updatedItems);
+    saveItemsToStorage(updatedItems);
+
     toast({
       title: "Prodotto Eliminato",
       description: `"${selectedItem.name}" è stato rimosso dal magazzino.`,
@@ -94,13 +97,13 @@ export default function WarehousePage() {
   }
 
   const handleQuantityChange = (itemId: string, amount: number) => {
-    setItems(currentItems =>
-      currentItems.map(item =>
+    const updatedItems = items.map(item =>
         item.id === itemId
           ? { ...item, quantity: Math.max(0, item.quantity + amount) } // Prevent negative quantity
           : item
-      )
-    );
+      );
+    setItems(updatedItems);
+    saveItemsToStorage(updatedItems);
   };
   
   const openDialog = (item: WarehouseItem | null, editing: boolean) => {
