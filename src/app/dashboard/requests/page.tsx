@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 
 // ==================================
@@ -505,7 +506,7 @@ const SupplyRequestsSection = () => {
                                                 ))}
                                             </TableBody>
                                         </Table>
-                                        {(req.adminNotes || req.status === 'Rifiutata') && (
+                                        {(req.adminNotes || (req.status === 'Rifiutata' && !req.adminNotes)) && (
                                             <div className="mt-4 p-3 bg-muted rounded-md">
                                                 <h4 className="font-semibold text-sm">Note dell'amministratore:</h4>
                                                 <p className="text-sm text-muted-foreground">{req.adminNotes || "Richiesta rifiutata."}</p>
@@ -598,3 +599,5 @@ export default function RequestsPage() {
         </div>
     );
 }
+
+    
