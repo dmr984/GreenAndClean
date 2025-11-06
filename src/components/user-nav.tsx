@@ -1,4 +1,6 @@
+'use client';
 import Link from "next/link";
+import React from 'react';
 import { LogOut, Settings, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -15,22 +17,49 @@ import placeholder from '@/lib/placeholder-images.json';
 
 export function UserNav() {
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
+  const [userName, setUserName] = React.useState<string | null>(null);
+  const [userRole, setUserRole] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const role = localStorage.getItem('userRole');
+    const name = localStorage.getItem('userName');
+    setUserRole(role);
+    setUserName(name);
+  }, []);
+
+  const getEmail = () => {
+    if (userRole === 'admin') return 'admin@workforce.hub';
+    if (userName) return `${userName.toLowerCase().replace(' ', '.')}@workforce.hub`;
+    return 'utente@workforce.hub';
+  }
+
+  const getAvatarFallback = () => {
+     if (userName) {
+        const parts = userName.split(' ');
+        if (parts.length > 1) {
+            return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+        }
+        return userName.substring(0, 2).toUpperCase();
+     }
+     return "U";
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-9 w-9">
             {userAvatar && <AvatarImage src={userAvatar.imageUrl} alt="@operator" />}
-            <AvatarFallback>OP</AvatarFallback>
+            <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">A. Rossi</p>
+            <p className="text-sm font-medium leading-none">{userName || 'Utente'}</p>
             <p className="text-xs leading-none text-muted-foreground">
-              operatrice@workforce.hub
+              {getEmail()}
             </p>
           </div>
         </DropdownMenuLabel>

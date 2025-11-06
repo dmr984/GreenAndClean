@@ -5,40 +5,69 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+
+// Mock users data. In a real app, this would come from a database.
+const users = [
+  { id: "admin", name: "Amministratore", code: "070380", role: "admin" },
+  { id: "USR001", name: "Mario Rossi", code: "123456", role: "operator" },
+  { id: "USR002", name: "Anna Bianchi", code: "654321", role: "operator" },
+  { id: "USR003", name: "Luca Verdi", code: "112233", role: "operator" },
+  { id: "USR004", name: "Giulia Neri", code: "332211", role: "operator" },
+];
 
 export default function LoginForm() {
   const router = useRouter();
+  const { toast } = useToast();
+  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
 
   const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const email = (event.currentTarget.elements.namedItem('email') as HTMLInputElement).value;
+    const code = (event.currentTarget.elements.namedItem('code') as HTMLInputElement).value;
     
-    // Simple role check based on email for prototype purposes
-    if (email.toLowerCase() === 'admin@workforce.hub') {
-      localStorage.setItem('userRole', 'admin');
-    } else {
-      localStorage.setItem('userRole', 'operator');
+    if (!selectedUserId) {
+      toast({
+        variant: "destructive",
+        title: "Errore di accesso",
+        description: "Per favore, seleziona il tuo nome.",
+      });
+      return;
     }
-    
-    router.push('/dashboard');
+
+    const user = users.find(u => u.id === selectedUserId);
+
+    if (user && user.code === code) {
+      localStorage.setItem('userRole', user.role);
+      localStorage.setItem('userName', user.name);
+      router.push('/dashboard');
+    } else {
+       toast({
+        variant: "destructive",
+        title: "Credenziali non valide",
+        description: "Il codice inserito non è corretto. Riprova.",
+      });
+    }
   };
 
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="email">Email o codice di accesso</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          placeholder="m@example.com"
-          required
-          defaultValue="admin@workforce.hub"
-        />
+        <Label htmlFor="user-select">Seleziona Utente</Label>
+        <Select onValueChange={setSelectedUserId} required>
+            <SelectTrigger id="user-select">
+                <SelectValue placeholder="Seleziona il tuo nome dall'elenco" />
+            </SelectTrigger>
+            <SelectContent>
+                {users.map(user => (
+                    <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
-        <Input id="password" type="password" required defaultValue="password" />
+        <Label htmlFor="code">Codice di Accesso</Label>
+        <Input id="code" name="code" type="password" required />
       </div>
       <Button type="submit" className="w-full font-bold">
         Accedi

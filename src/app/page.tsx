@@ -15,7 +15,7 @@ export default function LoginPage() {
             <Briefcase className="h-10 w-10 mx-auto text-primary" />
             <h1 className="text-3xl font-bold font-headline tracking-tight">WorkForce Hub</h1>
             <p className="text-balance text-muted-foreground">
-              Inserisci le tue credenziali per accedere al tuo pannello operatore
+              Seleziona il tuo nome e inserisci il codice per accedere.
             </p>
           </div>
           <LoginForm />
