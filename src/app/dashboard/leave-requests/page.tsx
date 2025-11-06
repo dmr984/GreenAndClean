@@ -196,46 +196,48 @@ export default function LeaveRequestsPage() {
                                 <p>Non ci sono richieste da mostrare.</p>
                             </div>
                         ) : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        {isAdmin && <TableHead>Operatore</TableHead>}
-                                        <TableHead>Tipo</TableHead>
-                                        <TableHead>Periodo</TableHead>
-                                        <TableHead className="hidden md:table-cell">Motivo</TableHead>
-                                        <TableHead>Stato</TableHead>
-                                        {isAdmin && <TableHead className="text-right">Azioni</TableHead>}
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {userRequests.map((req) => (
-                                        <TableRow key={req.id}>
-                                            {isAdmin && <TableCell className="font-medium">{req.user}</TableCell>}
-                                            <TableCell>{req.type}</TableCell>
-                                            <TableCell className="whitespace-nowrap">{new Date(req.from).toLocaleDateString()} - {new Date(req.to).toLocaleDateString()}</TableCell>
-                                            <TableCell className="hidden md:table-cell max-w-[200px] truncate">{req.reason || "-"}</TableCell>
-                                            <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
-                                            {isAdmin && (
-                                                <TableCell className="text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                                <span className="sr-only">Apri menu</span>
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
-                                                            <DropdownMenuItem onSelect={() => handleApprove(req.id)}><Check className="mr-2 h-4 w-4" />Approva</DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive"><X className="mr-2 h-4 w-4" />Rifiuta</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </TableCell>
-                                            )}
+                           <div className="relative w-full overflow-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            {isAdmin && <TableHead>Operatore</TableHead>}
+                                            <TableHead>Tipo</TableHead>
+                                            <TableHead>Periodo</TableHead>
+                                            <TableHead className="hidden md:table-cell">Motivo</TableHead>
+                                            <TableHead>Stato</TableHead>
+                                            {isAdmin && <TableHead className="text-right">Azioni</TableHead>}
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {userRequests.map((req) => (
+                                            <TableRow key={req.id}>
+                                                {isAdmin && <TableCell className="font-medium">{req.user}</TableCell>}
+                                                <TableCell>{req.type}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{new Date(req.from).toLocaleDateString()} - {new Date(req.to).toLocaleDateString()}</TableCell>
+                                                <TableCell className="hidden md:table-cell max-w-[200px] truncate">{req.reason || "-"}</TableCell>
+                                                <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
+                                                {isAdmin && (
+                                                    <TableCell className="text-right">
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                    <span className="sr-only">Apri menu</span>
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
+                                                                <DropdownMenuItem onSelect={() => handleApprove(req.id)}><Check className="mr-2 h-4 w-4" />Approva</DropdownMenuItem>
+                                                                <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive"><X className="mr-2 h-4 w-4" />Rifiuta</DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </TableCell>
+                                                )}
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                           </div>
                         )}
                     </div>
 

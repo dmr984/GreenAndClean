@@ -269,7 +269,7 @@ export default function SupplyRequestsPage() {
                         </div>
                     )}
 
-                    <div className="overflow-x-auto">
+                    <div>
                         <h3 className="text-lg font-semibold mb-2">Storico Richieste</h3>
                         {userRequests.length === 0 ? (
                             <div className="text-center text-muted-foreground py-12"><p>Non ci sono richieste di forniture da mostrare.</p></div>
@@ -292,7 +292,7 @@ export default function SupplyRequestsPage() {
                                             </div>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="overflow-x-auto">
+                                            <div className="relative w-full overflow-auto">
                                                 <Table>
                                                     <TableHeader>
                                                         <TableRow>

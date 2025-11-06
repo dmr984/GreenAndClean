@@ -4,9 +4,10 @@ import { UserNav } from '@/components/user-nav';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, MessageSquare, Briefcase } from 'lucide-react';
+import { ArrowLeft, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import Image from 'next/image';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
@@ -86,9 +87,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            </div>
 
           <div className="flex-1 flex justify-center">
-            <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-lg">
-              <Briefcase className="h-6 w-6 text-primary" />
-              <span className="uppercase tracking-wider">Serveco Cleaning</span>
+            <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-lg">
+                <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8"/>
+                <span className="uppercase tracking-wider">SERVECO SRL</span>
             </Link>
           </div>
 
@@ -105,7 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <UserNav />
           </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
            {isAdminDashboardPage ? <AdminDashboard /> : children}
         </main>
     </div>

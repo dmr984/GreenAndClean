@@ -141,7 +141,7 @@ export default function WarehousePage() {
               <p>Non ci sono prodotti nel magazzino. Inizia aggiungendone uno.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="relative w-full overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
