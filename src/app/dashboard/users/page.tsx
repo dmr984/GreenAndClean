@@ -25,17 +25,28 @@ type User = {
   location: string;
 };
 
-// Start with an empty list of users
-const initialUsers: User[] = [];
-
 export default function UsersPage() {
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
   const { toast } = useToast();
-  const [users, setUsers] = React.useState(initialUsers);
+  const [users, setUsers] = React.useState<User[]>([]);
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
+
+  // Load users from localStorage on initial render
+  React.useEffect(() => {
+    const storedUsers = localStorage.getItem('app-users');
+    if (storedUsers) {
+      setUsers(JSON.parse(storedUsers));
+    }
+  }, []);
+
+  // Save users to localStorage whenever they change
+  React.useEffect(() => {
+    localStorage.setItem('app-users', JSON.stringify(users));
+  }, [users]);
+
 
   const handleAddUser = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,10 +56,10 @@ export default function UsersPage() {
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
     const newUser: User = {
-      id: `USR${String(Date.now()).slice(-6)}`, // More robust ID generation
+      id: `USR${String(Date.now()).slice(-6)}`,
       name,
       code,
-      role: 'Operatore', // Hardcoded role
+      role: 'Operatore',
       location,
       status: 'Attivo',
     };
@@ -59,6 +70,7 @@ export default function UsersPage() {
       title: "Utente Aggiunto",
       description: `L'utente ${name} è stato aggiunto con successo.`,
     });
+    form.reset();
   };
 
   const handleEditUser = (event: React.FormEvent<HTMLFormElement>) => {

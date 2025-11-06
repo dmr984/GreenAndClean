@@ -8,16 +8,31 @@ import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 
-// Mock users data. In a real app, this would come from a database.
-const users = [
-  { id: "admin", name: "Amministratore", code: "070380", role: "admin" },
-  // Operators will be managed dynamically now
-];
+type User = {
+  id: string;
+  name: string;
+  code: string;
+  role: string;
+  location: string;
+  status: string;
+};
+
+// Admin is hardcoded, operators are loaded from localStorage
+const adminUser = { id: "admin", name: "Amministratore", code: "070380", role: "admin", location: "Sede", status: "Attivo" };
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [users, setUsers] = React.useState<User[]>([adminUser]);
+
+  React.useEffect(() => {
+    const storedUsers = localStorage.getItem('app-users');
+    if (storedUsers) {
+      const operatorUsers = JSON.parse(storedUsers) as User[];
+      setUsers([adminUser, ...operatorUsers]);
+    }
+  }, []);
 
   const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -56,8 +71,9 @@ export default function LoginForm() {
                 <SelectValue placeholder="Seleziona il tuo nome dall'elenco" />
             </SelectTrigger>
             <SelectContent>
-                {/* This will need to be populated from the same source as the user management page */}
-                <SelectItem value="admin">Amministratore</SelectItem>
+                {users.map(user => (
+                   <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                ))}
             </SelectContent>
         </Select>
       </div>

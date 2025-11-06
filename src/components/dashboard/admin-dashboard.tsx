@@ -1,17 +1,15 @@
 'use client';
+import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Users } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 
-// Mock users data, excluding admin. In a real app, this would come from a database.
-const operators = [
-  { id: "USR001", name: "Mario Rossi" },
-  { id: "USR002", name: "Anna Bianchi" },
-  { id: "USR003", name: "Luca Verdi" },
-  { id: "USR004", name: "Giulia Neri" },
-];
+type Operator = {
+  id: string;
+  name: string;
+};
 
 const getAvatarFallback = (name: string) => {
     const parts = name.split(' ');
@@ -22,6 +20,19 @@ const getAvatarFallback = (name: string) => {
 };
 
 export function AdminDashboard() {
+    const [operators, setOperators] = React.useState<Operator[]>([]);
+
+    React.useEffect(() => {
+        const storedUsers = localStorage.getItem('app-users');
+        if (storedUsers) {
+            const parsedUsers = JSON.parse(storedUsers);
+            // We only want operators, not the admin
+            const operatorUsers = parsedUsers.filter((user: any) => user.role !== 'admin');
+            setOperators(operatorUsers);
+        }
+    }, []);
+
+
   return (
     <>
       <div className="flex items-center justify-between space-y-2">
