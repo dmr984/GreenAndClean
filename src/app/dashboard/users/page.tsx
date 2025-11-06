@@ -22,6 +22,7 @@ type User = {
   code: string;
   role: string;
   status: string;
+  location: string;
 };
 
 const initialUsers: User[] = [
@@ -31,6 +32,7 @@ const initialUsers: User[] = [
     code: "123456",
     role: "Operatore",
     status: "Attivo",
+    location: "Edificio A",
   },
   {
     id: "USR002",
@@ -38,6 +40,7 @@ const initialUsers: User[] = [
     code: "654321",
     role: "Operatore",
     status: "Attivo",
+    location: "Edificio B",
   },
   {
     id: "USR003",
@@ -45,6 +48,7 @@ const initialUsers: User[] = [
     code: "112233",
     role: "Operatore",
     status: "Inattivo",
+    location: "Edificio A",
   },
   {
     id: "USR004",
@@ -52,6 +56,7 @@ const initialUsers: User[] = [
     code: "332211",
     role: "Supervisore",
     status: "Attivo",
+    location: "Sede Centrale",
   },
   {
     id: "USR005",
@@ -59,6 +64,7 @@ const initialUsers: User[] = [
     code: "070380",
     role: "Admin",
     status: "Attivo",
+    location: "Sede Centrale",
   },
 ];
 
@@ -77,12 +83,14 @@ export default function UsersPage() {
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const role = (form.elements.namedItem('role') as HTMLInputElement).value;
+    const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
     const newUser: User = {
       id: `USR${String(users.length + 1).padStart(3, '0')}`,
       name,
       code,
       role,
+      location,
       status: 'Attivo',
     };
 
@@ -102,9 +110,10 @@ export default function UsersPage() {
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const role = (form.elements.namedItem('role') as HTMLInputElement).value;
+    const location = (form.elements.namedItem('location') as HTMLInputElement).value;
     const status = (form.elements.namedItem('status') as HTMLInputElement).value;
 
-    const updatedUser: User = { ...selectedUser, name, code, role, status };
+    const updatedUser: User = { ...selectedUser, name, code, role, location, status };
 
     setUsers(prevUsers => prevUsers.map(u => u.id === selectedUser.id ? updatedUser : u));
     setIsEditUserDialogOpen(false);
@@ -185,6 +194,10 @@ export default function UsersPage() {
                     <Input id="code" name="code" className="col-span-3" required />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="location" className="text-right">Luogo</Label>
+                    <Input id="location" name="location" className="col-span-3" required />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="role" className="text-right">Ruolo</Label>
                     <Input id="role" name="role" defaultValue="Operatore" className="col-span-3" required />
                   </div>
@@ -213,6 +226,7 @@ export default function UsersPage() {
                     </TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Codice</TableHead>
+                    <TableHead>Luogo</TableHead>
                     <TableHead>Ruolo</TableHead>
                     <TableHead>Stato</TableHead>
                     <TableHead>
@@ -231,6 +245,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="font-medium">{user.name}</TableCell>
                        <TableCell className="font-mono">******</TableCell>
+                       <TableCell>{user.location}</TableCell>
                       <TableCell>
                         <Badge variant={user.role === 'Admin' ? 'destructive' : 'secondary'}>{user.role}</Badge>
                       </TableCell>
@@ -288,6 +303,10 @@ export default function UsersPage() {
                 <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-location" className="text-right">Luogo</Label>
+                <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-role" className="text-right">Ruolo</Label>
                 <Input id="edit-role" name="role" defaultValue={selectedUser.role} className="col-span-3" required />
               </div>
@@ -322,3 +341,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    
