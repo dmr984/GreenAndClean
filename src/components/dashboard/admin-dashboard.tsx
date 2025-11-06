@@ -1,6 +1,7 @@
 'use client';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Clock, Users, Calendar, Plane, ShoppingBasket } from 'lucide-react';
+import Link from 'next/link';
 
 const teamClockStatus = [
   { name: 'Mario Rossi', status: 'In turno', time: '04:15:32' },
@@ -21,46 +22,54 @@ export function AdminDashboard() {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo Admin</h2>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Operatori in Turno</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3 / 4</div>
-            <p className="text-xs text-muted-foreground">Stato timbrature in tempo reale</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Richieste Ferie in Attesa</CardTitle>
-            <Plane className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">+1</div>
-             <p className="text-xs text-muted-foreground">1 in attesa di approvazione</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Richieste Forniture</CardTitle>
-            <ShoppingBasket className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">+1</div>
-             <p className="text-xs text-muted-foreground">1 in attesa di approvazione</p>
-          </CardContent>
-        </Card>
-        <Card>
+        <Link href="/dashboard/users">
+          <Card className="hover:bg-muted/50 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Eventi Calendario Oggi</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Operatori in Turno</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">2</div>
-                <p className="text-xs text-muted-foreground">Turni di mattina</p>
+              <div className="text-2xl font-bold">3 / 4</div>
+              <p className="text-xs text-muted-foreground">Stato timbrature in tempo reale</p>
             </CardContent>
-        </Card>
+          </Card>
+        </Link>
+        <Link href="/dashboard/requests?tab=leave">
+          <Card className="hover:bg-muted/50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Richieste Ferie in Attesa</CardTitle>
+              <Plane className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">+1</div>
+              <p className="text-xs text-muted-foreground">1 in attesa di approvazione</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/dashboard/requests?tab=supply">
+         <Card className="hover:bg-muted/50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Richieste Forniture</CardTitle>
+              <ShoppingBasket className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">+1</div>
+              <p className="text-xs text-muted-foreground">1 in attesa di approvazione</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/dashboard/calendar">
+            <Card className="hover:bg-muted/50 transition-colors">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Eventi Calendario Oggi</CardTitle>
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">2</div>
+                    <p className="text-xs text-muted-foreground">Turni di mattina</p>
+                </CardContent>
+            </Card>
+        </Link>
       </div>
       <div className="grid gap-4 md:gap-8 lg:grid-cols-2">
         <Card>
