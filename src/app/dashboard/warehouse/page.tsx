@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, Trash, Edit } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Trash, Edit, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -92,6 +92,16 @@ export default function WarehousePage() {
     setIsDeleteDialogOpen(false);
     setSelectedItem(null);
   }
+
+  const handleQuantityChange = (itemId: string, amount: number) => {
+    setItems(currentItems =>
+      currentItems.map(item =>
+        item.id === itemId
+          ? { ...item, quantity: Math.max(0, item.quantity + amount) } // Prevent negative quantity
+          : item
+      )
+    );
+  };
   
   const openDialog = (item: WarehouseItem | null, editing: boolean) => {
     setSelectedItem(item);
@@ -132,16 +142,39 @@ export default function WarehousePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Prodotto</TableHead>
-                  <TableHead className="w-[150px]">Quantità Disponibile</TableHead>
-                  <TableHead className="w-[80px]"><span className="sr-only">Azioni</span></TableHead>
+                  <TableHead className="w-[200px]">Quantità Disponibile</TableHead>
+                  <TableHead className="w-[80px] text-right"><span className="sr-only">Azioni</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
                     <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleQuantityChange(item.id, -1)}
+                          disabled={item.quantity <= 0}
+                        >
+                          <Minus className="h-4 w-4" />
+                          <span className="sr-only">Diminuisci</span>
+                        </Button>
+                        <span className="min-w-[40px] text-center text-base font-medium">{item.quantity}</span>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleQuantityChange(item.id, 1)}
+                        >
+                          <Plus className="h-4 w-4" />
+                           <span className="sr-only">Aumenta</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button aria-haspopup="true" size="icon" variant="ghost">
@@ -153,7 +186,7 @@ export default function WarehousePage() {
                           <DropdownMenuLabel>Azioni</DropdownMenuLabel>
                           <DropdownMenuItem onSelect={() => openDialog(item, true)}>
                             <Edit className="mr-2 h-4 w-4" />
-                            Modifica
+                            Modifica Nome
                           </DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(item)}>
                             <Trash className="mr-2 h-4 w-4" />
@@ -186,7 +219,7 @@ export default function WarehousePage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="quantity" className="text-right">Quantità</Label>
-              <Input id="quantity" name="quantity" type="number" className="col-span-3" defaultValue={selectedItem?.quantity} required />
+              <Input id="quantity" name="quantity" type="number" className="col-span-3" defaultValue={selectedItem?.quantity ?? 0} required />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsItemDialogOpen(false)}>Annulla</Button>
