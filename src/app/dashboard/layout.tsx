@@ -176,7 +176,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <div className="flex-1 flex justify-center">
             <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-lg">
-                <span className="uppercase tracking-wider">SERVECO SRL</span>
+                <span className="uppercase tracking-wider whitespace-nowrap">SERVECO SRL</span>
                 <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
             </Link>
           </div>
