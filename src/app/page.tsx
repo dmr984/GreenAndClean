@@ -15,14 +15,14 @@ export default function LoginPage() {
             <Briefcase className="h-10 w-10 mx-auto text-primary" />
             <h1 className="text-3xl font-bold font-headline tracking-tight">WorkForce Hub</h1>
             <p className="text-balance text-muted-foreground">
-              Enter your credentials to access your operator dashboard
+              Inserisci le tue credenziali per accedere al tuo pannello operatore
             </p>
           </div>
           <LoginForm />
           <div className="mt-4 text-center text-sm">
-            Having trouble signing in?{' '}
+            Hai problemi ad accedere?{' '}
             <a href="#" className="underline">
-              Contact Admin
+              Contatta l'amministratore
             </a>
           </div>
         </div>

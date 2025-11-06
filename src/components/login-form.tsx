@@ -18,7 +18,7 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="email">Email or Access Code</Label>
+        <Label htmlFor="email">Email o codice di accesso</Label>
         <Input
           id="email"
           type="email"
@@ -32,7 +32,7 @@ export default function LoginForm() {
         <Input id="password" type="password" required defaultValue="password" />
       </div>
       <Button type="submit" className="w-full font-bold">
-        Sign In
+        Accedi
       </Button>
     </form>
   );
