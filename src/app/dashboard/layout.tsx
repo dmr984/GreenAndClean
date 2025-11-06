@@ -1,12 +1,10 @@
 "use client";
 import React from 'react';
-import { AppSidebar, MobileAppSidebar } from '@/components/app-sidebar';
 import { UserNav } from '@/components/user-nav';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
-import { PanelLeft } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
+import Link from 'next/link';
+import { Briefcase } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
@@ -24,24 +22,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-muted/40">
-      <AppSidebar />
-      <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
+      <div className="flex flex-col sm:gap-4 sm:py-4">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button size="icon" variant="outline" className="sm:hidden">
-                <PanelLeft className="h-5 w-5" />
-                <span className="sr-only">Toggle Menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="sm:max-w-xs">
-              <SheetHeader>
-                <SheetTitle className="sr-only">Menu</SheetTitle>
-                <SheetDescription className="sr-only">Main navigation menu for the application.</SheetDescription>
-              </SheetHeader>
-              <MobileAppSidebar />
-            </SheetContent>
-          </Sheet>
+          <Link
+                href="/dashboard"
+                className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base"
+              >
+                <Briefcase className="h-4 w-4 transition-all group-hover:scale-110" />
+                <span className="sr-only">WorkForce Hub</span>
+          </Link>
           <div className="ml-auto">
              <UserNav />
           </div>
