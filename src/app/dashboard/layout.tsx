@@ -2,7 +2,7 @@
 import React from 'react';
 import { UserNav } from '@/components/user-nav';
 import { usePathname, useRouter } from 'next/navigation';
-import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
+import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
 import { Briefcase, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (typeof window !== 'undefined') {
       const role = localStorage.getItem('userRole');
       setUserRole(role);
+
+      // Privacy enforcement
+      if (role === 'operator') {
+          if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements') {
+              router.replace('/dashboard');
+          }
+      }
     }
-  }, []);
+  }, [pathname, router]);
 
   const isAdmin = userRole === 'admin';
   const isAdminDashboardPage = isAdmin && pathname === '/dashboard';

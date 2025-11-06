@@ -65,6 +65,7 @@ export default function LoginForm() {
     if (user && user.code === code) {
       localStorage.setItem('userRole', user.role);
       localStorage.setItem('userName', user.name);
+      localStorage.setItem('userId', user.id); // Save user ID
       router.push('/dashboard');
     } else {
        toast({

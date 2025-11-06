@@ -20,24 +20,28 @@ export function UserNav() {
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
   const [userName, setUserName] = React.useState<string | null>(null);
   const [userRole, setUserRole] = React.useState<string | null>(null);
+  const [userId, setUserId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const role = localStorage.getItem('userRole');
     const name = localStorage.getItem('userName');
+    const id = localStorage.getItem('userId');
     setUserRole(role);
     setUserName(name);
+    setUserId(id);
   }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('userRole');
     localStorage.removeItem('userName');
+    localStorage.removeItem('userId');
     router.push('/');
   }
 
   const getEmail = () => {
-    if (userRole === 'admin') return 'admin@workforce.hub';
-    if (userName) return `${userName.toLowerCase().replace(' ', '.')}@workforce.hub`;
-    return 'utente@workforce.hub';
+    if (userRole === 'admin') return 'admin@serveco.it';
+    if (userName) return `${userName.toLowerCase().replace(' ', '.')}@serveco.it`;
+    return 'utente@serveco.it';
   }
 
   const getAvatarFallback = () => {
@@ -50,6 +54,16 @@ export function UserNav() {
      }
      return "U";
   }
+  
+  const handleProfileClick = () => {
+    if (userRole === 'operator' && userId) {
+      router.push(`/dashboard/users/${userId}`);
+    } else if(userRole === 'admin') {
+      // Admin doesn't have a profile page, maybe go to users list?
+      router.push('/dashboard/users');
+    }
+  };
+
 
   return (
     <DropdownMenu>
@@ -72,7 +86,7 @@ export function UserNav() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={handleProfileClick} disabled={!userId && userRole === 'operator'}>
             <User className="mr-2 h-4 w-4" />
             <span>Profilo</span>
           </DropdownMenuItem>

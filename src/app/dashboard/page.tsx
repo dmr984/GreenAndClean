@@ -1,10 +1,40 @@
+'use client';
+
+import React from 'react';
 import { ClockWidget } from "@/components/dashboard/clock-widget";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Megaphone, CheckCircle } from "lucide-react";
 
-const announcements: { title: string; date: string; content: string; }[] = [];
+type Announcement = {
+    id: string;
+    title: string;
+    content: string;
+    date: string;
+    recipients: string[]; // 'all' or array of user IDs
+};
 
 export default function Dashboard() {
+  const [announcements, setAnnouncements] = React.useState<Announcement[]>([]);
+  const [userId, setUserId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+        const currentUserId = localStorage.getItem('userId');
+        const storedAnnouncements = localStorage.getItem('announcements');
+        const allAnnouncements: Announcement[] = storedAnnouncements ? JSON.parse(storedAnnouncements) : [];
+        
+        setUserId(currentUserId);
+        
+        // Filter announcements for the current user
+        const userAnnouncements = allAnnouncements.filter(ann => 
+            ann.recipients.includes('all') || (currentUserId && ann.recipients.includes(currentUserId))
+        ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        setAnnouncements(userAnnouncements);
+    }
+  }, []);
+
+
   return (
     <>
     <div className="flex items-center justify-between space-y-2">
@@ -28,8 +58,8 @@ export default function Dashboard() {
         <CardContent>
           {announcements.length > 0 ? (
             <ul className="space-y-6">
-              {announcements.map((ann, index) => (
-                <li key={index} className="flex items-start gap-4">
+              {announcements.map((ann) => (
+                <li key={ann.id} className="flex items-start gap-4">
                   <div className="p-1 rounded-full bg-secondary mt-1">
                     <CheckCircle className="h-5 w-5 text-secondary-foreground" />
                   </div>
@@ -40,7 +70,7 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">
                       {ann.content}
                     </p>
-                    <p className="text-xs text-muted-foreground pt-1">{ann.date}</p>
+                    <p className="text-xs text-muted-foreground pt-1">{new Date(ann.date).toLocaleString('it-IT')}</p>
                   </div>
                 </li>
               ))}
