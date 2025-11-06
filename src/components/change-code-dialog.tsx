@@ -39,6 +39,7 @@ interface ChangeCodeDialogProps {
 
 export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDialogProps) {
     const { toast } = useToast();
+    const [oldCode, setOldCode] = React.useState("");
     const [newCode, setNewCode] = React.useState("");
     const [confirmCode, setConfirmCode] = React.useState("");
 
@@ -49,7 +50,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
             toast({
                 variant: "destructive",
                 title: "Errore",
-                description: "I codici non corrispondono. Riprova."
+                description: "I nuovi codici non corrispondono. Riprova."
             });
             return;
         }
@@ -59,47 +60,82 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
              return;
         }
 
-        if(userId === 'admin') {
-            // Admin is not in app-users, so handle separately if needed, but for this app it's not stored.
-            // For this implementation, we will assume we can't change admin code this way as it's hardcoded.
-            // A real app would have a backend.
+        let userToUpdate: User | undefined;
+        let users: User[] = [];
+        
+        if (userId === 'admin') {
+            // In a real app, admin user data would also be in a DB. For this demo, we can't update it.
+            // Let's retrieve its hardcoded data to check the old code.
+            if(adminUser.code !== oldCode) {
+                toast({ variant: "destructive", title: "Codice Errato", description: "Il vecchio codice non è corretto." });
+                return;
+            }
             toast({ title: "Info", description: "La modifica del codice admin non è supportata in questa demo."});
             onOpenChange(false);
             return;
-        }
 
-        const users = getUsersFromStorage();
-        const userIndex = users.findIndex(u => u.id === userId);
+        } else {
+            users = getUsersFromStorage();
+            userToUpdate = users.find(u => u.id === userId);
+            
+            if (!userToUpdate) {
+                 toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
+                 return;
+            }
+            
+            if(userToUpdate.code !== oldCode) {
+                toast({ variant: "destructive", title: "Codice Errato", description: "Il vecchio codice non è corretto." });
+                return;
+            }
 
-        if (userIndex === -1) {
-             toast({ variant: "destructive", title: "Errore", description: "Impossibile aggiornare il codice." });
-             return;
+            const updatedUsers = users.map(u => u.id === userId ? { ...u, code: newCode } : u);
+            saveUsersToStorage(updatedUsers);
         }
-        
-        const updatedUsers = [...users];
-        updatedUsers[userIndex].code = newCode;
-        saveUsersToStorage(updatedUsers);
 
         toast({
             title: "Codice Aggiornato",
             description: "Il tuo codice di accesso è stato modificato con successo."
         });
         
+        setOldCode("");
         setNewCode("");
         setConfirmCode("");
         onOpenChange(false);
     }
+    
+    // Reset state when dialog closes
+    const handleOpenChange = (open: boolean) => {
+        if(!open) {
+            setOldCode("");
+            setNewCode("");
+            setConfirmCode("");
+        }
+        onOpenChange(open);
+    }
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <Dialog open={isOpen} onOpenChange={handleOpenChange}>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Cambia Codice di Accesso</DialogTitle>
                     <DialogDescription>
-                        Inserisci un nuovo codice di accesso e confermalo.
+                        Inserisci il tuo codice attuale e poi scegli un nuovo codice.
                     </DialogDescription>
                 </DialogHeader>
                 <form id="change-code-form" onSubmit={handleCodeChange} className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="old-code" className="text-right">Vecchio Codice</Label>
+                        <Input 
+                            id="old-code" 
+                            name="old-code" 
+                            type="password" 
+                            className="col-span-3"
+                            value={oldCode}
+                            onChange={(e) => setOldCode(e.target.value)}
+                            required 
+                        />
+                    </div>
+                     <hr className="my-2"/>
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="new-code" className="text-right">Nuovo Codice</Label>
                         <Input 
@@ -126,7 +162,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
                     </div>
                 </form>
                 <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annulla</Button>
+                    <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>Annulla</Button>
                     <Button type="submit" form="change-code-form">Salva Modifiche</Button>
                 </DialogFooter>
             </DialogContent>
