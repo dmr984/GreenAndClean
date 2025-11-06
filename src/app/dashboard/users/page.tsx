@@ -25,26 +25,32 @@ type User = {
   location: string;
 };
 
+// Function to get users from localStorage
+const getUsersFromStorage = (): User[] => {
+  if (typeof window === 'undefined') return [];
+  const storedUsers = localStorage.getItem('app-users');
+  return storedUsers ? JSON.parse(storedUsers) : [];
+};
+
+// Function to save users to localStorage
+const saveUsersToStorage = (users: User[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('app-users', JSON.stringify(users));
+};
+
+
 export default function UsersPage() {
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
   const { toast } = useToast();
-  const [users, setUsers] = React.useState<User[]>([]);
+  const [users, setUsers] = React.useState<User[]>(getUsersFromStorage);
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
 
-  // Load users from localStorage on initial render
-  React.useEffect(() => {
-    const storedUsers = localStorage.getItem('app-users');
-    if (storedUsers) {
-      setUsers(JSON.parse(storedUsers));
-    }
-  }, []);
-
   // Save users to localStorage whenever they change
   React.useEffect(() => {
-    localStorage.setItem('app-users', JSON.stringify(users));
+    saveUsersToStorage(users);
   }, [users]);
 
 
@@ -81,9 +87,8 @@ export default function UsersPage() {
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
-    const status = (form.elements.namedItem('status') as HTMLInputElement).value;
 
-    const updatedUser: User = { ...selectedUser, name, code, location, status };
+    const updatedUser = { ...selectedUser, name, code, location };
 
     setUsers(prevUsers => prevUsers.map(u => u.id === selectedUser.id ? updatedUser : u));
     setIsEditUserDialogOpen(false);
@@ -198,7 +203,7 @@ export default function UsersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.length > 0 ? users.map((user) => (
+                  {users.length > 0 ? users.filter(user => user.role !== 'admin').map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="hidden sm:table-cell">
                         <Avatar className="h-9 w-9">
@@ -272,10 +277,6 @@ export default function UsersPage() {
                 <Label htmlFor="edit-location" className="text-right">Luogo</Label>
                 <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-3" required />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-status" className="text-right">Stato</Label>
-                <Input id="edit-status" name="status" defaultValue={selectedUser.status} className="col-span-3" required />
-              </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Annulla</Button>
                 <Button type="submit">Salva Modifiche</Button>
@@ -303,3 +304,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    

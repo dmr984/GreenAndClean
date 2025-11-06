@@ -20,6 +20,13 @@ type User = {
 // Admin is hardcoded, operators are loaded from localStorage
 const adminUser = { id: "admin", name: "Amministratore", code: "070380", role: "admin", location: "Sede", status: "Attivo" };
 
+const getUsersFromStorage = (): User[] => {
+  if (typeof window === 'undefined') return [];
+  const storedUsers = localStorage.getItem('app-users');
+  return storedUsers ? JSON.parse(storedUsers) : [];
+};
+
+
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
@@ -27,11 +34,8 @@ export default function LoginForm() {
   const [users, setUsers] = React.useState<User[]>([adminUser]);
 
   React.useEffect(() => {
-    const storedUsers = localStorage.getItem('app-users');
-    if (storedUsers) {
-      const operatorUsers = JSON.parse(storedUsers) as User[];
-      setUsers([adminUser, ...operatorUsers]);
-    }
+    const operatorUsers = getUsersFromStorage();
+    setUsers([adminUser, ...operatorUsers]);
   }, []);
 
   const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
@@ -47,7 +51,8 @@ export default function LoginForm() {
       return;
     }
 
-    const user = users.find(u => u.id === selectedUserId);
+    const allUsers = [adminUser, ...getUsersFromStorage()];
+    const user = allUsers.find(u => u.id === selectedUserId);
 
     if (user && user.code === code) {
       localStorage.setItem('userRole', user.role);
@@ -87,3 +92,5 @@ export default function LoginForm() {
     </form>
   );
 }
+
+    
