@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, CheckCircle, Package, Fingerprint } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle, Package, Fingerprint, MessageSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -43,12 +43,26 @@ export default function UserProfilePage() {
 
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [isCurrentUser, setIsCurrentUser] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     const users = getUsersFromStorage();
     const foundUser = users.find(u => u.id === userId);
     setUser(foundUser || null);
     setLoading(false);
+
+    if (typeof window !== 'undefined') {
+        const currentUserId = localStorage.getItem('userId');
+        setIsCurrentUser(userId === currentUserId);
+        
+        // Check for unread messages (mock logic)
+        const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
+        if (currentUserId && allMessages[currentUserId]) {
+            const count = allMessages[currentUserId].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
+            setUnreadMessages(count);
+        }
+    }
   }, [userId]);
 
 
@@ -115,7 +129,7 @@ export default function UserProfilePage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                       <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
                           <Fingerprint className="mr-4 h-8 w-8 text-primary"/>
                           Timbrature
@@ -132,6 +146,13 @@ export default function UserProfilePage() {
                           <Package className="mr-4 h-8 w-8 text-primary"/>
                           Richieste Prodotti
                       </Button>
+                      {isCurrentUser && (
+                          <Button variant="outline" size="lg" className="h-24 text-lg relative" onClick={() => router.push('/dashboard/messages')}>
+                              {unreadMessages > 0 && <span className="absolute top-2 right-2 h-3 w-3 rounded-full bg-destructive" />}
+                              <MessageSquare className="mr-4 h-8 w-8 text-primary"/>
+                              Messaggi
+                          </Button>
+                      )}
                    </div>
                 </CardContent>
             </Card>

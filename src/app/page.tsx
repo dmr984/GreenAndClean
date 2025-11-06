@@ -29,7 +29,7 @@ export default function LoginPage() {
         <div className="mx-auto grid w-full max-w-md gap-6">
           <div className="grid gap-3 text-center">
             <Briefcase className="h-10 w-10 mx-auto text-primary" />
-            <h1 className="text-3xl font-bold font-headline tracking-tight">Serveco Cleaning</h1>
+            <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
             <p className="text-balance text-muted-foreground">
               Seleziona il tuo nome e inserisci il codice per accedere.
             </p>
