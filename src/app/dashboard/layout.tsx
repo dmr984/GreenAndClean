@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppSidebar, MobileAppSidebar } from '@/components/app-sidebar';
 import { UserNav } from '@/components/user-nav';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { PanelLeft } from 'lucide-react';
 
@@ -19,6 +19,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="sm:max-w-xs" >
+              <SheetHeader className="sr-only">
+                <SheetTitle>Menu</SheetTitle>
+                <SheetDescription>Navigazione principale dell'applicazione</SheetDescription>
+              </SheetHeader>
               <MobileAppSidebar />
             </SheetContent>
           </Sheet>
