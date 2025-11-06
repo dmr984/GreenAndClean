@@ -31,10 +31,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 // Mock Data
 const initialRequests = [
-    { id: "LR001", type: "Vacation", from: "2024-08-15", to: "2024-08-20", status: "Approved", reason: "Family trip.", adminNotes: "" },
-    { id: "LR002", type: "Sick Leave", from: "2024-07-25", to: "2024-07-25", status: "Approved", reason: "", adminNotes: "" },
-    { id: "LR003", type: "Permission", from: "2024-07-30", to: "2024-07-30", status: "Rejected", reason: "Doctor's appointment.", adminNotes: "Operational needs. Please reschedule." },
-    { id: "LR004", type: "Vacation", from: "2024-09-01", to: "2024-09-07", status: "Pending", reason: "Annual leave.", adminNotes: "" },
+    { id: "LR001", type: "Ferie", from: "2024-08-15", to: "2024-08-20", status: "Approvata", reason: "Viaggio di famiglia.", adminNotes: "" },
+    { id: "LR002", type: "Malattia", from: "2024-07-25", to: "2024-07-25", status: "Approvata", reason: "", adminNotes: "" },
+    { id: "LR003", type: "Permesso", from: "2024-07-30", to: "2024-07-30", status: "Rifiutata", reason: "Visita medica.", adminNotes: "Esigenze operative. Si prega di riprogrammare." },
+    { id: "LR004", type: "Ferie", from: "2024-09-01", to: "2024-09-07", status: "In attesa", reason: "Ferie annuali.", adminNotes: "" },
 ];
 
 export function LeaveRequests() {
@@ -46,19 +46,19 @@ export function LeaveRequests() {
 
   const handleNewRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast({ title: "Request Submitted", description: "Your leave request has been sent for approval." });
+    toast({ title: "Richiesta Inviata", description: "La tua richiesta di ferie è stata inviata per l'approvazione." });
     setIsNewRequestOpen(false);
   }
   
   const handleApprove = (id: string) => {
-    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Approved" } : r));
-    toast({ title: "Request Approved", variant: "default" });
+    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Approvata" } : r));
+    toast({ title: "Richiesta Approvata", variant: "default" });
   }
 
   const handleRejectSubmit = () => {
     if (!selectedRequest) return;
-    setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status: "Rejected" } : r));
-    toast({ title: "Request Rejected", variant: "destructive" });
+    setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status: "Rifiutata" } : r));
+    toast({ title: "Richiesta Rifiutata", variant: "destructive" });
     setIsRejectDialogOpen(false);
     setSelectedRequest(null);
   }
@@ -70,11 +70,11 @@ export function LeaveRequests() {
 
   const getStatusVariant = (status: string): "default" | "secondary" | "destructive" => {
     switch (status) {
-      case "Approved":
+      case "Approvata":
         return "default";
-      case "Pending":
+      case "In attesa":
         return "secondary";
-      case "Rejected":
+      case "Rifiutata":
         return "destructive";
       default:
         return "secondary";
@@ -87,49 +87,49 @@ export function LeaveRequests() {
       <CardHeader>
         <div className="flex items-center justify-between">
             <div>
-                <CardTitle>Leave Requests</CardTitle>
-                <CardDescription>Manage your vacation and permission requests.</CardDescription>
+                <CardTitle>Richieste di Ferie/Permessi</CardTitle>
+                <CardDescription>Gestisci le tue richieste di ferie e permessi.</CardDescription>
             </div>
             <Dialog open={isNewRequestOpen} onOpenChange={setIsNewRequestOpen}>
                 <DialogTrigger asChild>
                     <Button size="sm" className="gap-1">
                         <PlusCircle className="h-4 w-4" />
-                        New Request
+                        Nuova Richiesta
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[480px]">
                     <DialogHeader>
-                        <DialogTitle>New Leave Request</DialogTitle>
-                        <DialogDescription>Fill in the details for your time off request.</DialogDescription>
+                        <DialogTitle>Nuova Richiesta Ferie/Permessi</DialogTitle>
+                        <DialogDescription>Compila i dettagli per la tua richiesta di assenza.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleNewRequestSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="type" className="text-right">Type</Label>
+                            <Label htmlFor="type" className="text-right">Tipo</Label>
                              <Select required>
                                 <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Select type" />
+                                    <SelectValue placeholder="Seleziona tipo" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="vacation">Vacation</SelectItem>
-                                    <SelectItem value="sick-leave">Sick Leave</SelectItem>
-                                    <SelectItem value="permission">Permission</SelectItem>
+                                    <SelectItem value="vacation">Ferie</SelectItem>
+                                    <SelectItem value="sick-leave">Malattia</SelectItem>
+                                    <SelectItem value="permission">Permesso</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="from-date" className="text-right">From</Label>
+                            <Label htmlFor="from-date" className="text-right">Dal</Label>
                             <Input id="from-date" type="date" className="col-span-3" required/>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="to-date" className="text-right">To</Label>
+                            <Label htmlFor="to-date" className="text-right">Al</Label>
                             <Input id="to-date" type="date" className="col-span-3" required/>
                         </div>
                         <div className="grid grid-cols-4 items-start gap-4">
-                            <Label htmlFor="reason" className="text-right pt-2">Reason</Label>
-                            <Textarea id="reason" className="col-span-3" placeholder="Optional: provide a reason for your request." />
+                            <Label htmlFor="reason" className="text-right pt-2">Motivo</Label>
+                            <Textarea id="reason" className="col-span-3" placeholder="Opzionale: fornisci un motivo per la tua richiesta." />
                         </div>
                         <DialogFooter>
-                            <Button type="submit">Submit Request</Button>
+                            <Button type="submit">Invia Richiesta</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
@@ -140,12 +140,12 @@ export function LeaveRequests() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[120px]">Type</TableHead>
-              <TableHead>From</TableHead>
-              <TableHead>To</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead><span className="sr-only">Actions</span></TableHead>
+              <TableHead className="w-[120px]">Tipo</TableHead>
+              <TableHead>Dal</TableHead>
+              <TableHead>Al</TableHead>
+              <TableHead>Motivo</TableHead>
+              <TableHead>Stato</TableHead>
+              <TableHead><span className="sr-only">Azioni</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -159,20 +159,20 @@ export function LeaveRequests() {
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'Pending'}>
+                      <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
                         <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
+                        <span className="sr-only">Apri menu</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Admin Actions</DropdownMenuLabel>
+                      <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
                       <DropdownMenuItem onSelect={() => handleApprove(req.id)}>
                         <Check className="mr-2 h-4 w-4" />
-                        Approve
+                        Approva
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive">
                         <X className="mr-2 h-4 w-4" />
-                        Reject
+                        Rifiuta
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -187,15 +187,15 @@ export function LeaveRequests() {
     <AlertDialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
         <AlertDialogContent>
             <AlertDialogHeader>
-                <AlertDialogTitle>Reason for Rejection</AlertDialogTitle>
+                <AlertDialogTitle>Motivo del Rifiuto</AlertDialogTitle>
                 <AlertDialogDescription>
-                    Please provide a reason for rejecting this leave request. This will be shared with the operator.
+                    Si prega di fornire un motivo per il rifiuto di questa richiesta di ferie. Questo sarà condiviso con l'operatore.
                 </AlertDialogDescription>
             </AlertDialogHeader>
-            <Textarea placeholder="e.g., Critical operational needs during this period." />
+            <Textarea placeholder="Es. Esigenze operative critiche in questo periodo." />
             <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleRejectSubmit}>Confirm Rejection</AlertDialogAction>
+                <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
+                <AlertDialogAction onClick={handleRejectSubmit}>Conferma Rifiuto</AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>
     </AlertDialog>

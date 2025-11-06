@@ -13,10 +13,10 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 const initialRequests = [
-    { id: "SR001", item: "All-Purpose Cleaner", quantity: 5, status: "Approved" },
-    { id: "SR002", item: "Microfiber Cloths", quantity: 50, status: "Pending" },
-    { id: "SR003", item: "Glass Cleaner", quantity: 2, status: "Rejected" },
-    { id: "SR004", item: "Heavy Duty Gloves", quantity: 10, status: "Approved" },
+    { id: "SR001", item: "Detergente Multiuso", quantity: 5, status: "Approvata" },
+    { id: "SR002", item: "Panni in Microfibra", quantity: 50, status: "In attesa" },
+    { id: "SR003", item: "Detergente per Vetri", quantity: 2, status: "Rifiutata" },
+    { id: "SR004", item: "Guanti per Impieghi Gravosi", quantity: 10, status: "Approvata" },
 ];
 
 export function SupplyRequests() {
@@ -26,27 +26,27 @@ export function SupplyRequests() {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast({ title: "Request Submitted", description: "Your supply request has been sent." });
+    toast({ title: "Richiesta Inviata", description: "La tua richiesta di forniture è stata inviata." });
     setIsDialogOpen(false);
   }
   
   const handleApprove = (id: string) => {
-    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Approved" } : r));
-    toast({ title: "Request Approved", variant: "default" });
+    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Approvata" } : r));
+    toast({ title: "Richiesta Approvata", variant: "default" });
   }
 
   const handleReject = (id: string) => {
-    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Rejected" } : r));
-    toast({ title: "Request Rejected", variant: "destructive" });
+    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Rifiutata" } : r));
+    toast({ title: "Richiesta Rifiutata", variant: "destructive" });
   }
 
   const getStatusVariant = (status: string): "default" | "secondary" | "destructive" => {
     switch (status) {
-      case "Approved":
+      case "Approvata":
         return "default";
-      case "Pending":
+      case "In attesa":
         return "secondary";
-      case "Rejected":
+      case "Rifiutata":
         return "destructive";
       default:
         return "secondary";
@@ -58,34 +58,34 @@ export function SupplyRequests() {
       <CardHeader>
         <div className="flex items-center justify-between">
             <div>
-                <CardTitle>Supply Requests</CardTitle>
-                <CardDescription>Request cleaning products and supplies.</CardDescription>
+                <CardTitle>Richieste Forniture</CardTitle>
+                <CardDescription>Richiedi prodotti e forniture per la pulizia.</CardDescription>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                     <Button size="sm" className="gap-1">
                         <PlusCircle className="h-4 w-4" />
-                        New Request
+                        Nuova Richiesta
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle>New Supply Request</DialogTitle>
+                        <DialogTitle>Nuova Richiesta Forniture</DialogTitle>
                         <DialogDescription>
-                            Specify the product and quantity needed.
+                            Specifica il prodotto e la quantità necessari.
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="item" className="text-right">Product</Label>
-                            <Input id="item" placeholder="e.g., All-Purpose Cleaner" className="col-span-3" required/>
+                            <Label htmlFor="item" className="text-right">Prodotto</Label>
+                            <Input id="item" placeholder="Es. Detergente Multiuso" className="col-span-3" required/>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="quantity" className="text-right">Quantity</Label>
-                            <Input id="quantity" type="number" placeholder="e.g., 5" className="col-span-3" required/>
+                            <Label htmlFor="quantity" className="text-right">Quantità</Label>
+                            <Input id="quantity" type="number" placeholder="Es. 5" className="col-span-3" required/>
                         </div>
                         <DialogFooter>
-                            <Button type="submit">Submit Request</Button>
+                            <Button type="submit">Invia Richiesta</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
@@ -96,10 +96,10 @@ export function SupplyRequests() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead className="w-[100px]">Quantity</TableHead>
-              <TableHead className="w-[120px]">Status</TableHead>
-              <TableHead className="w-[80px]"><span className="sr-only">Actions</span></TableHead>
+              <TableHead>Prodotto</TableHead>
+              <TableHead className="w-[100px]">Quantità</TableHead>
+              <TableHead className="w-[120px]">Stato</TableHead>
+              <TableHead className="w-[80px]"><span className="sr-only">Azioni</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -111,20 +111,20 @@ export function SupplyRequests() {
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'Pending'}>
+                      <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
                         <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
+                        <span className="sr-only">Apri menu</span>
                       </Button>
                     </DropdownMenuTrigger>
                      <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Admin Actions</DropdownMenuLabel>
+                      <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
                       <DropdownMenuItem onSelect={() => handleApprove(req.id)}>
                         <Check className="mr-2 h-4 w-4" />
-                        Approve
+                        Approva
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => handleReject(req.id)} className="text-destructive">
                         <X className="mr-2 h-4 w-4" />
-                        Reject
+                        Rifiuta
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

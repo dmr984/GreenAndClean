@@ -43,13 +43,13 @@ export function ClockWidget() {
       const startTime = new Date();
       setShiftStartTime(startTime);
       toast({
-        title: "Shift Started",
-        description: `You clocked in at ${startTime.toLocaleTimeString()}.`,
+        title: "Inizio Turno",
+        description: `Hai timbrato l'entrata alle ${startTime.toLocaleTimeString()}.`,
       });
     } else {
       toast({
-        title: "Shift Ended",
-        description: `You clocked out at ${new Date().toLocaleTimeString()}.`,
+        title: "Fine Turno",
+        description: `Hai timbrato l'uscita alle ${new Date().toLocaleTimeString()}.`,
       });
       setShiftStartTime(null);
       setElapsedTime("00:00:00");
@@ -61,10 +61,10 @@ export function ClockWidget() {
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
           <Clock className="h-6 w-6 text-primary" />
-          <CardTitle className="text-2xl">Shift Management</CardTitle>
+          <CardTitle className="text-2xl">Gestione Turno</CardTitle>
         </div>
         <CardDescription>
-          {isClockedIn ? "You are currently on the clock." : "Tap to start your shift."}
+          {isClockedIn ? "Sei attualmente in turno." : "Tocca per iniziare il tuo turno."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center justify-center gap-4">
@@ -74,17 +74,17 @@ export function ClockWidget() {
         <Button onClick={handleClockInOut} className="w-full font-bold" size="lg">
           {isClockedIn ? (
             <>
-              <LogOut className="mr-2 h-4 w-4" /> Clock Out
+              <LogOut className="mr-2 h-4 w-4" /> Timbra Uscita
             </>
           ) : (
             <>
-              <LogIn className="mr-2 h-4 w-4" /> Clock In
+              <LogIn className="mr-2 h-4 w-4" /> Timbra Entrata
             </>
           )}
         </Button>
         {isClockedIn && shiftStartTime && (
           <p className="text-sm text-muted-foreground">
-            Shift started at {shiftStartTime.toLocaleTimeString()}
+            Turno iniziato alle {shiftStartTime.toLocaleTimeString()}
           </p>
         )}
       </CardContent>

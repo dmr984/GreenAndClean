@@ -7,17 +7,17 @@ export default function RequestsPage() {
     return (
       <>
         <div className="flex items-center justify-between space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight">Requests</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Richieste</h2>
         </div>
         <Tabs defaultValue="leave" className="w-full space-y-4">
             <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
                 <TabsTrigger value="leave">
                     <Plane className="mr-2 h-4 w-4"/>
-                    Leave Requests
+                    Richieste Ferie
                 </TabsTrigger>
                 <TabsTrigger value="supply">
                     <ShoppingBasket className="mr-2 h-4 w-4"/>
-                    Supply Requests
+                    Richieste Forniture
                 </TabsTrigger>
             </TabsList>
             <TabsContent value="leave">

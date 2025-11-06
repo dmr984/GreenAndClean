@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Briefcase, Calendar, Home, Package, Settings } from 'lucide-react';
+import { Briefcase, Calendar, Home, Package, Settings, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export function AppSidebar() {
@@ -26,10 +26,22 @@ export function AppSidebar() {
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8"
               >
                 <Home className="h-5 w-5" />
-                <span className="sr-only">Dashboard</span>
+                <span className="sr-only">Pannello di Controllo</span>
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="right">Dashboard</TooltipContent>
+            <TooltipContent side="right">Pannello di Controllo</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href="/dashboard/users"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8"
+              >
+                <Users className="h-5 w-5" />
+                <span className="sr-only">Utenti</span>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">Utenti</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -38,10 +50,10 @@ export function AppSidebar() {
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8"
               >
                 <Calendar className="h-5 w-5" />
-                <span className="sr-only">Calendar</span>
+                <span className="sr-only">Calendario</span>
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="right">Calendar</TooltipContent>
+            <TooltipContent side="right">Calendario</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -50,10 +62,10 @@ export function AppSidebar() {
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8"
               >
                 <Package className="h-5 w-5" />
-                <span className="sr-only">Requests</span>
+                <span className="sr-only">Richieste</span>
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="right">Requests</TooltipContent>
+            <TooltipContent side="right">Richieste</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </nav>
@@ -66,10 +78,10 @@ export function AppSidebar() {
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8"
               >
                 <Settings className="h-5 w-5" />
-                <span className="sr-only">Settings</span>
+                <span className="sr-only">Impostazioni</span>
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="right">Settings</TooltipContent>
+            <TooltipContent side="right">Impostazioni</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </nav>
@@ -89,19 +101,23 @@ export function MobileAppSidebar() {
           </Link>
           <Link href="/dashboard" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground">
             <Home className="h-5 w-5" />
-            Dashboard
+            Pannello di Controllo
+          </Link>
+          <Link href="/dashboard/users" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground">
+            <Users className="h-5 w-5" />
+            Utenti
           </Link>
           <Link href="/dashboard/calendar" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground">
             <Calendar className="h-5 w-5" />
-            Calendar
+            Calendario
           </Link>
           <Link href="/dashboard/requests" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground">
             <Package className="h-5 w-5" />
-            Requests
+            Richieste
           </Link>
           <Link href="#" className="mt-auto flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground">
             <Settings className="h-5 w-5" />
-            Settings
+            Impostazioni
           </Link>
         </nav>
     )
