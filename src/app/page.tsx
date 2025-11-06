@@ -1,3 +1,7 @@
+
+'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Briefcase } from 'lucide-react';
 
@@ -6,6 +10,15 @@ import placeholder from '@/lib/placeholder-images.json';
 
 export default function LoginPage() {
   const loginImage = placeholder.placeholderImages.find(p => p.id === 'login-background');
+  const router = useRouter();
+
+  useEffect(() => {
+    // Controlla se l'utente ha già effettuato l'accesso e reindirizza alla dashboard
+    const userRole = localStorage.getItem('userRole');
+    if (userRole) {
+      router.push('/dashboard');
+    }
+  }, [router]);
 
   return (
     <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-2">
