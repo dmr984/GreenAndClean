@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type Request = {
   id: string;
+  user: string;
   item: string;
   quantity: number;
   status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale';
@@ -24,19 +25,57 @@ type Request = {
   fulfilledQuantity?: number;
 }
 
-const initialRequests: Request[] = [];
+// Function to get requests from localStorage
+const getRequestsFromStorage = (): Request[] => {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem('supply-requests');
+  try {
+    return stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+// Function to save requests to localStorage
+const saveRequestsToStorage = (requests: Request[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('supply-requests', JSON.stringify(requests));
+  window.dispatchEvent(new Event('storage')); // Trigger storage event for other components
+};
+
 
 export default function SupplyRequestsPage() {
-  const [requests, setRequests] = React.useState(initialRequests);
+  const [requests, setRequests] = React.useState<Request[]>([]);
   const [isNewRequestDialogOpen, setIsNewRequestDialogOpen] = React.useState(false);
   const [isManageRequestDialogOpen, setIsManageRequestDialogOpen] = React.useState(false);
   const [selectedRequest, setSelectedRequest] = React.useState<Request | null>(null);
   const { toast } = useToast();
 
+  React.useEffect(() => {
+    setRequests(getRequestsFromStorage());
+  }, []);
+
+  React.useEffect(() => {
+    saveRequestsToStorage(requests);
+  }, [requests]);
+
   const handleNewRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+
+    const newRequest: Request = {
+        id: `SR${Date.now()}`,
+        user: localStorage.getItem('userName') || 'Operatore',
+        item: formData.get('item') as string,
+        quantity: Number(formData.get('quantity') as string),
+        status: 'In attesa',
+    };
+    
+    setRequests(prev => [...prev, newRequest]);
     toast({ title: "Richiesta Inviata", description: "La tua richiesta di forniture è stata inviata." });
     setIsNewRequestDialogOpen(false);
+    form.reset();
   }
   
   const openManageDialog = (request: Request) => {
@@ -63,9 +102,12 @@ export default function SupplyRequestsPage() {
       if (fulfilledQuantity >= selectedRequest.quantity) {
         status = 'Approvata';
         toastMessage = "Richiesta Approvata Completamente";
-      } else {
+      } else if (fulfilledQuantity > 0) {
         status = 'Parziale';
         toastMessage = "Richiesta Approvata Parzialmente";
+      } else {
+        status = 'Approvata'; // Still approved even if 0 is sent
+        toastMessage = "Richiesta Approvata";
       }
     }
   
@@ -119,11 +161,11 @@ export default function SupplyRequestsPage() {
                     <form onSubmit={handleNewRequestSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="item" className="text-right">Prodotto</Label>
-                            <Input id="item" placeholder="Es. Detergente Multiuso" className="col-span-3" required/>
+                            <Input id="item" name="item" placeholder="Es. Detergente Multiuso" className="col-span-3" required/>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="quantity" className="text-right">Quantità</Label>
-                            <Input id="quantity" type="number" placeholder="Es. 5" className="col-span-3" required/>
+                            <Input id="quantity" name="quantity" type="number" placeholder="Es. 5" className="col-span-3" required/>
                         </div>
                         <DialogFooter>
                             <Button type="submit">Invia Richiesta</Button>
@@ -142,6 +184,7 @@ export default function SupplyRequestsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Operatore</TableHead>
               <TableHead>Prodotto</TableHead>
               <TableHead>Qt. Richiesta</TableHead>
               <TableHead>Qt. Consegnata</TableHead>
@@ -152,7 +195,8 @@ export default function SupplyRequestsPage() {
           <TableBody>
             {requests.map((req) => (
               <TableRow key={req.id}>
-                <TableCell className="font-medium">{req.item}</TableCell>
+                <TableCell className="font-medium">{req.user}</TableCell>
+                <TableCell>{req.item}</TableCell>
                 <TableCell>{req.quantity}</TableCell>
                 <TableCell>{req.fulfilledQuantity ?? 'N/A'}</TableCell>
                 <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>

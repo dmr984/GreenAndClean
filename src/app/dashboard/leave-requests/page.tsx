@@ -30,20 +30,71 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-// Mock Data
-const initialRequests: { id: string; type: string; from: string; to: string; status: string; reason: string; adminNotes: string; }[] = [];
+type Request = { 
+  id: string; 
+  user: string;
+  type: string; 
+  from: string; 
+  to: string; 
+  status: string; 
+  reason: string; 
+  adminNotes?: string; 
+};
+
+// Function to get requests from localStorage
+const getRequestsFromStorage = (): Request[] => {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem('leave-requests');
+  try {
+    return stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+// Function to save requests to localStorage
+const saveRequestsToStorage = (requests: Request[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('leave-requests', JSON.stringify(requests));
+  window.dispatchEvent(new Event('storage')); // Trigger storage event for other components
+};
+
 
 export default function LeaveRequestsPage() {
-  const [requests, setRequests] = React.useState(initialRequests);
+  const [requests, setRequests] = React.useState<Request[]>([]);
   const [isNewRequestOpen, setIsNewRequestOpen] = React.useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = React.useState(false);
-  const [selectedRequest, setSelectedRequest] = React.useState<(typeof initialRequests)[0] | null>(null);
+  const [selectedRequest, setSelectedRequest] = React.useState<Request | null>(null);
+  const [rejectionReason, setRejectionReason] = React.useState("");
   const { toast } = useToast();
+
+   React.useEffect(() => {
+    setRequests(getRequestsFromStorage());
+  }, []);
+
+  React.useEffect(() => {
+    saveRequestsToStorage(requests);
+  }, [requests]);
 
   const handleNewRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast({ title: "Richiesta Inviata", description: "La tua richiesta di ferie è stata inviata per l'approvazione." });
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    const newRequest: Request = {
+        id: `LR${Date.now()}`,
+        user: localStorage.getItem('userName') || 'Operatore',
+        type: formData.get('type') as string,
+        from: formData.get('from-date') as string,
+        to: formData.get('to-date') as string,
+        reason: formData.get('reason') as string,
+        status: 'In attesa'
+    };
+    
+    setRequests(prev => [...prev, newRequest]);
+    toast({ title: "Richiesta Inviata", description: "La tua richiesta è stata inviata per l'approvazione." });
     setIsNewRequestOpen(false);
+    form.reset();
   }
   
   const handleApprove = (id: string) => {
@@ -53,13 +104,14 @@ export default function LeaveRequestsPage() {
 
   const handleRejectSubmit = () => {
     if (!selectedRequest) return;
-    setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status: "Rifiutata" } : r));
+    setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status: "Rifiutata", adminNotes: rejectionReason } : r));
     toast({ title: "Richiesta Rifiutata", variant: "destructive" });
     setIsRejectDialogOpen(false);
     setSelectedRequest(null);
+    setRejectionReason("");
   }
 
-  const openRejectDialog = (request: (typeof initialRequests)[0]) => {
+  const openRejectDialog = (request: Request) => {
     setSelectedRequest(request);
     setIsRejectDialogOpen(true);
   }
@@ -104,28 +156,28 @@ export default function LeaveRequestsPage() {
                     <form onSubmit={handleNewRequestSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="type" className="text-right">Tipo</Label>
-                             <Select required>
+                             <Select name="type" required>
                                 <SelectTrigger className="col-span-3">
                                     <SelectValue placeholder="Seleziona tipo" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="vacation">Ferie</SelectItem>
-                                    <SelectItem value="sick-leave">Malattia</SelectItem>
-                                    <SelectItem value="permission">Permesso</SelectItem>
+                                    <SelectItem value="Ferie">Ferie</SelectItem>
+                                    <SelectItem value="Malattia">Malattia</SelectItem>
+                                    <SelectItem value="Permesso">Permesso</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="from-date" className="text-right">Dal</Label>
-                            <Input id="from-date" type="date" className="col-span-3" required/>
+                            <Input id="from-date" name="from-date" type="date" className="col-span-3" required/>
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="to-date" className="text-right">Al</Label>
-                            <Input id="to-date" type="date" className="col-span-3" required/>
+                            <Input id="to-date" name="to-date" type="date" className="col-span-3" required/>
                         </div>
                         <div className="grid grid-cols-4 items-start gap-4">
                             <Label htmlFor="reason" className="text-right pt-2">Motivo</Label>
-                            <Textarea id="reason" className="col-span-3" placeholder="Opzionale: fornisci un motivo per la richiesta." />
+                            <Textarea id="reason" name="reason" className="col-span-3" placeholder="Opzionale: fornisci un motivo per la richiesta." />
                         </div>
                         <DialogFooter>
                             <Button type="submit">Invia Richiesta</Button>
@@ -144,6 +196,7 @@ export default function LeaveRequestsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Operatore</TableHead>
                 <TableHead className="w-auto sm:w-[120px]">Tipo</TableHead>
                 <TableHead>Dal</TableHead>
                 <TableHead>Al</TableHead>
@@ -155,9 +208,10 @@ export default function LeaveRequestsPage() {
             <TableBody>
               {requests.map((req) => (
                 <TableRow key={req.id}>
-                  <TableCell className="font-medium">{req.type}</TableCell>
-                  <TableCell>{req.from}</TableCell>
-                  <TableCell>{req.to}</TableCell>
+                  <TableCell className="font-medium">{req.user}</TableCell>
+                  <TableCell>{req.type}</TableCell>
+                  <TableCell>{new Date(req.from).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(req.to).toLocaleDateString()}</TableCell>
                   <TableCell className="hidden md:table-cell max-w-[200px] truncate">{req.reason}</TableCell>
                   <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
                   <TableCell>
@@ -197,9 +251,13 @@ export default function LeaveRequestsPage() {
                     Si prega di fornire un motivo per il rifiuto di questa richiesta. Questo sarà condiviso con l'operatore.
                 </AlertDialogDescription>
             </AlertDialogHeader>
-            <Textarea placeholder="Es. Esigenze operative critiche in questo periodo." />
+            <Textarea 
+              placeholder="Es. Esigenze operative critiche in questo periodo."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+            />
             <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => { setSelectedRequest(null); setRejectionReason(""); }}>Annulla</AlertDialogCancel>
                 <AlertDialogAction onClick={handleRejectSubmit}>Conferma Rifiuto</AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>
