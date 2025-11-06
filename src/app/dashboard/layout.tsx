@@ -5,15 +5,19 @@ import { UserNav } from '@/components/user-nav';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { PanelLeft } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
+  const pathname = usePathname();
 
   React.useEffect(() => {
     const role = localStorage.getItem('userRole');
     setUserRole(role);
   }, []);
+
+  const isAdminDashboardPage = userRole === 'admin' && pathname === '/dashboard';
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-muted/40">
@@ -38,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <UserNav />
         </header>
         <main className="grid flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
-           {userRole === 'admin' ? <AdminDashboard /> : children}
+           {isAdminDashboardPage ? <AdminDashboard /> : children}
         </main>
       </div>
     </div>
