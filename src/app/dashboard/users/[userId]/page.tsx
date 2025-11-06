@@ -51,11 +51,6 @@ export default function UserProfilePage() {
   return (
     <>
         <div className="flex items-center gap-4 mb-4">
-            <Button variant="outline" size="icon" asChild>
-                <Link href="/dashboard/users">
-                    <ArrowLeft className="h-4 w-4" />
-                </Link>
-            </Button>
             <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
         </div>
         <div className="grid gap-8">
