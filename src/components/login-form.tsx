@@ -19,31 +19,17 @@ type User = {
 // Admin is hardcoded, operators are loaded from localStorage
 const adminUser: User = { id: "admin", name: "Amministratore", code: "070380", role: "admin", location: "Sede" };
 
-const defaultUsers: User[] = [
-    { id: "USR001", name: "Maria Rossi", code: "1234", role: "operator", location: "Ospedale" },
-    { id: "USR002", name: "Laura Bianchi", code: "5678", role: "operator", location: "Uffici" },
-    { id: "USR003", name: "Anna Verdi", code: "9101", role: "operator", location: "Scuola" },
-];
-
 // Function to get users from localStorage
 const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
   const storedUsers = localStorage.getItem('app-users');
-  if (storedUsers) {
-      try {
-          const parsedUsers = JSON.parse(storedUsers);
-          // Ensure it's an array, localstorage can be cleared or malformed
-          return Array.isArray(parsedUsers) ? parsedUsers : [];
-      } catch (e) {
-          console.error("Failed to parse users from localStorage, returning defaults.", e);
-          // If parsing fails, save default and return them
-          localStorage.setItem('app-users', JSON.stringify(defaultUsers));
-          return defaultUsers;
-      }
-  } else {
-      // If no users in local storage, save default and return them
-      localStorage.setItem('app-users', JSON.stringify(defaultUsers));
-      return defaultUsers;
+  try {
+      // If there are stored users, parse them, otherwise return an empty array.
+      return storedUsers ? JSON.parse(storedUsers) : [];
+  } catch (e) {
+      console.error("Failed to parse users from localStorage.", e);
+      // If parsing fails, return an empty array.
+      return [];
   }
 };
 
@@ -55,6 +41,7 @@ export default function LoginForm() {
   const [users, setUsers] = React.useState<User[]>([adminUser]);
 
   React.useEffect(() => {
+    // We only load operator users from storage. The admin user is always present.
     const operatorUsers = getUsersFromStorage();
     setUsers([adminUser, ...operatorUsers]);
   }, []);
@@ -71,9 +58,9 @@ export default function LoginForm() {
       });
       return;
     }
-
-    const allUsers = [adminUser, ...getUsersFromStorage()];
-    const user = allUsers.find(u => u.id === selectedUserId);
+    
+    // The 'users' state already contains the admin and all operators.
+    const user = users.find(u => u.id === selectedUserId);
 
     if (user && user.code === code) {
       localStorage.setItem('userRole', user.role);
@@ -113,5 +100,3 @@ export default function LoginForm() {
     </form>
   );
 }
-
-    

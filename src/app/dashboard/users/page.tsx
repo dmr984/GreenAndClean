@@ -5,13 +5,12 @@ import { PlusCircle, MoreHorizontal, File, Trash, Edit, User } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import placeholder from '@/lib/placeholder-images.json';
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 
@@ -27,7 +26,12 @@ type User = {
 const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
   const storedUsers = localStorage.getItem('app-users');
-  return storedUsers ? JSON.parse(storedUsers) : [];
+  try {
+    return storedUsers ? JSON.parse(storedUsers) : [];
+  } catch (e) {
+    console.error("Failed to parse users from localStorage", e);
+    return [];
+  }
 };
 
 // Function to save users to localStorage
@@ -47,7 +51,6 @@ const getAvatarFallback = (name: string) => {
 
 
 export default function UsersPage() {
-  const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
   const { toast } = useToast();
   const [users, setUsers] = React.useState<User[]>([]);
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
@@ -62,7 +65,10 @@ export default function UsersPage() {
 
   // Save users to localStorage whenever they change
   React.useEffect(() => {
-    saveUsersToStorage(users);
+    // Only save if users is not the initial empty array, to avoid overwriting on first render.
+    if (users.length > 0 || localStorage.getItem('app-users')) {
+      saveUsersToStorage(users);
+    }
   }, [users]);
 
 
@@ -283,5 +289,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
