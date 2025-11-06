@@ -25,48 +25,8 @@ type User = {
   location: string;
 };
 
-const initialUsers: User[] = [
-  {
-    id: "USR001",
-    name: "Mario Rossi",
-    code: "123456",
-    role: "Operatore",
-    status: "Attivo",
-    location: "Edificio A",
-  },
-  {
-    id: "USR002",
-    name: "Anna Bianchi",
-    code: "654321",
-    role: "Operatore",
-    status: "Attivo",
-    location: "Edificio B",
-  },
-  {
-    id: "USR003",
-    name: "Luca Verdi",
-    code: "112233",
-    role: "Operatore",
-    status: "Inattivo",
-    location: "Edificio A",
-  },
-  {
-    id: "USR004",
-    name: "Giulia Neri",
-    code: "332211",
-    role: "Supervisore",
-    status: "Attivo",
-    location: "Sede Centrale",
-  },
-  {
-    id: "USR005",
-    name: "Amministratore",
-    code: "070380",
-    role: "Admin",
-    status: "Attivo",
-    location: "Sede Centrale",
-  },
-];
+// Start with an empty list of users
+const initialUsers: User[] = [];
 
 export default function UsersPage() {
   const userAvatar = placeholder.placeholderImages.find(p => p.id === 'user-avatar');
@@ -82,14 +42,13 @@ export default function UsersPage() {
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
-    const role = (form.elements.namedItem('role') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
     const newUser: User = {
-      id: `USR${String(users.length + 1).padStart(3, '0')}`,
+      id: `USR${String(Date.now()).slice(-6)}`, // More robust ID generation
       name,
       code,
-      role,
+      role: 'Operatore', // Hardcoded role
       location,
       status: 'Attivo',
     };
@@ -109,11 +68,10 @@ export default function UsersPage() {
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
-    const role = (form.elements.namedItem('role') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
     const status = (form.elements.namedItem('status') as HTMLInputElement).value;
 
-    const updatedUser: User = { ...selectedUser, name, code, role, location, status };
+    const updatedUser: User = { ...selectedUser, name, code, location, status };
 
     setUsers(prevUsers => prevUsers.map(u => u.id === selectedUser.id ? updatedUser : u));
     setIsEditUserDialogOpen(false);
@@ -146,8 +104,6 @@ export default function UsersPage() {
     setSelectedUser(user);
     setIsDeleteDialogOpen(true);
   }
-  
-  const displayedUsers = users.filter(user => user.role !== 'Admin');
 
   return (
     <>
@@ -179,7 +135,7 @@ export default function UsersPage() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Aggiungi Nuovo Utente</DialogTitle>
+                  <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                   <DialogDescription>
                     Compila i campi per creare un nuovo operatore e assegnare un codice di accesso.
                   </DialogDescription>
@@ -197,10 +153,6 @@ export default function UsersPage() {
                     <Label htmlFor="location" className="text-right">Luogo</Label>
                     <Input id="location" name="location" className="col-span-3" required />
                   </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="role" className="text-right">Ruolo</Label>
-                    <Input id="role" name="role" defaultValue="Operatore" className="col-span-3" required />
-                  </div>
                   <DialogFooter>
                     <Button type="submit">Crea Utente</Button>
                   </DialogFooter>
@@ -212,9 +164,9 @@ export default function UsersPage() {
         <TabsContent value="all">
           <Card>
             <CardHeader>
-              <CardTitle>Utenti</CardTitle>
+              <CardTitle>Operatori</CardTitle>
               <CardDescription>
-                Gestisci gli utenti del sistema, visualizza i loro ruoli e lo stato.
+                Gestisci gli operatori del sistema, visualizza i loro ruoli e lo stato.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -227,7 +179,6 @@ export default function UsersPage() {
                     <TableHead>Nome</TableHead>
                     <TableHead>Codice</TableHead>
                     <TableHead>Luogo</TableHead>
-                    <TableHead>Ruolo</TableHead>
                     <TableHead>Stato</TableHead>
                     <TableHead>
                       <span className="sr-only">Azioni</span>
@@ -235,7 +186,7 @@ export default function UsersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayedUsers.map((user) => (
+                  {users.length > 0 ? users.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="hidden sm:table-cell">
                         <Avatar className="h-9 w-9">
@@ -246,9 +197,6 @@ export default function UsersPage() {
                       <TableCell className="font-medium">{user.name}</TableCell>
                        <TableCell className="font-mono">******</TableCell>
                        <TableCell>{user.location}</TableCell>
-                      <TableCell>
-                        <Badge variant={user.role === 'Admin' ? 'destructive' : 'secondary'}>{user.role}</Badge>
-                      </TableCell>
                       <TableCell>
                         <Badge variant={user.status === 'Attivo' ? 'default' : 'outline'}>{user.status}</Badge>
                       </TableCell>
@@ -275,7 +223,13 @@ export default function UsersPage() {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )) : (
+                    <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center">
+                            Nessun operatore trovato. Inizia aggiungendone uno.
+                        </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -287,9 +241,9 @@ export default function UsersPage() {
       <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifica Utente</DialogTitle>
+            <DialogTitle>Modifica Operatore</DialogTitle>
             <DialogDescription>
-              Aggiorna i dettagli dell'utente.
+              Aggiorna i dettagli dell'operatore.
             </DialogDescription>
           </DialogHeader>
           {selectedUser && (
@@ -305,10 +259,6 @@ export default function UsersPage() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-location" className="text-right">Luogo</Label>
                 <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-3" required />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-role" className="text-right">Ruolo</Label>
-                <Input id="edit-role" name="role" defaultValue={selectedUser.role} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-status" className="text-right">Stato</Label>
@@ -329,7 +279,7 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Questa azione non può essere annullata. L'utente verrà eliminato in modo permanente.
+              Questa azione non può essere annullata. L'operatore verrà eliminato in modo permanente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

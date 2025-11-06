@@ -11,10 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 // Mock users data. In a real app, this would come from a database.
 const users = [
   { id: "admin", name: "Amministratore", code: "070380", role: "admin" },
-  { id: "USR001", name: "Mario Rossi", code: "123456", role: "operator" },
-  { id: "USR002", name: "Anna Bianchi", code: "654321", role: "operator" },
-  { id: "USR003", name: "Luca Verdi", code: "112233", role: "operator" },
-  { id: "USR004", name: "Giulia Neri", code: "332211", role: "operator" },
+  // Operators will be managed dynamically now
 ];
 
 export default function LoginForm() {
@@ -59,9 +56,8 @@ export default function LoginForm() {
                 <SelectValue placeholder="Seleziona il tuo nome dall'elenco" />
             </SelectTrigger>
             <SelectContent>
-                {users.map(user => (
-                    <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
-                ))}
+                {/* This will need to be populated from the same source as the user management page */}
+                <SelectItem value="admin">Amministratore</SelectItem>
             </SelectContent>
         </Select>
       </div>
