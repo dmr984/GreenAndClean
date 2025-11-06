@@ -53,7 +53,7 @@ const getAvatarFallback = (name?: string) => {
     return name.substring(0, 2).toUpperCase();
 };
 
-export default function MessagesPage() {
+function MessagesPageContent() {
     const searchParams = useSearchParams();
     const operatorIdFromQuery = searchParams.get('userId');
 
@@ -63,9 +63,10 @@ export default function MessagesPage() {
     const [allMessages, setAllMessages] = React.useState<Record<string, Conversation>>({});
     const [operators, setOperators] = React.useState<User[]>([]);
     
-    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(operatorIdFromQuery);
+    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(null);
     const [newMessage, setNewMessage] = React.useState("");
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+    const [loading, setLoading] = React.useState(true);
 
 
     React.useEffect(() => {
@@ -75,30 +76,50 @@ export default function MessagesPage() {
         setCurrentUserId(userId);
         setAllMessages(getFromStorage<Record<string, Conversation>>('private-messages', {}));
         setOperators(getFromStorage<User[]>('app-users', []));
-
-        if(role === 'operator' && userId) {
+        
+        if (role === 'operator' && userId) {
             setSelectedConversationId(userId);
+        } else {
+            setSelectedConversationId(operatorIdFromQuery);
         }
-    }, []);
+
+        const handleStorageChange = () => {
+            setAllMessages(getFromStorage<Record<string, Conversation>>('private-messages', {}));
+            setOperators(getFromStorage<User[]>('app-users', []));
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        setLoading(false);
+
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [operatorIdFromQuery]);
 
     // Mark messages as read when a conversation is opened
     React.useEffect(() => {
         if (selectedConversationId && allMessages[selectedConversationId]) {
-            const hasUnread = allMessages[selectedConversationId].some(m => !m.read);
+            const isUserAdmin = userRole === 'admin';
+            const readerId = isUserAdmin ? 'admin' : currentUserId;
+
+            const hasUnread = allMessages[selectedConversationId].some(m => !m.read && m.sender !== readerId);
+
             if (hasUnread) {
-                const updatedMessages = {
+                 const updatedMessages = {
                     ...allMessages,
-                    [selectedConversationId]: allMessages[selectedConversationId].map(m => ({ ...m, read: true }))
+                    [selectedConversationId]: allMessages[selectedConversationId].map(m =>
+                        m.sender !== readerId ? { ...m, read: true } : m
+                    )
                 };
                 saveToStorage('private-messages', updatedMessages);
                 setAllMessages(updatedMessages);
             }
         }
-    }, [selectedConversationId, allMessages]);
+    }, [selectedConversationId, allMessages, userRole, currentUserId]);
     
     React.useEffect(() => {
         if (scrollAreaRef.current) {
-            scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight });
+            scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
         }
     }, [allMessages, selectedConversationId]);
 
@@ -139,8 +160,13 @@ export default function MessagesPage() {
          }
        }).sort((a,b) => (b.lastMessageDate || '').localeCompare(a.lastMessageDate || ''));
     }
+    
+    if (loading) {
+        return <div className="flex items-center justify-center h-full"><p>Caricamento...</p></div>
+    }
 
     if (isAdmin && !selectedConversationId) {
+        const conversations = getConversationsWithUnread();
         return (
             <Card>
                 <CardHeader>
@@ -148,27 +174,33 @@ export default function MessagesPage() {
                     <CardDescription>Seleziona una conversazione per visualizzare i messaggi.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <ul className="space-y-2">
-                        {getConversationsWithUnread().map(({ user, unreadCount, lastMessage }) => (
-                            <li key={user.id}>
-                                <button 
-                                  className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-4"
-                                  onClick={() => setSelectedConversationId(user.id)}
-                                >
-                                    <Avatar>
-                                        <AvatarFallback>{getAvatarFallback(user.name)}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between">
-                                            <p className="font-semibold">{user.name}</p>
-                                            {unreadCount > 0 && <Badge variant="destructive">{unreadCount}</Badge>}
+                    {conversations.length === 0 ? (
+                        <div className="text-center text-muted-foreground py-12">
+                            <p>Nessuna conversazione attiva.</p>
+                        </div>
+                    ) : (
+                        <ul className="space-y-2">
+                            {conversations.map(({ user, unreadCount, lastMessage }) => (
+                                <li key={user.id}>
+                                    <button 
+                                      className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-4"
+                                      onClick={() => setSelectedConversationId(user.id)}
+                                    >
+                                        <Avatar>
+                                            <AvatarFallback>{getAvatarFallback(user.name)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1 overflow-hidden">
+                                            <div className="flex justify-between items-center">
+                                                <p className="font-semibold">{user.name}</p>
+                                                {unreadCount > 0 && <Badge variant="destructive">{unreadCount}</Badge>}
+                                            </div>
+                                            <p className="text-sm text-muted-foreground truncate">{lastMessage || 'Nessun messaggio'}</p>
                                         </div>
-                                        <p className="text-sm text-muted-foreground truncate">{lastMessage || 'Nessun messaggio'}</p>
-                                    </div>
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </CardContent>
             </Card>
         );
@@ -177,10 +209,10 @@ export default function MessagesPage() {
 
     return (
         <Card className="h-full flex flex-col" style={{maxHeight: 'calc(100vh - 120px)'}}>
-            <CardHeader className="flex-shrink-0">
+            <CardHeader className="flex-shrink-0 border-b">
                 <div className="flex items-center gap-4">
                     {isAdmin && (
-                        <Button variant="ghost" size="icon" className="mr-2" onClick={() => setSelectedConversationId(null)}>
+                        <Button variant="ghost" size="icon" className="-ml-2 mr-2" onClick={() => setSelectedConversationId(null)}>
                             <ArrowLeft className="h-5 w-5"/>
                         </Button>
                     )}
@@ -201,7 +233,7 @@ export default function MessagesPage() {
                             "p-3 rounded-lg max-w-xs md:max-w-md",
                              msg.sender === currentUserId ? "bg-primary text-primary-foreground" : "bg-muted"
                         )}>
-                            <p className="text-sm">{msg.text}</p>
+                            <p className="text-sm break-words">{msg.text}</p>
                             <p className="text-xs text-right opacity-70 mt-1">{new Date(msg.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                     </div>
@@ -213,7 +245,7 @@ export default function MessagesPage() {
                     </div>
                 )}
             </CardContent>
-            <div className="p-4 border-t flex-shrink-0">
+            <div className="p-4 border-t flex-shrink-0 bg-background">
                 <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                     <Input 
                       value={newMessage}
@@ -228,5 +260,13 @@ export default function MessagesPage() {
                 </form>
             </div>
         </Card>
+    );
+}
+
+export default function MessagesPage() {
+    return (
+        <React.Suspense fallback={<div className="flex items-center justify-center h-full"><p>Caricamento...</p></div>}>
+            <MessagesPageContent />
+        </React.Suspense>
     );
 }
