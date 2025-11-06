@@ -39,6 +39,7 @@ const getUsersFromStorage = (): User[] => {
 const saveUsersToStorage = (users: User[]) => {
   if (typeof window === 'undefined') return;
   localStorage.setItem('app-users', JSON.stringify(users));
+  window.dispatchEvent(new Event('storage'));
 };
 
 const getAvatarFallback = (name: string) => {
@@ -65,12 +66,6 @@ export default function UsersPage() {
     setUsers(storedUsers);
   }, []);
 
-  // Save users to localStorage whenever they change
-  React.useEffect(() => {
-    saveUsersToStorage(users);
-  }, [users]);
-
-
   const handleAddUser = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -86,7 +81,10 @@ export default function UsersPage() {
       role: 'operator' // Role is fixed to 'operator'
     };
 
-    setUsers(prevUsers => [...prevUsers, newUser]);
+    const updatedUsers = [...users, newUser];
+    setUsers(updatedUsers);
+    saveUsersToStorage(updatedUsers);
+
     setIsNewUserDialogOpen(false);
     toast({
       title: "Utente Aggiunto",
@@ -106,7 +104,10 @@ export default function UsersPage() {
 
     const updatedUser = { ...selectedUser, name, code, location };
 
-    setUsers(prevUsers => prevUsers.map(u => u.id === selectedUser.id ? updatedUser : u));
+    const updatedUsers = users.map(u => u.id === selectedUser.id ? updatedUser : u);
+    setUsers(updatedUsers);
+    saveUsersToStorage(updatedUsers);
+
     setIsEditUserDialogOpen(false);
     setSelectedUser(null);
     toast({
@@ -118,7 +119,10 @@ export default function UsersPage() {
   const handleDeleteUser = () => {
     if (!selectedUser) return;
     
-    setUsers(prevUsers => prevUsers.filter(user => user.id !== selectedUser.id));
+    const updatedUsers = users.filter(user => user.id !== selectedUser.id);
+    setUsers(updatedUsers);
+    saveUsersToStorage(updatedUsers);
+
     toast({
       title: "Utente Eliminato",
       description: `L'utente è stato rimosso dal sistema.`,
