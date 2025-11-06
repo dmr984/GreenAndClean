@@ -9,9 +9,17 @@ import React from 'react';
 export default function LoginForm() {
   const router = useRouter();
 
-  const handleLogin = (event: React.FormEvent) => {
+  const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // In a real app, you'd perform authentication here
+    const email = (event.currentTarget.elements.namedItem('email') as HTMLInputElement).value;
+    
+    // Simple role check based on email for prototype purposes
+    if (email.toLowerCase() === 'admin@workforce.hub') {
+      localStorage.setItem('userRole', 'admin');
+    } else {
+      localStorage.setItem('userRole', 'operator');
+    }
+    
     router.push('/dashboard');
   };
 
@@ -21,10 +29,11 @@ export default function LoginForm() {
         <Label htmlFor="email">Email o codice di accesso</Label>
         <Input
           id="email"
+          name="email"
           type="email"
           placeholder="m@example.com"
           required
-          defaultValue="operatrice@workforce.hub"
+          defaultValue="admin@workforce.hub"
         />
       </div>
       <div className="grid gap-2">

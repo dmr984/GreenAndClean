@@ -24,7 +24,7 @@ export default function Dashboard() {
   return (
     <>
     <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo Operatore</h2>
       </div>
     <div className="grid gap-4 md:gap-8 lg:grid-cols-3">
       <div className="lg:col-span-1">

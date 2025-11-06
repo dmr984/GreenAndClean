@@ -1,11 +1,20 @@
+"use client";
 import React from 'react';
 import { AppSidebar, MobileAppSidebar } from '@/components/app-sidebar';
 import { UserNav } from '@/components/user-nav';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { PanelLeft } from 'lucide-react';
+import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
+  const [userRole, setUserRole] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const role = localStorage.getItem('userRole');
+    setUserRole(role);
+  }, []);
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-muted/40">
       <AppSidebar />
@@ -19,9 +28,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="sm:max-w-xs" >
-              <SheetHeader className="sr-only">
-                <SheetTitle>Menu</SheetTitle>
-                <SheetDescription>Navigazione principale dell'applicazione</SheetDescription>
+               <SheetHeader>
+                <SheetTitle className="sr-only">Menu</SheetTitle>
+                <SheetDescription className="sr-only">Navigazione principale dell'applicazione</SheetDescription>
               </SheetHeader>
               <MobileAppSidebar />
             </SheetContent>
@@ -29,7 +38,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <UserNav />
         </header>
         <main className="grid flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
-          {children}
+           {userRole === 'admin' ? <AdminDashboard /> : children}
         </main>
       </div>
     </div>
