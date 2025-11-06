@@ -9,6 +9,7 @@ import { ArrowLeft, Calendar, CheckCircle, Package, Fingerprint, MessageSquare }
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 
 
 type User = {
@@ -57,11 +58,18 @@ export default function UserProfilePage() {
         setIsCurrentUser(userId === currentUserId);
         
         // Check for unread messages (mock logic)
-        const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
-        if (currentUserId && allMessages[currentUserId]) {
-            const count = allMessages[currentUserId].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
-            setUnreadMessages(count);
-        }
+        const checkMessages = () => {
+            const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
+            if (currentUserId && allMessages[currentUserId]) {
+                const count = allMessages[currentUserId].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
+                setUnreadMessages(count);
+            }
+        };
+
+        checkMessages();
+        window.addEventListener('storage', checkMessages);
+
+        return () => window.removeEventListener('storage', checkMessages);
     }
   }, [userId]);
 
@@ -147,8 +155,8 @@ export default function UserProfilePage() {
                           Richieste Prodotti
                       </Button>
                       {isCurrentUser && (
-                          <Button variant="outline" size="lg" className="h-24 text-lg relative" onClick={() => router.push('/dashboard/messages')}>
-                              {unreadMessages > 0 && <span className="absolute top-2 right-2 h-3 w-3 rounded-full bg-destructive" />}
+                          <Button variant="outline" size="lg" className="h-24 text-lg relative" onClick={() => router.push(`/dashboard/messages?userId=${user.id}`)}>
+                              {unreadMessages > 0 && <Badge variant="destructive" className="absolute top-2 right-2 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadMessages}</Badge>}
                               <MessageSquare className="mr-4 h-8 w-8 text-primary"/>
                               Messaggi
                           </Button>

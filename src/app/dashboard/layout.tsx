@@ -6,55 +6,72 @@ import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
 import { ArrowLeft, MessageSquare, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const [unreadMessages, setUnreadMessages] = React.useState(0);
+  const [userId, setUserId] = React.useState<string|null>(null);
 
   React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const role = localStorage.getItem('userRole');
-      setUserRole(role);
+    const checkUserAndMessages = () => {
+        if (typeof window !== 'undefined') {
+        const role = localStorage.getItem('userRole');
+        const id = localStorage.getItem('userId');
+        setUserRole(role);
+        setUserId(id);
 
-      // Privacy enforcement
-      if (role === 'operator') {
-          if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements' || pathname === '/dashboard/leave-requests' || pathname === '/dashboard/supply-requests' || pathname === '/dashboard/messages') {
-              const userId = localStorage.getItem('userId');
-              // Operators can only access their own profile and messages
-              if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(userId ?? '')) {
-                  // This is the operator's own profile, allow it
-              } else if (pathname === '/dashboard/leave-requests' || pathname === '/dashboard/supply-requests' || pathname === '/dashboard/messages') {
-                 // allow operator to create/view their own requests/messages
-              }
-              else {
-                 router.replace('/dashboard');
-              }
-          }
-      }
-      
-      // Check for unread messages (mock logic)
+        // Privacy enforcement
+        if (role === 'operator') {
+            if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements') {
+                if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(id ?? '')) {
+                    // This is the operator's own profile, allow it
+                } else {
+                   router.replace('/dashboard');
+                }
+            }
+        }
+        
+        // Check for unread messages
         const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
-        const userId = localStorage.getItem('userId');
         let count = 0;
         if(role === 'admin') {
+            // Count conversations with at least one unread message from an operator
             Object.values(allMessages).forEach((convo: any) => {
                 if(convo.some((msg: any) => !msg.read && msg.sender !== 'admin')) {
                     count++;
                 }
-            })
-        } else if (userId && allMessages[userId]) {
-            count = allMessages[userId].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
+            });
+        } else if (id && allMessages[id]) {
+            // Count unread messages from admin for the current operator
+            count = allMessages[id].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
         }
         setUnreadMessages(count);
 
+      }
+    }
+    
+    checkUserAndMessages();
+    window.addEventListener('storage', checkUserAndMessages);
+
+    return () => {
+      window.removeEventListener('storage', checkUserAndMessages);
     }
   }, [pathname, router]);
 
   const isAdmin = userRole === 'admin';
+  const isOperator = userRole === 'operator';
   const isAdminDashboardPage = isAdmin && pathname === '/dashboard';
   const isBaseDashboard = pathname === '/dashboard';
+  
+  const getMessageRoute = () => {
+      if (isAdmin) return '/dashboard/messages';
+      if (isOperator) return `/dashboard/messages?userId=${userId}`;
+      return '#';
+  }
 
   return (
     <div className="flex flex-col min-h-screen w-full">
@@ -76,11 +93,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="w-1/3 flex justify-end items-center gap-4">
-             {userRole === 'admin' && (
-                <Link href="/dashboard/messages">
+             {(isAdmin || isOperator) && (
+                <Link href={getMessageRoute()}>
                  <Button variant="ghost" size="icon" className="relative">
                     <MessageSquare className="h-5 w-5"/>
-                    {unreadMessages > 0 && <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-destructive" />}
+                    {unreadMessages > 0 && <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadMessages}</Badge>}
                     <span className="sr-only">Messaggi Privati</span>
                  </Button>
                </Link>

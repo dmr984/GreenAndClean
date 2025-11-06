@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, CheckCircle, Warehouse, Megaphone, CalendarText, Package, MessageSquare } from 'lucide-react';
+import { Users, CalendarCheck, Warehouse, Megaphone, Package, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
@@ -22,7 +22,7 @@ export function AdminDashboard() {
   const [unreadMessages, setUnreadMessages] = React.useState(0);
 
   React.useEffect(() => {
-    // Function to check for new requests from localStorage
+    // Function to check for new items from localStorage
     const checkForNewItems = () => {
        if (typeof window !== 'undefined') {
         const storedLeaveRequests = localStorage.getItem('leave-requests');
@@ -83,7 +83,7 @@ export function AdminDashboard() {
                   </Badge>
                 }
                 <CardHeader>
-                    <CalendarText className="h-16 w-16 mx-auto text-primary"/>
+                    <CalendarCheck className="h-16 w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-6 pt-0">
                     <CardTitle className="text-2xl">Richieste Ferie</CardTitle>
