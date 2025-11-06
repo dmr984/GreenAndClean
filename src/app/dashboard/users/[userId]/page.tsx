@@ -7,9 +7,20 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Calendar, CheckCircle, Package, Fingerprint } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
+
+
+type User = {
+  id: string;
+  name: string;
+  code: string;
+  location: string;
+  role: string;
+};
 
 // Mock users data, in a real app this would come from a database/API
-const getUsersFromStorage = (): any[] => {
+const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
   const storedUsers = localStorage.getItem('app-users');
   return storedUsers ? JSON.parse(storedUsers) : [];
@@ -30,8 +41,45 @@ export default function UserProfilePage() {
   const userId = params.userId as string;
   const router = useRouter();
 
-  const users = getUsersFromStorage();
-  const user = users.find(u => u.id === userId);
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const users = getUsersFromStorage();
+    const foundUser = users.find(u => u.id === userId);
+    setUser(foundUser || null);
+    setLoading(false);
+  }, [userId]);
+
+
+  if (loading) {
+    return (
+        <>
+            <div className="flex items-center gap-4 mb-4">
+                <Skeleton className="h-10 w-64" />
+            </div>
+            <div className="grid gap-8">
+                <Card>
+                    <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <Skeleton className="h-20 w-20 rounded-full" />
+                        <div className="flex-1 space-y-2">
+                            <Skeleton className="h-8 w-48" />
+                            <Skeleton className="h-6 w-64" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <Skeleton className="h-24 w-full" />
+                          <Skeleton className="h-24 w-full" />
+                          <Skeleton className="h-24 w-full" />
+                          <Skeleton className="h-24 w-full" />
+                       </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </>
+    );
+  }
 
   if (!user) {
     return (
