@@ -34,13 +34,16 @@ const modifiersStyles = {
 };
 
 export default function CalendarPage() {
-  const [date, setDate] = React.useState<Date | undefined>();
+  const [date, setDate] = React.useState<Date | undefined>(new Date());
   const [selectedEvent, setSelectedEvent] = React.useState<(typeof shiftEvents)[0] | null>(null);
 
   React.useEffect(() => {
-    const initialDate = new Date('2024-08-01');
+    const initialDate = new Date();
     setDate(initialDate);
-    const eventForToday = shiftEvents.find(e => e.date === format(initialDate, 'yyyy-MM-dd'));
+    const eventForToday = shiftEvents.find(e => {
+        const eventDate = parseDate(e.date);
+        return format(eventDate, 'yyyy-MM-dd') === format(initialDate, 'yyyy-MM-dd');
+    });
     setSelectedEvent(eventForToday || null);
   }, []);
 
@@ -70,7 +73,6 @@ export default function CalendarPage() {
             className="rounded-md"
             modifiers={modifiers}
             modifiersStyles={modifiersStyles}
-            defaultMonth={new Date('2024-08-01')}
             locale={it}
           />
         </CardContent>

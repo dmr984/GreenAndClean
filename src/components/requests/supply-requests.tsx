@@ -12,12 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-const initialRequests = [
-    { id: "SR001", item: "Detergente Multiuso", quantity: 5, status: "Approvata" },
-    { id: "SR002", item: "Panni in Microfibra", quantity: 50, status: "In attesa" },
-    { id: "SR003", item: "Detergente per Vetri", quantity: 2, status: "Rifiutata" },
-    { id: "SR004", item: "Guanti per Impieghi Gravosi", quantity: 10, status: "Approvata" },
-];
+const initialRequests: { id: string; item: string; quantity: number; status: string; }[] = [];
 
 export function SupplyRequests() {
   const [requests, setRequests] = React.useState(initialRequests);
@@ -93,6 +88,11 @@ export function SupplyRequests() {
         </div>
       </CardHeader>
       <CardContent>
+         {requests.length === 0 ? (
+          <div className="text-center text-muted-foreground py-12">
+            <p>Non ci sono richieste di forniture al momento.</p>
+          </div>
+        ) : (
         <Table>
           <TableHeader>
             <TableRow>
@@ -133,6 +133,7 @@ export function SupplyRequests() {
             ))}
           </TableBody>
         </Table>
+        )}
       </CardContent>
     </Card>
   );

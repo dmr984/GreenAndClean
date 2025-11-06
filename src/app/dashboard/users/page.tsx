@@ -23,11 +23,26 @@ type User = {
   location: string;
 };
 
+const defaultUsers: User[] = [
+  { id: "USR001", name: "Maria Rossi", code: "1234", location: "Ospedale" },
+  { id: "USR002", name: "Laura Bianchi", code: "5678", location: "Uffici" },
+  { id: "USR003", name: "Anna Verdi", code: "9101", location: "Scuola" },
+];
+
+
 // Function to get users from localStorage
 const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
   const storedUsers = localStorage.getItem('app-users');
-  return storedUsers ? JSON.parse(storedUsers) : [];
+  if (storedUsers) {
+    try {
+      return JSON.parse(storedUsers);
+    } catch (e) {
+      console.error("Failed to parse users from localStorage", e);
+      return defaultUsers;
+    }
+  }
+  return defaultUsers;
 };
 
 // Function to save users to localStorage

@@ -30,12 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
 
 // Mock Data
-const initialRequests = [
-    { id: "LR001", type: "Ferie", from: "2024-08-15", to: "2024-08-20", status: "Approvata", reason: "Viaggio di famiglia.", adminNotes: "" },
-    { id: "LR002", type: "Malattia", from: "2024-07-25", to: "2024-07-25", status: "Approvata", reason: "", adminNotes: "" },
-    { id: "LR003", type: "Permesso", from: "2024-07-30", to: "2024-07-30", status: "Rifiutata", reason: "Visita medica.", adminNotes: "Esigenze operative. Si prega di riprogrammare." },
-    { id: "LR004", type: "Ferie", from: "2024-09-01", to: "2024-09-07", status: "In attesa", reason: "Ferie annuali.", adminNotes: "" },
-];
+const initialRequests: { id: string; type: string; from: string; to: string; status: string; reason: string; adminNotes: string; }[] = [];
 
 export function LeaveRequests() {
   const [requests, setRequests] = React.useState(initialRequests);
@@ -137,50 +132,56 @@ export function LeaveRequests() {
         </div>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[120px]">Tipo</TableHead>
-              <TableHead>Dal</TableHead>
-              <TableHead>Al</TableHead>
-              <TableHead>Motivo</TableHead>
-              <TableHead>Stato</TableHead>
-              <TableHead><span className="sr-only">Azioni</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {requests.map((req) => (
-              <TableRow key={req.id}>
-                <TableCell className="font-medium">{req.type}</TableCell>
-                <TableCell>{req.from}</TableCell>
-                <TableCell>{req.to}</TableCell>
-                <TableCell className="max-w-[200px] truncate">{req.reason}</TableCell>
-                <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Apri menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
-                      <DropdownMenuItem onSelect={() => handleApprove(req.id)}>
-                        <Check className="mr-2 h-4 w-4" />
-                        Approva
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive">
-                        <X className="mr-2 h-4 w-4" />
-                        Rifiuta
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+        {requests.length === 0 ? (
+          <div className="text-center text-muted-foreground py-12">
+            <p>Non ci sono richieste di ferie o permessi al momento.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[120px]">Tipo</TableHead>
+                <TableHead>Dal</TableHead>
+                <TableHead>Al</TableHead>
+                <TableHead>Motivo</TableHead>
+                <TableHead>Stato</TableHead>
+                <TableHead><span className="sr-only">Azioni</span></TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {requests.map((req) => (
+                <TableRow key={req.id}>
+                  <TableCell className="font-medium">{req.type}</TableCell>
+                  <TableCell>{req.from}</TableCell>
+                  <TableCell>{req.to}</TableCell>
+                  <TableCell className="max-w-[200px] truncate">{req.reason}</TableCell>
+                  <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Apri menu</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => handleApprove(req.id)}>
+                          <Check className="mr-2 h-4 w-4" />
+                          Approva
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive">
+                          <X className="mr-2 h-4 w-4" />
+                          Rifiuta
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </CardContent>
     </Card>
 
