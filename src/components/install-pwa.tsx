@@ -66,7 +66,7 @@ export function InstallPWA() {
     if (outcome === 'accepted') {
       toast({
         title: "App Installata!",
-        description: "WorkForce Hub è stato aggiunto alla tua schermata principale.",
+        description: "Serveco Cleaning è stato aggiunto alla tua schermata principale.",
       });
     }
     setPrompt(null);
@@ -82,7 +82,7 @@ export function InstallPWA() {
           <AlertDialogHeader>
             <div className='flex items-center gap-3 mb-2'>
                 <Download className='h-6 w-6 text-primary' />
-                <AlertDialogTitle className='text-xl'>Installa WorkForce Hub</AlertDialogTitle>
+                <AlertDialogTitle className='text-xl'>Installa Serveco Cleaning</AlertDialogTitle>
             </div>
             <AlertDialogDescription>
               Aggiungi questa applicazione alla tua schermata principale per un accesso rapido e per un'esperienza offline.

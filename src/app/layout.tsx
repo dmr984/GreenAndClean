@@ -4,7 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { InstallPWA } from '@/components/install-pwa';
 
 export const metadata: Metadata = {
-  title: 'WorkForce Hub',
+  title: 'Serveco Cleaning',
   description: 'Gestisci le tue operazioni di pulizia con facilità.',
   manifest: "/manifest.json",
 };
