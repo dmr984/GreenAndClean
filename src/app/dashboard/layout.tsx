@@ -7,7 +7,7 @@ import { ArrowLeft, MessageSquare, Menu, LogOut, Settings, User, Lock } from 'lu
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
@@ -100,8 +100,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setIsSidebarOpen(false);
     if (userRole === 'operator' && userId) {
       router.push(`/dashboard/users/${userId}`);
-    } else if(userRole === 'admin') {
-      router.push('/dashboard/users');
+    } else if (userRole === 'admin') {
+      router.push(`/dashboard/users/admin`);
     }
   };
 
@@ -147,7 +147,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  </SheetHeader>
                  <Separator className="my-2"/>
                  <nav className="grid gap-2 text-lg font-medium">
-                   <Button variant="ghost" className="justify-start gap-2" onClick={handleProfileClick} disabled={!userId && userRole === 'operator'} >
+                   <Button variant="ghost" className="justify-start gap-2" onClick={handleProfileClick}>
                       <User className="h-5 w-5" /> Profilo
                    </Button>
                    <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>

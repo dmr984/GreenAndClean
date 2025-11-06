@@ -20,6 +20,8 @@ type User = {
   role: string;
 };
 
+const adminUser: User = { id: "admin", name: "Amministratore", code: "070380", role: "admin", location: "Sede" };
+
 // Mock users data, in a real app this would come from a database/API
 const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
@@ -45,11 +47,20 @@ export default function UserProfilePage() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [isCurrentUser, setIsCurrentUser] = useState(false);
+  const [isViewingAdmin, setIsViewingAdmin] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
-    const users = getUsersFromStorage();
-    const foundUser = users.find(u => u.id === userId);
+    let foundUser: User | undefined;
+    if (userId === 'admin') {
+      foundUser = adminUser;
+      setIsViewingAdmin(true);
+    } else {
+      const users = getUsersFromStorage();
+      foundUser = users.find(u => u.id === userId);
+      setIsViewingAdmin(false);
+    }
+    
     setUser(foundUser || null);
     setLoading(false);
 
@@ -57,7 +68,6 @@ export default function UserProfilePage() {
         const currentUserId = localStorage.getItem('userId');
         setIsCurrentUser(userId === currentUserId);
         
-        // Check for unread messages (mock logic)
         const checkMessages = () => {
             const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
             if (currentUserId && allMessages[currentUserId]) {
@@ -121,7 +131,9 @@ export default function UserProfilePage() {
   return (
     <>
         <div className="flex items-center gap-4 mb-4">
-            <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
+            <h2 className="text-3xl font-bold tracking-tight">
+              {isViewingAdmin ? "Profilo Amministratore" : "Profilo Operatore"}
+            </h2>
         </div>
         <div className="grid gap-8">
             <Card>
@@ -165,31 +177,32 @@ export default function UserProfilePage() {
                 </CardContent>
             </Card>
 
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-               <Card>
-                <CardHeader>
-                  <CardTitle>Riepilogo Attività Recenti</CardTitle>
-                  <CardDescription>Ultime timbrature, richieste e note.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center text-muted-foreground py-8">
-                    <p>Nessuna attività recente da mostrare.</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Note Amministrative</CardTitle>
-                  <CardDescription>Note private visibili solo agli amministratori.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                   <div className="text-center text-muted-foreground py-8">
-                    <p>Nessuna nota presente.</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-            </div>
+            {!isViewingAdmin && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Riepilogo Attività Recenti</CardTitle>
+                    <CardDescription>Ultime timbrature, richieste e note.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center text-muted-foreground py-8">
+                      <p>Nessuna attività recente da mostrare.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Note Amministrative</CardTitle>
+                    <CardDescription>Note private visibili solo agli amministratori.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center text-muted-foreground py-8">
+                      <p>Nessuna nota presente.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
         </div>
 
 
