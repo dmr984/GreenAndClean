@@ -226,12 +226,10 @@ export default function UsersPage() {
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed shadow-sm h-64">
           <h3 className="text-2xl font-bold tracking-tight">Nessun operatore trovato</h3>
           <p className="text-sm text-muted-foreground">Inizia aggiungendo un nuovo operatore.</p>
-          <DialogTrigger asChild>
-             <Button className="mt-4">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Aggiungi Operatore
-            </Button>
-          </DialogTrigger>
+           <Button className="mt-4" onClick={() => setIsNewUserDialogOpen(true)}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Aggiungi Operatore
+          </Button>
         </div>
       )}
 
