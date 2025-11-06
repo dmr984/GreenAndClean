@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, Check, X } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Check, X, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,31 +12,70 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 
-const initialRequests: { id: string; item: string; quantity: number; status: string; }[] = [];
+type Request = {
+  id: string;
+  item: string;
+  quantity: number;
+  status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale';
+  notes?: string;
+  fulfilledQuantity?: number;
+}
+
+const initialRequests: Request[] = [];
 
 export default function SupplyRequestsPage() {
   const [requests, setRequests] = React.useState(initialRequests);
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [isNewRequestDialogOpen, setIsNewRequestDialogOpen] = React.useState(false);
+  const [isManageRequestDialogOpen, setIsManageRequestDialogOpen] = React.useState(false);
+  const [selectedRequest, setSelectedRequest] = React.useState<Request | null>(null);
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleNewRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     toast({ title: "Richiesta Inviata", description: "La tua richiesta di forniture è stata inviata." });
-    setIsDialogOpen(false);
+    setIsNewRequestDialogOpen(false);
   }
   
-  const handleApprove = (id: string) => {
-    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Approvata" } : r));
-    toast({ title: "Richiesta Approvata", variant: "default" });
+  const openManageDialog = (request: Request) => {
+    setSelectedRequest(request);
+    setIsManageRequestDialogOpen(true);
+  }
+  
+  const handleManageRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+  
+    const formData = new FormData(e.currentTarget);
+    const fulfilledQuantity = Number(formData.get('fulfilledQuantity') as string);
+    const notes = formData.get('notes') as string;
+    const action = (e.nativeEvent as any).submitter.value;
+  
+    let status: Request['status'] = selectedRequest.status;
+    let toastMessage = "";
+  
+    if (action === 'reject') {
+      status = 'Rifiutata';
+      toastMessage = "Richiesta Rifiutata";
+    } else {
+      if (fulfilledQuantity >= selectedRequest.quantity) {
+        status = 'Approvata';
+        toastMessage = "Richiesta Approvata Completamente";
+      } else {
+        status = 'Parziale';
+        toastMessage = "Richiesta Approvata Parzialmente";
+      }
+    }
+  
+    setRequests(reqs => reqs.map(r => r.id === selectedRequest.id ? { ...r, status, fulfilledQuantity, notes } : r));
+    toast({ title: toastMessage, description: `Prodotto: ${selectedRequest.item}` });
+    setIsManageRequestDialogOpen(false);
+    setSelectedRequest(null);
   }
 
-  const handleReject = (id: string) => {
-    setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "Rifiutata" } : r));
-    toast({ title: "Richiesta Rifiutata", variant: "destructive" });
-  }
-
-  const getStatusVariant = (status: string): "default" | "secondary" | "destructive" => {
+  const getStatusVariant = (status: Request['status']): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
       case "Approvata":
         return "default";
@@ -44,6 +83,8 @@ export default function SupplyRequestsPage() {
         return "secondary";
       case "Rifiutata":
         return "destructive";
+      case "Parziale":
+        return "outline"; // Using outline for partial
       default:
         return "secondary";
     }
@@ -61,11 +102,11 @@ export default function SupplyRequestsPage() {
                 <CardTitle>Elenco Richieste</CardTitle>
                 <CardDescription>Gestisci le richieste di prodotti e forniture per la pulizia.</CardDescription>
             </div>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isNewRequestDialogOpen} onOpenChange={setIsNewRequestDialogOpen}>
                 <DialogTrigger asChild>
                     <Button size="sm" className="gap-1">
                         <PlusCircle className="h-4 w-4" />
-                        Nuova Richiesta
+                        Nuova Richiesta (Operatore)
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
@@ -75,7 +116,7 @@ export default function SupplyRequestsPage() {
                             Specifica il prodotto e la quantità necessari.
                         </DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+                    <form onSubmit={handleNewRequestSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="item" className="text-right">Prodotto</Label>
                             <Input id="item" placeholder="Es. Detergente Multiuso" className="col-span-3" required/>
@@ -102,9 +143,10 @@ export default function SupplyRequestsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Prodotto</TableHead>
-              <TableHead className="w-auto sm:w-[100px]">Quantità</TableHead>
-              <TableHead className="w-auto sm:w-[120px]">Stato</TableHead>
-              <TableHead className="w-auto sm:w-[80px]"><span className="sr-only">Azioni</span></TableHead>
+              <TableHead>Qt. Richiesta</TableHead>
+              <TableHead>Qt. Consegnata</TableHead>
+              <TableHead>Stato</TableHead>
+              <TableHead><span className="sr-only">Azioni</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -112,27 +154,14 @@ export default function SupplyRequestsPage() {
               <TableRow key={req.id}>
                 <TableCell className="font-medium">{req.item}</TableCell>
                 <TableCell>{req.quantity}</TableCell>
+                <TableCell>{req.fulfilledQuantity ?? 'N/A'}</TableCell>
                 <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Apri menu</span>
+                  {req.status === 'In attesa' && (
+                     <Button variant="outline" size="sm" onClick={() => openManageDialog(req)}>
+                        <Pencil className="mr-2 h-3 w-3" /> Gestisci
                       </Button>
-                    </DropdownMenuTrigger>
-                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
-                      <DropdownMenuItem onSelect={() => handleApprove(req.id)}>
-                        <Check className="mr-2 h-4 w-4" />
-                        Approva
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => handleReject(req.id)} className="text-destructive">
-                        <X className="mr-2 h-4 w-4" />
-                        Rifiuta
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -141,6 +170,51 @@ export default function SupplyRequestsPage() {
         )}
       </CardContent>
     </Card>
+
+    {/* Manage Request Dialog */}
+    <Dialog open={isManageRequestDialogOpen} onOpenChange={setIsManageRequestDialogOpen}>
+        <DialogContent>
+          <form onSubmit={handleManageRequestSubmit}>
+            <DialogHeader>
+                <DialogTitle>Gestisci Richiesta Fornitura</DialogTitle>
+                <DialogDescription>
+                    Approva, rifiuta o modifica la quantità per la richiesta di: <span className="font-bold">{selectedRequest?.item} (Richiesti: {selectedRequest?.quantity})</span>
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="fulfilledQuantity" className="text-right">Qt. Consegnata</Label>
+                    <Input 
+                      id="fulfilledQuantity" 
+                      name="fulfilledQuantity"
+                      type="number" 
+                      className="col-span-3"
+                      defaultValue={selectedRequest?.quantity}
+                      required
+                    />
+                </div>
+                 <div className="grid grid-cols-4 items-start gap-4">
+                    <Label htmlFor="notes" className="text-right pt-2">Note Admin</Label>
+                    <Textarea 
+                      id="notes" 
+                      name="notes"
+                      className="col-span-3" 
+                      placeholder="Opzionale: es. '7 inviati, il resto la prossima settimana.'" 
+                      defaultValue={selectedRequest?.notes}
+                    />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button type="submit" name="action" value="reject" variant="destructive">
+                    <X className="mr-2 h-4 w-4" /> Rifiuta
+                </Button>
+                <Button type="submit" name="action" value="approve">
+                    <Check className="mr-2 h-4 w-4" /> Conferma e Approva
+                </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }

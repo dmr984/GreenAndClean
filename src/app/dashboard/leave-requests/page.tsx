@@ -93,7 +93,7 @@ export default function LeaveRequestsPage() {
                 <DialogTrigger asChild>
                     <Button size="sm" className="gap-1">
                         <PlusCircle className="h-4 w-4" />
-                        Nuova Richiesta
+                        Nuova Richiesta (Operatore)
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[480px]">

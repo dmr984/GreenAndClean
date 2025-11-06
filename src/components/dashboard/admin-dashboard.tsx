@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users } from 'lucide-react';
+import { Users, CheckCircle, Package } from 'lucide-react';
 import Link from 'next/link';
 
 export function AdminDashboard() {
@@ -23,9 +23,27 @@ export function AdminDashboard() {
                 </CardContent>
             </Card>
         </Link>
+         <Link href="/dashboard/leave-requests" className="h-full">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
+                <CardHeader>
+                    <CheckCircle className="h-16 w-16 mx-auto text-primary"/>
+                </CardHeader>
+                <CardContent className="p-6 pt-0">
+                    <CardTitle className="text-2xl">Gestisci Richieste Ferie</CardTitle>
+                </CardContent>
+            </Card>
+        </Link>
+         <Link href="/dashboard/supply-requests" className="h-full">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
+                <CardHeader>
+                    <Package className="h-16 w-16 mx-auto text-primary"/>
+                </CardHeader>
+                <CardContent className="p-6 pt-0">
+                    <CardTitle className="text-2xl">Gestisci Richieste Forniture</CardTitle>
+                </CardContent>
+            </Card>
+        </Link>
       </div>
     </>
   );
 }
-
-    
