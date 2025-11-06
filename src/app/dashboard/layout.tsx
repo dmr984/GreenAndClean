@@ -125,7 +125,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <>
     <div className="flex flex-col min-h-screen w-full">
         <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
-           <div className="flex-none w-1/3 flex items-center gap-2">
+           <div className="flex items-center gap-2">
             <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" className="shrink-0">
@@ -181,7 +181,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </div>
 
-          <div className="w-1/3 flex justify-end items-center gap-4">
+          <div className="flex justify-end items-center gap-4">
              {(isAdmin || isOperator) && (
                 <Link href={getMessageRoute()}>
                  <Button variant="ghost" size="icon" className="relative">
