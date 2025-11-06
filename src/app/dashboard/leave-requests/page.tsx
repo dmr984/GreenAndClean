@@ -172,7 +172,7 @@ export default function LeaveRequestsPage() {
                     {!isAdmin && (
                         <form onSubmit={handleNewRequestSubmit} className="p-4 border rounded-lg space-y-4">
                             <h3 className="text-lg font-semibold">Crea Nuova Richiesta</h3>
-                            <div className="grid md:grid-cols-3 gap-4">
+                            <div className="grid sm:grid-cols-3 gap-4">
                                 <Select name="type" required value={draft.type || ""} onValueChange={(value) => handleDraftChange('type', value)}>
                                     <SelectTrigger><SelectValue placeholder="Seleziona tipo" /></SelectTrigger>
                                     <SelectContent>
@@ -189,7 +189,7 @@ export default function LeaveRequestsPage() {
                         </form>
                     )}
 
-                    <div>
+                    <div className="overflow-x-auto">
                         <h3 className="text-lg font-semibold mb-2">Storico Richieste</h3>
                         {userRequests.length === 0 ? (
                             <div className="text-center text-muted-foreground py-12">
@@ -212,7 +212,7 @@ export default function LeaveRequestsPage() {
                                         <TableRow key={req.id}>
                                             {isAdmin && <TableCell className="font-medium">{req.user}</TableCell>}
                                             <TableCell>{req.type}</TableCell>
-                                            <TableCell>{new Date(req.from).toLocaleDateString()} - {new Date(req.to).toLocaleDateString()}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{new Date(req.from).toLocaleDateString()} - {new Date(req.to).toLocaleDateString()}</TableCell>
                                             <TableCell className="hidden md:table-cell max-w-[200px] truncate">{req.reason || "-"}</TableCell>
                                             <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
                                             {isAdmin && (

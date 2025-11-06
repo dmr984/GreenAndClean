@@ -163,17 +163,17 @@ export default function UsersPage() {
                 </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser} className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">Nome</Label>
-                <Input id="name" name="name" className="col-span-3" required />
+                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-left sm:text-right">Nome</Label>
+                <Input id="name" name="name" className="col-span-1 sm:col-span-3" required />
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="location" className="text-right">Luogo</Label>
-                <Input id="location" name="location" className="col-span-3" required />
+                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="location" className="text-left sm:text-right">Luogo</Label>
+                <Input id="location" name="location" className="col-span-1 sm:col-span-3" required />
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="code" className="text-right">Codice</Label>
-                <Input id="code" name="code" className="col-span-3" required />
+                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="code" className="text-left sm:text-right">Codice</Label>
+                <Input id="code" name="code" className="col-span-1 sm:col-span-3" required />
                 </div>
                 <DialogFooter>
                 <Button type="submit">Crea Utente</Button>
@@ -233,7 +233,7 @@ export default function UsersPage() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed shadow-sm h-64">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed shadow-sm h-64 p-4 text-center">
           <h3 className="text-2xl font-bold tracking-tight">Nessun operatore trovato</h3>
           <p className="text-sm text-muted-foreground">Inizia aggiungendo un nuovo operatore.</p>
            <Button className="mt-4" onClick={() => setIsNewUserDialogOpen(true)}>
@@ -254,17 +254,17 @@ export default function UsersPage() {
           </DialogHeader>
           {selectedUser && (
             <form onSubmit={handleEditUser} className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-name" className="text-right">Nome</Label>
-                <Input id="edit-name" name="name" defaultValue={selectedUser.name} className="col-span-3" required />
+              <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-left sm:text-right">Nome</Label>
+                <Input id="edit-name" name="name" defaultValue={selectedUser.name} className="col-span-1 sm:col-span-3" required />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-location" className="text-right">Luogo</Label>
-                <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-3" required />
+              <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-location" className="text-left sm:text-right">Luogo</Label>
+                <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-1 sm:col-span-3" required />
               </div>
-               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-code" className="text-right">Codice</Label>
-                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-3" required />
+               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-code" className="text-left sm:text-right">Codice</Label>
+                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-1 sm:col-span-3" required />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Annulla</Button>

@@ -124,12 +124,12 @@ export default function WarehousePage() {
       </div>
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <CardTitle>Inventario Prodotti</CardTitle>
               <CardDescription>Aggiungi, modifica e visualizza i prodotti disponibili per le richieste.</CardDescription>
             </div>
-            <Button size="sm" className="gap-1" onClick={() => openDialog(null, false)}>
+            <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => openDialog(null, false)}>
               <PlusCircle className="h-4 w-4" />
               Aggiungi Prodotto
             </Button>
@@ -141,67 +141,69 @@ export default function WarehousePage() {
               <p>Non ci sono prodotti nel magazzino. Inizia aggiungendone uno.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Prodotto</TableHead>
-                  <TableHead className="w-[200px]">Quantità Disponibile</TableHead>
-                  <TableHead className="w-[80px] text-right"><span className="sr-only">Azioni</span></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleQuantityChange(item.id, -1)}
-                          disabled={item.quantity <= 0}
-                        >
-                          <Minus className="h-4 w-4" />
-                          <span className="sr-only">Diminuisci</span>
-                        </Button>
-                        <span className="min-w-[40px] text-center text-base font-medium">{item.quantity}</span>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleQuantityChange(item.id, 1)}
-                        >
-                          <Plus className="h-4 w-4" />
-                           <span className="sr-only">Aumenta</span>
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Apri menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-                          <DropdownMenuItem onSelect={() => openDialog(item, true)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Modifica Prodotto
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(item)}>
-                            <Trash className="mr-2 h-4 w-4" />
-                            Elimina
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Prodotto</TableHead>
+                    <TableHead className="w-[200px]">Quantità Disponibile</TableHead>
+                    <TableHead className="w-[80px] text-right"><span className="sr-only">Azioni</span></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleQuantityChange(item.id, -1)}
+                            disabled={item.quantity <= 0}
+                          >
+                            <Minus className="h-4 w-4" />
+                            <span className="sr-only">Diminuisci</span>
+                          </Button>
+                          <span className="min-w-[40px] text-center text-base font-medium">{item.quantity}</span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleQuantityChange(item.id, 1)}
+                          >
+                            <Plus className="h-4 w-4" />
+                             <span className="sr-only">Aumenta</span>
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button aria-haspopup="true" size="icon" variant="ghost">
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">Apri menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+                            <DropdownMenuItem onSelect={() => openDialog(item, true)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Modifica Prodotto
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(item)}>
+                              <Trash className="mr-2 h-4 w-4" />
+                              Elimina
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -216,13 +218,13 @@ export default function WarehousePage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">Nome Prodotto</Label>
-              <Input id="name" name="name" className="col-span-3" defaultValue={selectedItem?.name} required />
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-left sm:text-right">Nome Prodotto</Label>
+              <Input id="name" name="name" className="col-span-1 sm:col-span-3" defaultValue={selectedItem?.name} required />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="quantity" className="text-right">Quantità</Label>
-              <Input id="quantity" name="quantity" type="number" className="col-span-3" defaultValue={selectedItem?.quantity ?? 0} required min="0" />
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="quantity" className="text-left sm:text-right">Quantità</Label>
+              <Input id="quantity" name="quantity" type="number" className="col-span-1 sm:col-span-3" defaultValue={selectedItem?.quantity ?? 0} required min="0" />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsItemDialogOpen(false)}>Annulla</Button>

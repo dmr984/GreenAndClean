@@ -64,79 +64,79 @@ export function AdminDashboard() {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo Admin</h2>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <Link href="/dashboard/users" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
                 <CardHeader>
-                    <Users className="h-16 w-16 mx-auto text-primary"/>
+                    <Users className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Gestione Operatori</CardTitle>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Gestione Operatori</CardTitle>
                 </CardContent>
             </Card>
         </Link>
          <Link href="/dashboard/leave-requests" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
                 {pendingLeaveRequests > 0 &&
-                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-sm sm:text-base h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded-full">
                     {pendingLeaveRequests}
                   </Badge>
                 }
                 <CardHeader>
-                    <CalendarCheck className="h-16 w-16 mx-auto text-primary"/>
+                    <CalendarCheck className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Richieste Ferie</CardTitle>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Richieste Ferie</CardTitle>
                 </CardContent>
             </Card>
         </Link>
         <Link href="/dashboard/supply-requests" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
                 {pendingSupplyRequests > 0 &&
-                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-sm sm:text-base h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded-full">
                     {pendingSupplyRequests}
                   </Badge>
                 }
                 <CardHeader>
-                    <Package className="h-16 w-16 mx-auto text-primary"/>
+                    <Package className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Richieste Forniture</CardTitle>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Richieste Forniture</CardTitle>
                 </CardContent>
             </Card>
         </Link>
         <Link href="/dashboard/warehouse" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
                 <CardHeader>
-                    <Warehouse className="h-16 w-16 mx-auto text-primary"/>
+                    <Warehouse className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Gestione Magazzino</CardTitle>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Gestione Magazzino</CardTitle>
                 </CardContent>
             </Card>
         </Link>
          <Link href="/dashboard/announcements" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
                 <CardHeader>
-                    <Megaphone className="h-16 w-16 mx-auto text-primary"/>
+                    <Megaphone className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Invia Annunci</CardTitle>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Invia Annunci</CardTitle>
                 </CardContent>
             </Card>
         </Link>
         <Link href="/dashboard/messages" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
                  {unreadMessages > 0 &&
-                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-base h-8 w-8 flex items-center justify-center rounded-full">
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-sm sm:text-base h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded-full">
                     {unreadMessages}
                   </Badge>
                 }
                 <CardHeader>
-                    <MessageSquare className="h-16 w-16 mx-auto text-primary"/>
+                    <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <CardTitle className="text-2xl">Messaggi Privati</CardTitle>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Messaggi Privati</CardTitle>
                 </CardContent>
             </Card>
         </Link>

@@ -123,45 +123,45 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
                     </DialogDescription>
                 </DialogHeader>
                 <form id="change-code-form" onSubmit={handleCodeChange} className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="old-code" className="text-right">Vecchio Codice</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                        <Label htmlFor="old-code" className="text-left sm:text-right">Vecchio Codice</Label>
                         <Input 
                             id="old-code" 
                             name="old-code" 
                             type="password" 
-                            className="col-span-3"
+                            className="col-span-1 sm:col-span-3"
                             value={oldCode}
                             onChange={(e) => setOldCode(e.target.value)}
                             required 
                         />
                     </div>
                      <hr className="my-2"/>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="new-code" className="text-right">Nuovo Codice</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                        <Label htmlFor="new-code" className="text-left sm:text-right">Nuovo Codice</Label>
                         <Input 
                             id="new-code" 
                             name="new-code" 
                             type="password" 
-                            className="col-span-3"
+                            className="col-span-1 sm:col-span-3"
                             value={newCode}
                             onChange={(e) => setNewCode(e.target.value)}
                             required 
                         />
                     </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="confirm-code" className="text-right">Conferma Codice</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                        <Label htmlFor="confirm-code" className="text-left sm:text-right">Conferma Codice</Label>
                         <Input 
                             id="confirm-code" 
                             name="confirm-code" 
                             type="password" 
-                            className="col-span-3"
+                            className="col-span-1 sm:col-span-3"
                             value={confirmCode}
                             onChange={(e) => setConfirmCode(e.target.value)}
                             required 
                         />
                     </div>
                 </form>
-                <DialogFooter>
+                <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
                     <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>Annulla</Button>
                     <Button type="submit" form="change-code-form">Salva Modifiche</Button>
                 </DialogFooter>

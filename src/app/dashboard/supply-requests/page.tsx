@@ -269,7 +269,7 @@ export default function SupplyRequestsPage() {
                         </div>
                     )}
 
-                    <div>
+                    <div className="overflow-x-auto">
                         <h3 className="text-lg font-semibold mb-2">Storico Richieste</h3>
                         {userRequests.length === 0 ? (
                             <div className="text-center text-muted-foreground py-12"><p>Non ci sono richieste di forniture da mostrare.</p></div>
@@ -277,12 +277,12 @@ export default function SupplyRequestsPage() {
                             <div className="space-y-4">
                                 {userRequests.map((req) => (
                                     <Card key={req.id}>
-                                        <CardHeader className="flex flex-row justify-between items-start pb-2">
+                                        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2 gap-2">
                                             <div>
                                                 <CardTitle className="text-base">{req.user}</CardTitle>
                                                 <CardDescription>{new Date().toLocaleDateString()}</CardDescription>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 self-end sm:self-center">
                                                 <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
                                                 {isAdmin && req.status === 'In attesa' && (
                                                     <Button variant="outline" size="sm" onClick={() => openManageDialog(req)}>
@@ -292,26 +292,28 @@ export default function SupplyRequestsPage() {
                                             </div>
                                         </CardHeader>
                                         <CardContent>
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Prodotto</TableHead>
-                                                        <TableHead className="text-center">Qt. Richiesta</TableHead>
-                                                        {req.status !== 'In attesa' && <TableHead className="text-center">Qt. Consegnata</TableHead>}
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {Object.entries(req.items).map(([name, qty]) => (
-                                                        <TableRow key={name}>
-                                                            <TableCell className="font-medium">{name}</TableCell>
-                                                            <TableCell className="text-center">{qty}</TableCell>
-                                                            {req.status !== 'In attesa' && <TableCell className="text-center font-bold">
-                                                                {req.fulfilledItems ? (req.fulfilledItems[name] ?? 0) : (req.status === 'Rifiutata' ? 0 : 'N/D')}
-                                                            </TableCell>}
+                                            <div className="overflow-x-auto">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead>Prodotto</TableHead>
+                                                            <TableHead className="text-center">Qt. Richiesta</TableHead>
+                                                            {req.status !== 'In attesa' && <TableHead className="text-center">Qt. Consegnata</TableHead>}
                                                         </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {Object.entries(req.items).map(([name, qty]) => (
+                                                            <TableRow key={name}>
+                                                                <TableCell className="font-medium">{name}</TableCell>
+                                                                <TableCell className="text-center">{qty}</TableCell>
+                                                                {req.status !== 'In attesa' && <TableCell className="text-center font-bold">
+                                                                    {req.fulfilledItems ? (req.fulfilledItems[name] ?? 0) : (req.status === 'Rifiutata' ? 0 : 'N/D')}
+                                                                </TableCell>}
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
                                             {(req.adminNotes) && (
                                                 <div className="mt-4 p-3 bg-muted rounded-md">
                                                     <h4 className="font-semibold text-sm">Note dell'amministratore:</h4>
@@ -334,8 +336,8 @@ export default function SupplyRequestsPage() {
                             </DialogHeader>
                             <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto px-1">
                                 {selectedRequest && Object.entries(selectedRequest.items).map(([itemName, requestedQty]) => (
-                                    <div key={itemName} className="grid grid-cols-3 items-center gap-4">
-                                        <Label htmlFor={`qty-${itemName}`} className="col-span-1">{itemName} (Max: {requestedQty})</Label>
+                                    <div key={itemName} className="grid grid-cols-1 sm:grid-cols-3 items-center gap-4">
+                                        <Label htmlFor={`qty-${itemName}`} className="col-span-1 sm:text-right">{itemName} (Max: {requestedQty})</Label>
                                         <Input 
                                         id={`qty-${itemName}`}
                                         type="number" 
@@ -356,7 +358,7 @@ export default function SupplyRequestsPage() {
                                 onChange={(e) => setManageFormState(p => ({...p, notes: e.target.value}))}
                                 />
                             </div>
-                            <DialogFooter>
+                            <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
                                 <Button type="submit" name="action" value="reject" variant="destructive"><X className="mr-2 h-4 w-4" />Rifiuta</Button>
                                 <Button type="submit" name="action" value="approve"><Check className="mr-2 h-4 w-4" />Conferma e Approva</Button>
                             </DialogFooter>

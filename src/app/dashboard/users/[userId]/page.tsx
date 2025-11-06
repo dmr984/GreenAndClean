@@ -137,27 +137,27 @@ export default function UserProfilePage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
-                          <Fingerprint className="mr-4 h-8 w-8 text-primary"/>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg flex-col sm:flex-row" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
+                          <Fingerprint className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                           Timbrature
                       </Button>
-                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/calendar')}>
-                          <Calendar className="mr-4 h-8 w-8 text-primary"/>
+                      <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg flex-col sm:flex-row" onClick={() => router.push('/dashboard/calendar')}>
+                          <Calendar className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                           Calendario
                       </Button>
-                      <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/leave-requests')}>
-                          <CheckCircle className="mr-4 h-8 w-8 text-primary"/>
+                      <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg flex-col sm:flex-row" onClick={() => router.push('/dashboard/leave-requests')}>
+                          <CheckCircle className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                           Richieste Ferie
                       </Button>
-                       <Button variant="outline" size="lg" className="h-24 text-lg" onClick={() => router.push('/dashboard/supply-requests')}>
-                          <Package className="mr-4 h-8 w-8 text-primary"/>
+                       <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg flex-col sm:flex-row" onClick={() => router.push('/dashboard/supply-requests')}>
+                          <Package className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                           Richieste Prodotti
                       </Button>
                       {isCurrentUser && (
-                          <Button variant="outline" size="lg" className="h-24 text-lg relative" onClick={() => router.push(`/dashboard/messages?userId=${user.id}`)}>
+                          <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg relative flex-col sm:flex-row" onClick={() => router.push(`/dashboard/messages?userId=${user.id}`)}>
                               {unreadMessages > 0 && <Badge variant="destructive" className="absolute top-2 right-2 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadMessages}</Badge>}
-                              <MessageSquare className="mr-4 h-8 w-8 text-primary"/>
+                              <MessageSquare className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                               Messaggi
                           </Button>
                       )}
