@@ -24,11 +24,18 @@ const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
   const storedUsers = localStorage.getItem('app-users');
   try {
-      // If there are stored users, parse them, otherwise return an empty array.
-      return storedUsers ? JSON.parse(storedUsers) : [];
+      // If there are no stored users, let's create a default list for the demo
+      if (!storedUsers) {
+          const defaultOperators: User[] = [
+              { id: 'USR1', name: 'Mario Rossi', code: '1234', role: 'operator', location: 'Cantiere A' },
+              { id: 'USR2', name: 'Luigi Verdi', code: '5678', role: 'operator', location: 'Cantiere B' },
+          ];
+          localStorage.setItem('app-users', JSON.stringify(defaultOperators));
+          return defaultOperators;
+      }
+      return JSON.parse(storedUsers);
   } catch (e) {
       console.error("Failed to parse users from localStorage.", e);
-      // If parsing fails, return an empty array.
       return [];
   }
 };
@@ -42,14 +49,12 @@ export default function LoginForm() {
 
   React.useEffect(() => {
     const loadUsers = () => {
-        // We only load operator users from storage. The admin user is always present.
         const operatorUsers = getUsersFromStorage();
         setUsers([adminUser, ...operatorUsers]);
     };
     
     loadUsers();
 
-    // Listen for storage changes to update the user list in real-time
     window.addEventListener('storage', loadUsers);
 
     return () => {
@@ -70,13 +75,12 @@ export default function LoginForm() {
       return;
     }
     
-    // The 'users' state already contains the admin and all operators.
     const user = users.find(u => u.id === selectedUserId);
 
     if (user && user.code === code) {
       localStorage.setItem('userRole', user.role);
       localStorage.setItem('userName', user.name);
-      localStorage.setItem('userId', user.id); // Save user ID
+      localStorage.setItem('userId', user.id);
       router.push('/dashboard');
     } else {
        toast({

@@ -60,37 +60,38 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
              return;
         }
 
-        let userToUpdate: User | undefined;
         let users: User[] = [];
         
         if (userId === 'admin') {
-            // In a real app, admin user data would also be in a DB. For this demo, we can't update it.
-            // Let's retrieve its hardcoded data to check the old code.
-            if(adminUser.code !== oldCode) {
-                toast({ variant: "destructive", title: "Codice Errato", description: "Il vecchio codice non è corretto." });
-                return;
-            }
-            toast({ title: "Info", description: "La modifica del codice admin non è supportata in questa demo."});
-            onOpenChange(false);
-            return;
-
-        } else {
-            users = getUsersFromStorage();
-            userToUpdate = users.find(u => u.id === userId);
-            
-            if (!userToUpdate) {
-                 toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
-                 return;
-            }
-            
-            if(userToUpdate.code !== oldCode) {
-                toast({ variant: "destructive", title: "Codice Errato", description: "Il vecchio codice non è corretto." });
-                return;
-            }
-
-            const updatedUsers = users.map(u => u.id === userId ? { ...u, code: newCode } : u);
-            saveUsersToStorage(updatedUsers);
+            // In a real app, admin user data would also be in a DB. 
+            // We can't update it in localStorage if it's hardcoded elsewhere.
+            // Let's assume we can update it if it's also in the 'app-users' list for consistency
         }
+        
+        users = getUsersFromStorage();
+        const userToUpdate = users.find(u => u.id === userId);
+            
+        if (!userToUpdate && userId !== 'admin') {
+             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
+             return;
+        }
+        
+        const effectiveUser = userId === 'admin' ? adminUser : userToUpdate;
+
+        if(effectiveUser!.code !== oldCode) {
+            toast({ variant: "destructive", title: "Codice Errato", description: "Il vecchio codice non è corretto." });
+            return;
+        }
+        
+        if (userId === 'admin') {
+            // This is a demo limitation. A real app would have a backend mechanism for this.
+            toast({ title: "Info", description: "La modifica del codice admin non è completamente supportata in questa demo se non è gestito via DB."});
+            // Let's proceed assuming we can update a local list for demo consistency
+        }
+
+        const updatedUsers = users.map(u => u.id === userId ? { ...u, code: newCode } : u);
+        saveUsersToStorage(updatedUsers);
+
 
         toast({
             title: "Codice Aggiornato",

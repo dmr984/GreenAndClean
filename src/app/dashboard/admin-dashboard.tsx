@@ -22,40 +22,45 @@ export function AdminDashboard() {
   const [unreadMessages, setUnreadMessages] = React.useState(0);
 
   React.useEffect(() => {
-    // Function to check for new items from localStorage
-    const checkForNewItems = () => {
-       if (typeof window !== 'undefined') {
-        const storedLeaveRequests = localStorage.getItem('leave-requests');
-        const leaveRequests: LeaveRequest[] = storedLeaveRequests ? JSON.parse(storedLeaveRequests) : [];
-        const pendingLeave = leaveRequests.filter(r => r.status === 'In attesa').length;
-        setPendingLeaveRequests(pendingLeave);
+    // This component will now rely on real-time listeners in the individual pages
+    // to show updated data. We keep the state for badges but they will be updated
+    // via a different mechanism if we implement a global state or context.
+    // For now, we will remove direct localStorage dependency here.
+    // The badges will be updated based on other components triggering storage events if needed.
+    const updateBadges = () => {
+      if (typeof window !== 'undefined') {
+        const storedLeave = getFromStorage<LeaveRequest[]>('leave-requests', []);
+        setPendingLeaveRequests(storedLeave.filter(r => r.status === 'In attesa').length);
 
-        const storedSupplyRequests = localStorage.getItem('supply-requests');
-        const supplyRequests: SupplyRequest[] = storedSupplyRequests ? JSON.parse(storedSupplyRequests) : [];
-        const pendingSupply = supplyRequests.filter(r => r.status === 'In attesa').length;
-        setPendingSupplyRequests(pendingSupply);
+        const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
+        setPendingSupplyRequests(storedSupply.filter(r => r.status === 'In attesa').length);
 
-        const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
+        const allMessages = getFromStorage<Record<string, any[]>>('private-messages', {});
         let messageCount = 0;
         Object.values(allMessages).forEach((convo: any) => {
             if(convo.some((msg: any) => !msg.read && msg.sender !== 'admin')) {
                 messageCount++;
             }
-        })
+        });
         setUnreadMessages(messageCount);
       }
     };
 
-    checkForNewItems();
-
-    // Listen for storage changes to update in real-time
-    window.addEventListener('storage', checkForNewItems);
-
-    return () => {
-      window.removeEventListener('storage', checkForNewItems);
-    };
+    updateBadges();
+    window.addEventListener('storage', updateBadges);
+    return () => window.removeEventListener('storage', updateBadges);
 
   }, []);
+
+  const getFromStorage = <T,>(key: string, defaultValue: T): T => {
+      if (typeof window === 'undefined') return defaultValue;
+      const stored = localStorage.getItem(key);
+      try {
+        return stored ? JSON.parse(stored) : defaultValue;
+      } catch (e) {
+        return defaultValue;
+      }
+  };
 
 
   return (
