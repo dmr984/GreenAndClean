@@ -1,13 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Send, MessageSquare, CheckCircle } from "lucide-react";
+import { Send, MessageSquare, Trash2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import Link from "next/link";
+
 
 type Communication = {
   id: string;
@@ -45,6 +48,11 @@ const getAvatarFallback = (name?: string) => {
     return name.substring(0, 2).toUpperCase();
 };
 
+const generateEmailFromName = (name: string) => {
+    if (!name) return "";
+    return `${name.toLowerCase().replace(/\s+/g, '.')}@serveco.it`;
+};
+
 export default function CommunicationsPage() {
     const { toast } = useToast();
     const [userRole, setUserRole] = React.useState<string | null>(null);
@@ -53,6 +61,10 @@ export default function CommunicationsPage() {
     const [communications, setCommunications] = React.useState<Communication[]>([]);
     const [newCommunication, setNewCommunication] = React.useState("");
     const [loading, setLoading] = React.useState(true);
+
+    // State for delete confirmation dialog
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+    const [selectedCommId, setSelectedCommId] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         const role = getFromStorage<string|null>('userRole', null);
@@ -94,17 +106,31 @@ export default function CommunicationsPage() {
         };
 
         const updatedCommunications = [communication, ...communications];
-        setCommunications(updatedCommunications);
         saveToStorage('communications', updatedCommunications);
+        setCommunications(updatedCommunications);
         setNewCommunication("");
         toast({ title: "Comunicazione Inviata", description: "La tua comunicazione è stata inviata all'amministratore." });
     };
+
+    const handleDeleteClick = (id: string) => {
+        setSelectedCommId(id);
+        setIsDeleteDialogOpen(true);
+    }
+
+    const handleDeleteConfirm = () => {
+        if (!selectedCommId) return;
+        const updated = communications.filter(c => c.id !== selectedCommId);
+        saveToStorage('communications', updated);
+        setCommunications(updated);
+        toast({ title: "Comunicazione eliminata" });
+        setIsDeleteDialogOpen(false);
+        setSelectedCommId(null);
+    }
 
     const markAsRead = (id: string) => {
         const updated = communications.map(c => c.id === id ? { ...c, read: true } : c);
         setCommunications(updated);
         saveToStorage('communications', updated);
-        window.dispatchEvent(new Event('storage')); // Trigger update for badges
     };
 
     const isAdmin = userRole === 'admin';
@@ -116,6 +142,7 @@ export default function CommunicationsPage() {
 
     if (isAdmin) {
         return (
+             <>
              <Card>
                 <CardHeader>
                     <CardTitle>Bacheca Comunicazioni</CardTitle>
@@ -130,7 +157,7 @@ export default function CommunicationsPage() {
                     ) : (
                         <div className="space-y-4">
                             {communications.map(comm => (
-                                <Card key={comm.id} className={comm.read ? 'bg-muted/50' : 'bg-secondary'}>
+                                <Card key={comm.id} className={comm.read ? 'bg-muted/50' : ''}>
                                     <CardHeader className="flex flex-row justify-between items-start pb-2">
                                         <div className="flex items-center gap-3">
                                             <Avatar>
@@ -141,24 +168,46 @@ export default function CommunicationsPage() {
                                                 <p className="text-xs text-muted-foreground">{new Date(comm.timestamp).toLocaleString('it-IT')}</p>
                                             </div>
                                         </div>
-                                        {!comm.read && <Badge variant="destructive">Nuova</Badge>}
+                                        <div className="flex items-center gap-2">
+                                            {!comm.read && <Badge variant="destructive">Nuova</Badge>}
+                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(comm.id)}>
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                                <span className="sr-only">Elimina</span>
+                                            </Button>
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <p className="whitespace-pre-wrap">{comm.text}</p>
-                                        {!comm.read && (
-                                            <div className="text-right mt-2">
-                                                <Button size="sm" variant="outline" onClick={() => markAsRead(comm.id)}>
-                                                    <CheckCircle className="mr-2 h-4 w-4" /> Segna come letto
-                                                </Button>
-                                            </div>
-                                        )}
+                                        <p className="whitespace-pre-wrap py-2">{comm.text}</p>
                                     </CardContent>
+                                    <CardFooter className="flex justify-end bg-muted/25 py-3 px-4 border-t">
+                                        <Button asChild size="sm" onClick={() => markAsRead(comm.id)}>
+                                          <Link href={`mailto:${generateEmailFromName(comm.userName)}`}>
+                                            <Mail className="mr-2 h-4 w-4" /> Rispondi via Email
+                                          </Link>
+                                        </Button>
+                                    </CardFooter>
                                 </Card>
                             ))}
                         </div>
                     )}
                 </CardContent>
             </Card>
+
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione non può essere annullata. La comunicazione verrà eliminata in modo permanente.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setSelectedCommId(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteConfirm}>Conferma Eliminazione</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            </>
         )
     }
 
@@ -200,9 +249,10 @@ export default function CommunicationsPage() {
                         <div className="space-y-3">
                             {operatorCommunications.map(comm => (
                                 <div key={comm.id} className="border p-4 rounded-md bg-muted/50">
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        Inviato il: {new Date(comm.timestamp).toLocaleString('it-IT')}
-                                    </p>
+                                    <div className="flex justify-between items-center text-sm text-muted-foreground mb-2">
+                                        <span>Inviato il: {new Date(comm.timestamp).toLocaleString('it-IT')}</span>
+                                        {comm.read && <Badge variant="secondary">Letto</Badge>}
+                                    </div>
                                     <p>{comm.text}</p>
                                 </div>
                             ))}
