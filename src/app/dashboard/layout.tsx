@@ -12,62 +12,59 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 
+type Communication = {
+  id: string;
+  read: boolean;
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
   const [userName, setUserName] = React.useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const [unreadMessages, setUnreadMessages] = React.useState(0);
+  const [unreadCommunications, setUnreadCommunications] = React.useState(0);
   const [userId, setUserId] = React.useState<string|null>(null);
   const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
   React.useEffect(() => {
-    const checkUserAndMessages = () => {
+    const checkUserAndData = () => {
         if (typeof window !== 'undefined') {
-        const role = localStorage.getItem('userRole');
-        const id = localStorage.getItem('userId');
-        const name = localStorage.getItem('userName');
-        setUserRole(role);
-        setUserId(id);
-        setUserName(name);
+          const role = localStorage.getItem('userRole');
+          const id = localStorage.getItem('userId');
+          const name = localStorage.getItem('userName');
+          setUserRole(role);
+          setUserId(id);
+          setUserName(name);
 
-        // Privacy enforcement
-        if (role === 'operator') {
-            if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements') {
-                if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(id ?? '')) {
-                    // This is the operator's own profile, allow it
-                } else {
-                   router.replace('/dashboard');
-                }
-            }
-        }
+          // Privacy enforcement
+          if (role === 'operator') {
+              if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements') {
+                  if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(id ?? '')) {
+                      // This is the operator's own profile, allow it
+                  } else {
+                     router.replace('/dashboard');
+                  }
+              }
+          }
         
-        // Check for unread messages
-        const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
-        let count = 0;
-        if(role === 'admin') {
-            // Count conversations with at least one unread message from an operator
-            Object.values(allMessages).forEach((convo: any) => {
-                if(convo.some((msg: any) => !msg.read && msg.sender !== 'admin')) {
-                    count++;
-                }
-            });
-        } else if (id && allMessages[id]) {
-            // Count unread messages from admin for the current operator
-            count = allMessages[id].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
+          // Check for unread communications
+          const allComms = JSON.parse(localStorage.getItem('communications') || '[]');
+          if(role === 'admin') {
+              const unreadCount = allComms.filter((c: Communication) => !c.read).length;
+              setUnreadCommunications(unreadCount);
+          } else {
+             // Operators don't have a concept of unread communications they receive
+             setUnreadCommunications(0);
+          }
         }
-        setUnreadMessages(count);
-
-      }
     }
     
-    checkUserAndMessages();
-    window.addEventListener('storage', checkUserAndMessages);
+    checkUserAndData();
+    window.addEventListener('storage', checkUserAndData);
 
     return () => {
-      window.removeEventListener('storage', checkUserAndMessages);
+      window.removeEventListener('storage', checkUserAndData);
     }
   }, [pathname, router]);
 
@@ -111,15 +108,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const isAdmin = userRole === 'admin';
-  const isOperator = userRole === 'operator';
-  const isAdminDashboardPage = isAdmin && pathname === '/dashboard';
   const isBaseDashboard = pathname === '/dashboard';
   
-  const getMessageRoute = () => {
-      if (isAdmin) return '/dashboard/messages';
-      if (isOperator) return `/dashboard/messages?userId=${userId}`;
-      return '#';
-  }
 
   return (
     <>
@@ -182,19 +172,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex justify-end items-center gap-4">
-             {(isAdmin || isOperator) && (
-                <Link href={getMessageRoute()}>
+             {isAdmin && (
+                <Link href="/dashboard/messages">
                  <Button variant="ghost" size="icon" className="relative">
                     <MessageSquare className="h-5 w-5"/>
-                    {unreadMessages > 0 && <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadMessages}</Badge>}
-                    <span className="sr-only">Messaggi Privati</span>
+                    {unreadCommunications > 0 && <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadCommunications}</Badge>}
+                    <span className="sr-only">Comunicazioni</span>
                  </Button>
                </Link>
             )}
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-           {isAdminDashboardPage ? <AdminDashboard /> : children}
+           {isAdmin && isBaseDashboard ? <AdminDashboard /> : children}
         </main>
     </div>
     <ChangeCodeDialog 

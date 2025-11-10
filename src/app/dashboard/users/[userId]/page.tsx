@@ -48,7 +48,6 @@ export default function UserProfilePage() {
   const [loading, setLoading] = useState(true);
   const [isCurrentUser, setIsCurrentUser] = useState(false);
   const [isViewingAdmin, setIsViewingAdmin] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     let foundUser: User | undefined;
@@ -67,19 +66,6 @@ export default function UserProfilePage() {
     if (typeof window !== 'undefined') {
         const currentUserId = localStorage.getItem('userId');
         setIsCurrentUser(userId === currentUserId);
-        
-        const checkMessages = () => {
-            const allMessages = JSON.parse(localStorage.getItem('private-messages') || '{}');
-            if (currentUserId && allMessages[currentUserId]) {
-                const count = allMessages[currentUserId].filter((msg:any) => !msg.read && msg.sender === 'admin').length;
-                setUnreadMessages(count);
-            }
-        };
-
-        checkMessages();
-        window.addEventListener('storage', checkMessages);
-
-        return () => window.removeEventListener('storage', checkMessages);
     }
   }, [userId]);
 
@@ -167,10 +153,9 @@ export default function UserProfilePage() {
                           Richieste Prodotti
                       </Button>
                       {isCurrentUser && (
-                          <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg relative flex-col sm:flex-row" onClick={() => router.push(`/dashboard/messages?userId=${user.id}`)}>
-                              {unreadMessages > 0 && <Badge variant="destructive" className="absolute top-2 right-2 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadMessages}</Badge>}
+                          <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg relative flex-col sm:flex-row" onClick={() => router.push('/dashboard/messages')}>
                               <MessageSquare className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
-                              Messaggi
+                              Comunicazioni
                           </Button>
                       )}
                    </div>

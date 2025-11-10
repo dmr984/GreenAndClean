@@ -14,12 +14,16 @@ type SupplyRequest = {
   id: string;
   status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale';
 };
+type Communication = {
+  id: string;
+  read: boolean;
+};
 
 
 export function AdminDashboard() {
   const [pendingLeaveRequests, setPendingLeaveRequests] = React.useState(0);
   const [pendingSupplyRequests, setPendingSupplyRequests] = React.useState(0);
-  const [unreadMessages, setUnreadMessages] = React.useState(0);
+  const [unreadCommunications, setUnreadCommunications] = React.useState(0);
 
   React.useEffect(() => {
     // This component will now rely on real-time listeners in the individual pages
@@ -34,15 +38,9 @@ export function AdminDashboard() {
 
         const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
         setPendingSupplyRequests(storedSupply.filter(r => r.status === 'In attesa').length);
-
-        const allMessages = getFromStorage<Record<string, any[]>>('private-messages', {});
-        let messageCount = 0;
-        Object.values(allMessages).forEach((convo: any) => {
-            if(convo.some((msg: any) => !msg.read && msg.sender !== 'admin')) {
-                messageCount++;
-            }
-        });
-        setUnreadMessages(messageCount);
+        
+        const storedCommunications = getFromStorage<Communication[]>('communications', []);
+        setUnreadCommunications(storedCommunications.filter(c => !c.read).length);
       }
     };
 
@@ -132,16 +130,16 @@ export function AdminDashboard() {
         </Link>
         <Link href="/dashboard/messages" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
-                 {unreadMessages > 0 &&
+                 {unreadCommunications > 0 &&
                   <Badge variant="destructive" className="absolute -top-2 -right-2 text-sm sm:text-base h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded-full">
-                    {unreadMessages}
+                    {unreadCommunications}
                   </Badge>
                 }
                 <CardHeader>
                     <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-                    <CardTitle className="text-xl sm:text-2xl">Messaggi Privati</CardTitle>
+                    <CardTitle className="text-xl sm:text-2xl">Comunicazioni</CardTitle>
                 </CardContent>
             </Card>
         </Link>

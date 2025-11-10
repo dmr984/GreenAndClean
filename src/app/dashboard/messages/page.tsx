@@ -1,30 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from 'next/navigation';
-import { Send, User, MessageSquare, ArrowLeft } from "lucide-react";
+import { Send, MessageSquare, User, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
-type Message = {
+type Communication = {
   id: string;
-  sender: 'admin' | string; // user ID or 'admin'
+  userId: string;
+  userName: string;
   text: string;
   timestamp: string;
   read: boolean;
 };
-
-type User = {
-  id: string;
-  name: string;
-};
-
-type Conversation = Message[];
 
 // Generic function to get data from localStorage
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -53,36 +45,27 @@ const getAvatarFallback = (name?: string) => {
     return name.substring(0, 2).toUpperCase();
 };
 
-function MessagesPageContent() {
-    const searchParams = useSearchParams();
-    const operatorIdFromQuery = searchParams.get('userId');
-
+export default function CommunicationsPage() {
+    const { toast } = useToast();
     const [userRole, setUserRole] = React.useState<string | null>(null);
     const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
-    
-    const [allMessages, setAllMessages] = React.useState<Record<string, Conversation>>({});
-    const [operators, setOperators] = React.useState<User[]>([]);
-    
-    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(null);
-    const [newMessage, setNewMessage] = React.useState("");
-    const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+    const [currentUserName, setCurrentUserName] = React.useState<string | null>(null);
+    const [communications, setCommunications] = React.useState<Communication[]>([]);
+    const [newCommunication, setNewCommunication] = React.useState("");
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
         const role = getFromStorage<string|null>('userRole', null);
         const userId = getFromStorage<string|null>('userId', null);
+        const userName = getFromStorage<string|null>('userName', null);
+
         setUserRole(role);
         setCurrentUserId(userId);
-        
-        if (role === 'operator' && userId) {
-            setSelectedConversationId(userId);
-        } else if (role === 'admin' && operatorIdFromQuery) {
-            setSelectedConversationId(operatorIdFromQuery);
-        }
+        setCurrentUserName(userName);
 
         const handleStorageChange = () => {
-            setAllMessages(getFromStorage<Record<string, Conversation>>('private-messages', {}));
-            setOperators(getFromStorage<User[]>('app-users', []));
+            const allComms = getFromStorage<Communication[]>('communications', []);
+            setCommunications(allComms.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         };
 
         handleStorageChange(); // Initial load
@@ -92,183 +75,141 @@ function MessagesPageContent() {
         return () => {
             window.removeEventListener('storage', handleStorageChange);
         };
-    }, [operatorIdFromQuery]);
+    }, []);
 
-    // Mark messages as read when a conversation is opened
-    React.useEffect(() => {
-        if (selectedConversationId && allMessages[selectedConversationId]) {
-            const isUserAdmin = userRole === 'admin';
-            const readerId = isUserAdmin ? 'admin' : currentUserId;
-
-            const hasUnread = allMessages[selectedConversationId].some(m => !m.read && m.sender !== readerId);
-
-            if (hasUnread) {
-                 const updatedMessages = {
-                    ...allMessages,
-                    [selectedConversationId]: allMessages[selectedConversationId].map(m =>
-                        m.sender !== readerId ? { ...m, read: true } : m
-                    )
-                };
-                saveToStorage('private-messages', updatedMessages);
-                setAllMessages(updatedMessages);
-            }
-        }
-    }, [selectedConversationId, allMessages, userRole, currentUserId]);
-    
-    React.useEffect(() => {
-        if (scrollAreaRef.current) {
-            scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
-        }
-    }, [allMessages, selectedConversationId]);
-
-    const handleSendMessage = (e: React.FormEvent) => {
+    const handleSendCommunication = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !selectedConversationId) return;
+        if (!newCommunication.trim() || !currentUserId || !currentUserName) {
+            toast({ variant: "destructive", title: "Errore", description: "Impossibile inviare comunicazione vuota." });
+            return;
+        }
 
-        const senderId = userRole === 'admin' ? 'admin' : currentUserId;
-        if (!senderId) return;
-        
-        const message: Message = {
-            id: `MSG${Date.now()}`,
-            sender: senderId,
-            text: newMessage.trim(),
+        const communication: Communication = {
+            id: `COM${Date.now()}`,
+            userId: currentUserId,
+            userName: currentUserName,
+            text: newCommunication.trim(),
             timestamp: new Date().toISOString(),
             read: false,
         };
 
-        const updatedConversation = [...(allMessages[selectedConversationId] || []), message];
-        const updatedAllMessages = { ...allMessages, [selectedConversationId]: updatedConversation };
+        const updatedCommunications = [communication, ...communications];
+        setCommunications(updatedCommunications);
+        saveToStorage('communications', updatedCommunications);
+        setNewCommunication("");
+        toast({ title: "Comunicazione Inviata", description: "La tua comunicazione è stata inviata all'amministratore." });
+    };
 
-        setAllMessages(updatedAllMessages);
-        saveToStorage('private-messages', updatedAllMessages);
-        setNewMessage("");
+    const markAsRead = (id: string) => {
+        const updated = communications.map(c => c.id === id ? { ...c, read: true } : c);
+        setCommunications(updated);
+        saveToStorage('communications', updated);
+        window.dispatchEvent(new Event('storage')); // Trigger update for badges
     };
 
     const isAdmin = userRole === 'admin';
-    const selectedConversation = selectedConversationId ? allMessages[selectedConversationId] || [] : [];
-    const selectedOperator = operators.find(op => op.id === selectedConversationId);
-    
-    const getConversationsWithUnread = () => {
-       return operators.map(op => {
-         const conversation = allMessages[op.id] || [];
-         const unreadCount = conversation.filter(m => !m.read && m.sender !== 'admin').length;
-         const lastMessage = conversation[conversation.length - 1];
-         return {
-            user: op,
-            unreadCount,
-            lastMessage: lastMessage?.text,
-            lastMessageDate: lastMessage?.timestamp,
-         }
-       }).sort((a,b) => (b.lastMessageDate || '').localeCompare(a.lastMessageDate || ''));
-    }
+    const operatorCommunications = communications.filter(c => c.userId === currentUserId);
     
     if (loading) {
         return <div className="flex items-center justify-center h-full"><p>Caricamento...</p></div>
     }
 
-    if (isAdmin && !selectedConversationId) {
-        const conversations = getConversationsWithUnread();
+    if (isAdmin) {
         return (
-            <Card>
+             <Card>
                 <CardHeader>
-                    <CardTitle>Messaggi Privati</CardTitle>
-                    <CardDescription>Seleziona una conversazione per visualizzare i messaggi.</CardDescription>
+                    <CardTitle>Bacheca Comunicazioni</CardTitle>
+                    <CardDescription>Visualizza le comunicazioni inviate dagli operatori.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {conversations.length === 0 ? (
-                        <div className="text-center text-muted-foreground py-12">
-                            <p>Nessuna conversazione attiva.</p>
+                    {communications.length === 0 ? (
+                        <div className="text-center text-muted-foreground py-16">
+                             <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
+                            <p className="mt-4">Nessuna comunicazione ricevuta.</p>
                         </div>
                     ) : (
-                        <ul className="space-y-2">
-                            {conversations.map(({ user, unreadCount, lastMessage }) => (
-                                <li key={user.id}>
-                                    <button 
-                                      className="w-full text-left p-3 rounded-lg hover:bg-muted transition-colors flex items-center gap-4"
-                                      onClick={() => setSelectedConversationId(user.id)}
-                                    >
-                                        <Avatar>
-                                            <AvatarFallback>{getAvatarFallback(user.name)}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 overflow-hidden">
-                                            <div className="flex justify-between items-center">
-                                                <p className="font-semibold">{user.name}</p>
-                                                {unreadCount > 0 && <Badge variant="destructive">{unreadCount}</Badge>}
+                        <div className="space-y-4">
+                            {communications.map(comm => (
+                                <Card key={comm.id} className={comm.read ? 'bg-muted/50' : 'bg-secondary'}>
+                                    <CardHeader className="flex flex-row justify-between items-start pb-2">
+                                        <div className="flex items-center gap-3">
+                                            <Avatar>
+                                                <AvatarFallback>{getAvatarFallback(comm.userName)}</AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                                <p className="font-semibold">{comm.userName}</p>
+                                                <p className="text-xs text-muted-foreground">{new Date(comm.timestamp).toLocaleString('it-IT')}</p>
                                             </div>
-                                            <p className="text-sm text-muted-foreground truncate">{lastMessage || 'Nessun messaggio'}</p>
                                         </div>
-                                    </button>
-                                </li>
+                                        {!comm.read && <Badge variant="destructive">Nuova</Badge>}
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="whitespace-pre-wrap">{comm.text}</p>
+                                        {!comm.read && (
+                                            <div className="text-right mt-2">
+                                                <Button size="sm" variant="outline" onClick={() => markAsRead(comm.id)}>
+                                                    <CheckCircle className="mr-2 h-4 w-4" /> Segna come letto
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
                             ))}
-                        </ul>
+                        </div>
                     )}
                 </CardContent>
             </Card>
-        );
+        )
     }
 
-    const currentChatterId = userRole === 'admin' ? 'admin' : currentUserId;
-
+    // Operator View
     return (
-        <Card className="h-full flex flex-col" style={{maxHeight: 'calc(100vh - 120px)'}}>
-            <CardHeader className="flex-shrink-0 border-b">
-                <div className="flex items-center gap-4">
-                    {isAdmin && (
-                        <Button variant="ghost" size="icon" className="-ml-2 mr-2" onClick={() => setSelectedConversationId(null)}>
-                            <ArrowLeft className="h-5 w-5"/>
+        <div className="flex flex-col gap-8">
+             <Card>
+                <CardHeader>
+                    <CardTitle>Invia una Comunicazione</CardTitle>
+                    <CardDescription>
+                        Invia una segnalazione o una richiesta all'amministratore. Non è una chat in tempo reale.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSendCommunication} className="space-y-4">
+                        <Textarea 
+                          value={newCommunication}
+                          onChange={(e) => setNewCommunication(e.target.value)}
+                          placeholder="Scrivi qui la tua comunicazione..."
+                          rows={6}
+                          required
+                        />
+                        <Button type="submit" disabled={!newCommunication.trim()}>
+                            <Send className="mr-2 h-4 w-4" /> Invia Comunicazione
                         </Button>
-                    )}
-                    <Avatar>
-                        <AvatarFallback>{getAvatarFallback(isAdmin ? selectedOperator?.name : 'AD')}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                        <CardTitle>{isAdmin ? selectedOperator?.name : 'Amministratore'}</CardTitle>
-                        <CardDescription>Conversazione privata</CardDescription>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent ref={scrollAreaRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-                {selectedConversation.map(msg => (
-                    <div key={msg.id} className={cn("flex items-end gap-2", msg.sender === currentChatterId ? "justify-end" : "justify-start")}>
-                         {msg.sender !== currentChatterId && <Avatar className="h-8 w-8"><AvatarFallback>{getAvatarFallback(isAdmin ? selectedOperator?.name : 'AD')}</AvatarFallback></Avatar>}
-                        <div className={cn(
-                            "p-3 rounded-lg max-w-xs md:max-w-md",
-                             msg.sender === currentChatterId ? "bg-primary text-primary-foreground" : "bg-muted"
-                        )}>
-                            <p className="text-sm break-words">{msg.text}</p>
-                            <p className="text-xs text-right opacity-70 mt-1">{new Date(msg.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </form>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Cronologia Comunicazioni Inviate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                     {operatorCommunications.length === 0 ? (
+                        <div className="text-center text-muted-foreground py-12">
+                            <p>Non hai ancora inviato nessuna comunicazione.</p>
                         </div>
-                    </div>
-                ))}
-                {selectedConversation.length === 0 && (
-                    <div className="text-center text-muted-foreground pt-16">
-                        <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
-                        <p className="mt-2">Nessun messaggio ancora. Inizia la conversazione!</p>
-                    </div>
-                )}
-            </CardContent>
-            <div className="p-4 border-t flex-shrink-0 bg-background">
-                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                    <Input 
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      placeholder="Scrivi un messaggio..."
-                      autoComplete="off"
-                    />
-                    <Button type="submit" size="icon" disabled={!newMessage.trim()}>
-                        <Send className="h-5 w-5" />
-                        <span className="sr-only">Invia</span>
-                    </Button>
-                </form>
-            </div>
-        </Card>
-    );
-}
-
-export default function MessagesPage() {
-    return (
-        <React.Suspense fallback={<div className="flex items-center justify-center h-full"><p>Caricamento...</p></div>}>
-            <MessagesPageContent />
-        </React.Suspense>
+                    ) : (
+                        <div className="space-y-3">
+                            {operatorCommunications.map(comm => (
+                                <div key={comm.id} className="border p-4 rounded-md bg-muted/50">
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                        Inviato il: {new Date(comm.timestamp).toLocaleString('it-IT')}
+                                    </p>
+                                    <p>{comm.text}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
     );
 }
