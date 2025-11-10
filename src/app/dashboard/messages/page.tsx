@@ -125,11 +125,14 @@ function MessagesPageContent() {
 
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !selectedConversationId || !currentUserId) return;
+        if (!newMessage.trim() || !selectedConversationId) return;
+
+        const senderId = userRole === 'admin' ? 'admin' : currentUserId;
+        if (!senderId) return;
         
         const message: Message = {
             id: `MSG${Date.now()}`,
-            sender: currentUserId,
+            sender: senderId,
             text: newMessage.trim(),
             timestamp: new Date().toISOString(),
             read: false,
@@ -206,6 +209,7 @@ function MessagesPageContent() {
         );
     }
 
+    const currentChatterId = userRole === 'admin' ? 'admin' : currentUserId;
 
     return (
         <Card className="h-full flex flex-col" style={{maxHeight: 'calc(100vh - 120px)'}}>
@@ -227,11 +231,11 @@ function MessagesPageContent() {
             </CardHeader>
             <CardContent ref={scrollAreaRef} className="flex-1 overflow-y-auto p-4 space-y-4">
                 {selectedConversation.map(msg => (
-                    <div key={msg.id} className={cn("flex items-end gap-2", msg.sender === currentUserId ? "justify-end" : "justify-start")}>
-                         {msg.sender !== currentUserId && <Avatar className="h-8 w-8"><AvatarFallback>{getAvatarFallback(isAdmin ? selectedOperator?.name : 'AD')}</AvatarFallback></Avatar>}
+                    <div key={msg.id} className={cn("flex items-end gap-2", msg.sender === currentChatterId ? "justify-end" : "justify-start")}>
+                         {msg.sender !== currentChatterId && <Avatar className="h-8 w-8"><AvatarFallback>{getAvatarFallback(isAdmin ? selectedOperator?.name : 'AD')}</AvatarFallback></Avatar>}
                         <div className={cn(
                             "p-3 rounded-lg max-w-xs md:max-w-md",
-                             msg.sender === currentUserId ? "bg-primary text-primary-foreground" : "bg-muted"
+                             msg.sender === currentChatterId ? "bg-primary text-primary-foreground" : "bg-muted"
                         )}>
                             <p className="text-sm break-words">{msg.text}</p>
                             <p className="text-xs text-right opacity-70 mt-1">{new Date(msg.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</p>
