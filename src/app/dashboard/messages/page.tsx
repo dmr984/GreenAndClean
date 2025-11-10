@@ -63,36 +63,21 @@ function MessagesPageContent() {
     const [allMessages, setAllMessages] = React.useState<Record<string, Conversation>>({});
     const [operators, setOperators] = React.useState<User[]>([]);
     
-    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(() => {
-        if (typeof window === 'undefined') return null;
-        const role = localStorage.getItem('userRole');
-        const userId = localStorage.getItem('userId');
-        if (role === 'operator' && userId) {
-            return userId;
-        }
-        return searchParams.get('userId');
-    });
+    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(null);
     const [newMessage, setNewMessage] = React.useState("");
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
     const [loading, setLoading] = React.useState(true);
-
 
     React.useEffect(() => {
         const role = getFromStorage<string|null>('userRole', null);
         const userId = getFromStorage<string|null>('userId', null);
         setUserRole(role);
         setCurrentUserId(userId);
-        setAllMessages(getFromStorage<Record<string, Conversation>>('private-messages', {}));
-        setOperators(getFromStorage<User[]>('app-users', []));
         
         if (role === 'operator' && userId) {
-            if (selectedConversationId !== userId) {
-                setSelectedConversationId(userId);
-            }
-        } else if (role === 'admin') {
-            if(operatorIdFromQuery && selectedConversationId !== operatorIdFromQuery) {
-                setSelectedConversationId(operatorIdFromQuery);
-            }
+            setSelectedConversationId(userId);
+        } else if (role === 'admin' && operatorIdFromQuery) {
+            setSelectedConversationId(operatorIdFromQuery);
         }
 
         const handleStorageChange = () => {
@@ -100,13 +85,14 @@ function MessagesPageContent() {
             setOperators(getFromStorage<User[]>('app-users', []));
         };
 
+        handleStorageChange(); // Initial load
         window.addEventListener('storage', handleStorageChange);
         setLoading(false);
 
         return () => {
             window.removeEventListener('storage', handleStorageChange);
         };
-    }, [operatorIdFromQuery, selectedConversationId]);
+    }, [operatorIdFromQuery]);
 
     // Mark messages as read when a conversation is opened
     React.useEffect(() => {
@@ -286,3 +272,5 @@ export default function MessagesPage() {
         </React.Suspense>
     );
 }
+
+    
