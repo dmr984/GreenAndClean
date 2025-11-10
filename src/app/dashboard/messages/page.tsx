@@ -63,7 +63,15 @@ function MessagesPageContent() {
     const [allMessages, setAllMessages] = React.useState<Record<string, Conversation>>({});
     const [operators, setOperators] = React.useState<User[]>([]);
     
-    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(null);
+    const [selectedConversationId, setSelectedConversationId] = React.useState<string | null>(() => {
+        if (typeof window === 'undefined') return null;
+        const role = localStorage.getItem('userRole');
+        const userId = localStorage.getItem('userId');
+        if (role === 'operator' && userId) {
+            return userId;
+        }
+        return searchParams.get('userId');
+    });
     const [newMessage, setNewMessage] = React.useState("");
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
     const [loading, setLoading] = React.useState(true);
@@ -78,9 +86,13 @@ function MessagesPageContent() {
         setOperators(getFromStorage<User[]>('app-users', []));
         
         if (role === 'operator' && userId) {
-            setSelectedConversationId(userId);
-        } else {
-            setSelectedConversationId(operatorIdFromQuery);
+            if (selectedConversationId !== userId) {
+                setSelectedConversationId(userId);
+            }
+        } else if (role === 'admin') {
+            if(operatorIdFromQuery && selectedConversationId !== operatorIdFromQuery) {
+                setSelectedConversationId(operatorIdFromQuery);
+            }
         }
 
         const handleStorageChange = () => {
@@ -94,7 +106,7 @@ function MessagesPageContent() {
         return () => {
             window.removeEventListener('storage', handleStorageChange);
         };
-    }, [operatorIdFromQuery]);
+    }, [operatorIdFromQuery, selectedConversationId]);
 
     // Mark messages as read when a conversation is opened
     React.useEffect(() => {
