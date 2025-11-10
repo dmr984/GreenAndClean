@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Send, MessageSquare, User, CheckCircle } from "lucide-react";
+import { Send, MessageSquare, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
