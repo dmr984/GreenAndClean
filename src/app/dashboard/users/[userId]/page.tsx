@@ -135,7 +135,7 @@ export default function UserProfilePage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg flex-col sm:flex-row" onClick={() => alert("Funzione Timbrature non ancora implementata.")}>
                           <Fingerprint className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                           Timbrature
@@ -152,12 +152,6 @@ export default function UserProfilePage() {
                           <Package className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
                           Richieste Prodotti
                       </Button>
-                      {isCurrentUser && (
-                          <Button variant="outline" size="lg" className="h-24 text-base sm:text-lg relative flex-col sm:flex-row" onClick={() => router.push('/dashboard/messages')}>
-                              <MessageSquare className="mr-0 mb-2 sm:mb-0 sm:mr-4 h-6 w-6 sm:h-8 sm:w-8 text-primary"/>
-                              Comunicazioni
-                          </Button>
-                      )}
                    </div>
                 </CardContent>
             </Card>
