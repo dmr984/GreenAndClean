@@ -150,6 +150,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <MessageSquare className="h-5 w-5" /> Contatta Amministratore
                       </Button>
                    )}
+                   {isAdmin && (
+                      <Button variant="ghost" className="justify-start gap-2" onClick={handleCommunicationsClick}>
+                        <MessageSquare className="h-5 w-5" /> Comunicazioni
+                      </Button>
+                   )}
                    <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
                       <Lock className="h-5 w-5" /> Cambia Codice
                    </Button>
