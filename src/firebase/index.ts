@@ -3,7 +3,8 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc } from 'firebase/firestore'
+import { getFirestore as getFirestoreSdk, Firestore } from 'firebase/firestore'
+import { useFirebase } from './provider';
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -36,9 +37,15 @@ export function getSdks(firebaseApp: FirebaseApp) {
   return {
     firebaseApp,
     auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp)
+    firestore: getFirestoreSdk(firebaseApp)
   };
 }
+
+/** Hook to access Firestore instance. */
+export const useFirestore = (): Firestore => {
+  const { firestore } = useFirebase();
+  return firestore;
+};
 
 export * from './provider';
 export * from './client-provider';

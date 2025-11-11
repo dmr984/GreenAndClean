@@ -8,7 +8,9 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
 import { collection, getDocs, writeBatch, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
-import { FirestorePermissionError, errorEmitter } from '@/firebase';
+import { Firestore, FirestoreError } from 'firebase/firestore';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
@@ -20,7 +22,8 @@ type User = {
 };
 
 // This function creates the initial users if they don't exist.
-const initializeUsers = async (firestore: any) => {
+const initializeUsers = async (firestore: Firestore) => {
+  if (!firestore) return;
   const adminDocRef = doc(firestore, 'app-users', 'admin_user');
   
   try {
@@ -40,11 +43,11 @@ const initializeUsers = async (firestore: any) => {
     await setDoc(adminDocRef, adminData);
 
   } catch (error: any) {
-     if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
-        // This could be a 'get' or a 'create' operation failing.
+    if (error instanceof FirestoreError && error.code === 'permission-denied') {
+        const operation = error.message.includes("document to exist") ? 'get' : 'create';
         const permissionError = new FirestorePermissionError({
             path: adminDocRef.path,
-            operation: 'get',
+            operation: operation,
         });
         errorEmitter.emit('permission-error', permissionError);
     } else {
@@ -68,7 +71,6 @@ export default function LoginForm() {
         if (!firestore) return;
         setIsLoading(true);
         
-        // This part is inside its own useEffect, so it runs first.
         try {
             await initializeUsers(firestore);
             
@@ -86,7 +88,7 @@ export default function LoginForm() {
             });
             setUsers(userList);
         } catch (error: any) {
-             if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
+             if (error instanceof FirestoreError && error.code === 'permission-denied') {
                 const permissionError = new FirestorePermissionError({
                     path: 'app-users',
                     operation: 'list',
@@ -117,6 +119,16 @@ export default function LoginForm() {
       return;
     }
     
+    if (!firestore) {
+        toast({
+            variant: "destructive",
+            title: "Errore di sistema",
+            description: "Database non disponibile. Riprova più tardi.",
+        });
+        setIsLoading(false);
+        return;
+    }
+
     try {
         const usersCollection = collection(firestore, 'app-users');
         const q = query(usersCollection, where("username", "==", username), where("password", "==", password));
@@ -148,11 +160,10 @@ export default function LoginForm() {
         }
 
     } catch (error: any) {
-        if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
+        if (error instanceof FirestoreError && error.code === 'permission-denied') {
             const permissionError = new FirestorePermissionError({
                 path: 'app-users',
                 operation: 'list', // The query operation requires list permissions
-                // We don't include requestResourceData for read/list operations
             });
             errorEmitter.emit('permission-error', permissionError);
         } else {
