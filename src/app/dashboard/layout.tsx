@@ -3,7 +3,7 @@ import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -34,7 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
       
-      const userId = authUser.uid === 'admin_user_uid_placeholder' ? 'admin_user' : authUser.uid; // Handle potential special case for admin setup
+      const userId = authUser.email === 'admin@serveco.it' ? 'admin_user' : authUser.uid;
       const userDocRef = doc(firestore, 'users', userId);
       const userDocSnap = await getDoc(userDocRef);
 
@@ -43,6 +43,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const role = userData.role;
         setUserRole(role);
         setUserName(userData.name);
+        
+        // Store for other parts of the app that still use it transitionally
+        localStorage.setItem('userRole', role);
+        localStorage.setItem('userName', userData.name);
+        localStorage.setItem('userId', userId);
+
 
         // Privacy enforcement
         const isOperator = role === 'operator';
@@ -73,6 +79,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         await signOut(auth);
         setUserRole(null);
         setUserName(null);
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('userId');
         router.push('/');
         setIsSidebarOpen(false);
     } catch (error) {
@@ -157,16 +166,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <CalendarCheck className="h-5 w-5" /> Richieste Ferie
                         </Button>
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
-                            <Package className="h-5 w-5" /> Richieste Prodotti
+                            <Package className="h-5 w-5" /> Richieste Forniture
+                        </Button>
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/warehouse')}>
+                            <Warehouse className="h-5 w-5" /> Gestione Magazzino
+                        </Button>
+                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/announcements')}>
+                            <Megaphone className="h-5 w-5" /> Annunci
                         </Button>
                       </>
                     ) : (
                       <>
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/leave-requests')}>
-                            <CalendarCheck className="h-5 w-5" /> Richieste Ferie
+                            <CalendarCheck className="h-5 w-5" /> Le mie Ferie
                         </Button>
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
-                            <Package className="h-5 w-5" /> Richieste Prodotti
+                            <Package className="h-5 w-5" /> Richieste Forniture
                         </Button>
                       </>
                     )}
@@ -210,13 +225,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-           {isAdmin && isBaseDashboard ? <AdminDashboard /> : children}
+           {isBaseDashboard ? (isAdmin ? <AdminDashboard /> : <OperatorDashboard />) : children}
         </main>
     </div>
     <ChangeCodeDialog 
         isOpen={isChangeCodeOpen}
         onOpenChange={setIsChangeCodeOpen}
-        userId={authUser?.uid}
+        userId={authUser?.email === 'admin@serveco.it' ? 'admin_user' : authUser?.uid}
       />
     </>
   );

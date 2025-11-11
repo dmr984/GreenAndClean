@@ -39,7 +39,7 @@ export default function SetupPage() {
                  toast({
                     variant: "default",
                     title: "Admin Auth già esistente",
-                    description: "L'account di autenticazione admin esiste già.",
+                    description: "L'account di autenticazione admin esiste già, ottimo!",
                 });
             } else {
                  toast({
@@ -112,7 +112,7 @@ export default function SetupPage() {
                             disabled={isLoading}
                             className="w-full"
                         >
-                            {isLoading ? 'Registrazione in corso...' : 'Registra Utente Admin'}
+                            {isLoading ? 'Creazione in corso...' : 'Crea Utente Admin'}
                         </Button>
                         </>
                     )}

@@ -6,30 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-
-type User = {
-  id: string;
-  name: string;
-  code: string;
-  role: string;
-  location: string;
-};
-
-// Function to get users from localStorage
-const getUsersFromStorage = (): User[] => {
-  if (typeof window === 'undefined') return [];
-  const storedUsers = localStorage.getItem('app-users');
-  return storedUsers ? JSON.parse(storedUsers) : [];
-};
-
-// Function to save users to localStorage
-const saveUsersToStorage = (users: User[]) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('app-users', JSON.stringify(users));
-  window.dispatchEvent(new Event('storage'));
-};
-
-const adminUser: User = { id: "admin", name: "Amministratore", code: "070380", role: "admin", location: "Sede" };
+import { useAuth, useFirestore } from "@/firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 
 interface ChangeCodeDialogProps {
     isOpen: boolean;
@@ -42,74 +21,58 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
     const [oldCode, setOldCode] = React.useState("");
     const [newCode, setNewCode] = React.useState("");
     const [confirmCode, setConfirmCode] = React.useState("");
+    const auth = useAuth();
+    const firestore = useFirestore();
 
-    const handleCodeChange = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleCodeChange = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
         if (newCode !== confirmCode) {
-            toast({
-                variant: "destructive",
-                title: "Errore",
-                description: "I nuovi codici non corrispondono. Riprova."
-            });
+            toast({ variant: "destructive", title: "Errore", description: "I nuovi codici non corrispondono. Riprova." });
             return;
         }
 
-        if (!userId) {
-             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
+        if (!userId || !auth.currentUser) {
+             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato o non autenticato." });
              return;
         }
 
-        let users: User[] = [];
-        
-        if (userId === 'admin') {
-            // In a real app, admin user data would also be in a DB. 
-            // We can't update it in localStorage if it's hardcoded elsewhere.
-            // Let's assume we can update it if it's also in the 'app-users' list for consistency
-        }
-        
-        users = getUsersFromStorage();
-        const userToUpdate = users.find(u => u.id === userId);
+        try {
+            // Re-authenticate user
+            const credential = EmailAuthProvider.credential(auth.currentUser.email!, oldCode);
+            await reauthenticateWithCredential(auth.currentUser, credential);
+
+            // Update password in Auth
+            await updatePassword(auth.currentUser, newCode);
+
+            // Update user document in Firestore
+            const userDocRef = doc(firestore, 'users', userId);
+            await updateDoc(userDocRef, { code: newCode });
+
+            toast({ title: "Codice Aggiornato", description: "Il tuo codice di accesso è stato modificato con successo." });
             
-        if (!userToUpdate && userId !== 'admin') {
-             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
-             return;
+            resetAndClose();
+
+        } catch (error: any) {
+            console.error("Error changing code:", error);
+             toast({ 
+                variant: "destructive", 
+                title: "Codice Errato o Errore di Sistema", 
+                description: error.code === 'auth/wrong-password' ? "Il vecchio codice non è corretto." : "Si è verificato un errore."
+            });
         }
-        
-        const effectiveUser = userId === 'admin' ? adminUser : userToUpdate;
-
-        if(effectiveUser!.code !== oldCode) {
-            toast({ variant: "destructive", title: "Codice Errato", description: "Il vecchio codice non è corretto." });
-            return;
-        }
-        
-        if (userId === 'admin') {
-            // This is a demo limitation. A real app would have a backend mechanism for this.
-            toast({ title: "Info", description: "La modifica del codice admin non è completamente supportata in questa demo se non è gestito via DB."});
-            // Let's proceed assuming we can update a local list for demo consistency
-        }
-
-        const updatedUsers = users.map(u => u.id === userId ? { ...u, code: newCode } : u);
-        saveUsersToStorage(updatedUsers);
-
-
-        toast({
-            title: "Codice Aggiornato",
-            description: "Il tuo codice di accesso è stato modificato con successo."
-        });
-        
+    }
+    
+    const resetAndClose = () => {
         setOldCode("");
         setNewCode("");
         setConfirmCode("");
         onOpenChange(false);
     }
     
-    // Reset state when dialog closes
     const handleOpenChange = (open: boolean) => {
         if(!open) {
-            setOldCode("");
-            setNewCode("");
-            setConfirmCode("");
+            resetAndClose();
         }
         onOpenChange(open);
     }
@@ -120,7 +83,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
                 <DialogHeader>
                     <DialogTitle>Cambia Codice di Accesso</DialogTitle>
                     <DialogDescription>
-                        Inserisci il tuo codice attuale e poi scegli un nuovo codice.
+                        Inserisci il tuo codice attuale e poi scegli un nuovo codice. Questo aggiornerà la tua password di accesso.
                     </DialogDescription>
                 </DialogHeader>
                 <form id="change-code-form" onSubmit={handleCodeChange} className="grid gap-4 py-4">
