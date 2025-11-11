@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useParams } from 'next/navigation';
@@ -306,7 +304,7 @@ export default function UserProfilePage() {
         </div>
         <div className="grid gap-8">
             <Card>
-                 <CardHeader className="flex flex-col xl:flex-row items-start gap-4">
+                 <CardHeader className="flex flex-col lg:flex-row items-start gap-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1">
                         <Avatar className="h-20 w-20">
                             <AvatarFallback className="text-3xl">{getAvatarFallback(user.username)}</AvatarFallback>
@@ -329,7 +327,7 @@ export default function UserProfilePage() {
                         </div>
                     </div>
                      {summaryStats && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-2 gap-2 w-full xl:max-w-xs mt-4 xl:mt-0 p-2 border rounded-lg">
+                        <div className="grid grid-cols-2 gap-2 w-full lg:max-w-md mt-4 lg:mt-0 p-2 border rounded-lg">
                             <StatCard icon={<CalendarDays className="h-6 w-6"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
                             <StatCard icon={<TrendingUp className="h-6 w-6"/>} label="Straordinari" value={summaryStats.overtime} />
                             <StatCard icon={<CalendarCheck className="h-6 w-6"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
