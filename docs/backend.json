@@ -1,0 +1,376 @@
+{
+  "entities": {
+    "Operator": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Operator",
+      "type": "object",
+      "description": "Represents a cleaning operator within the WorkForce Hub application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Operator entity."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The first name of the cleaning operator."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The last name of the cleaning operator."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the cleaning operator.",
+          "format": "email"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The phone number of the cleaning operator."
+        }
+      },
+      "required": [
+        "id",
+        "firstName",
+        "lastName",
+        "email"
+      ]
+    },
+    "Admin": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Admin",
+      "type": "object",
+      "description": "Represents an administrator within the WorkForce Hub application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Admin entity."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The first name of the administrator."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The last name of the administrator."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the administrator.",
+          "format": "email"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The phone number of the administrator."
+        }
+      },
+      "required": [
+        "id",
+        "firstName",
+        "lastName",
+        "email"
+      ]
+    },
+    "Shift": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Shift",
+      "type": "object",
+      "description": "Represents a work shift for a cleaning operator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Shift entity."
+        },
+        "operatorId": {
+          "type": "string",
+          "description": "Reference to Operator. (Relationship: Operator 1:N Shift)"
+        },
+        "startTime": {
+          "type": "string",
+          "description": "The date and time the shift started.",
+          "format": "date-time"
+        },
+        "endTime": {
+          "type": "string",
+          "description": "The date and time the shift ended.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "operatorId",
+        "startTime",
+        "endTime"
+      ]
+    },
+    "LeaveRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "LeaveRequest",
+      "type": "object",
+      "description": "Represents a leave request submitted by a cleaning operator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the LeaveRequest entity."
+        },
+        "operatorId": {
+          "type": "string",
+          "description": "Reference to Operator. (Relationship: Operator 1:N LeaveRequest)"
+        },
+        "startDate": {
+          "type": "string",
+          "description": "The start date of the leave request.",
+          "format": "date-time"
+        },
+        "endDate": {
+          "type": "string",
+          "description": "The end date of the leave request.",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "description": "The reason for the leave request."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the leave request (e.g., pending, approved, rejected)."
+        },
+        "adminId": {
+          "type": "string",
+          "description": "Reference to Admin who approved or rejected the request. (Relationship: Admin 1:N LeaveRequest)"
+        },
+        "rejectionReason": {
+          "type": "string",
+          "description": "The reason for rejecting the leave request (if applicable)."
+        }
+      },
+      "required": [
+        "id",
+        "operatorId",
+        "startDate",
+        "endDate",
+        "reason",
+        "status"
+      ]
+    },
+    "Announcement": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Announcement",
+      "type": "object",
+      "description": "Represents an announcement posted by the administrator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Announcement entity."
+        },
+        "adminId": {
+          "type": "string",
+          "description": "Reference to Admin. (Relationship: Admin 1:N Announcement)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the announcement."
+        },
+        "content": {
+          "type": "string",
+          "description": "The content of the announcement."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The date and time the announcement was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "adminId",
+        "title",
+        "content",
+        "timestamp"
+      ]
+    },
+    "SupplyRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SupplyRequest",
+      "type": "object",
+      "description": "Represents a request for cleaning supplies submitted by a cleaning operator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the SupplyRequest entity."
+        },
+        "operatorId": {
+          "type": "string",
+          "description": "Reference to Operator. (Relationship: Operator 1:N SupplyRequest)"
+        },
+        "productName": {
+          "type": "string",
+          "description": "The name of the requested cleaning product."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The quantity of the requested cleaning product."
+        },
+        "requestDate": {
+          "type": "string",
+          "description": "The date the supply request was submitted.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the supply request (e.g., pending, approved, rejected)."
+        },
+        "adminId": {
+          "type": "string",
+          "description": "Reference to Admin who approved or rejected the request. (Relationship: Admin 1:N SupplyRequest)"
+        },
+        "rejectionReason": {
+          "type": "string",
+          "description": "The reason for rejecting the supply request (if applicable)."
+        }
+      },
+      "required": [
+        "id",
+        "operatorId",
+        "productName",
+        "quantity",
+        "requestDate",
+        "status"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/operators/{operatorId}",
+        "definition": {
+          "entityName": "Operator",
+          "schema": {
+            "$ref": "#/backend/entities/Operator"
+          },
+          "description": "Stores information about cleaning operators. Uses path-based ownership for operator-specific data.",
+          "params": [
+            {
+              "name": "operatorId",
+              "description": "The unique identifier of the operator."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/admins/{adminId}",
+        "definition": {
+          "entityName": "Admin",
+          "schema": {
+            "$ref": "#/backend/entities/Admin"
+          },
+          "description": "Stores information about administrators. Uses path-based ownership for admin-specific data.",
+          "params": [
+            {
+              "name": "adminId",
+              "description": "The unique identifier of the admin."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/operators/{operatorId}/shifts/{shiftId}",
+        "definition": {
+          "entityName": "Shift",
+          "schema": {
+            "$ref": "#/backend/entities/Shift"
+          },
+          "description": "Stores shift data for each operator. Employs path-based ownership.",
+          "params": [
+            {
+              "name": "operatorId",
+              "description": "The unique identifier of the operator."
+            },
+            {
+              "name": "shiftId",
+              "description": "The unique identifier of the shift."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/operators/{operatorId}/leaveRequests/{leaveRequestId}",
+        "definition": {
+          "entityName": "LeaveRequest",
+          "schema": {
+            "$ref": "#/backend/entities/LeaveRequest"
+          },
+          "description": "Stores leave requests submitted by operators. Employs path-based ownership.",
+          "params": [
+            {
+              "name": "operatorId",
+              "description": "The unique identifier of the operator."
+            },
+            {
+              "name": "leaveRequestId",
+              "description": "The unique identifier of the leave request."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/announcements/{announcementId}",
+        "definition": {
+          "entityName": "Announcement",
+          "schema": {
+            "$ref": "#/backend/entities/Announcement"
+          },
+          "description": "Stores announcements created by administrators.  Authorization is based on admin role (existence check in /roles_admin/{uid}).",
+          "params": [
+            {
+              "name": "announcementId",
+              "description": "The unique identifier of the announcement."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/operators/{operatorId}/supplyRequests/{supplyRequestId}",
+        "definition": {
+          "entityName": "SupplyRequest",
+          "schema": {
+            "$ref": "#/backend/entities/SupplyRequest"
+          },
+          "description": "Stores supply requests submitted by operators. Uses path-based ownership.",
+          "params": [
+            {
+              "name": "operatorId",
+              "description": "The unique identifier of the operator."
+            },
+            {
+              "name": "supplyRequestId",
+              "description": "The unique identifier of the supply request."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{adminId}",
+        "definition": {
+          "entityName": "AdminRole",
+          "schema": {
+            "$ref": "#/backend/entities/Admin"
+          },
+          "description": "A collection to store admin roles. Existence of a document with the user's ID in this collection grants admin privileges. This enables secure list operations for admin-related data.",
+          "params": [
+            {
+              "name": "adminId",
+              "description": "The unique identifier of the administrator."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to ensure authorization independence, clarity, and scalability for the WorkForce Hub application. It leverages path-based ownership for user-specific data and a dedicated collection for admins. This design avoids `get()` calls in security rules and facilitates secure list operations. Authorization Independence is achieved through the use of explicit path-based ownership and existence checks within specific role collections. The structure also separates data based on access requirements (Admin vs Operator data), and this supports required QAPs by allowing secure list operations within each designated area of the database. For example, operators can only list their own shifts, leave requests, and supply requests, while admins have read access across the board. Furthermore, all admin roles are determined using existence checks against the `/roles_admin/{uid}` collection."
+  }
+}
