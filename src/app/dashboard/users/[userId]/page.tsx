@@ -197,9 +197,13 @@ export default function UserProfilePage() {
                     </Avatar>
                     <div className="flex-1">
                         <CardTitle className="text-3xl">{user.username}</CardTitle>
-                        <CardDescription className="text-lg">Password: {user.password} | Luogo: {user.location}</CardDescription>
+                        <CardDescription className="text-base flex flex-col sm:flex-row sm:gap-2">
+                          <span>Password: {user.password}</span>
+                          <span className="hidden sm:inline">|</span>
+                          <span>Luogo: {user.location}</span>
+                        </CardDescription>
                     </div>
-                     <div className="flex items-center gap-2 self-start md:self-center">
+                     <div className="flex items-center gap-2 self-start md:self-center pt-2 md:pt-0">
                         <Label htmlFor="expected-hours" className="text-lg shrink-0">Ore Previste:</Label>
                          <div className="flex items-center gap-1">
                             <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
@@ -224,9 +228,9 @@ export default function UserProfilePage() {
                             <CardDescription>Riepilogo dei turni di lavoro completati, con dettaglio ore e straordinari.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <ScrollArea className="h-[400px]">
+                            <ScrollArea className="h-[400px] w-full overflow-x-auto">
                             {shifts.length > 0 ? (
-                                <Table>
+                                <Table className="min-w-[600px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Data</TableHead>
