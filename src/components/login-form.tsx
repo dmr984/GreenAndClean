@@ -7,9 +7,9 @@ import { Label } from '@/components/ui/label';
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 
 type User = {
   id: string;
@@ -27,12 +27,12 @@ export default function LoginForm() {
   const firestore = useFirestore();
   const auth = useAuth();
   
-  // We will now fetch users manually because useCollection hook has security rule issues before login
   const [users, setUsers] = React.useState<User[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     const fetchUsers = async () => {
+      if (!firestore) return;
       try {
         const usersCollection = collection(firestore, 'users');
         const userSnapshot = await getDocs(usersCollection);
@@ -43,16 +43,14 @@ export default function LoginForm() {
         toast({
             variant: "destructive",
             title: "Errore di connessione",
-            description: "Impossibile caricare l'elenco degli utenti. Controlla le regole di sicurezza di Firestore.",
+            description: "Impossibile caricare l'elenco degli utenti. Controllare le regole di sicurezza o la connessione di rete.",
         });
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (firestore) {
-      fetchUsers();
-    }
+    fetchUsers();
   }, [firestore, toast]);
 
 
@@ -69,12 +67,13 @@ export default function LoginForm() {
       return;
     }
     
-    const user = users?.find(u => u.email === selectedUserEmail);
+    const user = users.find(u => u.email === selectedUserEmail);
 
     if (user) {
       try {
         const userCredential = await signInWithEmailAndPassword(auth, user.email, code);
-        localStorage.setItem('userRole', user.role);
+        // localStorage is not ideal, but for role it is a simple solution for now
+        localStorage.setItem('userRole', user.role); 
         localStorage.setItem('userName', user.name);
         localStorage.setItem('userId', userCredential.user.uid);
         

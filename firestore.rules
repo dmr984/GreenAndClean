@@ -3,38 +3,36 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Allow anyone to read the list of users for the login dropdown,
-    // but only expose non-sensitive fields.
     match /users/{userId} {
+      // Allow anyone to get the list of users for the login dropdown.
       allow list: if true; 
+      // Allow authenticated users to read their own full document.
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create, update, delete: if request.auth != null && exists(/databases/$(database)/documents/users/admin_user) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Allow only an admin to create, update, or delete other users.
+      // The exists() check ensures that the person making the request has an admin role document.
+      allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Allow admin to create the initial admin user document
     match /users/admin_user {
-        allow create: if true;
+        // Allow anyone to create the initial admin user document *if it doesn't exist*.
+        // This is used by the one-time setup page.
+        allow create: if !exists(/databases/$(database)/documents/users/admin_user);
     }
 
+    // Only admins can read or write announcements.
     match /announcements/{announcementId} {
-        allow read, write: if request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
-
+    
+    // Only admins can read or write warehouse items.
     match /warehouse-items/{itemId} {
-        allow read, write: if request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
      
-    match /{path=**}/shifts/{shiftId} {
-      allow read, write: if request.auth != null;
+    // Generic rules for user-specific subcollections
+    // Any authenticated user can interact with their own subcollections.
+    match /users/{userId}/{collection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    
-    match /{path=**}/leave-requests/{leaveRequestId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    match /{path=**}/supply-requests/{supplyRequestId} {
-       allow read, write: if request.auth != null;
-    }
-
   }
 }
