@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useParams } from 'next/navigation';
@@ -158,8 +159,13 @@ export default function UserProfilePage() {
   const summaryStats = useMemo(() => {
     if (!user) return null;
 
-    // 1. Worked Days
-    const workedDays = shifts.filter(s => s.startTime && s.endTime).length;
+    // 1. Worked Days - Corrected Logic
+    const workedDayDates = new Set(
+        shifts
+            .filter(s => s.startTime && s.endTime)
+            .map(s => new Date(s.startTime!).toISOString().split('T')[0])
+    );
+    const workedDays = workedDayDates.size;
 
     // 2. Overtime
     const totalOvertimeMinutes = shifts.reduce((total, shift) => {
@@ -468,3 +474,4 @@ export default function UserProfilePage() {
 }
 
     
+
