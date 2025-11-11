@@ -254,7 +254,7 @@ export default function UsersPage() {
                    </div>
                 </CardContent>
                 <CardFooter>
-                    <Button asChild className="w-full" disabled>
+                    <Button asChild className="w-full">
                         <Link href={`/dashboard/users/${user.id}`}>
                             <User className="mr-2 h-4 w-4" />
                             Visualizza Profilo
