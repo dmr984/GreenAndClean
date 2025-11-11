@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, writeBatch, doc } from 'firebase/firestore';
 
 type User = {
   id: string;
@@ -30,8 +30,8 @@ const initializeUsers = async (firestore: any) => {
   const defaultPassword = '0000';
 
   // Create Admin User
-  const adminRef = collection(firestore, 'app-users');
-  batch.set(doc(adminRef, 'admin_user'), {
+  const adminDocRef = doc(firestore, 'app-users', 'admin_user');
+  batch.set(adminDocRef, {
     username: 'Amministratore',
     password: defaultPassword,
     role: 'admin',
@@ -39,8 +39,8 @@ const initializeUsers = async (firestore: any) => {
 
   // Create 10 Operator Users
   for (let i = 1; i <= 10; i++) {
-    const operatorRef = collection(firestore, 'app-users');
-    batch.set(doc(operatorRef, `operator_${i}`), {
+    const operatorDocRef = doc(firestore, 'app-users', `operator_${i}`);
+    batch.set(operatorDocRef, {
         username: `Operatore ${i}`,
         password: defaultPassword,
         role: 'operator',
