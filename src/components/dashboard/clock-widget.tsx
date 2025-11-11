@@ -1,23 +1,35 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, LogIn, LogOut } from "lucide-react";
+import { Clock, LogIn, LogOut, Coffee, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+
+export type Pause = {
+  startTime: string;
+  endTime: string | null;
+}
 
 export type Shift = {
   id: string;
   date: string;
   startTime: string | null;
   endTime: string | null;
+  pauses: Pause[];
 };
 
 // Helper to get shifts from localStorage
 const getShiftsFromStorage = (): Shift[] => {
   if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem('shifts');
-  return stored ? JSON.parse(stored) : [];
+  try {
+    const shifts = stored ? JSON.parse(stored) : [];
+    // Ensure all shifts have a `pauses` property
+    return shifts.map((s: any) => ({ ...s, pauses: s.pauses || [] }));
+  } catch (e) {
+    return [];
+  }
 };
 
 // Helper to save shifts to localStorage
@@ -34,6 +46,7 @@ interface ClockWidgetProps {
 export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
+  const [isOnPause, setIsOnPause] = useState(false);
   const { toast } = useToast();
 
   // Load active shift on component mount
@@ -41,16 +54,28 @@ export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
     const shifts = getShiftsFromStorage();
     const currentActiveShift = shifts.find(s => s.startTime && !s.endTime) || null;
     setActiveShift(currentActiveShift);
+    if(currentActiveShift){
+       const activePause = currentActiveShift.pauses.find(p => p.startTime && !p.endTime);
+       setIsOnPause(!!activePause);
+    }
   }, []);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
 
-    if (activeShift?.startTime) {
+    if (activeShift?.startTime && !isOnPause) {
       const shiftStartTime = new Date(activeShift.startTime);
+      const totalPauseDuration = activeShift.pauses
+        .filter(p => p.endTime)
+        .reduce((total, p) => total + (new Date(p.endTime!).getTime() - new Date(p.startTime).getTime()), 0);
+        
       intervalId = setInterval(() => {
         const now = new Date();
-        const diff = now.getTime() - shiftStartTime.getTime();
+        // Adjust for current active pause if any
+        const currentPause = activeShift.pauses.find(p => p.startTime && !p.endTime);
+        const currentPauseDuration = currentPause ? now.getTime() - new Date(currentPause.startTime).getTime() : 0;
+        
+        const diff = now.getTime() - shiftStartTime.getTime() - totalPauseDuration - currentPauseDuration;
 
         const hours = String(Math.floor(diff / (1000 * 60 * 60))).padStart(2, "0");
         const minutes = String(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, "0");
@@ -59,7 +84,8 @@ export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
         setElapsedTime(`${hours}:${minutes}:${seconds}`);
       }, 1000);
     } else {
-        setElapsedTime("00:00:00");
+        // If not clocked in, reset time. If on pause, time is frozen by not running the interval.
+        if(!activeShift) setElapsedTime("00:00:00");
     }
 
     return () => {
@@ -67,39 +93,83 @@ export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
         clearInterval(intervalId);
       }
     };
-  }, [activeShift]);
+  }, [activeShift, isOnPause]);
 
-  const handleClockInOut = () => {
+  const handleClockIn = () => {
     const now = new Date();
     const shifts = getShiftsFromStorage();
-
-    if (activeShift) { // Clocking out
-      const updatedShifts = shifts.map(s => 
-        s.id === activeShift.id ? { ...s, endTime: now.toISOString() } : s
-      );
-      saveShiftsToStorage(updatedShifts);
-      setActiveShift(null);
-      toast({
-        title: "Fine Turno",
-        description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString()}.`,
-      });
-      if (onShiftComplete) onShiftComplete();
-
-    } else { // Clocking in
-      const newShift: Shift = {
+    const newShift: Shift = {
         id: `SHIFT${Date.now()}`,
         date: now.toISOString().split('T')[0],
         startTime: now.toISOString(),
         endTime: null,
-      };
-      saveShiftsToStorage([...shifts, newShift]);
-      setActiveShift(newShift);
-      toast({
+        pauses: [],
+    };
+    saveShiftsToStorage([...shifts, newShift]);
+    setActiveShift(newShift);
+    toast({
         title: "Inizio Turno",
         description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString()}.`,
-      });
+    });
+  }
+
+  const handleClockOut = () => {
+      const now = new Date();
+      const shifts = getShiftsFromStorage();
+      if (activeShift) {
+        if(isOnPause) { // End pause before clocking out
+            handlePauseToggle();
+        }
+        const updatedShifts = shifts.map(s => 
+            s.id === activeShift.id ? { ...s, endTime: now.toISOString() } : s
+        );
+        saveShiftsToStorage(updatedShifts);
+        setActiveShift(null);
+        setIsOnPause(false);
+        toast({
+            title: "Fine Turno",
+            description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString()}.`,
+        });
+        if (onShiftComplete) onShiftComplete();
+      }
+  }
+
+  const handlePauseToggle = () => {
+    if (!activeShift) return;
+
+    const now = new Date();
+    const shifts = getShiftsFromStorage();
+    let updatedShift: Shift | null = null;
+    
+    if (isOnPause) { // End pause
+        const updatedShifts = shifts.map(s => {
+            if (s.id === activeShift.id) {
+                const updatedPauses = s.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString() } : p);
+                updatedShift = { ...s, pauses: updatedPauses };
+                return updatedShift;
+            }
+            return s;
+        });
+        saveShiftsToStorage(updatedShifts);
+        setIsOnPause(false);
+        if(updatedShift) setActiveShift(updatedShift);
+        toast({ title: "Fine Pausa", description: "Hai ripreso a lavorare." });
+
+    } else { // Start pause
+        const newPause: Pause = { startTime: now.toISOString(), endTime: null };
+        const updatedShifts = shifts.map(s => {
+            if (s.id === activeShift.id) {
+                updatedShift = { ...s, pauses: [...s.pauses, newPause] };
+                return updatedShift;
+            }
+            return s;
+        });
+        saveShiftsToStorage(updatedShifts);
+        setIsOnPause(true);
+        if(updatedShift) setActiveShift(updatedShift);
+        toast({ title: "Inizio Pausa", description: "Hai messo in pausa il tuo turno." });
     }
-  };
+  }
 
   const isClockedIn = !!activeShift;
 
@@ -111,24 +181,36 @@ export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
           <CardTitle className="text-2xl">Gestione Turno</CardTitle>
         </div>
         <CardDescription>
-          {isClockedIn ? "Sei attualmente in turno." : "Tocca per iniziare il tuo turno."}
+          {isClockedIn ? (isOnPause ? "Sei attualmente in pausa." : "Sei attualmente in turno.") : "Tocca per iniziare il tuo turno."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center justify-center gap-4">
         <div className="text-5xl font-bold font-mono tracking-tighter text-center p-4 rounded-lg bg-muted w-full">
           {elapsedTime}
         </div>
-        <Button onClick={handleClockInOut} className="w-full font-bold" size="lg">
-          {isClockedIn ? (
-            <>
-              <LogOut className="mr-2 h-4 w-4" /> Timbra Uscita
-            </>
-          ) : (
-            <>
-              <LogIn className="mr-2 h-4 w-4" /> Timbra Entrata
-            </>
-          )}
-        </Button>
+        {!isClockedIn && (
+            <Button onClick={handleClockIn} className="w-full font-bold" size="lg">
+                <LogIn className="mr-2 h-4 w-4" /> Timbra Entrata
+            </Button>
+        )}
+        {isClockedIn && (
+          <div className="grid grid-cols-2 gap-4 w-full">
+              <Button onClick={handlePauseToggle} className="font-bold" size="lg" variant={isOnPause ? "default" : "outline"}>
+                  {isOnPause ? (
+                    <>
+                        <Play className="mr-2 h-4 w-4" /> Termina Pausa
+                    </>
+                  ) : (
+                    <>
+                        <Coffee className="mr-2 h-4 w-4" /> Inizia Pausa
+                    </>
+                  )}
+              </Button>
+            <Button onClick={handleClockOut} className="font-bold" size="lg" variant="destructive">
+                <LogOut className="mr-2 h-4 w-4" /> Timbra Uscita
+            </Button>
+          </div>
+        )}
         {isClockedIn && activeShift?.startTime && (
           <p className="text-sm text-muted-foreground">
             Turno iniziato alle {new Date(activeShift.startTime).toLocaleTimeString()}
