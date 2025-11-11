@@ -6,16 +6,48 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
-export function ClockWidget() {
-  const [isClockedIn, setIsClockedIn] = useState(false);
-  const [shiftStartTime, setShiftStartTime] = useState<Date | null>(null);
+export type Shift = {
+  id: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+// Helper to get shifts from localStorage
+const getShiftsFromStorage = (): Shift[] => {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem('shifts');
+  return stored ? JSON.parse(stored) : [];
+};
+
+// Helper to save shifts to localStorage
+const saveShiftsToStorage = (shifts: Shift[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('shifts', JSON.stringify(shifts));
+  window.dispatchEvent(new Event('storage'));
+};
+
+interface ClockWidgetProps {
+  onShiftComplete?: () => void;
+}
+
+export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
+  const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
   const { toast } = useToast();
+
+  // Load active shift on component mount
+  useEffect(() => {
+    const shifts = getShiftsFromStorage();
+    const currentActiveShift = shifts.find(s => s.startTime && !s.endTime) || null;
+    setActiveShift(currentActiveShift);
+  }, []);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
 
-    if (isClockedIn && shiftStartTime) {
+    if (activeShift?.startTime) {
+      const shiftStartTime = new Date(activeShift.startTime);
       intervalId = setInterval(() => {
         const now = new Date();
         const diff = now.getTime() - shiftStartTime.getTime();
@@ -26,6 +58,8 @@ export function ClockWidget() {
 
         setElapsedTime(`${hours}:${minutes}:${seconds}`);
       }, 1000);
+    } else {
+        setElapsedTime("00:00:00");
     }
 
     return () => {
@@ -33,28 +67,41 @@ export function ClockWidget() {
         clearInterval(intervalId);
       }
     };
-  }, [isClockedIn, shiftStartTime]);
+  }, [activeShift]);
 
   const handleClockInOut = () => {
-    const newClockInState = !isClockedIn;
-    setIsClockedIn(newClockInState);
-    
-    if (newClockInState) {
-      const startTime = new Date();
-      setShiftStartTime(startTime);
-      toast({
-        title: "Inizio Turno",
-        description: `Hai timbrato l'entrata alle ${startTime.toLocaleTimeString()}.`,
-      });
-    } else {
+    const now = new Date();
+    const shifts = getShiftsFromStorage();
+
+    if (activeShift) { // Clocking out
+      const updatedShifts = shifts.map(s => 
+        s.id === activeShift.id ? { ...s, endTime: now.toISOString() } : s
+      );
+      saveShiftsToStorage(updatedShifts);
+      setActiveShift(null);
       toast({
         title: "Fine Turno",
-        description: `Hai timbrato l'uscita alle ${new Date().toLocaleTimeString()}.`,
+        description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString()}.`,
       });
-      setShiftStartTime(null);
-      setElapsedTime("00:00:00");
+      if (onShiftComplete) onShiftComplete();
+
+    } else { // Clocking in
+      const newShift: Shift = {
+        id: `SHIFT${Date.now()}`,
+        date: now.toISOString().split('T')[0],
+        startTime: now.toISOString(),
+        endTime: null,
+      };
+      saveShiftsToStorage([...shifts, newShift]);
+      setActiveShift(newShift);
+      toast({
+        title: "Inizio Turno",
+        description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString()}.`,
+      });
     }
   };
+
+  const isClockedIn = !!activeShift;
 
   return (
     <Card>
@@ -69,7 +116,7 @@ export function ClockWidget() {
       </CardHeader>
       <CardContent className="flex flex-col items-center justify-center gap-4">
         <div className="text-5xl font-bold font-mono tracking-tighter text-center p-4 rounded-lg bg-muted w-full">
-          {isClockedIn ? elapsedTime : "00:00:00"}
+          {elapsedTime}
         </div>
         <Button onClick={handleClockInOut} className="w-full font-bold" size="lg">
           {isClockedIn ? (
@@ -82,9 +129,9 @@ export function ClockWidget() {
             </>
           )}
         </Button>
-        {isClockedIn && shiftStartTime && (
+        {isClockedIn && activeShift?.startTime && (
           <p className="text-sm text-muted-foreground">
-            Turno iniziato alle {shiftStartTime.toLocaleTimeString()}
+            Turno iniziato alle {new Date(activeShift.startTime).toLocaleTimeString()}
           </p>
         )}
       </CardContent>
