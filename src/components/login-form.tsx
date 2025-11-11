@@ -47,14 +47,12 @@ const initializeUsers = async (firestore: any) => {
         password: defaultPassword,
         role: 'operator',
       };
-      const operatorDocRef = doc(firestore, 'app-users', `operator_${i}`);
+      const operatorDocRef = doc(usersCollectionRef);
       batch.set(operatorDocRef, operatorData);
     }
     
     // Non-blocking commit with contextual error handling
-    batch.commit().then(() => {
-        console.log('Initial users created.');
-    }).catch(error => {
+    batch.commit().catch(error => {
         console.error("Batch commit failed:", error);
         // We can't know which specific doc failed in a batch, so we emit a general error for the collection.
         const permissionError = new FirestorePermissionError({
