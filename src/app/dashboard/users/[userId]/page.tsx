@@ -170,7 +170,6 @@ export default function UserProfilePage() {
   const summaryStats = useMemo(() => {
     if (!user) return null;
 
-    // 1. Worked Days - Corrected Logic
     const workedDayDates = new Set(
         shifts
             .filter(s => s.startTime && s.endTime)
@@ -178,7 +177,6 @@ export default function UserProfilePage() {
     );
     const workedDays = workedDayDates.size;
 
-    // 2. Overtime
     const totalOvertimeMinutes = shifts.reduce((total, shift) => {
         const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
         const expectedMinutes = (user.expectedHours || 0) * 60;
@@ -186,7 +184,6 @@ export default function UserProfilePage() {
         return total + overtime;
     }, 0);
 
-    // 3. Vacation Days
     const vacationDays = leaveRequests.reduce((total, req) => {
         if (req.status === 'Approvata' && req.type === 'Ferie') {
             const start = new Date(req.from);
@@ -198,7 +195,6 @@ export default function UserProfilePage() {
         return total;
     }, 0);
 
-    // 4. Permit Hours
     const permitMinutes = leaveRequests.reduce((total, req) => {
         if (req.status === 'Approvata' && req.type === 'Permesso' && req.timeFrom && req.timeTo) {
             const [fromHours, fromMinutes] = req.timeFrom.split(':').map(Number);
@@ -288,7 +284,7 @@ export default function UserProfilePage() {
   }
   
   const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
-    <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+    <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
         <div className="text-primary">{icon}</div>
         <div>
             <div className="text-sm text-muted-foreground">{label}</div>
@@ -302,21 +298,21 @@ export default function UserProfilePage() {
         <div className="flex items-center gap-4 mb-4">
             <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
         </div>
-        <div className="grid gap-8">
-            <Card>
-                 <CardHeader className="flex flex-col lg:flex-row items-start gap-4">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1">
-                        <Avatar className="h-20 w-20">
-                            <AvatarFallback className="text-3xl">{getAvatarFallback(user.username)}</AvatarFallback>
+        <div className="grid gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                    <CardHeader className="flex flex-row items-start gap-4">
+                         <Avatar className="h-16 w-16">
+                            <AvatarFallback className="text-2xl">{getAvatarFallback(user.username)}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
-                            <CardTitle className="text-3xl">{user.username}</CardTitle>
-                            <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+                            <CardTitle className="text-2xl">{user.username}</CardTitle>
+                            <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 gap-y-1">
                                <span>Password: {user.password}</span>
                                <span className="hidden sm:inline">|</span>
                                <span>Luogo: {user.location}</span>
                             </CardDescription>
-                             <div className="flex items-center gap-2 mt-2">
+                             <div className="flex items-center gap-2 mt-4">
                                 <Label htmlFor="expected-hours" className="text-base shrink-0">Ore Previste:</Label>
                                  <div className="flex items-center gap-1">
                                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
@@ -325,23 +321,29 @@ export default function UserProfilePage() {
                                 </div>
                              </div>
                         </div>
-                    </div>
-                     {summaryStats && (
-                        <div className="grid grid-cols-2 gap-2 w-full lg:max-w-md mt-4 lg:mt-0 p-2 border rounded-lg">
-                            <StatCard icon={<CalendarDays className="h-6 w-6"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
-                            <StatCard icon={<TrendingUp className="h-6 w-6"/>} label="Straordinari" value={summaryStats.overtime} />
-                            <StatCard icon={<CalendarCheck className="h-6 w-6"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
-                            <StatCard icon={<Hourglass className="h-6 w-6"/>} label="Ore Permesso" value={summaryStats.permitHours} />
-                        </div>
-                     )}
-                </CardHeader>
-            </Card>
+                    </CardHeader>
+                </Card>
+
+                 {summaryStats && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-xl">Riepilogo Attività</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-2 gap-3 sm:gap-4">
+                            <StatCard icon={<CalendarDays className="h-7 w-7"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
+                            <StatCard icon={<TrendingUp className="h-7 w-7"/>} label="Straordinari" value={summaryStats.overtime} />
+                            <StatCard icon={<CalendarCheck className="h-7 w-7"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
+                            <StatCard icon={<Hourglass className="h-7 w-7"/>} label="Ore Permesso" value={summaryStats.permitHours} />
+                        </CardContent>
+                    </Card>
+                 )}
+            </div>
 
             <Tabs defaultValue="shifts">
-                <TabsList className="flex flex-col md:flex-row h-auto w-full md:w-auto md:inline-flex">
-                    <TabsTrigger value="shifts" className="w-full md:w-auto justify-start md:justify-center gap-2"><Briefcase className="h-4 w-4"/>Timbrature</TabsTrigger>
-                    <TabsTrigger value="leaves" className="w-full md:w-auto justify-start md:justify-center gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
-                    <TabsTrigger value="supplies" className="w-full md:w-auto justify-start md:justify-center gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 md:w-auto">
+                    <TabsTrigger value="shifts" className="gap-2"><Briefcase className="h-4 w-4"/>Timbrature</TabsTrigger>
+                    <TabsTrigger value="leaves" className="gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
+                    <TabsTrigger value="supplies" className="gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="shifts">
@@ -392,7 +394,7 @@ export default function UserProfilePage() {
                                                         )}
                                                     </div>
                                                 </div>
-                                                <hr/>
+                                                <hr className="my-2"/>
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm min-w-[300px]">
                                                     <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle /> Pause:</div>
                                                     <div className="font-mono text-right font-semibold text-muted-foreground">{duration.pause}</div>
