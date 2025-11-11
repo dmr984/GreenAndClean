@@ -56,8 +56,8 @@ export default function UsersPage() {
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const email = (form.elements.namedItem('email') as HTMLInputElement).value;
-    const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
+    const defaultCode = "000000";
 
     if (users?.some(u => u.email === email)) {
         toast({
@@ -69,15 +69,15 @@ export default function UsersPage() {
     }
 
     try {
-        // Step 1: Create user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, code);
+        // Step 1: Create user in Firebase Auth with the default code
+        const userCredential = await createUserWithEmailAndPassword(auth, email, defaultCode);
         const authUser = userCredential.user;
 
         // Step 2: If Auth creation is successful, create user document in Firestore
         const newUserDoc = {
             name,
             email,
-            code, // Storing for reference/display, not for auth checks
+            code: defaultCode, // Store the default code
             location,
             role: 'operator',
         };
@@ -87,7 +87,7 @@ export default function UsersPage() {
         setIsNewUserDialogOpen(false);
         toast({
         title: "Utente Aggiunto",
-        description: `L'utente ${name} è stato aggiunto con successo.`,
+        description: `L'utente ${name} è stato aggiunto con successo. Il codice di accesso iniziale è ${defaultCode}.`,
         });
         form.reset();
 
@@ -108,14 +108,14 @@ export default function UsersPage() {
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const email = (form.elements.namedItem('email') as HTMLInputElement).value;
-    const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
     const userDocRef = doc(firestore, 'users', selectedUser.id);
     
     // We only update the Firestore document. Changing auth email/password is complex and
     // should be done by the user themselves (e.g., via a "change password" flow).
-    const updatedData: Partial<User> = { name, email, location, code };
+    // The code is managed in a separate dialog.
+    const updatedData: Partial<User> = { name, email, location };
 
     try {
         await updateDoc(userDocRef, updatedData);
@@ -141,11 +141,12 @@ export default function UsersPage() {
     try {
         // We are only deleting the Firestore record. Deleting from Auth is a sensitive
         // operation often done with a backend function for security.
+        // For this app, we'll just delete the Firestore doc.
         await deleteDoc(doc(firestore, 'users', selectedUser.id));
         
         toast({
         title: "Utente Eliminato",
-        description: `L'utente è stato rimosso dal database.`,
+        description: `L'utente è stato rimosso dal database. L'account di autenticazione rimane, ma non sarà più utilizzabile in app.`,
         variant: "destructive"
         });
         setIsDeleteDialogOpen(false);
@@ -189,7 +190,7 @@ export default function UsersPage() {
             <DialogHeader>
                 <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                 <DialogDescription>
-                Compila i campi per creare un nuovo operatore. L'email e il codice verranno usati per l'accesso.
+                Compila i campi per creare un nuovo operatore. Verrà assegnato un codice di accesso iniziale.
                 </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser} className="grid gap-4 py-4">
@@ -200,10 +201,6 @@ export default function UsersPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                     <Label htmlFor="email" className="text-left sm:text-right">Email</Label>
                     <Input id="email" name="email" type="email" className="col-span-1 sm:col-span-3" required />
-                </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                    <Label htmlFor="code" className="text-left sm:text-right">Codice (Password)</Label>
-                    <Input id="code" name="code" className="col-span-1 sm:col-span-3" required />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                     <Label htmlFor="location" className="text-left sm:text-right">Luogo</Label>
@@ -287,7 +284,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Modifica Operatore</DialogTitle>
             <DialogDescription>
-              Aggiorna i dettagli dell'operatore. La modifica del codice qui non aggiorna la password di accesso.
+              Aggiorna i dettagli dell'operatore. Il codice di accesso può essere cambiato dall'utente nelle impostazioni.
             </DialogDescription>
           </DialogHeader>
           {selectedUser && (
@@ -299,10 +296,6 @@ export default function UsersPage() {
                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-email" className="text-left sm:text-right">Email</Label>
                 <Input id="edit-email" name="email" type="email" defaultValue={selectedUser.email} className="col-span-1 sm:col-span-3" required />
-              </div>
-               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-code" className="text-left sm:text-right">Codice (visual.)</Label>
-                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-1 sm:col-span-3" required />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-location" className="text-left sm:text-right">Luogo</Label>
@@ -323,7 +316,7 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Questa azione non può essere annullata. Il record dell'utente verrà eliminato, ma l'account di autenticazione Firebase dovrà essere rimosso separatamente se necessario.
+              Questa azione non può essere annullata. Il record dell'utente verrà eliminato dal database. L'account di autenticazione non sarà più utilizzabile nell'app.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -335,5 +328,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    

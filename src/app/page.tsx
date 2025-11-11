@@ -57,7 +57,8 @@ export default function LoginPage() {
             <Briefcase className="h-10 w-10 mx-auto text-primary" />
             <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
             <p className="text-balance text-muted-foreground">
-              Seleziona il tuo nome e inserisci il codice per accedere.
+              Seleziona il tuo nome e inserisci il codice per accedere. <br />
+              Il codice predefinito al primo accesso è <span className="font-mono font-bold">000000</span>.
             </p>
           </div>
           <LoginForm />
