@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams } from 'next/navigation';
@@ -5,11 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck } from 'lucide-react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
@@ -90,7 +90,14 @@ const getStatusVariant = (status: string): "default" | "secondary" | "destructiv
         case "Parziale": return "outline";
         default: return "secondary";
     }
+};
+
+const formatMinutesToHours = (totalMinutes: number) => {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
+
 
 export default function UserProfilePage() {
   const params = useParams();
@@ -134,6 +141,56 @@ export default function UserProfilePage() {
 
     fetchUserData();
   }, [userId, firestore]);
+
+  const summaryStats = useMemo(() => {
+    if (!user) return null;
+
+    // 1. Worked Days
+    const workedDays = shifts.filter(s => s.startTime && s.endTime).length;
+
+    // 2. Overtime
+    const totalOvertimeMinutes = shifts.reduce((total, shift) => {
+        const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
+        const expectedMinutes = (user.expectedHours || 0) * 60;
+        const overtime = Math.max(0, workedMinutes - expectedMinutes);
+        return total + overtime;
+    }, 0);
+
+    // 3. Vacation Days
+    const vacationDays = leaveRequests.reduce((total, req) => {
+        if (req.status === 'Approvata' && req.type === 'Ferie') {
+            const start = new Date(req.from);
+            const end = new Date(req.to);
+            const diffTime = Math.abs(end.getTime() - start.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include start day
+            return total + diffDays;
+        }
+        return total;
+    }, 0);
+
+    // 4. Permit Hours
+    const permitMinutes = leaveRequests.reduce((total, req) => {
+        if (req.status === 'Approvata' && req.type === 'Permesso' && req.timeFrom && req.timeTo) {
+            const [fromHours, fromMinutes] = req.timeFrom.split(':').map(Number);
+            const [toHours, toMinutes] = req.timeTo.split(':').map(Number);
+            const start = new Date();
+            start.setHours(fromHours, fromMinutes, 0, 0);
+            const end = new Date();
+            end.setHours(toHours, toMinutes, 0, 0);
+            const diffMillis = end.getTime() - start.getTime();
+            return total + (diffMillis / (1000 * 60));
+        }
+        return total;
+    }, 0);
+
+    return {
+        workedDays,
+        overtime: formatMinutesToHours(totalOvertimeMinutes),
+        vacationDays,
+        permitHours: formatMinutesToHours(permitMinutes),
+    };
+  }, [shifts, leaveRequests, user]);
+
 
   const handleExpectedHoursChange = async (amount: number) => {
       if (!user || !firestore) return;
@@ -184,6 +241,16 @@ export default function UserProfilePage() {
     );
   }
 
+  const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
+    <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+        <div className="text-primary">{icon}</div>
+        <div>
+            <div className="text-sm text-muted-foreground">{label}</div>
+            <div className="font-bold text-lg">{value}</div>
+        </div>
+    </div>
+  );
+
   return (
     <>
         <div className="flex items-center gap-4 mb-4">
@@ -191,26 +258,36 @@ export default function UserProfilePage() {
         </div>
         <div className="grid gap-8">
             <Card>
-                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center gap-4">
-                    <Avatar className="h-20 w-20">
-                        <AvatarFallback className="text-3xl">{getAvatarFallback(user.username)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                        <CardTitle className="text-3xl">{user.username}</CardTitle>
-                        <CardDescription className="text-base flex flex-col sm:flex-row sm:gap-2">
-                           <span>Password: {user.password}</span>
-                          <span className="hidden sm:inline">|</span>
-                          <span>Luogo: {user.location}</span>
-                        </CardDescription>
-                    </div>
-                     <div className="flex items-center gap-2 self-start md:self-center pt-2 md:pt-0">
-                        <Label htmlFor="expected-hours" className="text-lg shrink-0">Ore Previste:</Label>
-                         <div className="flex items-center gap-1">
-                            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
-                            <span className="min-w-[40px] text-center font-bold text-xl">{user.expectedHours || 0}</span>
-                            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(1)}> <Plus className="h-4 w-4" /> </Button>
+                 <CardHeader className="flex flex-col xl:flex-row items-start gap-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1">
+                        <Avatar className="h-20 w-20">
+                            <AvatarFallback className="text-3xl">{getAvatarFallback(user.username)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                            <CardTitle className="text-3xl">{user.username}</CardTitle>
+                            <CardDescription className="text-base flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                               <span>Password: {user.password}</span>
+                               <span className="hidden sm:inline">|</span>
+                               <span>Luogo: {user.location}</span>
+                            </CardDescription>
+                             <div className="flex items-center gap-2 mt-2">
+                                <Label htmlFor="expected-hours" className="text-base shrink-0">Ore Previste:</Label>
+                                 <div className="flex items-center gap-1">
+                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
+                                    <span className="min-w-[32px] text-center font-bold text-lg">{user.expectedHours || 0}</span>
+                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(1)}> <Plus className="h-4 w-4" /> </Button>
+                                </div>
+                             </div>
                         </div>
-                     </div>
+                    </div>
+                     {summaryStats && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-2 gap-2 w-full xl:max-w-xs mt-4 xl:mt-0 p-2 border rounded-lg">
+                            <StatCard icon={<CalendarDays className="h-6 w-6"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
+                            <StatCard icon={<TrendingUp className="h-6 w-6"/>} label="Straordinari" value={summaryStats.overtime} />
+                            <StatCard icon={<CalendarCheck className="h-6 w-6"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
+                            <StatCard icon={<Hourglass className="h-6 w-6"/>} label="Ore Permesso" value={summaryStats.permitHours} />
+                        </div>
+                     )}
                 </CardHeader>
             </Card>
 
@@ -235,7 +312,7 @@ export default function UserProfilePage() {
                                     const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
                                     const expectedMinutes = (user.expectedHours || 0) * 60;
                                     const overtimeMinutes = Math.max(0, duration.workedMinutes - expectedMinutes);
-                                    const overtimeHours = `${String(Math.floor(overtimeMinutes / 60)).padStart(2, '0')}:${String(overtimeMinutes % 60).padStart(2, '0')}`;
+                                    const overtimeHours = formatMinutesToHours(overtimeMinutes);
                                     
                                     return (
                                         <Card key={shift.id}>
@@ -361,3 +438,5 @@ export default function UserProfilePage() {
     </>
   );
 }
+
+    
