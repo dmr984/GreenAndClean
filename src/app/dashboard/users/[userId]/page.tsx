@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -228,37 +228,44 @@ export default function UserProfilePage() {
                             <CardDescription>Riepilogo dei turni di lavoro completati, con dettaglio ore e straordinari.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <ScrollArea className="h-[400px] w-full">
+                            <ScrollArea className="h-[500px] w-full">
                             {shifts.length > 0 ? (
-                                <Table className="min-w-[600px]">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Data</TableHead>
-                                            <TableHead>Ingresso / Uscita</TableHead>
-                                            <TableHead className="text-center">Pause</TableHead>
-                                            <TableHead className="text-center">Ore Lavorate</TableHead>
-                                            <TableHead className="text-center">Straordinario</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {shifts.map(shift => {
-                                            const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
-                                            const expectedMinutes = (user.expectedHours || 0) * 60;
-                                            const overtimeMinutes = Math.max(0, duration.workedMinutes - expectedMinutes);
-                                            const overtimeHours = `${String(Math.floor(overtimeMinutes / 60)).padStart(2, '0')}:${String(overtimeMinutes % 60).padStart(2, '0')}`;
-                                            
-                                            return (
-                                                <TableRow key={shift.id}>
-                                                    <TableCell className="font-medium">{new Date(shift.startTime!).toLocaleDateString('it-IT')}</TableCell>
-                                                    <TableCell className="font-mono">{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})} - {new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</TableCell>
-                                                    <TableCell className="text-center font-mono">{duration.pause}</TableCell>
-                                                    <TableCell className="text-center font-mono font-semibold">{duration.worked}</TableCell>
-                                                    <TableCell className={`text-center font-mono font-bold ${overtimeMinutes > 0 ? 'text-primary' : 'text-muted-foreground'}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</TableCell>
-                                                </TableRow>
-                                            )
-                                        })}
-                                    </TableBody>
-                                </Table>
+                                <div className="space-y-4">
+                                {shifts.map(shift => {
+                                    const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
+                                    const expectedMinutes = (user.expectedHours || 0) * 60;
+                                    const overtimeMinutes = Math.max(0, duration.workedMinutes - expectedMinutes);
+                                    const overtimeHours = `${String(Math.floor(overtimeMinutes / 60)).padStart(2, '0')}:${String(overtimeMinutes % 60).padStart(2, '0')}`;
+                                    
+                                    return (
+                                        <Card key={shift.id}>
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-3">
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                                    <div className="flex items-center gap-2"><Clock className="text-primary"/> <span>Ingresso:</span></div>
+                                                    <div className="font-mono text-right">{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</div>
+                                                    
+                                                    <div className="flex items-center gap-2"><AlarmClockOff className="text-primary"/> <span>Uscita:</span></div>
+                                                    <div className="font-mono text-right">{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</div>
+                                                </div>
+                                                <hr/>
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                                    <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle /> <span>Pause:</span></div>
+                                                    <div className="font-mono text-right font-semibold text-muted-foreground">{duration.pause}</div>
+
+                                                    <div className="flex items-center gap-2"><Briefcase/> <span>Ore Lavorate:</span></div>
+                                                    <div className="font-mono text-right font-bold">{duration.worked}</div>
+                                                    
+                                                    <div className="flex items-center gap-2"><Timer /> <span>Straordinario:</span></div>
+                                                    <div className={`font-mono text-right font-bold ${overtimeMinutes > 0 ? 'text-primary' : ''}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )
+                                })}
+                                </div>
                             ) : (
                                 <div className="text-center text-muted-foreground py-16">
                                     <p>Nessuna timbratura completata da mostrare.</p>
