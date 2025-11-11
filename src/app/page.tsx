@@ -3,22 +3,21 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Briefcase } from 'lucide-react';
+import Link from 'next/link';
 
 import LoginForm from '@/components/login-form';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { useUser } = require('@/firebase');
+  const { user, isUserLoading } = useUser();
 
   useEffect(() => {
-    // Controlla se l'utente ha già effettuato l'accesso e reindirizza alla dashboard
-    // Questo viene eseguito solo sul client, dopo l'idratazione iniziale.
-    if (typeof window !== 'undefined') {
-        const userRole = localStorage.getItem('userRole');
-        if (userRole) {
-            router.push('/dashboard');
-        }
+    // Redirect if user is already logged in
+    if (!isUserLoading && user) {
+        router.push('/dashboard');
     }
-  }, [router]);
+  }, [user, isUserLoading, router]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
@@ -33,9 +32,9 @@ export default function LoginPage() {
           <LoginForm />
           <div className="mt-4 text-center text-sm">
             Hai problemi ad accedere?{' '}
-            <a href="#" className="underline">
-              Contatta l'amministratore
-            </a>
+            <Link href="/setup" className="underline">
+              Setup Admin
+            </Link>
           </div>
         </div>
     </div>
