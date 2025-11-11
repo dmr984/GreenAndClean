@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore } from "@/firebase";
+import { useFirestore } from "@/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 
 interface ChangeCodeDialogProps {
     isOpen: boolean;
@@ -18,55 +17,75 @@ interface ChangeCodeDialogProps {
 
 export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDialogProps) {
     const { toast } = useToast();
-    const [oldCode, setOldCode] = React.useState("");
-    const [newCode, setNewCode] = React.useState("");
-    const [confirmCode, setConfirmCode] = React.useState("");
-    const auth = useAuth();
+    const [username, setUsername] = React.useState("");
+    const [newPassword, setNewPassword] = React.useState("");
+    const [confirmPassword, setConfirmPassword] = React.useState("");
     const firestore = useFirestore();
 
-    const handleCodeChange = async (e: React.FormEvent<HTMLFormElement>) => {
+    React.useEffect(() => {
+        if (isOpen && userId) {
+            const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+            setUsername(storedUser.username || '');
+        }
+    }, [isOpen, userId]);
+
+
+    const handleSettingsChange = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
-        if (newCode !== confirmCode) {
-            toast({ variant: "destructive", title: "Errore", description: "I nuovi codici non corrispondono. Riprova." });
+        if (newPassword && newPassword !== confirmPassword) {
+            toast({ variant: "destructive", title: "Errore", description: "Le nuove password non corrispondono." });
             return;
         }
-
-        if (!userId || !auth.currentUser) {
-             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato o non autenticato." });
+        
+        if (!userId) {
+             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
              return;
         }
 
         try {
-            // Re-authenticate user
-            const credential = EmailAuthProvider.credential(auth.currentUser.email!, oldCode);
-            await reauthenticateWithCredential(auth.currentUser, credential);
+            const userDocRef = doc(firestore, 'app-users', userId);
+            
+            const updates: { username?: string, password?: string } = {};
+            if (username) {
+                updates.username = username;
+            }
+            if (newPassword) {
+                updates.password = newPassword;
+            }
 
-            // Update password in Auth
-            await updatePassword(auth.currentUser, newCode);
+            if (Object.keys(updates).length === 0) {
+                 toast({ variant: "default", title: "Nessuna modifica", description: "Non hai apportato modifiche." });
+                 resetAndClose();
+                 return;
+            }
 
-            // Update user document in Firestore
-            const userDocRef = doc(firestore, 'users', userId);
-            await updateDoc(userDocRef, { code: newCode });
+            await updateDoc(userDocRef, updates);
 
-            toast({ title: "Codice Aggiornato", description: "Il tuo codice di accesso è stato modificato con successo." });
+            // Update local storage
+            const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+            const updatedUser = { ...storedUser, username: username };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            
+            window.dispatchEvent(new Event('storage')); // Trigger re-renders
+
+            toast({ title: "Profilo Aggiornato", description: "Le tue impostazioni sono state salvate." });
             
             resetAndClose();
 
         } catch (error: any) {
-            console.error("Error changing code:", error);
+            console.error("Error changing settings:", error);
              toast({ 
                 variant: "destructive", 
-                title: "Codice Errato o Errore di Sistema", 
-                description: error.code === 'auth/wrong-password' ? "Il vecchio codice non è corretto." : "Si è verificato un errore."
+                title: "Errore", 
+                description: "Si è verificato un errore durante il salvataggio."
             });
         }
     }
     
     const resetAndClose = () => {
-        setOldCode("");
-        setNewCode("");
-        setConfirmCode("");
+        setNewPassword("");
+        setConfirmPassword("");
         onOpenChange(false);
     }
     
@@ -81,53 +100,51 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
         <Dialog open={isOpen} onOpenChange={handleOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Cambia Codice di Accesso</DialogTitle>
+                    <DialogTitle>Impostazioni Profilo</DialogTitle>
                     <DialogDescription>
-                        Inserisci il tuo codice attuale e poi scegli un nuovo codice. Questo aggiornerà la tua password di accesso.
+                        Modifica il tuo nome utente o imposta una nuova password. Lascia i campi password vuoti per non modificarla.
                     </DialogDescription>
                 </DialogHeader>
-                <form id="change-code-form" onSubmit={handleCodeChange} className="grid gap-4 py-4">
+                <form id="change-settings-form" onSubmit={handleSettingsChange} className="grid gap-4 py-4">
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="old-code" className="text-left sm:text-right">Vecchio Codice</Label>
+                        <Label htmlFor="username" className="text-left sm:text-right">Nome Utente</Label>
                         <Input 
-                            id="old-code" 
-                            name="old-code" 
-                            type="password" 
+                            id="username" 
+                            name="username" 
+                            type="text" 
                             className="col-span-1 sm:col-span-3"
-                            value={oldCode}
-                            onChange={(e) => setOldCode(e.target.value)}
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
                             required 
                         />
                     </div>
                      <hr className="my-2"/>
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="new-code" className="text-left sm:text-right">Nuovo Codice</Label>
+                        <Label htmlFor="new-password" className="text-left sm:text-right">Nuova Password</Label>
                         <Input 
-                            id="new-code" 
-                            name="new-code" 
+                            id="new-password" 
+                            name="new-password" 
                             type="password" 
                             className="col-span-1 sm:col-span-3"
-                            value={newCode}
-                            onChange={(e) => setNewCode(e.target.value)}
-                            required 
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
                         />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="confirm-code" className="text-left sm:text-right">Conferma Codice</Label>
+                        <Label htmlFor="confirm-password" className="text-left sm:text-right">Conferma Password</Label>
                         <Input 
-                            id="confirm-code" 
-                            name="confirm-code" 
+                            id="confirm-password" 
+                            name="confirm-password" 
                             type="password" 
                             className="col-span-1 sm:col-span-3"
-                            value={confirmCode}
-                            onChange={(e) => setConfirmCode(e.target.value)}
-                            required 
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
                         />
                     </div>
                 </form>
                 <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
                     <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>Annulla</Button>
-                    <Button type="submit" form="change-code-form">Salva Modifiche</Button>
+                    <Button type="submit" form="change-settings-form">Salva Modifiche</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

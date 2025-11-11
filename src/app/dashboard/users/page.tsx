@@ -12,18 +12,16 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import Link from "next/link";
-import { useRouter } from 'next/navigation';
-import { useAuth, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { addDoc, collection, deleteDoc, doc, updateDoc, setDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { useFirestore } from "@/firebase";
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc } from "firebase/firestore";
 
-type User = {
+type AppUser = {
   id: string;
-  name: string;
-  email: string;
-  code: string;
-  location: string;
-  role: string;
+  username: string;
+  role: 'admin' | 'operator';
+  password?: string;
+  // Add other fields if necessary, e.g., location
+  location?: string;
 };
 
 const getAvatarFallback = (name: string) => {
@@ -39,55 +37,62 @@ const getAvatarFallback = (name: string) => {
 export default function UsersPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const auth = useAuth();
+  const [users, setUsers] = React.useState<AppUser[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   
-  const usersCollection = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
-  const { data: users, isLoading } = useCollection<User>(usersCollection);
-
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
-  const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
-  const router = useRouter();
+  const [selectedUser, setSelectedUser] = React.useState<AppUser | null>(null);
+
+  React.useEffect(() => {
+    if (!firestore) return;
+    const usersCollection = collection(firestore, 'app-users');
+    const unsubscribe = onSnapshot(usersCollection, (snapshot) => {
+      const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
+      setUsers(userList);
+      setIsLoading(false);
+    }, (error) => {
+        console.error("Error fetching users:", error);
+        toast({
+            variant: "destructive",
+            title: "Errore di caricamento",
+            description: "Impossibile caricare gli utenti."
+        });
+        setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [firestore, toast]);
 
 
   const handleAddUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
-    const name = (form.elements.namedItem('name') as HTMLInputElement).value;
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+    const username = (form.elements.namedItem('username') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
-    const defaultCode = "000000";
+    const defaultPassword = "0000";
 
-    if (users?.some(u => u.email === email)) {
+    if (users.some(u => u.username === username)) {
         toast({
             variant: "destructive",
-            title: "Email già in uso",
-            description: "Questa email è già associata a un altro utente.",
+            title: "Nome utente già in uso",
         });
         return;
     }
 
     try {
-        // Step 1: Create user in Firebase Auth with the default code
-        const userCredential = await createUserWithEmailAndPassword(auth, email, defaultCode);
-        const authUser = userCredential.user;
-
-        // Step 2: If Auth creation is successful, create user document in Firestore
-        const newUserDoc = {
-            name,
-            email,
-            code: defaultCode, // Store the default code
+        await addDoc(collection(firestore, "app-users"), {
+            username,
             location,
+            password: defaultPassword,
             role: 'operator',
-        };
-        // Use the UID from Auth as the document ID in Firestore
-        await setDoc(doc(firestore, "users", authUser.uid), newUserDoc);
+        });
         
         setIsNewUserDialogOpen(false);
         toast({
-        title: "Utente Aggiunto",
-        description: `L'utente ${name} è stato aggiunto con successo. Il codice di accesso iniziale è ${defaultCode}.`,
+            title: "Utente Aggiunto",
+            description: `L'utente ${username} è stato aggiunto con successo.`,
         });
         form.reset();
 
@@ -106,16 +111,16 @@ export default function UsersPage() {
     if (!selectedUser) return;
 
     const form = event.currentTarget;
-    const name = (form.elements.namedItem('name') as HTMLInputElement).value;
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+    const username = (form.elements.namedItem('username') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
+    const newPassword = (form.elements.namedItem('password') as HTMLInputElement).value;
 
-    const userDocRef = doc(firestore, 'users', selectedUser.id);
+    const userDocRef = doc(firestore, 'app-users', selectedUser.id);
     
-    // We only update the Firestore document. Changing auth email/password is complex and
-    // should be done by the user themselves (e.g., via a "change password" flow).
-    // The code is managed in a separate dialog.
-    const updatedData: Partial<User> = { name, email, location };
+    const updatedData: Partial<AppUser> = { username, location };
+    if (newPassword) {
+        updatedData.password = newPassword;
+    }
 
     try {
         await updateDoc(userDocRef, updatedData);
@@ -124,7 +129,7 @@ export default function UsersPage() {
         setSelectedUser(null);
         toast({
         title: "Utente Modificato",
-        description: `I dati di ${name} sono stati aggiornati.`,
+        description: `I dati di ${username} sono stati aggiornati.`,
         });
     } catch(error: any) {
         toast({
@@ -139,14 +144,10 @@ export default function UsersPage() {
     if (!selectedUser) return;
     
     try {
-        // We are only deleting the Firestore record. Deleting from Auth is a sensitive
-        // operation often done with a backend function for security.
-        // For this app, we'll just delete the Firestore doc.
-        await deleteDoc(doc(firestore, 'users', selectedUser.id));
+        await deleteDoc(doc(firestore, 'app-users', selectedUser.id));
         
         toast({
         title: "Utente Eliminato",
-        description: `L'utente è stato rimosso dal database. L'account di autenticazione rimane, ma non sarà più utilizzabile in app.`,
         variant: "destructive"
         });
         setIsDeleteDialogOpen(false);
@@ -160,17 +161,16 @@ export default function UsersPage() {
     }
   }
   
-  const openEditDialog = (user: User) => {
+  const openEditDialog = (user: AppUser) => {
     setSelectedUser(user);
     setIsEditUserDialogOpen(true);
   }
 
-  const openDeleteDialog = (user: User) => {
+  const openDeleteDialog = (user: AppUser) => {
     setSelectedUser(user);
     setIsDeleteDialogOpen(true);
   }
   
-  // Filter out the admin user from the list displayed
   const operatorUsers = users?.filter(u => u.role === 'operator');
 
   return (
@@ -190,17 +190,13 @@ export default function UsersPage() {
             <DialogHeader>
                 <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                 <DialogDescription>
-                Compila i campi per creare un nuovo operatore. Verrà assegnato un codice di accesso iniziale.
+                La password iniziale sarà '0000'. L'operatore potrà cambiarla dalle impostazioni.
                 </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser} className="grid gap-4 py-4">
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-left sm:text-right">Nome</Label>
-                    <Input id="name" name="name" className="col-span-1 sm:col-span-3" required />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                    <Label htmlFor="email" className="text-left sm:text-right">Email</Label>
-                    <Input id="email" name="email" type="email" className="col-span-1 sm:col-span-3" required />
+                    <Label htmlFor="username" className="text-left sm:text-right">Nome Utente</Label>
+                    <Input id="username" name="username" className="col-span-1 sm:col-span-3" required />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                     <Label htmlFor="location" className="text-left sm:text-right">Luogo</Label>
@@ -222,10 +218,10 @@ export default function UsersPage() {
             <Card key={user.id} className="flex flex-col">
                 <CardHeader className="flex flex-row items-center gap-4">
                     <Avatar className="h-12 w-12">
-                         <AvatarFallback>{getAvatarFallback(user.name)}</AvatarFallback>
+                         <AvatarFallback>{getAvatarFallback(user.username)}</AvatarFallback>
                     </Avatar>
                     <div>
-                        <CardTitle>{user.name}</CardTitle>
+                        <CardTitle>{user.username}</CardTitle>
                         <CardDescription>{user.location}</CardDescription>
                     </div>
                     <div className="ml-auto">
@@ -243,7 +239,7 @@ export default function UsersPage() {
                                 Modifica
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
+                                <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)} disabled={user.role === 'admin'}>
                                 <Trash className="mr-2 h-4 w-4" />
                                 Elimina
                                 </DropdownMenuItem>
@@ -252,10 +248,10 @@ export default function UsersPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="flex-grow">
-                    <p className="text-sm text-muted-foreground">Email: {user.email}</p>
+                    {/* Content can be added here if needed */}
                 </CardContent>
                 <CardFooter>
-                    <Button asChild className="w-full">
+                    <Button asChild className="w-full" disabled>
                         <Link href={`/dashboard/users/${user.id}`}>
                             <User className="mr-2 h-4 w-4" />
                             Visualizza Profilo
@@ -284,22 +280,22 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Modifica Operatore</DialogTitle>
             <DialogDescription>
-              Aggiorna i dettagli dell'operatore. Il codice di accesso può essere cambiato dall'utente nelle impostazioni.
+              Aggiorna i dettagli dell'operatore.
             </DialogDescription>
           </DialogHeader>
           {selectedUser && (
             <form onSubmit={handleEditUser} className="grid gap-4 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-name" className="text-left sm:text-right">Nome</Label>
-                <Input id="edit-name" name="name" defaultValue={selectedUser.name} className="col-span-1 sm:col-span-3" required />
-              </div>
-               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-email" className="text-left sm:text-right">Email</Label>
-                <Input id="edit-email" name="email" type="email" defaultValue={selectedUser.email} className="col-span-1 sm:col-span-3" required />
+                <Label htmlFor="edit-username" className="text-left sm:text-right">Nome Utente</Label>
+                <Input id="edit-username" name="username" defaultValue={selectedUser.username} className="col-span-1 sm:col-span-3" required />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-location" className="text-left sm:text-right">Luogo</Label>
                 <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-1 sm:col-span-3" required />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-password" className="text-left sm:text-right">Nuova Password</Label>
+                <Input id="edit-password" name="password" placeholder="Lascia vuoto per non cambiare" className="col-span-1 sm:col-span-3" />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Annulla</Button>
@@ -316,7 +312,7 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Questa azione non può essere annullata. Il record dell'utente verrà eliminato dal database. L'account di autenticazione non sarà più utilizzabile nell'app.
+              Questa azione non può essere annullata. L'operatore verrà eliminato in modo permanente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

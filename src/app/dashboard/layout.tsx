@@ -10,94 +10,63 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { useAuth, useUser } from '@/firebase';
-import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
 import { OperatorDashboard } from './operator-dashboard';
 
+type UserData = {
+  id: string;
+  username: string;
+  role: 'admin' | 'operator';
+};
+
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
-  const [userRole, setUserRole] = React.useState<string | null>(null);
-  const [userName, setUserName] = React.useState<string | null>(null);
+  const [user, setUser] = React.useState<UserData | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-  const auth = useAuth();
-  const { user: authUser, isUserLoading } = useUser();
-  const firestore = useFirestore();
 
   React.useEffect(() => {
-    const fetchUserData = async () => {
-      if (isUserLoading) return;
-      if (!authUser) {
-        router.replace('/');
-        return;
-      }
-      
-      const userId = authUser.email === 'admin@serveco.it' ? 'admin_user' : authUser.uid;
-      const userDocRef = doc(firestore, 'users', userId);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (userDocSnap.exists()) {
-        const userData = userDocSnap.data();
-        const role = userData.role;
-        setUserRole(role);
-        setUserName(userData.name);
-
-        // Privacy enforcement
-        const isOperator = role === 'operator';
-        const isAdminPage = pathname.startsWith('/dashboard/users') || 
-                              pathname === '/dashboard/warehouse' || 
-                              pathname === '/dashboard/announcements';
-
-        if (isOperator && isAdminPage) {
-            router.replace('/dashboard');
-        }
-      } else {
-        // Doc not found, maybe a stale auth session. Log out.
-        await handleLogout();
-      }
-    };
-    
-    fetchUserData();
-
-  }, [pathname, router, authUser, isUserLoading, firestore]);
-
-  const handleLogout = async () => {
-    try {
-        await signOut(auth);
-        setUserRole(null);
-        setUserName(null);
-        router.push('/');
-        setIsSidebarOpen(false);
-    } catch (error) {
-        console.error("Error signing out: ", error);
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      router.replace('/');
+      return;
     }
-  }
+    
+    const userData: UserData = JSON.parse(storedUser);
+    setUser(userData);
 
+    // Privacy enforcement
+    const isAdminPage = pathname.startsWith('/dashboard/users') || 
+                          pathname === '/dashboard/warehouse' || 
+                          pathname === '/dashboard/announcements';
 
-  const getEmail = () => {
-    return authUser?.email || 'utente@serveco.it';
+    if (userData.role === 'operator' && isAdminPage) {
+        router.replace('/dashboard');
+    }
+
+  }, [pathname, router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    router.push('/');
+    setIsSidebarOpen(false);
   }
 
   const getAvatarFallback = () => {
-     if (userName) {
-        const parts = userName.split(' ');
+     if (user?.username) {
+        const parts = user.username.split(' ');
         if (parts.length > 1) {
             return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
         }
-        return userName.substring(0, 2).toUpperCase();
+        return user.username.substring(0, 2).toUpperCase();
      }
      return "U";
   }
   
   const handleProfileClick = () => {
     setIsSidebarOpen(false);
-    if (userRole === 'operator' && authUser) {
-      router.push(`/dashboard/users/${authUser.uid}`);
-    } else if (userRole === 'admin') {
-      router.push(`/dashboard/users/admin_user`);
+    if(user) {
+        router.push(`/dashboard/users/${user.id}`);
     }
   };
 
@@ -111,12 +80,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push(path);
   }
 
-  const isAdmin = userRole === 'admin';
-  const isBaseDashboard = pathname === '/dashboard';
-  
-  if(isUserLoading || !userRole) {
+  if(!user) {
       return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
   }
+
+  const isAdmin = user.role === 'admin';
+  const isBaseDashboard = pathname === '/dashboard';
 
   return (
     <>
@@ -137,8 +106,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
                       </Avatar>
                      <div>
-                        <p className="text-base font-medium leading-none">{userName || 'Utente'}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{getEmail()}</p>
+                        <p className="text-base font-medium leading-none">{user.username}</p>
+                        <p className="text-xs leading-none text-muted-foreground">{user.role}</p>
                      </div>
                   </SheetTitle>
                  </SheetHeader>
@@ -173,14 +142,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       </>
                     )}
                     <Separator className="my-2"/>
-                    <Button variant="ghost" className="justify-start gap-2" onClick={handleProfileClick}>
-                        <User className="h-5 w-5" /> Profilo
-                    </Button>
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
-                        <Lock className="h-5 w-5" /> Cambia Codice
-                    </Button>
-                    <Button variant="ghost" className="justify-start gap-2" disabled>
-                        <Settings className="h-5 w-5" /> Impostazioni
+                        <Settings className="h-5 w-5" /> Impostazioni Profilo
                     </Button>
                  </nav>
                  <div className="mt-auto">
@@ -218,7 +181,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <ChangeCodeDialog 
         isOpen={isChangeCodeOpen}
         onOpenChange={setIsChangeCodeOpen}
-        userId={authUser?.email === 'admin@serveco.it' ? 'admin_user' : authUser?.uid}
+        userId={user.id}
       />
     </>
   );

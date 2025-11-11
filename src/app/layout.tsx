@@ -33,7 +33,7 @@ export default function RootLayout({
           {children}
         </FirebaseClientProvider>
         <Toaster />
-        <InstallPWA />
+        {/* <InstallPWA /> */}
       </body>
     </html>
   );

@@ -5,123 +5,140 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, useFirestore } from '@/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, getDocs } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
+import { collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 
 type User = {
   id: string;
-  name: string;
-  email: string;
-  code: string;
-  role: string;
-  location: string;
+  username: string;
+  password?: string;
+  role: 'admin' | 'operator';
 };
+
+// This function creates the initial users if they don't exist.
+const initializeUsers = async (firestore: any) => {
+  const usersCollection = collection(firestore, 'app-users');
+  const snapshot = await getDocs(usersCollection);
+
+  // If users already exist, do nothing.
+  if (!snapshot.empty) {
+    return;
+  }
+
+  const batch = writeBatch(firestore);
+  const defaultPassword = '0000';
+
+  // Create Admin User
+  const adminRef = collection(firestore, 'app-users');
+  batch.set(doc(adminRef, 'admin_user'), {
+    username: 'Amministratore',
+    password: defaultPassword,
+    role: 'admin',
+  });
+
+  // Create 10 Operator Users
+  for (let i = 1; i <= 10; i++) {
+    const operatorRef = collection(firestore, 'app-users');
+    batch.set(doc(operatorRef, `operator_${i}`), {
+        username: `Operatore ${i}`,
+        password: defaultPassword,
+        role: 'operator',
+    });
+  }
+
+  await batch.commit();
+  console.log('Initial users created.');
+};
+
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const [selectedUserEmail, setSelectedUserEmail] = React.useState<string | null>(null);
   const firestore = useFirestore();
-  const auth = useAuth();
-  
-  const [users, setUsers] = React.useState<User[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
 
   React.useEffect(() => {
-    const fetchUsers = async () => {
-      if (!firestore) return;
-      try {
-        const usersCollection = collection(firestore, 'users');
-        const userSnapshot = await getDocs(usersCollection);
-        const userList = userSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-        setUsers(userList);
-      } catch (error) {
-        console.error("Error fetching users for login:", error);
-        toast({
-            variant: "destructive",
-            title: "Errore di connessione",
-            description: "Impossibile caricare l'elenco degli utenti. Controllare le regole di sicurezza o la connessione di rete.",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchUsers();
-  }, [firestore, toast]);
+    if (firestore) {
+      initializeUsers(firestore);
+    }
+  }, [firestore]);
 
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const code = (event.currentTarget.elements.namedItem('code') as HTMLInputElement).value;
-    
-    if (!selectedUserEmail) {
+    setIsLoading(true);
+
+    if (!username || !password) {
       toast({
         variant: "destructive",
-        title: "Errore di accesso",
-        description: "Per favore, seleziona il tuo nome.",
+        title: "Campi mancanti",
+        description: "Inserisci nome utente e password.",
       });
+      setIsLoading(false);
       return;
     }
     
-    const user = users.find(u => u.email === selectedUserEmail);
+    try {
+        const usersCollection = collection(firestore, 'app-users');
+        const q = query(usersCollection, where('username', '==', username));
+        const querySnapshot = await getDocs(q);
 
-    if (user) {
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, user.email, code);
-        // localStorage is not ideal, but for role it is a simple solution for now
-        localStorage.setItem('userRole', user.role); 
-        localStorage.setItem('userName', user.name);
-        localStorage.setItem('userId', userCredential.user.uid);
-        
-        router.push('/dashboard');
-      } catch (error) {
+        if (querySnapshot.empty) {
+            toast({
+              variant: "destructive",
+              title: "Credenziali non valide",
+              description: "Il nome utente o la password non sono corretti. Riprova.",
+            });
+            setIsLoading(false);
+            return;
+        }
+
+        const userDoc = querySnapshot.docs[0];
+        const userData = userDoc.data() as User;
+
+        if (userData.password === password) {
+            const userToStore = {
+                id: userDoc.id,
+                username: userData.username,
+                role: userData.role
+            };
+            localStorage.setItem('user', JSON.stringify(userToStore));
+            router.push('/dashboard');
+        } else {
+            toast({
+              variant: "destructive",
+              title: "Credenziali non valide",
+              description: "Il nome utente o la password non sono corretti. Riprova.",
+            });
+        }
+
+    } catch (error) {
+        console.error("Login error:", error);
         toast({
           variant: "destructive",
-          title: "Credenziali non valide",
-          description: "Il nome utente o il codice non sono corretti. Riprova.",
+          title: "Errore di accesso",
+          description: "Si è verificato un errore durante il login. Riprova.",
         });
-      }
-    } else {
-       toast({
-        variant: "destructive",
-        title: "Utente non trovato",
-        description: "L'utente selezionato non è valido.",
-      });
+    } finally {
+        setIsLoading(false);
     }
   };
-
-  const adminUser = users.find(u => u.role === 'admin');
-  const operatorUsers = users.filter(u => u.role === 'operator');
-
 
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="user-select">Seleziona Utente</Label>
-        <Select onValueChange={setSelectedUserEmail} required>
-            <SelectTrigger id="user-select" disabled={isLoading}>
-                <SelectValue placeholder={isLoading ? "Caricamento..." : "Seleziona il tuo nome dall'elenco"} />
-            </SelectTrigger>
-            <SelectContent>
-                {adminUser && (
-                    <SelectItem key={adminUser.id} value={adminUser.email}>{adminUser.name}</SelectItem>
-                )}
-                {operatorUsers?.map(user => (
-                   <SelectItem key={user.id} value={user.email}>{user.name}</SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
+        <Label htmlFor="username">Nome Utente</Label>
+        <Input id="username" name="username" value={username} onChange={e => setUsername(e.target.value)} required />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="code">Codice di Accesso</Label>
-        <Input id="code" name="code" type="password" required />
+        <Label htmlFor="password">Password</Label>
+        <Input id="password" name="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
       </div>
       <Button type="submit" className="w-full font-bold" disabled={isLoading}>
-        Accedi
+        {isLoading ? 'Accesso in corso...' : 'Accedi'}
       </Button>
     </form>
   );
