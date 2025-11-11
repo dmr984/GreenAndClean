@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
@@ -311,15 +311,23 @@ export default function LeaveRequestsPage() {
                                                     {isAdmin ? (
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
-                                                                <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
+                                                                <Button aria-haspopup="true" size="icon" variant="ghost">
                                                                     <MoreHorizontal className="h-4 w-4" />
                                                                     <span className="sr-only">Apri menu</span>
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuLabel>Azioni Admin</DropdownMenuLabel>
-                                                                <DropdownMenuItem onSelect={() => handleApprove(req.id)}><Check className="mr-2 h-4 w-4" />Approva</DropdownMenuItem>
-                                                                <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive"><X className="mr-2 h-4 w-4" />Rifiuta</DropdownMenuItem>
+                                                                {req.status === 'In attesa' && (
+                                                                    <>
+                                                                        <DropdownMenuItem onSelect={() => handleApprove(req.id)}><Check className="mr-2 h-4 w-4" />Approva</DropdownMenuItem>
+                                                                        <DropdownMenuItem onSelect={() => openRejectDialog(req)}><X className="mr-2 h-4 w-4 text-red-500" />Rifiuta</DropdownMenuItem>
+                                                                        <DropdownMenuSeparator />
+                                                                    </>
+                                                                )}
+                                                                <DropdownMenuItem onSelect={() => openDeleteDialog(req)} className="text-destructive">
+                                                                    <Trash2 className="mr-2 h-4 w-4" />Elimina
+                                                                </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     ) : (
@@ -368,7 +376,7 @@ export default function LeaveRequestsPage() {
                         </AlertDialogContent>
                     </AlertDialog>
 
-                    {/* Operator Delete Dialog */}
+                    {/* Operator/Admin Delete Dialog */}
                     <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                         <AlertDialogContent>
                             <AlertDialogHeader>

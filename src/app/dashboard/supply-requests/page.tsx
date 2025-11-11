@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, Check, X, Pencil, Minus, Plus } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Check, X, Pencil, Minus, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 
 // ==================================
@@ -66,6 +67,7 @@ export default function SupplyRequestsPage() {
     const [requests, setRequests] = React.useState<SupplyRequest[]>([]);
     const [warehouseItems, setWarehouseItems] = React.useState<WarehouseItem[]>([]);
     const [isManageRequestDialogOpen, setIsManageRequestDialogOpen] = React.useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
     const [selectedRequest, setSelectedRequest] = React.useState<SupplyRequest | null>(null);
     const [manageFormState, setManageFormState] = React.useState<{ fulfilledItems: { [key: string]: number }, notes: string }>({ fulfilledItems: {}, notes: "" });
     const { toast } = useToast();
@@ -133,6 +135,20 @@ export default function SupplyRequestsPage() {
         setSelectedRequest(request);
         setManageFormState({ fulfilledItems: { ...request.items }, notes: request.adminNotes || "" });
         setIsManageRequestDialogOpen(true);
+    };
+
+    const openDeleteDialog = (request: SupplyRequest) => {
+        setSelectedRequest(request);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleDeleteRequest = () => {
+        if (!selectedRequest) return;
+        const updated = requests.filter(r => r.id !== selectedRequest.id);
+        updateAllRequests(updated);
+        toast({ title: "Richiesta Eliminata", variant: "destructive"});
+        setIsDeleteDialogOpen(false);
+        setSelectedRequest(null);
     };
     
     const handleManageRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -286,10 +302,17 @@ export default function SupplyRequestsPage() {
                                             </div>
                                             <div className="flex items-center gap-2 self-end sm:self-center">
                                                 <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
-                                                {isAdmin && req.status === 'In attesa' && (
-                                                    <Button variant="outline" size="sm" onClick={() => openManageDialog(req)}>
-                                                        <Pencil className="mr-2 h-3 w-3" /> Gestisci
-                                                    </Button>
+                                                {isAdmin && (
+                                                    <>
+                                                        {req.status === 'In attesa' && (
+                                                            <Button variant="outline" size="sm" onClick={() => openManageDialog(req)}>
+                                                                <Pencil className="mr-2 h-3 w-3" /> Gestisci
+                                                            </Button>
+                                                        )}
+                                                        <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(req)}>
+                                                            <Trash2 className="mr-2 h-3 w-3" /> Elimina
+                                                        </Button>
+                                                    </>
                                                 )}
                                             </div>
                                         </CardHeader>
@@ -328,6 +351,22 @@ export default function SupplyRequestsPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Admin Delete Dialog */}
+                    <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Vuoi davvero eliminare questa richiesta? L'azione non può essere annullata.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleDeleteRequest}>Conferma Eliminazione</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
 
                     <Dialog open={isManageRequestDialogOpen} onOpenChange={setIsManageRequestDialogOpen}>
                         <DialogContent>
