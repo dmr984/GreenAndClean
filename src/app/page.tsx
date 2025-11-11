@@ -6,18 +6,26 @@ import { Briefcase } from 'lucide-react';
 import Link from 'next/link';
 
 import LoginForm from '@/components/login-form';
+import { useUser } from '@/firebase';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { useUser } = require('@/firebase');
   const { user, isUserLoading } = useUser();
 
   useEffect(() => {
-    // Redirect if user is already logged in
+    // Redirect if user is already logged in AND the check is complete
     if (!isUserLoading && user) {
         router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
+  
+  if (isUserLoading || (!isUserLoading && user)) {
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <p>Caricamento...</p>
+        </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">

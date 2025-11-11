@@ -10,6 +10,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { useAuth } from '@/firebase';
+import { signOut } from 'firebase/auth';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
@@ -19,6 +21,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userId, setUserId] = React.useState<string|null>(null);
   const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+  const auth = useAuth();
+
 
   React.useEffect(() => {
     const checkUserAndData = () => {
@@ -51,13 +55,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [pathname, router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userId');
-    router.push('/');
-    setIsSidebarOpen(false);
+  const handleLogout = async () => {
+    try {
+        await signOut(auth);
+        // Clear any other local state if necessary
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('userId');
+        router.push('/');
+        setIsSidebarOpen(false);
+    } catch (error) {
+        console.error("Error signing out: ", error);
+    }
   }
+
 
   const getEmail = () => {
     if (userRole === 'admin') return 'admin@serveco.it';
