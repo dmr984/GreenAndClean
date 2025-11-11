@@ -49,47 +49,6 @@ export default function UsersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
   const router = useRouter();
-  
-  const ensureAdminExists = React.useCallback(async () => {
-    if (users && !users.find(u => u.role === 'admin')) {
-        const adminEmail = "admin@serveco.it";
-        const adminCode = "070380";
-        const adminName = "Amministratore";
-
-        try {
-            // Silently try to sign in to check if auth user exists
-            await signInWithEmailAndPassword(auth, adminEmail, adminCode).catch(async (error) => {
-                // If user not found, create it
-                if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-                    await createUserWithEmailAndPassword(auth, adminEmail, adminCode);
-                }
-            });
-
-            // Create admin user in Firestore. Use email as ID for predictability.
-            const adminDocRef = doc(firestore, 'users', adminEmail);
-            const adminData: Omit<User, 'id'> = {
-                name: adminName,
-                email: adminEmail,
-                code: adminCode,
-                location: "Sede",
-                role: 'admin'
-            };
-            await setDoc(adminDocRef, adminData);
-            
-            console.log("Admin user created/verified in Firestore.");
-
-        } catch (error: any) {
-            // Avoid showing toast for this background operation unless it's a critical failure
-            console.error("Failed to create admin user:", error.message);
-        }
-    }
-  }, [users, firestore, auth]);
-
-  React.useEffect(() => {
-    if (!isLoading) {
-      ensureAdminExists();
-    }
-  }, [isLoading, ensureAdminExists]);
 
 
   const handleAddUser = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -150,11 +109,7 @@ export default function UsersPage() {
 
     const userDocRef = doc(firestore, 'users', selectedUser.id);
     
-    // Only include code if it was changed
-    const updatedData: Partial<User> = { name, email, location };
-    if (code) {
-        updatedData.code = code;
-    }
+    const updatedData: Partial<User> = { name, email, location, code };
 
     try {
         await updateDoc(userDocRef, updatedData);
@@ -277,7 +232,7 @@ export default function UsersPage() {
                     <div className="ml-auto">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button aria-haspopup="true" size="icon" variant="ghost">
+                                <Button aria-haspopup="true" size="icon" variant="ghost" disabled={user.role === 'admin'}>
                                 <MoreHorizontal className="h-4 w-4" />
                                 <span className="sr-only">Apri menu</span>
                                 </Button>

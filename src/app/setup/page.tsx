@@ -11,8 +11,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { KeyRound } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 
-const adminEmail = "admin@serveco.it";
-const adminPassword = "070380"; // The 'code'
+const adminEmail = "admin@serveco.it"; // Required by Firebase Auth, but hidden from user
+const adminPassword = "070380";
+const adminName = "Amministratore";
 
 export default function SetupPage() {
     const auth = useAuth();
@@ -52,10 +53,10 @@ export default function SetupPage() {
 
         try {
             // Now, create the user document in Firestore.
-            // Using the email as the document ID makes it easy to find.
-            const adminDocRef = doc(firestore, 'users', adminEmail);
+            // Using a predictable ID for the admin doc
+            const adminDocRef = doc(firestore, 'users', 'admin_user');
             await setDoc(adminDocRef, {
-                name: "Amministratore",
+                name: adminName,
                 email: adminEmail,
                 code: adminPassword,
                 location: "Sede",
@@ -102,7 +103,7 @@ export default function SetupPage() {
                         <>
                         <div className="text-sm text-muted-foreground text-center">
                             <p>Verrà creato un utente con le seguenti credenziali:</p>
-                            <p>Email: <span className="font-mono">{adminEmail}</span></p>
+                            <p>Nome Utente: <span className="font-mono">{adminName}</span></p>
                             <p>Codice/Password: <span className="font-mono">{adminPassword}</span></p>
                         </div>
                         <Button 
