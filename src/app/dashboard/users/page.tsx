@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { useAuth, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { addDoc, collection, deleteDoc, doc, updateDoc, setDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
 type User = {
   id: string;
@@ -69,17 +69,20 @@ export default function UsersPage() {
     }
 
     try {
+        // Step 1: Create user in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, code);
-        
+        const authUser = userCredential.user;
+
+        // Step 2: If Auth creation is successful, create user document in Firestore
         const newUserDoc = {
             name,
             email,
-            code,
+            code, // Storing for reference/display, not for auth checks
             location,
             role: 'operator',
-            id: userCredential.user.uid // Add the UID as the ID
         };
-        await setDoc(doc(firestore, "users", userCredential.user.uid), newUserDoc);
+        // Use the UID from Auth as the document ID in Firestore
+        await setDoc(doc(firestore, "users", authUser.uid), newUserDoc);
         
         setIsNewUserDialogOpen(false);
         toast({
@@ -110,14 +113,12 @@ export default function UsersPage() {
 
     const userDocRef = doc(firestore, 'users', selectedUser.id);
     
+    // We only update the Firestore document. Changing auth email/password is complex and
+    // should be done by the user themselves (e.g., via a "change password" flow).
     const updatedData: Partial<User> = { name, email, location, code };
 
     try {
         await updateDoc(userDocRef, updatedData);
-        
-        // Note: Updating email/password in Firebase Auth is a sensitive operation
-        // and requires the user to be re-authenticated. It's complex and omitted here for simplicity.
-        // We will just update the Firestore document. If code is changed, it needs a backend function to be synced with Auth.
 
         setIsEditUserDialogOpen(false);
         setSelectedUser(null);
@@ -138,10 +139,9 @@ export default function UsersPage() {
     if (!selectedUser) return;
     
     try {
+        // We are only deleting the Firestore record. Deleting from Auth is a sensitive
+        // operation often done with a backend function for security.
         await deleteDoc(doc(firestore, 'users', selectedUser.id));
-        // Note: Deleting the user from Firebase Auth is a separate, critical step.
-        // This is a complex operation that requires a backend function for security reasons.
-        // For this demo, we are only removing the user from the Firestore database.
         
         toast({
         title: "Utente Eliminato",
@@ -169,6 +169,7 @@ export default function UsersPage() {
     setIsDeleteDialogOpen(true);
   }
   
+  // Filter out the admin user from the list displayed
   const operatorUsers = users?.filter(u => u.role === 'operator');
 
   return (
@@ -233,7 +234,7 @@ export default function UsersPage() {
                     <div className="ml-auto">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button aria-haspopup="true" size="icon" variant="ghost" disabled={user.role === 'admin'}>
+                                <Button aria-haspopup="true" size="icon" variant="ghost">
                                 <MoreHorizontal className="h-4 w-4" />
                                 <span className="sr-only">Apri menu</span>
                                 </Button>
@@ -322,7 +323,7 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Questa azione non può essere annullata. L'account di autenticazione Firebase per questo utente non verrà eliminato, solo il record del database.
+              Questa azione non può essere annullata. Il record dell'utente verrà eliminato, ma l'account di autenticazione Firebase dovrà essere rimosso separatamente se necessario.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

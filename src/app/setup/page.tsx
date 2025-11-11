@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, useFirestore } from '@/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import { doc, setDoc } from 'firebase/firestore';
 const adminEmail = "admin@serveco.it";
 const adminPassword = "070380";
 const adminName = "Amministratore";
-const adminId = "admin_user"; 
+const adminId = "admin_user";
 
 export default function SetupPage() {
     const auth = useAuth();
@@ -27,7 +27,7 @@ export default function SetupPage() {
     const handleRegisterAdmin = async () => {
         setIsLoading(true);
         try {
-            // Attempt to create user in Auth. If they exist, signIn instead.
+            // 1. Attempt to create user in Auth.
             await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
             toast({
                 title: "Utente Admin Creato in Auth",
@@ -35,22 +35,12 @@ export default function SetupPage() {
             });
         } catch (error: any) {
             if (error.code === 'auth/email-already-in-use') {
-                try {
-                    await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
-                    toast({
-                        variant: "default",
-                        title: "Admin Auth già esistente",
-                        description: "L'account di autenticazione admin esiste già, ottimo! Accesso eseguito.",
-                    });
-                } catch(signInError: any) {
-                     toast({
-                        variant: "destructive",
-                        title: "Errore Accesso Admin",
-                        description: "L'utente admin esiste ma la password è errata. Contattare il supporto.",
-                    });
-                     setIsLoading(false);
-                     return;
-                }
+                // This is fine, the user already exists. We don't need to sign in here.
+                toast({
+                    variant: "default",
+                    title: "Admin Auth già esistente",
+                    description: "L'account di autenticazione admin esiste già, ottimo!",
+                });
             } else {
                  toast({
                     variant: "destructive",
@@ -63,17 +53,17 @@ export default function SetupPage() {
         }
 
         try {
-            // Create the user document in Firestore with a predictable ID.
+            // 2. Create the user document in Firestore with a predictable ID.
             const adminDocRef = doc(firestore, 'users', adminId);
             await setDoc(adminDocRef, {
                 id: adminId, // Ensure the ID is part of the document
                 name: adminName,
                 email: adminEmail,
-                code: adminPassword,
+                code: adminPassword, // Storing for display/reference, NOT for auth checks
                 location: "Sede",
                 role: "admin",
             });
-            
+
              toast({
                 title: "Admin salvato nel Database",
                 description: "I dati dell'admin sono stati salvati in Firestore.",
@@ -102,7 +92,7 @@ export default function SetupPage() {
                         Setup Amministratore
                     </CardTitle>
                     <CardDescription>
-                        Questo processo creerà l'utente amministratore con credenziali predefinite. Eseguire solo una volta. Se l'utente esiste già, il processo verrà solo verificato.
+                        Questo processo creerà l'utente amministratore con credenziali predefinite. Eseguire solo una volta.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center gap-4">
@@ -117,12 +107,12 @@ export default function SetupPage() {
                             <p>Nome Utente: <span className="font-mono">{adminName}</span></p>
                             <p>Codice/Password: <span className="font-mono">{adminPassword}</span></p>
                         </div>
-                        <Button 
-                            onClick={handleRegisterAdmin} 
+                        <Button
+                            onClick={handleRegisterAdmin}
                             disabled={isLoading}
                             className="w-full"
                         >
-                            {isLoading ? 'Creazione in corso...' : 'Crea/Verifica Utente Admin'}
+                            {isLoading ? 'Creazione in corso...' : 'Crea Utente Admin'}
                         </Button>
                         </>
                     )}
