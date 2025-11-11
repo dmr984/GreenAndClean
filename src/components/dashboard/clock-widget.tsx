@@ -52,7 +52,17 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
   const [isOnPause, setIsOnPause] = useState(false);
   const { toast } = useToast();
   const [lastActionTime, setLastActionTime] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState("");
 
+
+  // Effect for the live clock
+  useEffect(() => {
+    const timer = setInterval(() => {
+        setCurrentTime(new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }));
+    }, 1000); // Update every second
+
+    return () => clearInterval(timer); // Cleanup
+  }, []);
 
   // Load active shift on component mount
   useEffect(() => {
@@ -183,7 +193,10 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
           {getStatusDescription()}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col items-center justify-center gap-4">
+      <CardContent className="flex flex-col items-center justify-center gap-6">
+        <div className="text-6xl font-bold font-mono tracking-tight text-foreground">
+          {currentTime || "--:--"}
+        </div>
         {!isClockedIn ? (
             <Button onClick={handleClockIn} className="w-full font-bold" size="lg">
                 <LogIn className="mr-2 h-4 w-4" /> Timbra Entrata
