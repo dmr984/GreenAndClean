@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection } from 'firebase/firestore';
+import { collection, getDocs, query } from 'firebase/firestore';
 
 type User = {
   id: string;
@@ -26,9 +26,35 @@ export default function LoginForm() {
   const [selectedUserEmail, setSelectedUserEmail] = React.useState<string | null>(null);
   const firestore = useFirestore();
   const auth = useAuth();
+  
+  // We will now fetch users manually because useCollection hook has security rule issues before login
+  const [users, setUsers] = React.useState<User[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-  const usersCollection = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
-  const { data: users, isLoading } = useCollection<User>(usersCollection);
+  React.useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const usersCollection = collection(firestore, 'users');
+        const userSnapshot = await getDocs(usersCollection);
+        const userList = userSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        setUsers(userList);
+      } catch (error) {
+        console.error("Error fetching users for login:", error);
+        toast({
+            variant: "destructive",
+            title: "Errore di connessione",
+            description: "Impossibile caricare l'elenco degli utenti. Controlla le regole di sicurezza di Firestore.",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (firestore) {
+      fetchUsers();
+    }
+  }, [firestore, toast]);
+
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -48,8 +74,6 @@ export default function LoginForm() {
     if (user) {
       try {
         const userCredential = await signInWithEmailAndPassword(auth, user.email, code);
-        // On successful login, Firebase Auth state is managed by the provider.
-        // We can store role/name in localStorage for quicker UI updates if needed.
         localStorage.setItem('userRole', user.role);
         localStorage.setItem('userName', user.name);
         localStorage.setItem('userId', userCredential.user.uid);
@@ -71,6 +95,10 @@ export default function LoginForm() {
     }
   };
 
+  const adminUser = users.find(u => u.role === 'admin');
+  const operatorUsers = users.filter(u => u.role === 'operator');
+
+
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
@@ -80,7 +108,10 @@ export default function LoginForm() {
                 <SelectValue placeholder={isLoading ? "Caricamento..." : "Seleziona il tuo nome dall'elenco"} />
             </SelectTrigger>
             <SelectContent>
-                {users?.map(user => (
+                {adminUser && (
+                    <SelectItem key={adminUser.id} value={adminUser.email}>{adminUser.name}</SelectItem>
+                )}
+                {operatorUsers?.map(user => (
                    <SelectItem key={user.id} value={user.email}>{user.name}</SelectItem>
                 ))}
             </SelectContent>
