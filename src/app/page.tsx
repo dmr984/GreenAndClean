@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 import LoginForm from '@/components/login-form';
 import { useUser, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 
 type User = {
   id: string;
@@ -24,8 +24,8 @@ export default function LoginPage() {
   const [showSetupLink, setShowSetupLink] = useState(false);
   
   const firestore = useFirestore();
-  const usersCollection = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
-  const { data: users, isLoading: areUsersLoading } = useCollection<User>(usersCollection);
+  const adminQuery = useMemoFirebase(() => query(collection(firestore, 'users'), where('role', '==', 'admin')), [firestore]);
+  const { data: adminUsers, isLoading: areAdminsLoading } = useCollection<User>(adminQuery);
 
 
   useEffect(() => {
@@ -36,14 +36,13 @@ export default function LoginPage() {
   }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    if (!areUsersLoading && users) {
-        const adminExists = users.some(u => u.role === 'admin');
-        setShowSetupLink(!adminExists);
+    if (!areAdminsLoading) {
+        setShowSetupLink(!adminUsers || adminUsers.length === 0);
     }
-  }, [users, areUsersLoading]);
+  }, [adminUsers, areAdminsLoading]);
   
   
-  if (isUserLoading || (!isUserLoading && user) || areUsersLoading) {
+  if (isUserLoading || (!isUserLoading && user) || areAdminsLoading) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <p>Caricamento...</p>
@@ -64,9 +63,9 @@ export default function LoginPage() {
           <LoginForm />
           {showSetupLink && (
             <div className="mt-4 text-center text-sm">
-                Hai problemi ad accedere?{' '}
+                Sei l'amministratore?{' '}
                 <Link href="/setup" className="underline">
-                Setup Iniziale Admin
+                Esegui il setup iniziale
                 </Link>
             </div>
           )}

@@ -14,6 +14,7 @@ import { doc, setDoc } from 'firebase/firestore';
 const adminEmail = "admin@serveco.it"; // Required by Firebase Auth, but hidden from user
 const adminPassword = "070380";
 const adminName = "Amministratore";
+const adminId = "admin_user"; // Predictable ID for admin document
 
 export default function SetupPage() {
     const auth = useAuth();
@@ -31,14 +32,14 @@ export default function SetupPage() {
             await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
             toast({
                 title: "Utente Admin Creato in Auth",
-                description: "L'utente admin è stato creato nel sistema di autenticazione.",
+                description: "L'account di autenticazione è stato creato.",
             });
         } catch (error: any) {
             if (error.code === 'auth/email-already-in-use') {
                  toast({
                     variant: "default",
                     title: "Admin Auth già esistente",
-                    description: "L'utente amministratore è già registrato in Firebase Auth.",
+                    description: "L'account di autenticazione admin esiste già.",
                 });
             } else {
                  toast({
@@ -54,7 +55,7 @@ export default function SetupPage() {
         try {
             // Now, create the user document in Firestore.
             // Using a predictable ID for the admin doc
-            const adminDocRef = doc(firestore, 'users', 'admin_user');
+            const adminDocRef = doc(firestore, 'users', adminId);
             await setDoc(adminDocRef, {
                 name: adminName,
                 email: adminEmail,
@@ -91,7 +92,7 @@ export default function SetupPage() {
                         Setup Amministratore
                     </CardTitle>
                     <CardDescription>
-                        Questo processo creerà l'utente amministratore sia nel sistema di autenticazione (Auth) che nel database (Firestore). Eseguire solo una volta.
+                        Questo processo creerà l'utente amministratore con credenziali predefinite. Eseguire solo una volta. Se l'utente esiste già, il processo verrà solo verificato.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center gap-4">

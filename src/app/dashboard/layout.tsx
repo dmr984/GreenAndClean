@@ -10,58 +10,69 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { useAuth } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import { signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
   const [userName, setUserName] = React.useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const [userId, setUserId] = React.useState<string|null>(null);
   const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const auth = useAuth();
-
+  const { user: authUser, isUserLoading } = useUser();
+  const firestore = useFirestore();
 
   React.useEffect(() => {
-    const checkUserAndData = () => {
-        if (typeof window !== 'undefined') {
-          const role = localStorage.getItem('userRole');
-          const id = localStorage.getItem('userId');
-          const name = localStorage.getItem('userName');
-          setUserRole(role);
-          setUserId(id);
-          setUserName(name);
+    const fetchUserData = async () => {
+      if (isUserLoading) return;
+      if (!authUser) {
+        router.replace('/');
+        return;
+      }
+      
+      const userId = authUser.uid === 'admin_user_uid_placeholder' ? 'admin_user' : authUser.uid; // Handle potential special case for admin setup
+      const userDocRef = doc(firestore, 'users', userId);
+      const userDocSnap = await getDoc(userDocRef);
 
-          // Privacy enforcement
-          if (role === 'operator') {
-              if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname.startsWith('/dashboard/announcements') || pathname.startsWith('/dashboard/messages')) {
-                  if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(id ?? '')) {
-                      // This is the operator's own profile, allow it
-                  } else {
-                     router.replace('/dashboard');
-                  }
-              }
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        const role = userData.role;
+        setUserRole(role);
+        setUserName(userData.name);
+
+        // Privacy enforcement
+        const isOperator = role === 'operator';
+        const isAdminPage = pathname.startsWith('/dashboard/users') || 
+                              pathname === '/dashboard/warehouse' || 
+                              pathname.startsWith('/dashboard/announcements');
+
+        if (isOperator && isAdminPage) {
+          // Allow operator to see their own profile, but nothing else admin-related
+          if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(authUser.uid)) {
+            // This is okay
+          } else {
+            router.replace('/dashboard');
           }
         }
-    }
+      } else {
+        // Doc not found, maybe a stale auth session. Log out.
+        await handleLogout();
+      }
+    };
     
-    checkUserAndData();
-    window.addEventListener('storage', checkUserAndData);
+    fetchUserData();
 
-    return () => {
-      window.removeEventListener('storage', checkUserAndData);
-    }
-  }, [pathname, router]);
+  }, [pathname, router, authUser, isUserLoading, firestore]);
 
   const handleLogout = async () => {
     try {
         await signOut(auth);
-        // Clear any other local state if necessary
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('userName');
-        localStorage.removeItem('userId');
+        setUserRole(null);
+        setUserName(null);
         router.push('/');
         setIsSidebarOpen(false);
     } catch (error) {
@@ -71,9 +82,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 
   const getEmail = () => {
-    if (userRole === 'admin') return 'admin@serveco.it';
-    if (userName) return `${userName.toLowerCase().replace(' ', '.')}@serveco.it`;
-    return 'utente@serveco.it';
+    return authUser?.email || 'utente@serveco.it';
   }
 
   const getAvatarFallback = () => {
@@ -89,10 +98,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   
   const handleProfileClick = () => {
     setIsSidebarOpen(false);
-    if (userRole === 'operator' && userId) {
-      router.push(`/dashboard/users/${userId}`);
+    if (userRole === 'operator' && authUser) {
+      router.push(`/dashboard/users/${authUser.uid}`);
     } else if (userRole === 'admin') {
-      router.push(`/dashboard/users/admin`);
+      router.push(`/dashboard/users/admin_user`);
     }
   };
 
@@ -109,6 +118,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isAdmin = userRole === 'admin';
   const isBaseDashboard = pathname === '/dashboard';
   
+  if(isUserLoading || !userRole) {
+      return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
+  }
 
   return (
     <>
@@ -138,7 +150,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <nav className="grid gap-2 text-lg font-medium">
                     {isAdmin ? (
                       <>
-                        {/* Admin-specific items can go here if needed in the future */}
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/users')}>
+                            <User className="h-5 w-5" /> Gestione Operatori
+                        </Button>
+                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/leave-requests')}>
+                            <CalendarCheck className="h-5 w-5" /> Richieste Ferie
+                        </Button>
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
+                            <Package className="h-5 w-5" /> Richieste Prodotti
+                        </Button>
                       </>
                     ) : (
                       <>
@@ -196,7 +216,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <ChangeCodeDialog 
         isOpen={isChangeCodeOpen}
         onOpenChange={setIsChangeCodeOpen}
-        userId={userId}
+        userId={authUser?.uid}
       />
     </>
   );
