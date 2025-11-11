@@ -13,27 +13,25 @@ interface LocationAddressProps {
 }
 
 // Function to format the address prioritizing road and house number
-const formatAddress = (address: any, displayName: string): string => {
+const formatAddress = (address: any): string => {
     const { road, house_number, city, town, village, county, country } = address;
 
     const place = city || town || village || '';
     const province = county ? `(${county.substring(0,2).toUpperCase()})` : '';
-
-    // Prioritize structured address
-    if (road) {
-        const parts = [road, house_number, place, province].filter(Boolean);
-        return parts.join(', ').replace(/, ,/g, ',');
+    
+    let fullRoad = road || '';
+    if (house_number) {
+        fullRoad += `, ${house_number}`;
     }
 
-    // Fallback: try to extract from displayName if road is missing
-    const displayNameParts = displayName.split(',');
-    if (displayNameParts.length > 2) {
-        // Assuming the first parts are the most specific (street, number)
-        return `${displayNameParts[0].trim()}, ${displayNameParts[1].trim()}, ${place}`;
-    }
+    const parts = [fullRoad, place, province].filter(p => p.trim() !== '');
 
-    // Default fallback if nothing else works
-    return displayName;
+    if (parts.length > 0) {
+        return parts.join(', ');
+    }
+    
+    // Fallback if no structured data is useful
+    return `Lat: ${address.lat}, Lon: ${address.lon}`;
 };
 
 
@@ -66,7 +64,7 @@ export function LocationAddress({ location }: LocationAddressProps) {
         const data = await response.json();
 
         if (data && data.address) {
-          const formatted = formatAddress(data.address, data.display_name);
+          const formatted = formatAddress(data.address);
           setAddress(formatted);
         } else {
           setAddress(`Lat: ${location.latitude.toFixed(4)}, Lon: ${location.longitude.toFixed(4)}`);
