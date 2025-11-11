@@ -3,26 +3,19 @@ import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, MessageSquare, Menu, LogOut, Settings, User, Lock } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, User, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 
-type Communication = {
-  id: string;
-  read: boolean;
-};
-
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
   const [userName, setUserName] = React.useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const [unreadCommunications, setUnreadCommunications] = React.useState(0);
   const [userId, setUserId] = React.useState<string|null>(null);
   const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
@@ -39,23 +32,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           // Privacy enforcement
           if (role === 'operator') {
-              if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements') {
+              if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements' || pathname === '/dashboard/messages') {
                   if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(id ?? '')) {
                       // This is the operator's own profile, allow it
                   } else {
                      router.replace('/dashboard');
                   }
               }
-          }
-        
-          // Check for unread communications
-          const allComms = JSON.parse(localStorage.getItem('communications') || '[]');
-          if(role === 'admin') {
-              const unreadCount = allComms.filter((c: Communication) => !c.read).length;
-              setUnreadCommunications(unreadCount);
-          } else {
-             // Operators don't have a concept of unread communications they receive
-             setUnreadCommunications(0);
           }
         }
     }
@@ -102,11 +85,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  const handleCommunicationsClick = () => {
-    setIsSidebarOpen(false);
-    router.push('/dashboard/messages');
-  };
-
   const handleChangeCodeClick = () => {
       setIsSidebarOpen(false);
       setIsChangeCodeOpen(true);
@@ -145,16 +123,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                    <Button variant="ghost" className="justify-start gap-2" onClick={handleProfileClick}>
                       <User className="h-5 w-5" /> Profilo
                    </Button>
-                   {!isAdmin && (
-                      <Button variant="ghost" className="justify-start gap-2" onClick={handleCommunicationsClick}>
-                        <MessageSquare className="h-5 w-5" /> Contatta Amministratore
-                      </Button>
-                   )}
-                   {isAdmin && (
-                      <Button variant="ghost" className="justify-start gap-2" onClick={handleCommunicationsClick}>
-                        <MessageSquare className="h-5 w-5" /> Comunicazioni
-                      </Button>
-                   )}
                    <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
                       <Lock className="h-5 w-5" /> Cambia Codice
                    </Button>
@@ -186,16 +154,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </div>
 
-          <div className="flex justify-end items-center gap-4">
-             {isAdmin && (
-                <Link href="/dashboard/messages">
-                 <Button variant="ghost" size="icon" className="relative">
-                    <MessageSquare className="h-5 w-5"/>
-                    {unreadCommunications > 0 && <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 text-xs flex items-center justify-center rounded-full">{unreadCommunications}</Badge>}
-                    <span className="sr-only">Comunicazioni</span>
-                 </Button>
-               </Link>
-            )}
+          <div className="flex justify-end items-center gap-4 w-10">
+             {/* Placeholder for potential future icons */}
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
