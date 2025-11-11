@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MoreHorizontal, Check, X } from "lucide-react";
+import { MoreHorizontal, Check, X, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +31,8 @@ type LeaveRequest = {
   type: string; 
   from: string; 
   to: string; 
+  timeFrom?: string;
+  timeTo?: string;
   status: 'In attesa' | 'Approvata' | 'Rifiutata'; 
   reason: string; 
   adminNotes?: string; 
@@ -63,6 +65,7 @@ const saveToStorage = <T,>(key: string, data: T) => {
 export default function LeaveRequestsPage() {
     const [requests, setRequests] = React.useState<LeaveRequest[]>([]);
     const [isRejectDialogOpen, setIsRejectDialogOpen] = React.useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
     const [selectedRequest, setSelectedRequest] = React.useState<LeaveRequest | null>(null);
     const [rejectionReason, setRejectionReason] = React.useState("");
     const { toast } = useToast();
@@ -106,12 +109,19 @@ export default function LeaveRequestsPage() {
             return;
         }
 
+        if (draft.type === 'Permesso' && (!draft.timeFrom || !draft.timeTo)) {
+            toast({ title: "Orario mancante", description: "Per i permessi, specifica l'orario di inizio e fine.", variant: "destructive" });
+            return;
+        }
+
         const newRequest: LeaveRequest = {
             id: `LR${Date.now()}`,
             user: localStorage.getItem('userName') || 'Operatore',
             type: draft.type,
             from: draft.from,
             to: draft.to,
+            timeFrom: draft.type === 'Permesso' ? draft.timeFrom : undefined,
+            timeTo: draft.type === 'Permesso' ? draft.timeTo : undefined,
             reason: draft.reason || '',
             status: 'In attesa'
         };
@@ -126,7 +136,12 @@ export default function LeaveRequestsPage() {
         updateAllRequests(updated);
         toast({ title: "Richiesta Approvata", variant: "default" });
     }
-
+    
+    const openRejectDialog = (request: LeaveRequest) => {
+        setSelectedRequest(request);
+        setIsRejectDialogOpen(true);
+    }
+    
     const handleRejectSubmit = () => {
         if (!selectedRequest) return;
         const updated = requests.map(r => r.id === selectedRequest.id ? { ...r, status: "Rifiutata" as const, adminNotes: rejectionReason } : r);
@@ -137,10 +152,20 @@ export default function LeaveRequestsPage() {
         setRejectionReason("");
     }
 
-    const openRejectDialog = (request: LeaveRequest) => {
+    const openDeleteDialog = (request: LeaveRequest) => {
         setSelectedRequest(request);
-        setIsRejectDialogOpen(true);
+        setIsDeleteDialogOpen(true);
     }
+    
+    const handleDeleteRequest = () => {
+        if (!selectedRequest) return;
+        const updated = requests.filter(r => r.id !== selectedRequest.id);
+        updateAllRequests(updated);
+        toast({ title: "Richiesta Eliminata", variant: "destructive"});
+        setIsDeleteDialogOpen(false);
+        setSelectedRequest(null);
+    }
+
 
     const getStatusVariant = (status: LeaveRequest['status']): "default" | "secondary" | "destructive" => {
         switch (status) {
@@ -149,6 +174,18 @@ export default function LeaveRequestsPage() {
             case "Rifiutata": return "destructive";
             default: return "secondary";
         }
+    }
+    
+    const formatPeriod = (req: LeaveRequest) => {
+        const fromDate = new Date(req.from).toLocaleDateString('it-IT');
+        const toDate = new Date(req.to).toLocaleDateString('it-IT');
+        let period = `${fromDate}`;
+        if(fromDate !== toDate) period += ` - ${toDate}`;
+
+        if(req.type === 'Permesso' && req.timeFrom && req.timeTo) {
+            period += ` (dalle ${req.timeFrom} alle ${req.timeTo})`;
+        }
+        return period;
     }
 
     const isAdmin = userRole === 'admin';
@@ -172,7 +209,7 @@ export default function LeaveRequestsPage() {
                     {!isAdmin && (
                         <form onSubmit={handleNewRequestSubmit} className="p-4 border rounded-lg space-y-4">
                             <h3 className="text-lg font-semibold">Crea Nuova Richiesta</h3>
-                            <div className="grid sm:grid-cols-3 gap-4">
+                             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
                                 <Select name="type" required value={draft.type || ""} onValueChange={(value) => handleDraftChange('type', value)}>
                                     <SelectTrigger><SelectValue placeholder="Seleziona tipo" /></SelectTrigger>
                                     <SelectContent>
@@ -184,6 +221,12 @@ export default function LeaveRequestsPage() {
                                 <Input name="from-date" type="date" value={draft.from || ""} onChange={(e) => handleDraftChange('from', e.target.value)} required placeholder="Dal"/>
                                 <Input name="to-date" type="date" value={draft.to || ""} onChange={(e) => handleDraftChange('to', e.target.value)} required placeholder="Al"/>
                             </div>
+                            {draft.type === 'Permesso' && (
+                                <div className="grid sm:grid-cols-2 gap-4 animate-in fade-in">
+                                     <Input name="time-from" type="time" value={draft.timeFrom || ""} onChange={(e) => handleDraftChange('timeFrom', e.target.value)} required />
+                                     <Input name="time-to" type="time" value={draft.timeTo || ""} onChange={(e) => handleDraftChange('timeTo', e.target.value)} required />
+                                </div>
+                            )}
                             <Textarea name="reason" placeholder="Opzionale: fornisci un motivo per la richiesta." value={draft.reason || ""} onChange={(e) => handleDraftChange('reason', e.target.value)} />
                             <Button type="submit" className="w-full sm:w-auto">Invia Richiesta</Button>
                         </form>
@@ -205,7 +248,7 @@ export default function LeaveRequestsPage() {
                                             <TableHead>Periodo</TableHead>
                                             <TableHead className="hidden md:table-cell">Motivo</TableHead>
                                             <TableHead>Stato</TableHead>
-                                            {isAdmin && <TableHead className="text-right">Azioni</TableHead>}
+                                            <TableHead className="text-right">Azioni</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -213,11 +256,11 @@ export default function LeaveRequestsPage() {
                                             <TableRow key={req.id}>
                                                 {isAdmin && <TableCell className="font-medium">{req.user}</TableCell>}
                                                 <TableCell>{req.type}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{new Date(req.from).toLocaleDateString()} - {new Date(req.to).toLocaleDateString()}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatPeriod(req)}</TableCell>
                                                 <TableCell className="hidden md:table-cell max-w-[200px] truncate">{req.reason || "-"}</TableCell>
                                                 <TableCell><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
-                                                {isAdmin && (
-                                                    <TableCell className="text-right">
+                                                <TableCell className="text-right">
+                                                    {isAdmin ? (
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button aria-haspopup="true" size="icon" variant="ghost" disabled={req.status !== 'In attesa'}>
@@ -231,8 +274,18 @@ export default function LeaveRequestsPage() {
                                                                 <DropdownMenuItem onSelect={() => openRejectDialog(req)} className="text-destructive"><X className="mr-2 h-4 w-4" />Rifiuta</DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
-                                                    </TableCell>
-                                                )}
+                                                    ) : (
+                                                         <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            disabled={req.status !== 'In attesa'}
+                                                            onClick={() => openDeleteDialog(req)}
+                                                          >
+                                                            <Trash2 className="h-4 w-4 text-destructive"/>
+                                                            <span className="sr-only">Elimina richiesta</span>
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -240,7 +293,8 @@ export default function LeaveRequestsPage() {
                            </div>
                         )}
                     </div>
-
+                    
+                    {/* Admin Reject Dialog */}
                     <AlertDialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
                         <AlertDialogContent>
                             <AlertDialogHeader>
@@ -251,6 +305,22 @@ export default function LeaveRequestsPage() {
                             <AlertDialogFooter>
                                 <AlertDialogCancel onClick={() => { setSelectedRequest(null); setRejectionReason(""); }}>Annulla</AlertDialogCancel>
                                 <AlertDialogAction onClick={handleRejectSubmit}>Conferma Rifiuto</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+
+                    {/* Operator Delete Dialog */}
+                    <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Vuoi davvero eliminare questa richiesta? L'azione non può essere annullata.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleDeleteRequest}>Conferma Eliminazione</AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
