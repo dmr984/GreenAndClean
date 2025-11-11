@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, CalendarCheck, Warehouse, Package } from 'lucide-react';
+import { Users, CalendarCheck, Warehouse, Package, Megaphone, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 

@@ -3,7 +3,7 @@ import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -32,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           // Privacy enforcement
           if (role === 'operator') {
-              if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname === '/dashboard/announcements' || pathname === '/dashboard/messages') {
+              if(pathname.startsWith('/dashboard/users') || pathname === '/dashboard/warehouse' || pathname.startsWith('/dashboard/announcements') || pathname.startsWith('/dashboard/messages')) {
                   if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(id ?? '')) {
                       // This is the operator's own profile, allow it
                   } else {
@@ -127,7 +127,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <nav className="grid gap-2 text-lg font-medium">
                     {isAdmin ? (
                       <>
-                        {/* Admin Menu Items here if needed in the future */}
+                        {/* Admin-specific items can go here if needed in the future */}
                       </>
                     ) : (
                       <>
