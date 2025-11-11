@@ -160,7 +160,7 @@ export default function UserProfilePage() {
         <>
             <div className="flex items-center gap-4 mb-4"> <Skeleton className="h-10 w-64" /> </div>
             <Card>
-                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <CardHeader className="flex flex-col md:flex-row items-start md:items-center gap-4">
                     <Skeleton className="h-20 w-20 rounded-full" />
                     <div className="flex-1 space-y-2"> <Skeleton className="h-8 w-48" /> <Skeleton className="h-6 w-64" /> </div>
                 </CardHeader>
@@ -191,7 +191,7 @@ export default function UserProfilePage() {
         </div>
         <div className="grid gap-8">
             <Card>
-                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center gap-4">
                     <Avatar className="h-20 w-20">
                         <AvatarFallback className="text-3xl">{getAvatarFallback(user.username)}</AvatarFallback>
                     </Avatar>
@@ -199,7 +199,7 @@ export default function UserProfilePage() {
                         <CardTitle className="text-3xl">{user.username}</CardTitle>
                         <CardDescription className="text-lg">Password: {user.password} | Luogo: {user.location}</CardDescription>
                     </div>
-                     <div className="flex items-center gap-2 self-start sm:self-center">
+                     <div className="flex items-center gap-2 self-start md:self-center">
                         <Label htmlFor="expected-hours" className="text-lg shrink-0">Ore Previste:</Label>
                          <div className="flex items-center gap-1">
                             <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
