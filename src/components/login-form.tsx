@@ -42,8 +42,6 @@ const initializeUsers = async (firestore: any) => {
   } catch (error: any) {
      if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
         // This could be a 'get' or a 'create' operation failing.
-        // We can make an educated guess based on what we expect to happen.
-        // Let's assume the getDoc fails first.
         const permissionError = new FirestorePermissionError({
             path: adminDocRef.path,
             operation: 'get',
