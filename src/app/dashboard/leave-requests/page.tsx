@@ -73,6 +73,8 @@ export default function LeaveRequestsPage() {
     const [rejectionReason, setRejectionReason] = React.useState("");
     const { toast } = useToast();
     const [userRole, setUserRole] = React.useState<string|null>(null);
+    const [userName, setUserName] = React.useState<string|null>(null);
+
 
     // Draft state for new request with auto-saving
     const [draft, setDraft] = React.useState<Partial<LeaveRequest>>({});
@@ -80,11 +82,13 @@ export default function LeaveRequestsPage() {
 
 
     React.useEffect(() => {
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
-        setUserRole(localStorage.getItem('userRole'));
+        setUserRole(storedUser.role);
+        setUserName(storedUser.username);
 
         // Load draft from storage only for operators
-        if (localStorage.getItem('userRole') === 'operator') {
+        if (storedUser.role === 'operator') {
             const savedDraft = getFromStorage<Partial<LeaveRequest>>('leave-request-draft', {});
             setDraft(savedDraft);
         }
@@ -121,7 +125,7 @@ export default function LeaveRequestsPage() {
 
         const newRequest: LeaveRequest = {
             id: `LR${Date.now()}`,
-            user: localStorage.getItem('userName') || 'Operatore',
+            user: userName || 'Operatore',
             type: draft.type,
             from: draft.from,
             to: draft.to,
@@ -233,7 +237,7 @@ export default function LeaveRequestsPage() {
     }
 
     const isAdmin = userRole === 'admin';
-    const userRequests = isAdmin ? requests : requests.filter(r => r.user === localStorage.getItem('userName'));
+    const userRequests = isAdmin ? requests : requests.filter(r => r.user === userName);
 
     return (
         <div className="flex flex-col gap-8">

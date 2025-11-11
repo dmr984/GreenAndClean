@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, getDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -36,15 +36,24 @@ export default function LoginForm() {
         try {
             // Ensure admin user exists.
             const adminDocRef = doc(firestore, 'app-users', 'admin_user');
-            const adminDoc = await getDoc(adminDocRef);
-
-            if (!adminDoc.exists()) {
-                await setDoc(adminDocRef, {
-                    username: 'Amministratore',
-                    password: '0000',
-                    role: 'admin'
+            
+            try {
+              const adminDoc = await getDoc(adminDocRef);
+              if (!adminDoc.exists()) {
+                  await setDoc(adminDocRef, {
+                      username: 'Amministratore',
+                      password: '0000',
+                      role: 'admin'
+                  });
+              }
+            } catch (e) {
+                const contextualError = new FirestorePermissionError({
+                    path: 'app-users/admin_user',
+                    operation: 'get', 
                 });
+                errorEmitter.emit('permission-error', contextualError);
             }
+
 
             // Fetch all users
             const usersCollection = collection(firestore, 'app-users');
@@ -67,17 +76,14 @@ export default function LoginForm() {
                 operation: 'list', 
             });
             errorEmitter.emit('permission-error', contextualError);
-            toast({
-                variant: "destructive",
-                title: "Errore di permessi",
-                description: "Impossibile caricare gli utenti. Controlla le regole di Firestore."
-            });
         } finally {
             setIsLoading(false);
         }
     }
 
-    setupUsers();
+    if (firestore) {
+      setupUsers();
+    }
 }, [firestore, toast]);
 
 
@@ -120,10 +126,7 @@ export default function LoginForm() {
           role: foundUser.role
         };
         localStorage.setItem('user', JSON.stringify(userToStore));
-        localStorage.setItem('userRole', foundUser.role);
-        localStorage.setItem('userName', foundUser.username);
-        localStorage.setItem('userId', foundUser.id);
-
+        
         router.push('/dashboard');
       } else {
         toast({
@@ -139,11 +142,6 @@ export default function LoginForm() {
             operation: 'list',
         });
         errorEmitter.emit('permission-error', contextualError);
-        toast({
-          variant: "destructive",
-          title: "Errore di accesso",
-          description: "Si è verificato un errore di permessi durante il login.",
-        });
     } finally {
       setIsLoading(false);
     }

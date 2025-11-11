@@ -70,17 +70,19 @@ export default function SupplyRequestsPage() {
     const [manageFormState, setManageFormState] = React.useState<{ fulfilledItems: { [key: string]: number }, notes: string }>({ fulfilledItems: {}, notes: "" });
     const { toast } = useToast();
     const [userRole, setUserRole] = React.useState<string|null>(null);
+    const [userName, setUserName] = React.useState<string|null>(null);
 
     // Draft state for new request with auto-saving
     const [draftItems, setDraftItems] = React.useState<{ [itemName: string]: number }>({});
     
     React.useEffect(() => {
-        const role = localStorage.getItem('userRole');
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        setUserRole(storedUser.role);
+        setUserName(storedUser.username);
         setRequests(getFromStorage<SupplyRequest[]>('supply-requests', []));
         setWarehouseItems(getFromStorage<WarehouseItem[]>('warehouse-items', []));
-        setUserRole(role);
         
-        if (role === 'operator') {
+        if (storedUser.role === 'operator') {
             setDraftItems(getFromStorage<{ [itemName: string]: number }>('supply-request-draft', {}));
         }
     }, []);
@@ -117,7 +119,7 @@ export default function SupplyRequestsPage() {
 
         const newRequest: SupplyRequest = {
             id: `SR${Date.now()}`,
-            user: localStorage.getItem('userName') || 'Operatore',
+            user: userName || 'Operatore',
             items: draftItems,
             status: 'In attesa',
         };
@@ -225,7 +227,7 @@ export default function SupplyRequestsPage() {
     }
     
     const isAdmin = userRole === 'admin';
-    const userRequests = isAdmin ? requests : requests.filter(r => r.user === localStorage.getItem('userName'));
+    const userRequests = isAdmin ? requests : requests.filter(r => r.user === userName);
 
     return (
         <div className="flex flex-col gap-8">
