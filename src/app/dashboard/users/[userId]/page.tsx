@@ -284,7 +284,7 @@ export default function UserProfilePage() {
   }
   
   const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
-    <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+    <div className="flex items-center gap-3 p-3 bg-muted rounded-lg flex-shrink-0 w-40">
         <div className="text-primary">{icon}</div>
         <div>
             <div className="text-sm text-muted-foreground">{label}</div>
@@ -294,215 +294,214 @@ export default function UserProfilePage() {
   );
 
   return (
-    <>
-        <div className="flex items-center gap-4 mb-4">
-            <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
-        </div>
-        <div className="grid gap-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                    <CardHeader className="flex flex-row items-start gap-4">
-                         <Avatar className="h-16 w-16">
-                            <AvatarFallback className="text-2xl">{getAvatarFallback(user.username)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                            <CardTitle className="text-2xl">{user.username}</CardTitle>
-                            <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 gap-y-1">
-                               <span>Password: {user.password}</span>
-                               <span className="hidden sm:inline">|</span>
-                               <span>Luogo: {user.location}</span>
-                            </CardDescription>
-                             <div className="flex items-center gap-2 mt-4">
-                                <Label htmlFor="expected-hours" className="text-base shrink-0">Ore Previste:</Label>
-                                 <div className="flex items-center gap-1">
-                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
-                                    <span className="min-w-[32px] text-center font-bold text-lg">{user.expectedHours || 0}</span>
-                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(1)}> <Plus className="h-4 w-4" /> </Button>
-                                </div>
-                             </div>
+    <div className="flex flex-col gap-6">
+        <h2 className="text-3xl font-bold tracking-tight">Profilo Operatore</h2>
+        
+        <Card>
+            <CardHeader className="flex flex-col sm:flex-row items-start gap-4">
+                 <Avatar className="h-16 w-16">
+                    <AvatarFallback className="text-2xl">{getAvatarFallback(user.username)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                    <CardTitle className="text-2xl">{user.username}</CardTitle>
+                    <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 gap-y-1">
+                       <span>Password: {user.password}</span>
+                       <span className="hidden sm:inline">|</span>
+                       <span>Luogo: {user.location}</span>
+                    </CardDescription>
+                     <div className="flex items-center gap-2 mt-4">
+                        <Label htmlFor="expected-hours" className="text-base shrink-0">Ore Previste:</Label>
+                         <div className="flex items-center gap-1">
+                            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(-1)}> <Minus className="h-4 w-4" /> </Button>
+                            <span className="min-w-[32px] text-center font-bold text-lg">{user.expectedHours || 0}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleExpectedHoursChange(1)}> <Plus className="h-4 w-4" /> </Button>
                         </div>
+                     </div>
+                </div>
+            </CardHeader>
+        </Card>
+
+         {summaryStats && (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-xl">Riepilogo Attività</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="relative w-full overflow-x-auto pb-2">
+                    <div className="flex gap-3 sm:gap-4">
+                        <StatCard icon={<CalendarDays className="h-7 w-7"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
+                        <StatCard icon={<TrendingUp className="h-7 w-7"/>} label="Straordinari" value={summaryStats.overtime} />
+                        <StatCard icon={<CalendarCheck className="h-7 w-7"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
+                        <StatCard icon={<Hourglass className="h-7 w-7"/>} label="Ore Permesso" value={summaryStats.permitHours} />
+                    </div>
+                  </div>
+                </CardContent>
+            </Card>
+         )}
+
+        <Tabs defaultValue="shifts" className="w-full">
+            <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 md:w-auto">
+                <TabsTrigger value="shifts" className="gap-2"><Briefcase className="h-4 w-4"/>Timbrature</TabsTrigger>
+                <TabsTrigger value="leaves" className="gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
+                <TabsTrigger value="supplies" className="gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="shifts">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Storico Timbrature e Ore</CardTitle>
+                        <CardDescription>Riepilogo dei turni di lavoro completati, con dettaglio ore e straordinari.</CardDescription>
                     </CardHeader>
-                </Card>
-
-                 {summaryStats && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-xl">Riepilogo Attività</CardTitle>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-2 gap-3 sm:gap-4">
-                            <StatCard icon={<CalendarDays className="h-7 w-7"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
-                            <StatCard icon={<TrendingUp className="h-7 w-7"/>} label="Straordinari" value={summaryStats.overtime} />
-                            <StatCard icon={<CalendarCheck className="h-7 w-7"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
-                            <StatCard icon={<Hourglass className="h-7 w-7"/>} label="Ore Permesso" value={summaryStats.permitHours} />
-                        </CardContent>
-                    </Card>
-                 )}
-            </div>
-
-            <Tabs defaultValue="shifts">
-                <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 md:w-auto">
-                    <TabsTrigger value="shifts" className="gap-2"><Briefcase className="h-4 w-4"/>Timbrature</TabsTrigger>
-                    <TabsTrigger value="leaves" className="gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
-                    <TabsTrigger value="supplies" className="gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="shifts">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Storico Timbrature e Ore</CardTitle>
-                            <CardDescription>Riepilogo dei turni di lavoro completati, con dettaglio ore e straordinari.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-[500px] w-full">
-                            {shifts.length > 0 ? (
-                                <div className="space-y-4">
-                                {shifts.map(shift => {
-                                    const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
-                                    const expectedMinutes = (user.expectedHours || 0) * 60;
-                                    const overtimeMinutes = Math.max(0, duration.workedMinutes - expectedMinutes);
-                                    const overtimeHours = formatMinutesToHours(overtimeMinutes);
-                                    
-                                    return (
-                                        <Card key={shift.id} className="overflow-hidden">
-                                            <CardHeader className="flex flex-row justify-between items-start pb-2">
-                                                <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
-                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(shift.id)}>
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                    <span className="sr-only">Elimina timbratura</span>
-                                                </Button>
-                                            </CardHeader>
-                                            <CardContent className="space-y-3">
-                                             <div className="relative overflow-x-auto">
-                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm min-w-[300px]">
-                                                    <div className="flex items-center gap-2 font-medium"><Clock className="text-primary"/> Ingresso:</div>
-                                                    <div className="font-mono text-right flex justify-end items-center gap-2">
-                                                        <span>{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
-                                                        {shift.startLocation && (
-                                                          <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.startLocation.latitude},${shift.startLocation.longitude}`} target="_blank" rel="noopener noreferrer">
-                                                            <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
-                                                          </Link>
-                                                        )}
-                                                    </div>
-                                                    
-                                                    <div className="flex items-center gap-2 font-medium"><AlarmClockOff className="text-primary"/> Uscita:</div>
-                                                    <div className="font-mono text-right flex justify-end items-center gap-2">
-                                                        <span>{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
-                                                         {shift.endLocation && (
-                                                          <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.endLocation.latitude},${shift.endLocation.longitude}`} target="_blank" rel="noopener noreferrer">
-                                                            <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
-                                                          </Link>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <hr className="my-2"/>
-                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm min-w-[300px]">
-                                                    <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle /> Pause:</div>
-                                                    <div className="font-mono text-right font-semibold text-muted-foreground">{duration.pause}</div>
-
-                                                    <div className="flex items-center gap-2 font-medium"><Briefcase/> Ore Lavorate:</div>
-                                                    <div className="font-mono text-right font-bold">{duration.worked}</div>
-                                                    
-                                                    <div className="flex items-center gap-2 font-medium"><Timer /> Straordinario:</div>
-                                                    <div className={`font-mono text-right font-bold ${overtimeMinutes > 0 ? 'text-primary' : ''}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</div>
-                                                </div>
-                                             </div>
-                                            </CardContent>
-                                        </Card>
-                                    )
-                                })}
-                                </div>
-                            ) : (
-                                <div className="text-center text-muted-foreground py-16">
-                                    <p>Nessuna timbratura completata da mostrare.</p>
-                                </div>
-                            )}
-                            </ScrollArea>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-                 <TabsContent value="leaves">
-                    <Card>
-                        <CardHeader><CardTitle>Storico Richieste Ferie e Permessi</CardTitle></CardHeader>
-                        <CardContent>
-                             <ScrollArea className="h-[400px]">
-                             {leaveRequests.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Periodo</TableHead>
-                                            <TableHead>Tipo</TableHead>
-                                            <TableHead>Motivo</TableHead>
-                                            <TableHead className="text-right">Stato</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                    {leaveRequests.map(req => {
-                                        const fromDate = new Date(req.from).toLocaleDateString('it-IT');
-                                        const toDate = new Date(req.to).toLocaleDateString('it-IT');
-                                        let period = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
-                                        if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
-                                            period += ` (${req.timeFrom}-${req.timeTo})`;
-                                        }
-                                       return(
-                                        <TableRow key={req.id}>
-                                            <TableCell className="font-medium">{period}</TableCell>
-                                            <TableCell>{req.type}</TableCell>
-                                            <TableCell className="text-muted-foreground truncate max-w-xs">{req.reason || '-'}</TableCell>
-                                            <TableCell className="text-right"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
-                                        </TableRow>
-                                       )
-                                    })}
-                                    </TableBody>
-                                </Table>
-                             ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di ferie o permesso trovata.</p>}
-                             </ScrollArea>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                 <TabsContent value="supplies">
-                    <Card>
-                        <CardHeader><CardTitle>Storico Richieste Forniture</CardTitle></CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-[400px]">
-                            {supplyRequests.length > 0 ? (
-                                <div className="space-y-4">
-                                {supplyRequests.map(req => (
-                                    <Card key={req.id}>
-                                        <CardHeader className="flex flex-row justify-between items-center pb-3">
-                                             <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
-                                             <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
+                    <CardContent>
+                        <ScrollArea className="h-[500px] w-full pr-4">
+                        {shifts.length > 0 ? (
+                            <div className="space-y-4">
+                            {shifts.map(shift => {
+                                const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
+                                const expectedMinutes = (user.expectedHours || 0) * 60;
+                                const overtimeMinutes = Math.max(0, duration.workedMinutes - expectedMinutes);
+                                const overtimeHours = formatMinutesToHours(overtimeMinutes);
+                                
+                                return (
+                                    <Card key={shift.id} className="overflow-hidden">
+                                        <CardHeader className="flex flex-row justify-between items-start pb-2">
+                                            <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
+                                            <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(shift.id)}>
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                                <span className="sr-only">Elimina timbratura</span>
+                                            </Button>
                                         </CardHeader>
                                         <CardContent>
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Prodotto</TableHead>
-                                                        <TableHead className="text-center">Qt. Richiesta</TableHead>
-                                                        <TableHead className="text-center">Qt. Consegnata</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {Object.entries(req.items).map(([name, qty]) => (
-                                                        <TableRow key={name}>
-                                                            <TableCell>{name}</TableCell>
-                                                            <TableCell className="text-center">{qty}</TableCell>
-                                                            <TableCell className="text-center font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</TableCell>
-                                                        </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
+                                         <div className="relative overflow-x-auto">
+                                            <div className="flex items-center gap-6 text-sm min-w-[500px] py-2">
+                                                <div className="flex items-center gap-2 font-medium shrink-0"><Clock className="text-primary h-5 w-5"/>Ingresso:</div>
+                                                <div className="font-mono flex items-center gap-2">
+                                                    <span>{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                    {shift.startLocation && (
+                                                      <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.startLocation.latitude},${shift.startLocation.longitude}`} target="_blank" rel="noopener noreferrer">
+                                                        <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                                                      </Link>
+                                                    )}
+                                                </div>
+                                                 <div className="flex items-center gap-2 font-medium shrink-0"><AlarmClockOff className="text-primary h-5 w-5"/>Uscita:</div>
+                                                <div className="font-mono flex items-center gap-2">
+                                                    <span>{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                     {shift.endLocation && (
+                                                      <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.endLocation.latitude},${shift.endLocation.longitude}`} target="_blank" rel="noopener noreferrer">
+                                                        <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                                                      </Link>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <hr className="my-2"/>
+                                            <div className="flex items-center gap-6 text-sm min-w-[500px] py-2">
+                                                <div className="flex items-center gap-2 text-muted-foreground shrink-0"><PauseCircle className="h-5 w-5"/>Pause:</div>
+                                                <div className="font-mono font-semibold text-muted-foreground">{duration.pause}</div>
+
+                                                <div className="flex items-center gap-2 font-medium shrink-0"><Briefcase className="h-5 w-5"/>Ore Lavorate:</div>
+                                                <div className="font-mono font-bold">{duration.worked}</div>
+                                                
+                                                <div className="flex items-center gap-2 font-medium shrink-0"><Timer className="h-5 w-5"/>Straordinario:</div>
+                                                <div className={`font-mono font-bold ${overtimeMinutes > 0 ? 'text-primary' : ''}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</div>
+                                            </div>
+                                         </div>
                                         </CardContent>
                                     </Card>
-                                ))}
-                                </div>
-                            ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di forniture trovata.</p>}
-                           </ScrollArea>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
-        </div>
+                                )
+                            })}
+                            </div>
+                        ) : (
+                            <div className="text-center text-muted-foreground py-16">
+                                <p>Nessuna timbratura completata da mostrare.</p>
+                            </div>
+                        )}
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+             <TabsContent value="leaves">
+                <Card>
+                    <CardHeader><CardTitle>Storico Richieste Ferie e Permessi</CardTitle></CardHeader>
+                    <CardContent>
+                         <ScrollArea className="h-[400px]">
+                         {leaveRequests.length > 0 ? (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Periodo</TableHead>
+                                        <TableHead>Tipo</TableHead>
+                                        <TableHead>Motivo</TableHead>
+                                        <TableHead className="text-right">Stato</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                {leaveRequests.map(req => {
+                                    const fromDate = new Date(req.from).toLocaleDateString('it-IT');
+                                    const toDate = new Date(req.to).toLocaleDateString('it-IT');
+                                    let period = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+                                    if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
+                                        period += ` (${req.timeFrom}-${req.timeTo})`;
+                                    }
+                                   return(
+                                    <TableRow key={req.id}>
+                                        <TableCell className="font-medium">{period}</TableCell>
+                                        <TableCell>{req.type}</TableCell>
+                                        <TableCell className="text-muted-foreground truncate max-w-xs">{req.reason || '-'}</TableCell>
+                                        <TableCell className="text-right"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
+                                    </TableRow>
+                                   )
+                                })}
+                                </TableBody>
+                            </Table>
+                         ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di ferie o permesso trovata.</p>}
+                         </ScrollArea>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
+             <TabsContent value="supplies">
+                <Card>
+                    <CardHeader><CardTitle>Storico Richieste Forniture</CardTitle></CardHeader>
+                    <CardContent>
+                        <ScrollArea className="h-[400px]">
+                        {supplyRequests.length > 0 ? (
+                            <div className="space-y-4">
+                            {supplyRequests.map(req => (
+                                <Card key={req.id}>
+                                    <CardHeader className="flex flex-row justify-between items-center pb-3">
+                                         <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
+                                         <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Prodotto</TableHead>
+                                                    <TableHead className="text-center">Qt. Richiesta</TableHead>
+                                                    <TableHead className="text-center">Qt. Consegnata</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {Object.entries(req.items).map(([name, qty]) => (
+                                                    <TableRow key={name}>
+                                                        <TableCell>{name}</TableCell>
+                                                        <TableCell className="text-center">{qty}</TableCell>
+                                                        <TableCell className="text-center font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                            </div>
+                        ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di forniture trovata.</p>}
+                       </ScrollArea>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+        </Tabs>
+        
 
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
             <AlertDialogContent>
@@ -518,6 +517,6 @@ export default function UserProfilePage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
