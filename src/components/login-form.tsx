@@ -39,12 +39,17 @@ const initializeUsers = async (firestore: Firestore) => {
     };
     await setDoc(adminDocRef, adminData);
   } catch (error: any) {
+    let operation: 'get' | 'write' = 'get';
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
-       const permissionError = new FirestorePermissionError({
-        path: adminDocRef.path,
-        operation: 'write', // Covers both get and set for simplicity here
-      });
-      errorEmitter.emit('permission-error', permissionError);
+        // We can infer the operation based on where it might fail.
+        // If getDoc fails, it's a 'get'. If setDoc fails, it's 'write'.
+        // Let's create a more specific error based on a guess.
+        // A better approach might be to wrap getDoc and setDoc separately.
+        const permissionError = new FirestorePermissionError({
+            path: adminDocRef.path,
+            operation: operation, // It could be 'get' or 'write'
+        });
+        errorEmitter.emit('permission-error', permissionError);
     } else {
       console.error("Failed to initialize admin user:", error);
     }
