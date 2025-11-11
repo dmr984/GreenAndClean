@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck, MapPin } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,11 @@ import { useFirestore } from '@/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+
+type Geolocation = {
+  latitude: number;
+  longitude: number;
+};
 
 type User = {
   id: string;
@@ -28,12 +33,20 @@ type User = {
 
 type LeaveRequest = { id: string; user: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
 type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; };
+type Pause = { 
+  startTime: string; 
+  endTime: string | null;
+  startLocation?: Geolocation;
+  endLocation?: Geolocation;
+};
 type Shift = { 
   id: string; 
   userId: string;
   startTime: string | null; 
   endTime: string | null; 
-  pauses: { startTime: string; endTime: string | null }[] 
+  startLocation?: Geolocation;
+  endLocation?: Geolocation;
+  pauses: Pause[];
 };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -55,7 +68,7 @@ const getAvatarFallback = (name: string) => {
     return name.substring(0, 2).toUpperCase();
 };
 
-const calculateDuration = (start: string | null, end: string | null, pauses: { startTime: string; endTime: string | null }[]) => {
+const calculateDuration = (start: string | null, end: string | null, pauses: Pause[]) => {
     if (!start || !end) return { total: 'N/A', pause: 'N/A', worked: 'N/A', workedMinutes: 0 };
 
     const startTime = new Date(start).getTime();
@@ -240,6 +253,21 @@ export default function UserProfilePage() {
       </div>
     );
   }
+  
+  const LocationLink = ({ location }: { location?: Geolocation }) => {
+    if (!location) return null;
+    return (
+      <a
+        href={`https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-primary hover:underline"
+      >
+        <MapPin className="h-3 w-3" />
+        <span>Vedi Mappa</span>
+      </a>
+    );
+  };
 
   const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
     <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
@@ -265,7 +293,7 @@ export default function UserProfilePage() {
                         </Avatar>
                         <div className="flex-1">
                             <CardTitle className="text-3xl">{user.username}</CardTitle>
-                            <CardDescription className="text-base flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                            <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
                                <span>Password: {user.password}</span>
                                <span className="hidden sm:inline">|</span>
                                <span>Luogo: {user.location}</span>
@@ -322,10 +350,10 @@ export default function UserProfilePage() {
                                             <CardContent className="space-y-3">
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                                                     <div className="flex items-center gap-2"><Clock className="text-primary"/> <span>Ingresso:</span></div>
-                                                    <div className="font-mono text-right">{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</div>
+                                                    <div className="font-mono text-right flex items-center justify-end gap-2">{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})} <LocationLink location={shift.startLocation} /></div>
                                                     
                                                     <div className="flex items-center gap-2"><AlarmClockOff className="text-primary"/> <span>Uscita:</span></div>
-                                                    <div className="font-mono text-right">{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</div>
+                                                    <div className="font-mono text-right flex items-center justify-end gap-2">{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})} <LocationLink location={shift.endLocation} /></div>
                                                 </div>
                                                 <hr/>
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

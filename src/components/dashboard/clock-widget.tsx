@@ -1,14 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, LogIn, LogOut, Coffee, Play } from "lucide-react";
+import { Clock, LogIn, LogOut, Coffee, Play, MapPin, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
+type Geolocation = {
+  latitude: number;
+  longitude: number;
+};
+
 export type Pause = {
   startTime: string;
   endTime: string | null;
+  startLocation?: Geolocation;
+  endLocation?: Geolocation;
 }
 
 export type Shift = {
@@ -18,6 +25,8 @@ export type Shift = {
   date: string;
   startTime: string | null;
   endTime: string | null;
+  startLocation?: Geolocation;
+  endLocation?: Geolocation;
   pauses: Pause[];
 };
 
@@ -53,6 +62,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
   const { toast } = useToast();
   const [lastActionTime, setLastActionTime] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("");
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
 
 
   // Effect for the live clock
@@ -82,91 +92,153 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     }
   }, [userId]);
 
-
-  const handleClockIn = () => {
-    const now = new Date();
-    const shifts = getShiftsFromStorage();
-    const newShift: Shift = {
-        id: `SHIFT${Date.now()}`,
-        userId: userId,
-        userName: userName,
-        date: now.toISOString().split('T')[0],
-        startTime: now.toISOString(),
-        endTime: null,
-        pauses: [],
-    };
-    saveShiftsToStorage([...shifts, newShift]);
-    setActiveShift(newShift);
-    setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
-    toast({
-        title: "Inizio Turno",
-        description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
-    });
-  }
-
-  const handleClockOut = () => {
-      const now = new Date();
-      const shifts = getShiftsFromStorage();
-      if (activeShift) {
-        let shiftToUpdate = { ...activeShift };
-        
-        // If on pause, end pause first
-        if (isOnPause) {
-            const updatedPauses = shiftToUpdate.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString() } : p);
-            shiftToUpdate.pauses = updatedPauses;
-        }
-
-        const updatedShifts = shifts.map(s => 
-            s.id === activeShift.id ? { ...shiftToUpdate, endTime: now.toISOString() } : s
-        );
-        saveShiftsToStorage(updatedShifts);
-        setActiveShift(null);
-        setIsOnPause(false);
-        setLastActionTime(null);
-        toast({
-            title: "Fine Turno",
-            description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
-        });
-        if (onShiftComplete) onShiftComplete();
+  const getCurrentPosition = (): Promise<Geolocation> => {
+    setIsGettingLocation(true);
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        setIsGettingLocation(false);
+        return reject(new Error("La geolocalizzazione non è supportata dal tuo browser."));
       }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setIsGettingLocation(false);
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          setIsGettingLocation(false);
+          let message = "Impossibile ottenere la posizione.";
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              message = "Hai negato il permesso per la geolocalizzazione.";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              message = "Informazioni sulla posizione non disponibili.";
+              break;
+            case error.TIMEOUT:
+              message = "La richiesta di geolocalizzazione è scaduta.";
+              break;
+          }
+          return reject(new Error(message));
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  };
+
+  const handleClockIn = async () => {
+    try {
+        const location = await getCurrentPosition();
+        const now = new Date();
+        const shifts = getShiftsFromStorage();
+        const newShift: Shift = {
+            id: `SHIFT${Date.now()}`,
+            userId: userId,
+            userName: userName,
+            date: now.toISOString().split('T')[0],
+            startTime: now.toISOString(),
+            endTime: null,
+            startLocation: location,
+            pauses: [],
+        };
+        saveShiftsToStorage([...shifts, newShift]);
+        setActiveShift(newShift);
+        setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+        toast({
+            title: "Inizio Turno",
+            description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
+        });
+    } catch (error: any) {
+        toast({
+            title: "Errore di Posizione",
+            description: error.message,
+            variant: "destructive"
+        })
+    }
   }
 
-  const handlePauseToggle = () => {
+  const handleClockOut = async () => {
+    try {
+        const location = await getCurrentPosition();
+        const now = new Date();
+        const shifts = getShiftsFromStorage();
+        if (activeShift) {
+            let shiftToUpdate = { ...activeShift };
+            
+            // If on pause, end pause first
+            if (isOnPause) {
+                const updatedPauses = shiftToUpdate.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
+                shiftToUpdate.pauses = updatedPauses;
+            }
+
+            const updatedShifts = shifts.map(s => 
+                s.id === activeShift.id ? { ...shiftToUpdate, endTime: now.toISOString(), endLocation: location } : s
+            );
+            saveShiftsToStorage(updatedShifts);
+            setActiveShift(null);
+            setIsOnPause(false);
+            setLastActionTime(null);
+            toast({
+                title: "Fine Turno",
+                description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
+            });
+            if (onShiftComplete) onShiftComplete();
+        }
+    } catch (error: any) {
+        toast({
+            title: "Errore di Posizione",
+            description: error.message,
+            variant: "destructive"
+        })
+    }
+  }
+
+  const handlePauseToggle = async () => {
     if (!activeShift) return;
+    try {
+        const location = await getCurrentPosition();
+        const now = new Date();
+        const shifts = getShiftsFromStorage();
+        let updatedShift: Shift | null = null;
+        
+        if (isOnPause) { // End pause
+            const updatedShifts = shifts.map(s => {
+                if (s.id === activeShift.id) {
+                    const updatedPauses = s.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
+                    updatedShift = { ...s, pauses: updatedPauses };
+                    return updatedShift;
+                }
+                return s;
+            });
+            saveShiftsToStorage(updatedShifts);
+            setIsOnPause(false);
+            if(updatedShift) setActiveShift(updatedShift);
+            setLastActionTime(new Date(updatedShift!.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+            toast({ title: "Fine Pausa", description: "Hai ripreso a lavorare." });
 
-    const now = new Date();
-    const shifts = getShiftsFromStorage();
-    let updatedShift: Shift | null = null;
-    
-    if (isOnPause) { // End pause
-        const updatedShifts = shifts.map(s => {
-            if (s.id === activeShift.id) {
-                const updatedPauses = s.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString() } : p);
-                updatedShift = { ...s, pauses: updatedPauses };
-                return updatedShift;
-            }
-            return s;
-        });
-        saveShiftsToStorage(updatedShifts);
-        setIsOnPause(false);
-        if(updatedShift) setActiveShift(updatedShift);
-        setLastActionTime(new Date(updatedShift!.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
-        toast({ title: "Fine Pausa", description: "Hai ripreso a lavorare." });
-
-    } else { // Start pause
-        const newPause: Pause = { startTime: now.toISOString(), endTime: null };
-        const updatedShifts = shifts.map(s => {
-            if (s.id === activeShift.id) {
-                updatedShift = { ...s, pauses: [...s.pauses, newPause] };
-                return updatedShift;
-            }
-            return s;
-        });
-        saveShiftsToStorage(updatedShifts);
-        setIsOnPause(true);
-        if(updatedShift) setActiveShift(updatedShift);
-        setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
-        toast({ title: "Inizio Pausa", description: "Hai messo in pausa il tuo turno." });
+        } else { // Start pause
+            const newPause: Pause = { startTime: now.toISOString(), endTime: null, startLocation: location };
+            const updatedShifts = shifts.map(s => {
+                if (s.id === activeShift.id) {
+                    updatedShift = { ...s, pauses: [...s.pauses, newPause] };
+                    return updatedShift;
+                }
+                return s;
+            });
+            saveShiftsToStorage(updatedShifts);
+            setIsOnPause(true);
+            if(updatedShift) setActiveShift(updatedShift);
+            setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+            toast({ title: "Inizio Pausa", description: "Hai messo in pausa il tuo turno." });
+        }
+    } catch(error: any) {
+        toast({
+            title: "Errore di Posizione",
+            description: error.message,
+            variant: "destructive"
+        })
     }
   }
 
@@ -179,7 +251,8 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
       }
       return `Turno iniziato alle ${lastActionTime}`;
   }
-
+  
+  const isButtonDisabled = isGettingLocation || !userId;
   const isClockedIn = !!activeShift;
 
   return (
@@ -190,7 +263,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
           <CardTitle className="text-2xl">Gestione Turno</CardTitle>
         </div>
         <CardDescription>
-          {getStatusDescription()}
+          {isGettingLocation ? "Acquisizione posizione in corso..." : getStatusDescription()}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center justify-center gap-6">
@@ -198,24 +271,21 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
           {currentTime || "--:--"}
         </div>
         {!isClockedIn ? (
-            <Button onClick={handleClockIn} className="w-full font-bold" size="lg">
-                <LogIn className="mr-2 h-4 w-4" /> Timbra Entrata
+            <Button onClick={handleClockIn} className="w-full font-bold" size="lg" disabled={isButtonDisabled}>
+                {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : <LogIn className="mr-2 h-4 w-4" />}
+                Timbra Entrata
             </Button>
         ) : (
           <div className="grid grid-cols-2 gap-4 w-full">
-              <Button onClick={handlePauseToggle} className="font-bold" size="lg" variant={isOnPause ? "default" : "outline"} disabled={!isClockedIn}>
-                  {isOnPause ? (
-                    <>
-                        <Play className="mr-2 h-4 w-4" /> Termina Pausa
-                    </>
-                  ) : (
-                    <>
-                        <Coffee className="mr-2 h-4 w-4" /> Inizia Pausa
-                    </>
-                  )}
+              <Button onClick={handlePauseToggle} className="font-bold" size="lg" variant={isOnPause ? "default" : "outline"} disabled={isButtonDisabled}>
+                  {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : 
+                    isOnPause ? <Play className="mr-2 h-4 w-4" /> : <Coffee className="mr-2 h-4 w-4" />
+                  }
+                  {isOnPause ? 'Termina Pausa' : 'Inizia Pausa'}
               </Button>
-            <Button onClick={handleClockOut} className="font-bold" size="lg" variant="destructive" disabled={!isClockedIn}>
-                <LogOut className="mr-2 h-4 w-4" /> Timbra Uscita
+            <Button onClick={handleClockOut} className="font-bold" size="lg" variant="destructive" disabled={isButtonDisabled}>
+                {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : <LogOut className="mr-2 h-4 w-4" />}
+                Timbra Uscita
             </Button>
           </div>
         )}
