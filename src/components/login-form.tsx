@@ -32,23 +32,21 @@ const initializeUsers = async (firestore: any) => {
     const defaultPassword = '0000';
 
     // Create Admin User
-    const adminData = {
+    const adminDocRef = doc(firestore, 'app-users', 'admin_user');
+    batch.set(adminDocRef, {
       username: 'Amministratore',
       password: defaultPassword,
       role: 'admin',
-    };
-    const adminDocRef = doc(firestore, 'app-users', 'admin_user');
-    batch.set(adminDocRef, adminData);
+    });
 
     // Create 10 Operator Users
     for (let i = 1; i <= 10; i++) {
-      const operatorData = {
+      const operatorDocRef = doc(usersCollectionRef); // Auto-generates ID
+      batch.set(operatorDocRef, {
         username: `Operatore ${i}`,
         password: defaultPassword,
         role: 'operator',
-      };
-      const operatorDocRef = doc(usersCollectionRef);
-      batch.set(operatorDocRef, operatorData);
+      });
     }
     
     // Non-blocking commit with contextual error handling
@@ -126,10 +124,11 @@ export default function LoginForm() {
                 role: foundUser.role
             };
             localStorage.setItem('user', JSON.stringify(userToStore));
-            // Store role and username for other parts of the app that still use it
+            // Store legacy keys for compatibility with other components that may not have been updated
             localStorage.setItem('userRole', foundUser.role);
             localStorage.setItem('userName', foundUser.username);
             localStorage.setItem('userId', foundUser.id);
+
             router.push('/dashboard');
         } else {
             toast({
