@@ -8,6 +8,9 @@ import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useFirestore } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
 
 type LeaveRequest = { id: string; user: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
 
@@ -34,25 +37,43 @@ export default function UserLeavesPage() {
     const params = useParams();
     const router = useRouter();
     const userId = params.userId as string;
+    const firestore = useFirestore();
     
     const [userName, setUserName] = useState<string | null>(null);
     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!userId) return;
+        const fetchUserData = async () => {
+            if (!userId || !firestore) return;
 
-        setLoading(true);
-        // This is a workaround since we don't have direct DB access here
-        // We'll get the user from the main user list, assuming it's up-to-date.
-        const storedUsers = getFromStorage<any[]>('app-users', []);
-        const storedUser = storedUsers.find(u => u.id === userId);
-        setUserName(storedUser?.username || null);
+            setLoading(true);
+            
+            try {
+                const userDocRef = doc(firestore, 'app-users', userId);
+                const userDoc = await getDoc(userDocRef);
 
-        const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        setLeaveRequests(allLeaves.filter(r => r.user === storedUser?.username).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
-        setLoading(false);
-    }, [userId]);
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    const currentUserName = userData.username;
+                    setUserName(currentUserName);
+
+                    // Fetch data that depends on username
+                    const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
+                    setLeaveRequests(allLeaves.filter(r => r.user === currentUserName).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+                } else {
+                    setUserName(null);
+                }
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                setUserName(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUserData();
+    }, [userId, firestore]);
 
     if (loading) {
         return (

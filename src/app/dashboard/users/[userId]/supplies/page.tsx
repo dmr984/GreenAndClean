@@ -8,6 +8,8 @@ import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useFirestore } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; };
 
@@ -35,23 +37,43 @@ export default function UserSuppliesPage() {
     const params = useParams();
     const router = useRouter();
     const userId = params.userId as string;
+    const firestore = useFirestore();
 
     const [userName, setUserName] = useState<string | null>(null);
     const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!userId) return;
+        const fetchUserData = async () => {
+            if (!userId || !firestore) return;
 
-        setLoading(true);
-        const storedUsers = getFromStorage<any[]>('app-users', []);
-        const storedUser = storedUsers.find(u => u.id === userId);
-        setUserName(storedUser?.username || null);
+            setLoading(true);
+            
+            try {
+                const userDocRef = doc(firestore, 'app-users', userId);
+                const userDoc = await getDoc(userDocRef);
 
-        const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        setSupplyRequests(allSupplies.filter(r => r.user === storedUser?.username).sort((a,b) => b.id.localeCompare(a.id)));
-        setLoading(false);
-    }, [userId]);
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    const currentUserName = userData.username;
+                    setUserName(currentUserName);
+
+                    // Fetch data that depends on username
+                    const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
+                    setSupplyRequests(allSupplies.filter(r => r.user === currentUserName).sort((a,b) => b.id.localeCompare(a.id)));
+                } else {
+                    setUserName(null);
+                }
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                setUserName(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUserData();
+    }, [userId, firestore]);
 
     if (loading) {
         return (

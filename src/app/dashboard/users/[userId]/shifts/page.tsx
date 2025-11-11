@@ -10,6 +10,8 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useFirestore } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 
 type Geolocation = {
@@ -94,6 +96,7 @@ export default function UserShiftsPage() {
     const router = useRouter();
     const userId = params.userId as string;
     const { toast } = useToast();
+    const firestore = useFirestore();
 
     const [user, setUser] = useState<User | null>(null);
     const [shifts, setShifts] = useState<Shift[]>([]);
@@ -101,23 +104,35 @@ export default function UserShiftsPage() {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [selectedShiftToDelete, setSelectedShiftToDelete] = useState<string | null>(null);
     
-    useEffect(() => {
-        if (!userId) return;
+     useEffect(() => {
+        const fetchUserData = async () => {
+            if (!userId || !firestore) return;
 
-        setLoading(true);
-        const allUsers = getFromStorage<User[]>('app-users', []);
-        const foundUser = allUsers.find(u => u.id === userId);
-        
-        // This is a workaround since we don't have direct DB access here
-        // We'll get the user from the main user list, assuming it's up-to-date.
-        const storedUsers = getFromStorage<any[]>('app-users', []);
-        const storedUser = storedUsers.find(u => u.id === userId);
-        setUser(storedUser || null);
+            setLoading(true);
+            
+            try {
+                const userDocRef = doc(firestore, 'app-users', userId);
+                const userDoc = await getDoc(userDocRef);
 
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
-        setShifts(allShifts.filter(s => s.userId === userId && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
-        setLoading(false);
-    }, [userId]);
+                if (userDoc.exists()) {
+                    setUser({ id: userDoc.id, ...userDoc.data() } as User);
+                    
+                    // Fetch shifts after user is confirmed
+                    const allShifts = getFromStorage<Shift[]>('shifts', []);
+                    setShifts(allShifts.filter(s => s.userId === userId && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
+                } else {
+                    setUser(null);
+                }
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                setUser(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUserData();
+    }, [userId, firestore]);
 
     const openDeleteConfirmation = (shiftId: string) => {
         setSelectedShiftToDelete(shiftId);
