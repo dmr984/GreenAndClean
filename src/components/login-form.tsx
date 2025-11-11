@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/firebase';
+import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, query, where } from 'firebase/firestore';
 
 type User = {
   id: string;
@@ -19,58 +20,30 @@ type User = {
   location: string;
 };
 
-// Admin is hardcoded, operators are loaded from localStorage
 const adminUser: User = { id: "admin", name: "Amministratore", email: "admin@serveco.it", code: "070380", role: "admin", location: "Sede" };
-
-// Function to get users from localStorage
-const getUsersFromStorage = (): User[] => {
-  if (typeof window === 'undefined') return [];
-  const storedUsers = localStorage.getItem('app-users');
-  try {
-      // If there are no stored users, let's create a default list for the demo
-      if (!storedUsers) {
-          const defaultOperators: User[] = [
-              { id: 'USR1', name: 'Mario Rossi', email: 'mario.rossi@serveco.it', code: '1234', role: 'operator', location: 'Cantiere A' },
-              { id: 'USR2', name: 'Luigi Verdi', email: 'luigi.verdi@serveco.it', code: '5678', role: 'operator', location: 'Cantiere B' },
-          ];
-          localStorage.setItem('app-users', JSON.stringify(defaultOperators));
-          return defaultOperators;
-      }
-      return JSON.parse(storedUsers);
-  } catch (e) {
-      console.error("Failed to parse users from localStorage.", e);
-      return [];
-  }
-};
 
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
-  const [users, setUsers] = React.useState<User[]>([adminUser]);
+  const [selectedUserEmail, setSelectedUserEmail] = React.useState<string | null>(null);
+  const firestore = useFirestore();
   const auth = useAuth();
 
-  React.useEffect(() => {
-    const loadUsers = () => {
-        const operatorUsers = getUsersFromStorage();
-        setUsers([adminUser, ...operatorUsers]);
-    };
-    
-    loadUsers();
+  const usersCollection = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: users, isLoading } = useCollection<Omit<User, 'id'>>(usersCollection);
+  
+  const allUsers = React.useMemo(() => {
+    const operatorUsers = users || [];
+    return [adminUser, ...operatorUsers];
+  }, [users]);
 
-    window.addEventListener('storage', loadUsers);
-
-    return () => {
-        window.removeEventListener('storage', loadUsers);
-    };
-  }, []);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const code = (event.currentTarget.elements.namedItem('code') as HTMLInputElement).value;
     
-    if (!selectedUserId) {
+    if (!selectedUserEmail) {
       toast({
         variant: "destructive",
         title: "Errore di accesso",
@@ -79,14 +52,17 @@ export default function LoginForm() {
       return;
     }
     
-    const user = users.find(u => u.id === selectedUserId);
+    const user = allUsers.find(u => u.email === selectedUserEmail);
 
     if (user) {
       try {
-        await signInWithEmailAndPassword(auth, user.email, code);
+        const userCredential = await signInWithEmailAndPassword(auth, user.email, code);
+        // On successful login, Firebase Auth state is managed by the provider.
+        // We can store role/name in localStorage for quicker UI updates if needed.
         localStorage.setItem('userRole', user.role);
         localStorage.setItem('userName', user.name);
-        localStorage.setItem('userId', user.id);
+        localStorage.setItem('userId', userCredential.user.uid);
+        
         router.push('/dashboard');
       } catch (error) {
         toast({
@@ -108,13 +84,13 @@ export default function LoginForm() {
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
         <Label htmlFor="user-select">Seleziona Utente</Label>
-        <Select onValueChange={setSelectedUserId} required>
-            <SelectTrigger id="user-select">
-                <SelectValue placeholder="Seleziona il tuo nome dall'elenco" />
+        <Select onValueChange={setSelectedUserEmail} required>
+            <SelectTrigger id="user-select" disabled={isLoading}>
+                <SelectValue placeholder={isLoading ? "Caricamento..." : "Seleziona il tuo nome dall'elenco"} />
             </SelectTrigger>
             <SelectContent>
-                {users.map(user => (
-                   <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                {allUsers.map(user => (
+                   <SelectItem key={user.email} value={user.email}>{user.name}</SelectItem>
                 ))}
             </SelectContent>
         </Select>
@@ -123,9 +99,11 @@ export default function LoginForm() {
         <Label htmlFor="code">Codice di Accesso</Label>
         <Input id="code" name="code" type="password" required />
       </div>
-      <Button type="submit" className="w-full font-bold">
+      <Button type="submit" className="w-full font-bold" disabled={isLoading}>
         Accedi
       </Button>
     </form>
   );
 }
+
+    

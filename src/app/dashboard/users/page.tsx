@@ -13,33 +13,17 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
-
+import { useAuth, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
 type User = {
   id: string;
   name: string;
+  email: string;
   code: string;
   location: string;
   role: string;
-};
-
-// Function to get users from localStorage
-const getUsersFromStorage = (): User[] => {
-  if (typeof window === 'undefined') return [];
-  const storedUsers = localStorage.getItem('app-users');
-  try {
-    return storedUsers ? JSON.parse(storedUsers) : [];
-  } catch (e) {
-    console.error("Failed to parse users from localStorage", e);
-    return [];
-  }
-};
-
-// Function to save users to localStorage
-const saveUsersToStorage = (users: User[]) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('app-users', JSON.stringify(users));
-  window.dispatchEvent(new Event('storage'));
 };
 
 const getAvatarFallback = (name: string) => {
@@ -54,82 +38,118 @@ const getAvatarFallback = (name: string) => {
 
 export default function UsersPage() {
   const { toast } = useToast();
-  const [users, setUsers] = React.useState<User[]>([]);
+  const firestore = useFirestore();
+  const auth = useAuth();
+  
+  const usersCollection = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: users, isLoading } = useCollection<User>(usersCollection);
+
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = React.useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
   const router = useRouter();
 
-  React.useEffect(() => {
-    const storedUsers = getUsersFromStorage();
-    setUsers(storedUsers);
-  }, []);
 
-  const handleAddUser = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleAddUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
-    const newUser: User = {
-      id: `USR${String(Date.now()).slice(-6)}`,
-      name,
-      code,
-      location,
-      role: 'operator' // Role is fixed to 'operator'
-    };
+    try {
+        // 1. Create user in Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, code);
+        const authUser = userCredential.user;
 
-    const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
-    saveUsersToStorage(updatedUsers);
+        // 2. Add user to Firestore 'users' collection
+        const newUser: Omit<User, 'id'> = {
+            name,
+            email,
+            code, // Note: Storing password-like data here is not recommended for production
+            location,
+            role: 'operator'
+        };
+        await addDoc(collection(firestore, "users"), newUser);
+        
+        setIsNewUserDialogOpen(false);
+        toast({
+        title: "Utente Aggiunto",
+        description: `L'utente ${name} è stato aggiunto con successo.`,
+        });
+        form.reset();
 
-    setIsNewUserDialogOpen(false);
-    toast({
-      title: "Utente Aggiunto",
-      description: `L'utente ${name} è stato aggiunto con successo.`,
-    });
-    form.reset();
+    } catch (error: any) {
+        console.error("Error adding user:", error);
+        toast({
+            variant: "destructive",
+            title: "Errore",
+            description: error.message || "Impossibile aggiungere l'utente.",
+        });
+    }
   };
 
-  const handleEditUser = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleEditUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedUser) return;
 
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
-    const updatedUser = { ...selectedUser, name, code, location };
+    const userDocRef = doc(firestore, 'users', selectedUser.id);
+    const updatedData = { name, email, location, code };
 
-    const updatedUsers = users.map(u => u.id === selectedUser.id ? updatedUser : u);
-    setUsers(updatedUsers);
-    saveUsersToStorage(updatedUsers);
+    try {
+        await updateDoc(userDocRef, updatedData);
+        
+        // Note: Updating email/password in Firebase Auth is a sensitive operation
+        // and requires the user to be re-authenticated. It's complex and omitted here for simplicity.
+        // We will just update the Firestore document.
 
-    setIsEditUserDialogOpen(false);
-    setSelectedUser(null);
-    toast({
-      title: "Utente Modificato",
-      description: `I dati di ${name} sono stati aggiornati.`,
-    });
+        setIsEditUserDialogOpen(false);
+        setSelectedUser(null);
+        toast({
+        title: "Utente Modificato",
+        description: `I dati di ${name} sono stati aggiornati.`,
+        });
+    } catch(error: any) {
+        toast({
+            variant: "destructive",
+            title: "Errore",
+            description: error.message || "Impossibile modificare l'utente.",
+        });
+    }
+
   };
   
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!selectedUser) return;
     
-    const updatedUsers = users.filter(user => user.id !== selectedUser.id);
-    setUsers(updatedUsers);
-    saveUsersToStorage(updatedUsers);
-
-    toast({
-      title: "Utente Eliminato",
-      description: `L'utente è stato rimosso dal sistema.`,
-      variant: "destructive"
-    });
-    setIsDeleteDialogOpen(false);
-    setSelectedUser(null);
+    try {
+        await deleteDoc(doc(firestore, 'users', selectedUser.id));
+        // Note: Deleting the user from Firebase Auth is a separate, critical step.
+        // This is a complex operation that requires a backend function for security reasons.
+        // For this demo, we are only removing the user from the Firestore database.
+        
+        toast({
+        title: "Utente Eliminato",
+        description: `L'utente è stato rimosso dal database.`,
+        variant: "destructive"
+        });
+        setIsDeleteDialogOpen(false);
+        setSelectedUser(null);
+    } catch(error: any) {
+        toast({
+            variant: "destructive",
+            title: "Errore",
+            description: error.message || "Impossibile eliminare l'utente.",
+        });
+    }
   }
   
   const openEditDialog = (user: User) => {
@@ -141,6 +161,8 @@ export default function UsersPage() {
     setSelectedUser(user);
     setIsDeleteDialogOpen(true);
   }
+  
+  const operatorUsers = users?.filter(u => u.role === 'operator');
 
   return (
     <>
@@ -159,33 +181,39 @@ export default function UsersPage() {
             <DialogHeader>
                 <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                 <DialogDescription>
-                Compila i campi per creare un nuovo operatore.
+                Compila i campi per creare un nuovo operatore. L'email e il codice verranno usati per l'accesso.
                 </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser} className="grid gap-4 py-4">
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-left sm:text-right">Nome</Label>
-                <Input id="name" name="name" className="col-span-1 sm:col-span-3" required />
+                    <Label htmlFor="name" className="text-left sm:text-right">Nome</Label>
+                    <Input id="name" name="name" className="col-span-1 sm:col-span-3" required />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="location" className="text-left sm:text-right">Luogo</Label>
-                <Input id="location" name="location" className="col-span-1 sm:col-span-3" required />
+                    <Label htmlFor="email" className="text-left sm:text-right">Email</Label>
+                    <Input id="email" name="email" type="email" className="col-span-1 sm:col-span-3" required />
+                </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                    <Label htmlFor="code" className="text-left sm:text-right">Codice (Password)</Label>
+                    <Input id="code" name="code" className="col-span-1 sm:col-span-3" required />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="code" className="text-left sm:text-right">Codice</Label>
-                <Input id="code" name="code" className="col-span-1 sm:col-span-3" required />
+                    <Label htmlFor="location" className="text-left sm:text-right">Luogo</Label>
+                    <Input id="location" name="location" className="col-span-1 sm:col-span-3" required />
                 </div>
                 <DialogFooter>
-                <Button type="submit">Crea Utente</Button>
+                    <Button type="submit">Crea Utente</Button>
                 </DialogFooter>
             </form>
             </DialogContent>
         </Dialog>
       </div>
       
-      {users.length > 0 ? (
+      {isLoading && <p>Caricamento operatori...</p>}
+
+      {!isLoading && operatorUsers && operatorUsers.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {users.map((user) => (
+          {operatorUsers.map((user) => (
             <Card key={user.id} className="flex flex-col">
                 <CardHeader className="flex flex-row items-center gap-4">
                     <Avatar className="h-12 w-12">
@@ -219,7 +247,7 @@ export default function UsersPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="flex-grow">
-                    <p className="text-sm text-muted-foreground">Codice: {user.code}</p>
+                    <p className="text-sm text-muted-foreground">Email: {user.email}</p>
                 </CardContent>
                 <CardFooter>
                     <Button asChild className="w-full">
@@ -233,14 +261,16 @@ export default function UsersPage() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed shadow-sm h-64 p-4 text-center">
-          <h3 className="text-2xl font-bold tracking-tight">Nessun operatore trovato</h3>
-          <p className="text-sm text-muted-foreground">Inizia aggiungendo un nuovo operatore.</p>
-           <Button className="mt-4" onClick={() => setIsNewUserDialogOpen(true)}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Aggiungi Operatore
-          </Button>
-        </div>
+        !isLoading && (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed shadow-sm h-64 p-4 text-center">
+            <h3 className="text-2xl font-bold tracking-tight">Nessun operatore trovato</h3>
+            <p className="text-sm text-muted-foreground">Inizia aggiungendo un nuovo operatore.</p>
+            <Button className="mt-4" onClick={() => setIsNewUserDialogOpen(true)}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Aggiungi Operatore
+            </Button>
+            </div>
+        )
       )}
 
       {/* Edit User Dialog */}
@@ -258,13 +288,17 @@ export default function UsersPage() {
                 <Label htmlFor="edit-name" className="text-left sm:text-right">Nome</Label>
                 <Input id="edit-name" name="name" defaultValue={selectedUser.name} className="col-span-1 sm:col-span-3" required />
               </div>
+               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-email" className="text-left sm:text-right">Email</Label>
+                <Input id="edit-email" name="email" type="email" defaultValue={selectedUser.email} className="col-span-1 sm:col-span-3" required />
+              </div>
+               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-code" className="text-left sm:text-right">Codice (Password)</Label>
+                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-1 sm:col-span-3" placeholder="Lascia vuoto per non modificare" />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-location" className="text-left sm:text-right">Luogo</Label>
                 <Input id="edit-location" name="location" defaultValue={selectedUser.location} className="col-span-1 sm:col-span-3" required />
-              </div>
-               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-code" className="text-left sm:text-right">Codice</Label>
-                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-1 sm:col-span-3" required />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>Annulla</Button>
@@ -293,3 +327,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    
