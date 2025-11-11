@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { InstallPWA } from '@/components/install-pwa';
+import { FirebaseClientProvider } from '@/firebase';
 
 export const metadata: Metadata = {
   title: 'Serveco Cleaning',
@@ -28,7 +29,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#1a1a1a" />
       </head>
       <body className="font-body antialiased">
-        {children}
+        <FirebaseClientProvider>
+          {children}
+        </FirebaseClientProvider>
         <Toaster />
         <InstallPWA />
       </body>
