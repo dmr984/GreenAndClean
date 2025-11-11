@@ -21,8 +21,9 @@ type User = {
 
 // This function creates the initial users if they don't exist.
 const initializeUsers = async (firestore: any) => {
+  const adminDocRef = doc(firestore, 'app-users', 'admin_user');
+  
   try {
-    const adminDocRef = doc(firestore, 'app-users', 'admin_user');
     const adminDoc = await getDoc(adminDocRef);
 
     if (adminDoc.exists()) {
@@ -30,21 +31,37 @@ const initializeUsers = async (firestore: any) => {
     }
 
     const defaultPassword = '0000';
-    // Use setDoc which allows specifying an ID
-    await setDoc(adminDocRef, {
+    const adminData = {
       username: 'Amministratore',
       password: defaultPassword,
       role: 'admin',
-    });
-
-  } catch (error) {
-    console.error("Failed to initialize admin user:", error);
-    if (error instanceof Error && (error.message.includes('permission-denied') || error.message.includes('insufficient permissions'))) {
+    };
+    
+    // Use setDoc which allows specifying an ID.
+    // Wrap in a separate try/catch for the write operation.
+    try {
+        await setDoc(adminDocRef, adminData);
+    } catch (writeError: any) {
+        if (writeError.message.includes('permission-denied') || writeError.message.includes('insufficient permissions')) {
+            const permissionError = new FirestorePermissionError({
+                path: adminDocRef.path,
+                operation: 'create',
+                requestResourceData: adminData,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+        } else {
+             console.error("Failed to write admin user:", writeError);
+        }
+    }
+  } catch (readError: any) {
+     if (readError.message.includes('permission-denied') || readError.message.includes('insufficient permissions')) {
         const permissionError = new FirestorePermissionError({
-            path: 'app-users/admin_user',
-            operation: 'write',
+            path: adminDocRef.path,
+            operation: 'get',
         });
         errorEmitter.emit('permission-error', permissionError);
+    } else {
+        console.error("Failed to check for admin user:", readError);
     }
   }
 };
@@ -79,14 +96,15 @@ export default function LoginForm() {
                 return a.username.localeCompare(b.username);
             });
             setUsers(userList);
-        } catch (error) {
-            console.error("Error fetching users for dropdown", error);
-            if (error instanceof Error && (error.message.includes('permission-denied') || error.message.includes('insufficient permissions'))) {
+        } catch (error: any) {
+             if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
                 const permissionError = new FirestorePermissionError({
                     path: 'app-users',
                     operation: 'list',
                 });
                 errorEmitter.emit('permission-error', permissionError);
+            } else {
+                 console.error("Error fetching users for dropdown", error);
             }
         } finally {
             setIsLoading(false);
