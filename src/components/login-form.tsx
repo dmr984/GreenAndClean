@@ -32,14 +32,16 @@ const initializeUsers = async (firestore: Firestore) => {
     }
   } catch (error: any) {
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
+      const permissionError = new FirestorePermissionError({
         path: adminDocRef.path,
         operation: 'get',
-      }));
+      });
+      errorEmitter.emit('permission-error', permissionError);
     } else {
       console.error("Failed to check for admin user:", error);
     }
-    // We might not have permission to read, but let's try to write.
+    // Don't proceed to write if the check failed due to permissions
+    return;
   }
 
   try {
@@ -52,11 +54,12 @@ const initializeUsers = async (firestore: Firestore) => {
     await setDoc(adminDocRef, adminData);
   } catch (error: any) {
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
+       const permissionError = new FirestorePermissionError({
         path: adminDocRef.path,
         operation: 'create',
-        requestResourceData: adminData,
-      }));
+        requestResourceData: { username: 'Amministratore', role: 'admin' },
+      });
+      errorEmitter.emit('permission-error', permissionError);
     } else {
       console.error("Failed to initialize admin user:", error);
     }
@@ -98,10 +101,11 @@ export default function LoginForm() {
         setUsers(userList);
       } catch (error: any) {
         if (error instanceof FirestoreError && error.code === 'permission-denied') {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
+          const permissionError = new FirestorePermissionError({
             path: 'app-users',
             operation: 'list',
-          }));
+          });
+          errorEmitter.emit('permission-error', permissionError);
         } else {
           console.error("Error fetching users for dropdown:", error);
           toast({
@@ -173,10 +177,11 @@ export default function LoginForm() {
 
     } catch (error: any) {
       if (error instanceof FirestoreError && error.code === 'permission-denied') {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
+        const permissionError = new FirestorePermissionError({
           path: 'app-users',
           operation: 'list', // A query is a 'list' operation
-        }));
+        });
+        errorEmitter.emit('permission-error', permissionError);
       } else {
         console.error("Login error:", error);
         toast({
