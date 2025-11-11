@@ -13,7 +13,6 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
@@ -135,6 +134,8 @@ export default function UserProfilePage() {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedShiftToDelete, setSelectedShiftToDelete] = useState<string | null>(null);
+
+  const [activeSection, setActiveSection] = useState<'shifts' | 'leaves' | 'supplies'>('shifts');
 
 
   const fetchAllData = async () => {
@@ -284,13 +285,31 @@ export default function UserProfilePage() {
   }
   
   const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
-    <div className="flex items-center gap-3 p-3 bg-muted rounded-lg flex-shrink-0 w-40">
-        <div className="text-primary">{icon}</div>
-        <div>
-            <div className="text-sm text-muted-foreground">{label}</div>
-            <div className="font-bold text-lg">{value}</div>
-        </div>
-    </div>
+    <Card className="flex-1">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{label}</CardTitle>
+            <div className="text-muted-foreground">{icon}</div>
+        </CardHeader>
+        <CardContent>
+            <div className="text-2xl font-bold">{value}</div>
+        </CardContent>
+    </Card>
+  );
+
+  const SectionButton = ({ icon, label, value, isActive, onClick }: { icon: React.ReactNode, label: string, value: 'shifts' | 'leaves' | 'supplies', isActive: boolean, onClick: () => void }) => (
+    <Card 
+        className={`text-center cursor-pointer transition-all ${isActive ? 'ring-2 ring-primary' : 'hover:bg-muted/50'}`}
+        onClick={onClick}
+    >
+        <CardHeader>
+            <div className={`mx-auto h-12 w-12 flex items-center justify-center rounded-lg ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-primary'}`}>
+                {icon}
+            </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+            <p className="font-semibold text-lg">{label}</p>
+        </CardContent>
+    </Card>
   );
 
   return (
@@ -304,9 +323,8 @@ export default function UserProfilePage() {
                 </Avatar>
                 <div className="flex-1">
                     <CardTitle className="text-2xl">{user.username}</CardTitle>
-                    <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 gap-y-1">
+                    <CardDescription className="text-base flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 gap-y-1">
                        <span>Password: {user.password}</span>
-                       <span className="hidden sm:inline">|</span>
                        <span>Luogo: {user.location}</span>
                     </CardDescription>
                      <div className="flex items-center gap-2 mt-4">
@@ -327,26 +345,42 @@ export default function UserProfilePage() {
                     <CardTitle className="text-xl">Riepilogo Attività</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="relative w-full overflow-x-auto pb-2">
-                    <div className="flex gap-3 sm:gap-4">
-                        <StatCard icon={<CalendarDays className="h-7 w-7"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
-                        <StatCard icon={<TrendingUp className="h-7 w-7"/>} label="Straordinari" value={summaryStats.overtime} />
-                        <StatCard icon={<CalendarCheck className="h-7 w-7"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
-                        <StatCard icon={<Hourglass className="h-7 w-7"/>} label="Ore Permesso" value={summaryStats.permitHours} />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                        <StatCard icon={<CalendarDays className="h-5 w-5"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
+                        <StatCard icon={<TrendingUp className="h-5 w-5"/>} label="Straordinari" value={summaryStats.overtime} />
+                        <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
+                        <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso" value={summaryStats.permitHours} />
                     </div>
-                  </div>
                 </CardContent>
             </Card>
          )}
 
-        <Tabs defaultValue="shifts" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 md:w-auto">
-                <TabsTrigger value="shifts" className="gap-2"><Briefcase className="h-4 w-4"/>Timbrature</TabsTrigger>
-                <TabsTrigger value="leaves" className="gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
-                <TabsTrigger value="supplies" className="gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
-            </TabsList>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <SectionButton 
+                label="Timbrature" 
+                value="shifts" 
+                icon={<Briefcase className="h-6 w-6"/>} 
+                isActive={activeSection === 'shifts'} 
+                onClick={() => setActiveSection('shifts')} 
+            />
+            <SectionButton 
+                label="Ferie e Permessi" 
+                value="leaves" 
+                icon={<CheckCircle className="h-6 w-6"/>} 
+                isActive={activeSection === 'leaves'} 
+                onClick={() => setActiveSection('leaves')} 
+            />
+            <SectionButton 
+                label="Richieste Forniture" 
+                value="supplies" 
+                icon={<Package className="h-6 w-6"/>} 
+                isActive={activeSection === 'supplies'} 
+                onClick={() => setActiveSection('supplies')} 
+            />
+        </div>
 
-            <TabsContent value="shifts">
+        <div>
+            {activeSection === 'shifts' && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Storico Timbrature e Ore</CardTitle>
@@ -364,45 +398,44 @@ export default function UserProfilePage() {
                                 
                                 return (
                                     <Card key={shift.id} className="overflow-hidden">
-                                        <CardHeader className="flex flex-row justify-between items-start pb-2">
+                                        <CardHeader className="flex flex-row justify-between items-start bg-muted/30 p-4">
                                             <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
                                             <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(shift.id)}>
                                                 <Trash2 className="h-4 w-4 text-destructive" />
                                                 <span className="sr-only">Elimina timbratura</span>
                                             </Button>
                                         </CardHeader>
-                                        <CardContent>
-                                         <div className="relative overflow-x-auto">
-                                            <div className="flex items-center gap-6 text-sm min-w-[500px] py-2">
-                                                <div className="flex items-center gap-2 font-medium shrink-0"><Clock className="text-primary h-5 w-5"/>Ingresso:</div>
-                                                <div className="font-mono flex items-center gap-2">
-                                                    <span>{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
-                                                    {shift.startLocation && (
-                                                      <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.startLocation.latitude},${shift.startLocation.longitude}`} target="_blank" rel="noopener noreferrer">
-                                                        <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
-                                                      </Link>
-                                                    )}
+                                        <CardContent className="p-4">
+                                         <div className="relative w-full overflow-x-auto">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-6 gap-2 text-sm min-w-[500px] py-2">
+                                                <div className="flex items-center gap-2 font-medium shrink-0">
+                                                    <div className="flex items-center gap-2"><Clock className="text-primary h-5 w-5"/>Ingresso:</div>
+                                                    <div className="font-mono flex items-center gap-2">
+                                                        <span>{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                        {shift.startLocation && (
+                                                        <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.startLocation.latitude},${shift.startLocation.longitude}`} target="_blank" rel="noopener noreferrer">
+                                                            <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                                                        </Link>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                 <div className="flex items-center gap-2 font-medium shrink-0"><AlarmClockOff className="text-primary h-5 w-5"/>Uscita:</div>
-                                                <div className="font-mono flex items-center gap-2">
-                                                    <span>{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
-                                                     {shift.endLocation && (
-                                                      <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.endLocation.latitude},${shift.endLocation.longitude}`} target="_blank" rel="noopener noreferrer">
-                                                        <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
-                                                      </Link>
-                                                    )}
+                                                 <div className="flex items-center gap-2 font-medium shrink-0">
+                                                    <div className="flex items-center gap-2"><AlarmClockOff className="text-primary h-5 w-5"/>Uscita:</div>
+                                                    <div className="font-mono flex items-center gap-2">
+                                                        <span>{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                        {shift.endLocation && (
+                                                        <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.endLocation.latitude},${shift.endLocation.longitude}`} target="_blank" rel="noopener noreferrer">
+                                                            <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                                                        </Link>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                             <hr className="my-2"/>
-                                            <div className="flex items-center gap-6 text-sm min-w-[500px] py-2">
-                                                <div className="flex items-center gap-2 text-muted-foreground shrink-0"><PauseCircle className="h-5 w-5"/>Pause:</div>
-                                                <div className="font-mono font-semibold text-muted-foreground">{duration.pause}</div>
-
-                                                <div className="flex items-center gap-2 font-medium shrink-0"><Briefcase className="h-5 w-5"/>Ore Lavorate:</div>
-                                                <div className="font-mono font-bold">{duration.worked}</div>
-                                                
-                                                <div className="flex items-center gap-2 font-medium shrink-0"><Timer className="h-5 w-5"/>Straordinario:</div>
-                                                <div className={`font-mono font-bold ${overtimeMinutes > 0 ? 'text-primary' : ''}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</div>
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-6 gap-2 text-sm min-w-[500px] py-2">
+                                                <div className="flex items-center gap-2 text-muted-foreground shrink-0"><PauseCircle className="h-5 w-5"/>Pause: <span className="font-mono font-semibold text-foreground">{duration.pause}</span></div>
+                                                <div className="flex items-center gap-2 font-medium shrink-0"><Briefcase className="h-5 w-5"/>Ore Lavorate: <span className="font-mono font-bold">{duration.worked}</span></div>
+                                                <div className="flex items-center gap-2 font-medium shrink-0"><Timer className="h-5 w-5"/>Straordinario: <span className={`font-mono font-bold ${overtimeMinutes > 0 ? 'text-primary' : ''}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</span></div>
                                             </div>
                                          </div>
                                         </CardContent>
@@ -418,48 +451,50 @@ export default function UserProfilePage() {
                         </ScrollArea>
                     </CardContent>
                 </Card>
-            </TabsContent>
-             <TabsContent value="leaves">
+            )}
+             {activeSection === 'leaves' && (
                 <Card>
                     <CardHeader><CardTitle>Storico Richieste Ferie e Permessi</CardTitle></CardHeader>
                     <CardContent>
                          <ScrollArea className="h-[400px]">
                          {leaveRequests.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Periodo</TableHead>
-                                        <TableHead>Tipo</TableHead>
-                                        <TableHead>Motivo</TableHead>
-                                        <TableHead className="text-right">Stato</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                {leaveRequests.map(req => {
-                                    const fromDate = new Date(req.from).toLocaleDateString('it-IT');
-                                    const toDate = new Date(req.to).toLocaleDateString('it-IT');
-                                    let period = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
-                                    if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
-                                        period += ` (${req.timeFrom}-${req.timeTo})`;
-                                    }
-                                   return(
-                                    <TableRow key={req.id}>
-                                        <TableCell className="font-medium">{period}</TableCell>
-                                        <TableCell>{req.type}</TableCell>
-                                        <TableCell className="text-muted-foreground truncate max-w-xs">{req.reason || '-'}</TableCell>
-                                        <TableCell className="text-right"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></TableCell>
-                                    </TableRow>
-                                   )
-                                })}
-                                </TableBody>
-                            </Table>
+                            <div className="relative w-full overflow-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="px-4 py-2 text-left font-medium text-muted-foreground">Periodo</th>
+                                            <th className="px-4 py-2 text-left font-medium text-muted-foreground">Tipo</th>
+                                            <th className="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Motivo</th>
+                                            <th className="px-4 py-2 text-right font-medium text-muted-foreground">Stato</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    {leaveRequests.map(req => {
+                                        const fromDate = new Date(req.from).toLocaleDateString('it-IT');
+                                        const toDate = new Date(req.to).toLocaleDateString('it-IT');
+                                        let period = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+                                        if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
+                                            period += ` (${req.timeFrom}-${req.timeTo})`;
+                                        }
+                                    return(
+                                        <tr key={req.id} className="border-b">
+                                            <td className="p-4 align-middle font-medium">{period}</td>
+                                            <td className="p-4 align-middle">{req.type}</td>
+                                            <td className="p-4 align-middle text-muted-foreground truncate max-w-xs hidden sm:table-cell">{req.reason || '-'}</td>
+                                            <td className="p-4 align-middle text-right"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></td>
+                                        </tr>
+                                    )
+                                    })}
+                                    </tbody>
+                                </table>
+                            </div>
                          ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di ferie o permesso trovata.</p>}
                          </ScrollArea>
                     </CardContent>
                 </Card>
-            </TabsContent>
+            )}
 
-             <TabsContent value="supplies">
+             {activeSection === 'supplies' && (
                 <Card>
                     <CardHeader><CardTitle>Storico Richieste Forniture</CardTitle></CardHeader>
                     <CardContent>
@@ -473,24 +508,26 @@ export default function UserProfilePage() {
                                          <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
                                     </CardHeader>
                                     <CardContent>
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Prodotto</TableHead>
-                                                    <TableHead className="text-center">Qt. Richiesta</TableHead>
-                                                    <TableHead className="text-center">Qt. Consegnata</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {Object.entries(req.items).map(([name, qty]) => (
-                                                    <TableRow key={name}>
-                                                        <TableCell>{name}</TableCell>
-                                                        <TableCell className="text-center">{qty}</TableCell>
-                                                        <TableCell className="text-center font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
+                                        <div className="relative w-full overflow-auto">
+                                            <table className="w-full">
+                                                <thead>
+                                                    <tr className="border-b">
+                                                        <th className="px-4 py-2 text-left font-medium text-muted-foreground">Prodotto</th>
+                                                        <th className="px-4 py-2 text-center font-medium text-muted-foreground">Qt. Richiesta</th>
+                                                        <th className="px-4 py-2 text-center font-medium text-muted-foreground">Qt. Consegnata</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {Object.entries(req.items).map(([name, qty]) => (
+                                                        <tr key={name} className="border-b">
+                                                            <td className="p-4 align-middle">{name}</td>
+                                                            <td className="p-4 align-middle text-center">{qty}</td>
+                                                            <td className="p-4 align-middle text-center font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             ))}
@@ -499,8 +536,8 @@ export default function UserProfilePage() {
                        </ScrollArea>
                     </CardContent>
                 </Card>
-            </TabsContent>
-        </Tabs>
+            )}
+        </div>
         
 
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
