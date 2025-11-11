@@ -71,14 +71,15 @@ export default function UsersPage() {
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, code);
         
-        const newUser: Omit<User, 'id'> = {
+        const newUserDoc = {
             name,
             email,
             code,
             location,
-            role: 'operator'
+            role: 'operator',
+            id: userCredential.user.uid // Add the UID as the ID
         };
-        await setDoc(doc(firestore, "users", userCredential.user.uid), newUser);
+        await setDoc(doc(firestore, "users", userCredential.user.uid), newUserDoc);
         
         setIsNewUserDialogOpen(false);
         toast({

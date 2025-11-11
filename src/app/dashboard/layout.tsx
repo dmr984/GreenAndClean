@@ -14,6 +14,7 @@ import { useAuth, useUser } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
+import { OperatorDashboard } from './operator-dashboard';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [userRole, setUserRole] = React.useState<string | null>(null);
@@ -43,26 +44,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const role = userData.role;
         setUserRole(role);
         setUserName(userData.name);
-        
-        // Store for other parts of the app that still use it transitionally
-        localStorage.setItem('userRole', role);
-        localStorage.setItem('userName', userData.name);
-        localStorage.setItem('userId', userId);
-
 
         // Privacy enforcement
         const isOperator = role === 'operator';
         const isAdminPage = pathname.startsWith('/dashboard/users') || 
                               pathname === '/dashboard/warehouse' || 
-                              pathname.startsWith('/dashboard/announcements');
+                              pathname === '/dashboard/announcements';
 
         if (isOperator && isAdminPage) {
-          // Allow operator to see their own profile, but nothing else admin-related
-          if (pathname.startsWith('/dashboard/users/') && pathname.endsWith(authUser.uid)) {
-            // This is okay
-          } else {
             router.replace('/dashboard');
-          }
         }
       } else {
         // Doc not found, maybe a stale auth session. Log out.
@@ -79,9 +69,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         await signOut(auth);
         setUserRole(null);
         setUserName(null);
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('userName');
-        localStorage.removeItem('userId');
         router.push('/');
         setIsSidebarOpen(false);
     } catch (error) {

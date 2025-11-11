@@ -4,17 +4,17 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, useFirestore } from '@/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { KeyRound } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 
-const adminEmail = "admin@serveco.it"; // Required by Firebase Auth, but hidden from user
+const adminEmail = "admin@serveco.it";
 const adminPassword = "070380";
 const adminName = "Amministratore";
-const adminId = "admin_user"; // Predictable ID for admin document
+const adminId = "admin_user"; 
 
 export default function SetupPage() {
     const auth = useAuth();
@@ -27,8 +27,7 @@ export default function SetupPage() {
     const handleRegisterAdmin = async () => {
         setIsLoading(true);
         try {
-            // This will create the user in Firebase Auth. 
-            // If they already exist, it will throw an error which we catch.
+            // Attempt to create user in Auth. If they exist, signIn instead.
             await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
             toast({
                 title: "Utente Admin Creato in Auth",
@@ -36,15 +35,26 @@ export default function SetupPage() {
             });
         } catch (error: any) {
             if (error.code === 'auth/email-already-in-use') {
-                 toast({
-                    variant: "default",
-                    title: "Admin Auth già esistente",
-                    description: "L'account di autenticazione admin esiste già, ottimo!",
-                });
+                try {
+                    await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+                    toast({
+                        variant: "default",
+                        title: "Admin Auth già esistente",
+                        description: "L'account di autenticazione admin esiste già, ottimo! Accesso eseguito.",
+                    });
+                } catch(signInError: any) {
+                     toast({
+                        variant: "destructive",
+                        title: "Errore Accesso Admin",
+                        description: "L'utente admin esiste ma la password è errata. Contattare il supporto.",
+                    });
+                     setIsLoading(false);
+                     return;
+                }
             } else {
                  toast({
                     variant: "destructive",
-                    title: "Errore Auth",
+                    title: "Errore Creazione Auth",
                     description: error.message,
                 });
                  setIsLoading(false);
@@ -53,10 +63,10 @@ export default function SetupPage() {
         }
 
         try {
-            // Now, create the user document in Firestore.
-            // Using a predictable ID for the admin doc
+            // Create the user document in Firestore with a predictable ID.
             const adminDocRef = doc(firestore, 'users', adminId);
             await setDoc(adminDocRef, {
+                id: adminId, // Ensure the ID is part of the document
                 name: adminName,
                 email: adminEmail,
                 code: adminPassword,
@@ -112,7 +122,7 @@ export default function SetupPage() {
                             disabled={isLoading}
                             className="w-full"
                         >
-                            {isLoading ? 'Creazione in corso...' : 'Crea Utente Admin'}
+                            {isLoading ? 'Creazione in corso...' : 'Crea/Verifica Utente Admin'}
                         </Button>
                         </>
                     )}
