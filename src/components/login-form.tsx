@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, query, where } from 'firebase/firestore';
 import { FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -139,18 +139,14 @@ export default function LoginForm() {
     
     try {
         const usersCollection = collection(firestore, 'app-users');
-        const querySnapshot = await getDocs(usersCollection);
+        const q = query(usersCollection, where("username", "==", username), where("password", "==", password));
+        
+        const querySnapshot = await getDocs(q);
 
-        let foundUser: (User & { id: string }) | null = null;
-        querySnapshot.forEach((doc) => {
-            const userData = doc.data() as User;
-            if (userData.username === username && userData.password === password) {
-                foundUser = { ...userData, id: doc.id };
-            }
-        });
-
-
-        if (foundUser) {
+        if (!querySnapshot.empty) {
+            const userDoc = querySnapshot.docs[0];
+            const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
+            
             const userToStore = {
                 id: foundUser.id,
                 username: foundUser.username,
