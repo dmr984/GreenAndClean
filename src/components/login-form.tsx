@@ -41,12 +41,12 @@ const initializeUsers = async (firestore: any) => {
 
   } catch (error: any) {
      if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
-        const operation = error.code === 'permission-denied' && error.message.includes('create') ? 'create' : 'get';
+        // This could be a 'get' or a 'create' operation failing.
+        // We can make an educated guess based on what we expect to happen.
+        // Let's assume the getDoc fails first.
         const permissionError = new FirestorePermissionError({
             path: adminDocRef.path,
-            operation: operation,
-            // Only include resource data on write operations
-            ...(operation === 'create' && { requestResourceData: { username: 'Amministratore', password: '0000', role: 'admin' } }),
+            operation: 'get',
         });
         errorEmitter.emit('permission-error', permissionError);
     } else {
@@ -69,9 +69,11 @@ export default function LoginForm() {
     async function setupUsers() {
         if (!firestore) return;
         setIsLoading(true);
-        await initializeUsers(firestore);
-
+        
+        // This part is inside its own useEffect, so it runs first.
         try {
+            await initializeUsers(firestore);
+            
             const usersCollection = collection(firestore, 'app-users');
             const querySnapshot = await getDocs(usersCollection);
             const userList: User[] = [];
@@ -148,11 +150,15 @@ export default function LoginForm() {
         }
 
     } catch (error: any) {
-        console.error("Login error:", error);
-         if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
-            const permissionError = new FirestorePermissionError({ path: 'app-users', operation: 'list' });
+        if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
+            const permissionError = new FirestorePermissionError({
+                path: 'app-users',
+                operation: 'list', // The query operation requires list permissions
+                // We don't include requestResourceData for read/list operations
+            });
             errorEmitter.emit('permission-error', permissionError);
         } else {
+            console.error("Login error:", error);
             toast({
               variant: "destructive",
               title: "Errore di accesso",
