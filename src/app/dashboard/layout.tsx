@@ -3,7 +3,7 @@ import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, User, Lock } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -90,6 +90,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsChangeCodeOpen(true);
   }
 
+  const handleNavigation = (path: string) => {
+    setIsSidebarOpen(false);
+    router.push(path);
+  }
+
   const isAdmin = userRole === 'admin';
   const isBaseDashboard = pathname === '/dashboard';
   
@@ -120,15 +125,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  </SheetHeader>
                  <Separator className="my-2"/>
                  <nav className="grid gap-2 text-lg font-medium">
-                   <Button variant="ghost" className="justify-start gap-2" onClick={handleProfileClick}>
-                      <User className="h-5 w-5" /> Profilo
-                   </Button>
-                   <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
-                      <Lock className="h-5 w-5" /> Cambia Codice
-                   </Button>
-                   <Button variant="ghost" className="justify-start gap-2" disabled>
-                      <Settings className="h-5 w-5" /> Impostazioni
-                   </Button>
+                    {isAdmin ? (
+                      <>
+                        {/* Admin Menu Items here if needed in the future */}
+                      </>
+                    ) : (
+                      <>
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/leave-requests')}>
+                            <CalendarCheck className="h-5 w-5" /> Richieste Ferie
+                        </Button>
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
+                            <Package className="h-5 w-5" /> Richieste Prodotti
+                        </Button>
+                      </>
+                    )}
+                    <Separator className="my-2"/>
+                    <Button variant="ghost" className="justify-start gap-2" onClick={handleProfileClick}>
+                        <User className="h-5 w-5" /> Profilo
+                    </Button>
+                    <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
+                        <Lock className="h-5 w-5" /> Cambia Codice
+                    </Button>
+                    <Button variant="ghost" className="justify-start gap-2" disabled>
+                        <Settings className="h-5 w-5" /> Impostazioni
+                    </Button>
                  </nav>
                  <div className="mt-auto">
                     <Separator className="my-2"/>
