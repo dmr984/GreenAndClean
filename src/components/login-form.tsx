@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, writeBatch, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
 import { Firestore, FirestoreError } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -21,35 +21,44 @@ type User = {
   role: 'admin' | 'operator';
 };
 
-// This function creates the initial users if they don't exist.
+// This function creates the initial admin user if it doesn't exist.
 const initializeUsers = async (firestore: Firestore) => {
   if (!firestore) return;
   const adminDocRef = doc(firestore, 'app-users', 'admin_user');
   
   try {
     const adminDoc = await getDoc(adminDocRef);
-
     if (adminDoc.exists()) {
-      return; // Admin user already exists
+      return; 
     }
+  } catch (error: any) {
+     if (error instanceof FirestoreError && error.code === 'permission-denied') {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: adminDocRef.path,
+            operation: 'get',
+        }));
+    } else {
+        console.error("Failed to check for admin user:", error);
+    }
+    // We might not have permission to read, but let's try to write.
+    // The rules might allow a create operation.
+  }
 
+  try {
     const defaultPassword = '0000';
     const adminData = {
       username: 'Amministratore',
       password: defaultPassword,
       role: 'admin',
     };
-    
     await setDoc(adminDocRef, adminData);
-
   } catch (error: any) {
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
-        const operation = error.message.includes("document to exist") ? 'get' : 'create';
-        const permissionError = new FirestorePermissionError({
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: adminDocRef.path,
-            operation: operation,
-        });
-        errorEmitter.emit('permission-error', permissionError);
+            operation: 'create',
+            requestResourceData: { username: 'Amministratore', role: 'admin' }
+        }));
     } else {
         console.error("Failed to initialize admin user:", error);
     }
@@ -68,7 +77,10 @@ export default function LoginForm() {
 
   useEffect(() => {
     async function setupUsers() {
-        if (!firestore) return;
+        if (!firestore) {
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         
         try {
@@ -80,7 +92,6 @@ export default function LoginForm() {
             querySnapshot.forEach((doc) => {
                 userList.push({ id: doc.id, ...doc.data() } as User);
             });
-            // Sort users: Admin first, then operators
             userList.sort((a, b) => {
                 if (a.role === 'admin') return -1;
                 if (b.role === 'admin') return 1;
@@ -89,20 +100,24 @@ export default function LoginForm() {
             setUsers(userList);
         } catch (error: any) {
              if (error instanceof FirestoreError && error.code === 'permission-denied') {
-                const permissionError = new FirestorePermissionError({
+                errorEmitter.emit('permission-error', new FirestorePermissionError({
                     path: 'app-users',
                     operation: 'list',
-                });
-                errorEmitter.emit('permission-error', permissionError);
+                }));
             } else {
-                 console.error("Error fetching users for dropdown", error);
+                 console.error("Error fetching users for dropdown:", error);
+                 toast({
+                    variant: "destructive",
+                    title: "Errore di caricamento",
+                    description: "Impossibile caricare l'elenco degli utenti."
+                 });
             }
         } finally {
             setIsLoading(false);
         }
     }
     setupUsers();
-}, [firestore]);
+}, [firestore, toast]);
 
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -145,7 +160,6 @@ export default function LoginForm() {
                 role: foundUser.role
             };
             localStorage.setItem('user', JSON.stringify(userToStore));
-            // Store legacy keys for compatibility with other components that may not have been updated
             localStorage.setItem('userRole', foundUser.role);
             localStorage.setItem('userName', foundUser.username);
             localStorage.setItem('userId', foundUser.id);
@@ -161,11 +175,10 @@ export default function LoginForm() {
 
     } catch (error: any) {
         if (error instanceof FirestoreError && error.code === 'permission-denied') {
-            const permissionError = new FirestorePermissionError({
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
                 path: 'app-users',
-                operation: 'list', // The query operation requires list permissions
-            });
-            errorEmitter.emit('permission-error', permissionError);
+                operation: 'list',
+            }));
         } else {
             console.error("Login error:", error);
             toast({
@@ -184,8 +197,8 @@ export default function LoginForm() {
       <div className="grid gap-2">
         <Label htmlFor="username">Nome Utente</Label>
         <Select onValueChange={setUsername} value={username} required>
-            <SelectTrigger id="username">
-                <SelectValue placeholder="Seleziona un utente..." />
+            <SelectTrigger id="username" disabled={isLoading || users.length === 0}>
+                <SelectValue placeholder={isLoading ? "Caricamento..." : "Seleziona un utente..."} />
             </SelectTrigger>
             <SelectContent>
                  {users.map((user) => (
