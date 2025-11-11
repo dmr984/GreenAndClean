@@ -27,13 +27,12 @@ export function LocationAddress({ location }: LocationAddressProps) {
       setIsLoading(true);
       setError(null);
       
-      // Using OpenStreetMap's free Nominatim API for reverse geocoding
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}`;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${location.latitude}&lon=${location.longitude}&addressdetails=1`;
 
       try {
         const response = await fetch(url, {
             headers: {
-                'User-Agent': 'ServecoApp/1.0' // Some APIs require a User-Agent
+                'User-Agent': 'ServecoApp/1.0'
             }
         });
         if (!response.ok) {
@@ -41,10 +40,22 @@ export function LocationAddress({ location }: LocationAddressProps) {
         }
         const data = await response.json();
 
-        if (data && data.display_name) {
-          setAddress(data.display_name);
+        if (data && data.address) {
+            const { road, house_number, town, village, city, county } = data.address;
+            const street = road || '';
+            const number = house_number || '';
+            const place = city || town || village || '';
+            const province = county ? `(${county.substring(0,2).toUpperCase()})` : '';
+
+            const formattedAddress = [street, number, place, province].filter(Boolean).join(', ').replace(' ,', ',');
+            
+            if (formattedAddress) {
+                 setAddress(formattedAddress);
+            } else {
+                 setAddress(data.display_name);
+            }
+          
         } else {
-          // Fallback if address is not found
           setAddress(`Lat: ${location.latitude.toFixed(4)}, Lon: ${location.longitude.toFixed(4)}`);
         }
       } catch (e) {
