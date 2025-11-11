@@ -198,7 +198,7 @@ export default function UserProfilePage() {
                     <div className="flex-1">
                         <CardTitle className="text-3xl">{user.username}</CardTitle>
                         <CardDescription className="text-base flex flex-col sm:flex-row sm:gap-2">
-                          <span>Password: {user.password}</span>
+                           <span>Password: {user.password}</span>
                           <span className="hidden sm:inline">|</span>
                           <span>Luogo: {user.location}</span>
                         </CardDescription>
@@ -215,10 +215,10 @@ export default function UserProfilePage() {
             </Card>
 
             <Tabs defaultValue="shifts">
-                <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="shifts"><Fingerprint className="mr-2 h-4 w-4"/>Timbrature</TabsTrigger>
-                    <TabsTrigger value="leaves"><CheckCircle className="mr-2 h-4 w-4"/>Ferie e Permessi</TabsTrigger>
-                    <TabsTrigger value="supplies"><Package className="mr-2 h-4 w-4"/>Richieste Forniture</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 h-auto md:h-10">
+                    <TabsTrigger value="shifts" className="gap-2"><Fingerprint className="h-4 w-4"/>Timbrature</TabsTrigger>
+                    <TabsTrigger value="leaves" className="gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
+                    <TabsTrigger value="supplies" className="gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="shifts">
@@ -228,7 +228,7 @@ export default function UserProfilePage() {
                             <CardDescription>Riepilogo dei turni di lavoro completati, con dettaglio ore e straordinari.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <ScrollArea className="h-[400px] w-full overflow-x-auto">
+                            <ScrollArea className="h-[400px] w-full">
                             {shifts.length > 0 ? (
                                 <Table className="min-w-[600px]">
                                     <TableHeader>
