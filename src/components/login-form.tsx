@@ -30,23 +30,7 @@ const initializeUsers = async (firestore: Firestore) => {
     if (adminDoc.exists()) {
       return; // Admin already exists, do nothing.
     }
-  } catch (error: any) {
-    // This is the first critical point. If we can't even CHECK for the doc, we have a rules problem.
-    if (error instanceof FirestoreError && error.code === 'permission-denied') {
-      const permissionError = new FirestorePermissionError({
-        path: adminDocRef.path,
-        operation: 'get',
-      });
-      errorEmitter.emit('permission-error', permissionError);
-    } else {
-      console.error("Failed to check for admin user:", error);
-    }
-    // Stop execution if the check fails.
-    return;
-  }
 
-  // If the check was successful and the doc doesn't exist, try to create it.
-  try {
     const defaultPassword = '0000';
     const adminData = {
       username: 'Amministratore',
@@ -55,12 +39,10 @@ const initializeUsers = async (firestore: Firestore) => {
     };
     await setDoc(adminDocRef, adminData);
   } catch (error: any) {
-    // This is the second critical point. The creation might be denied.
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
        const permissionError = new FirestorePermissionError({
         path: adminDocRef.path,
-        operation: 'create',
-        requestResourceData: { username: 'Amministratore', role: 'admin' },
+        operation: 'write', // Covers both get and set for simplicity here
       });
       errorEmitter.emit('permission-error', permissionError);
     } else {
@@ -103,7 +85,6 @@ export default function LoginForm() {
         });
         setUsers(userList);
       } catch (error: any) {
-        // This is the third critical point. Listing users might be denied.
         if (error instanceof FirestoreError && error.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: 'app-users',
@@ -123,7 +104,7 @@ export default function LoginForm() {
       }
     }
     setupUsers();
-  }, [firestore, toast]); // Added firestore to dependency array
+  }, [firestore, toast]);
 
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -180,7 +161,6 @@ export default function LoginForm() {
       }
 
     } catch (error: any) {
-      // This is the fourth critical point. A query can be denied.
       if (error instanceof FirestoreError && error.code === 'permission-denied') {
         const permissionError = new FirestorePermissionError({
           path: 'app-users', // The query is on this collection
