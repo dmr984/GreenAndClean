@@ -20,42 +20,6 @@ type User = {
   role: 'admin' | 'operator';
 };
 
-// This function creates the initial admin user if it doesn't exist.
-const initializeUsers = async (firestore: Firestore) => {
-  if (!firestore) return;
-  const adminDocRef = doc(firestore, 'app-users', 'admin_user');
-
-  try {
-    const adminDoc = await getDoc(adminDocRef);
-    if (adminDoc.exists()) {
-      return; // Admin already exists, do nothing.
-    }
-
-    const defaultPassword = '0000';
-    const adminData = {
-      username: 'Amministratore',
-      password: defaultPassword,
-      role: 'admin',
-    };
-    await setDoc(adminDocRef, adminData);
-  } catch (error: any) {
-    let operation: 'get' | 'write' = 'get';
-    if (error instanceof FirestoreError && error.code === 'permission-denied') {
-        // We can infer the operation based on where it might fail.
-        // If getDoc fails, it's a 'get'. If setDoc fails, it's 'write'.
-        // Let's create a more specific error based on a guess.
-        // A better approach might be to wrap getDoc and setDoc separately.
-        const permissionError = new FirestorePermissionError({
-            path: adminDocRef.path,
-            operation: operation, // It could be 'get' or 'write'
-        });
-        errorEmitter.emit('permission-error', permissionError);
-    } else {
-      console.error("Failed to initialize admin user:", error);
-    }
-  }
-};
-
 
 export default function LoginForm() {
   const router = useRouter();
@@ -67,16 +31,49 @@ export default function LoginForm() {
   const [password, setPassword] = React.useState('');
 
   useEffect(() => {
-    async function setupUsers() {
+    async function setupAndFetchUsers() {
       if (!firestore) {
-        setIsLoading(false);
         return;
       }
       setIsLoading(true);
 
+      // Step 1: Initialize Admin User
+      const adminDocRef = doc(firestore, 'app-users', 'admin_user');
       try {
-        await initializeUsers(firestore);
+        const adminDoc = await getDoc(adminDocRef);
+        if (!adminDoc.exists()) {
+          try {
+            await setDoc(adminDocRef, {
+              username: 'Amministratore',
+              password: '0000',
+              role: 'admin',
+            });
+          } catch (error) {
+            if (error instanceof FirestoreError && error.code === 'permission-denied') {
+              const permissionError = new FirestorePermissionError({
+                path: adminDocRef.path,
+                operation: 'create',
+                requestResourceData: { username: 'Amministratore', role: 'admin' }
+              });
+              errorEmitter.emit('permission-error', permissionError);
+            }
+            return; // Stop if we can't create the admin
+          }
+        }
+      } catch (error) {
+        if (error instanceof FirestoreError && error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: adminDocRef.path,
+            operation: 'get',
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        }
+        setIsLoading(false);
+        return; // Stop if we can't check for the admin
+      }
 
+      // Step 2: Fetch all users for the dropdown
+      try {
         const usersCollection = collection(firestore, 'app-users');
         const querySnapshot = await getDocs(usersCollection);
         const userList: User[] = [];
@@ -108,7 +105,8 @@ export default function LoginForm() {
         setIsLoading(false);
       }
     }
-    setupUsers();
+
+    setupAndFetchUsers();
   }, [firestore, toast]);
 
 
