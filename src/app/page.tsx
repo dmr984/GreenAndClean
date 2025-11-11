@@ -41,7 +41,7 @@ export default function LoginPage() {
           <div className="mt-4 text-center text-sm">
             Hai problemi ad accedere?{' '}
             <Link href="/setup" className="underline">
-              Setup Admin
+              Setup Iniziale Admin
             </Link>
           </div>
         </div>

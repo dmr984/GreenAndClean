@@ -14,8 +14,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { useAuth, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { addDoc, collection, deleteDoc, doc, updateDoc, setDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
 type User = {
   id: string;
@@ -49,6 +49,47 @@ export default function UsersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
   const router = useRouter();
+  
+  const ensureAdminExists = React.useCallback(async () => {
+    if (users && !users.find(u => u.role === 'admin')) {
+        const adminEmail = "admin@serveco.it";
+        const adminCode = "070380";
+        const adminName = "Amministratore";
+
+        try {
+            // Silently try to sign in to check if auth user exists
+            await signInWithEmailAndPassword(auth, adminEmail, adminCode).catch(async (error) => {
+                // If user not found, create it
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                    await createUserWithEmailAndPassword(auth, adminEmail, adminCode);
+                }
+            });
+
+            // Create admin user in Firestore. Use email as ID for predictability.
+            const adminDocRef = doc(firestore, 'users', adminEmail);
+            const adminData: Omit<User, 'id'> = {
+                name: adminName,
+                email: adminEmail,
+                code: adminCode,
+                location: "Sede",
+                role: 'admin'
+            };
+            await setDoc(adminDocRef, adminData);
+            
+            console.log("Admin user created/verified in Firestore.");
+
+        } catch (error: any) {
+            // Avoid showing toast for this background operation unless it's a critical failure
+            console.error("Failed to create admin user:", error.message);
+        }
+    }
+  }, [users, firestore, auth]);
+
+  React.useEffect(() => {
+    if (!isLoading) {
+      ensureAdminExists();
+    }
+  }, [isLoading, ensureAdminExists]);
 
 
   const handleAddUser = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -59,20 +100,26 @@ export default function UsersPage() {
     const code = (form.elements.namedItem('code') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
-    try {
-        // 1. Create user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, code);
-        const authUser = userCredential.user;
+    if (users?.some(u => u.email === email)) {
+        toast({
+            variant: "destructive",
+            title: "Email già in uso",
+            description: "Questa email è già associata a un altro utente.",
+        });
+        return;
+    }
 
-        // 2. Add user to Firestore 'users' collection
+    try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, code);
+        
         const newUser: Omit<User, 'id'> = {
             name,
             email,
-            code, // Note: Storing password-like data here is not recommended for production
+            code,
             location,
             role: 'operator'
         };
-        await addDoc(collection(firestore, "users"), newUser);
+        await setDoc(doc(firestore, "users", userCredential.user.uid), newUser);
         
         setIsNewUserDialogOpen(false);
         toast({
@@ -102,14 +149,19 @@ export default function UsersPage() {
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
 
     const userDocRef = doc(firestore, 'users', selectedUser.id);
-    const updatedData = { name, email, location, code };
+    
+    // Only include code if it was changed
+    const updatedData: Partial<User> = { name, email, location };
+    if (code) {
+        updatedData.code = code;
+    }
 
     try {
         await updateDoc(userDocRef, updatedData);
         
         // Note: Updating email/password in Firebase Auth is a sensitive operation
         // and requires the user to be re-authenticated. It's complex and omitted here for simplicity.
-        // We will just update the Firestore document.
+        // We will just update the Firestore document. If code is changed, it needs a backend function to be synced with Auth.
 
         setIsEditUserDialogOpen(false);
         setSelectedUser(null);
@@ -124,7 +176,6 @@ export default function UsersPage() {
             description: error.message || "Impossibile modificare l'utente.",
         });
     }
-
   };
   
   const handleDeleteUser = async () => {
@@ -279,7 +330,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Modifica Operatore</DialogTitle>
             <DialogDescription>
-              Aggiorna i dettagli dell'operatore.
+              Aggiorna i dettagli dell'operatore. La modifica del codice qui non aggiorna la password di accesso.
             </DialogDescription>
           </DialogHeader>
           {selectedUser && (
@@ -293,8 +344,8 @@ export default function UsersPage() {
                 <Input id="edit-email" name="email" type="email" defaultValue={selectedUser.email} className="col-span-1 sm:col-span-3" required />
               </div>
                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-code" className="text-left sm:text-right">Codice (Password)</Label>
-                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-1 sm:col-span-3" placeholder="Lascia vuoto per non modificare" />
+                <Label htmlFor="edit-code" className="text-left sm:text-right">Codice (visual.)</Label>
+                <Input id="edit-code" name="code" defaultValue={selectedUser.code} className="col-span-1 sm:col-span-3" required />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-location" className="text-left sm:text-right">Luogo</Label>
@@ -315,7 +366,7 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Questa azione non può essere annullata. L'operatore verrà eliminato in modo permanente.
+              Questa azione non può essere annullata. L'account di autenticazione Firebase per questo utente non verrà eliminato, solo il record del database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -327,5 +378,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    

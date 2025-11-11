@@ -3,18 +3,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { KeyRound } from 'lucide-react';
+import { doc, setDoc } from 'firebase/firestore';
 
 const adminEmail = "admin@serveco.it";
 const adminPassword = "070380"; // The 'code'
 
 export default function SetupPage() {
     const auth = useAuth();
+    const firestore = useFirestore();
     const router = useRouter();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
@@ -23,29 +25,57 @@ export default function SetupPage() {
     const handleRegisterAdmin = async () => {
         setIsLoading(true);
         try {
+            // This will create the user in Firebase Auth. 
+            // If they already exist, it will throw an error which we catch.
             await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
             toast({
-                title: "Amministratore Registrato",
-                description: "L'utente admin è stato creato. Ora puoi effettuare il login.",
+                title: "Utente Admin Creato in Auth",
+                description: "L'utente admin è stato creato nel sistema di autenticazione.",
             });
-            setIsDone(true);
-            setTimeout(() => router.push('/'), 2000);
         } catch (error: any) {
             if (error.code === 'auth/email-already-in-use') {
                  toast({
                     variant: "default",
-                    title: "Admin già esistente",
-                    description: "L'utente amministratore è già registrato. Puoi procedere al login.",
+                    title: "Admin Auth già esistente",
+                    description: "L'utente amministratore è già registrato in Firebase Auth.",
                 });
-                setIsDone(true);
-                setTimeout(() => router.push('/'), 2000);
             } else {
-                toast({
+                 toast({
                     variant: "destructive",
-                    title: "Errore di Registrazione",
+                    title: "Errore Auth",
                     description: error.message,
                 });
+                 setIsLoading(false);
+                 return;
             }
+        }
+
+        try {
+            // Now, create the user document in Firestore.
+            // Using the email as the document ID makes it easy to find.
+            const adminDocRef = doc(firestore, 'users', adminEmail);
+            await setDoc(adminDocRef, {
+                name: "Amministratore",
+                email: adminEmail,
+                code: adminPassword,
+                location: "Sede",
+                role: "admin",
+            });
+            
+             toast({
+                title: "Admin salvato nel Database",
+                description: "I dati dell'admin sono stati salvati in Firestore.",
+            });
+
+            setIsDone(true);
+            setTimeout(() => router.push('/'), 2000);
+
+        } catch (dbError: any) {
+             toast({
+                variant: "destructive",
+                title: "Errore Database",
+                description: dbError.message,
+            });
         } finally {
             setIsLoading(false);
         }
@@ -60,8 +90,7 @@ export default function SetupPage() {
                         Setup Amministratore
                     </CardTitle>
                     <CardDescription>
-                        Questo processo registrerà l'utente amministratore predefinito nel sistema di autenticazione.
-                        Questa operazione è necessaria solo una volta.
+                        Questo processo creerà l'utente amministratore sia nel sistema di autenticazione (Auth) che nel database (Firestore). Eseguire solo una volta.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center gap-4">
