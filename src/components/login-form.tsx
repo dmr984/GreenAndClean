@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import React from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, where, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { FirestorePermissionError, errorEmitter } from '@/firebase';
 
 type User = {
   id: string;
@@ -18,37 +19,63 @@ type User = {
 
 // This function creates the initial users if they don't exist.
 const initializeUsers = async (firestore: any) => {
-  const usersCollection = collection(firestore, 'app-users');
-  const snapshot = await getDocs(usersCollection);
+  const usersCollectionRef = collection(firestore, 'app-users');
+  try {
+    const snapshot = await getDocs(usersCollectionRef);
 
-  // If users already exist, do nothing.
-  if (!snapshot.empty) {
-    return;
-  }
+    // If users already exist, do nothing.
+    if (!snapshot.empty) {
+      return;
+    }
 
-  const batch = writeBatch(firestore);
-  const defaultPassword = '0000';
+    const batch = writeBatch(firestore);
+    const defaultPassword = '0000';
 
-  // Create Admin User
-  const adminDocRef = doc(firestore, 'app-users', 'admin_user');
-  batch.set(adminDocRef, {
-    username: 'Amministratore',
-    password: defaultPassword,
-    role: 'admin',
-  });
+    // Create Admin User
+    const adminData = {
+      username: 'Amministratore',
+      password: defaultPassword,
+      role: 'admin',
+    };
+    const adminDocRef = doc(firestore, 'app-users', 'admin_user');
+    batch.set(adminDocRef, adminData);
 
-  // Create 10 Operator Users
-  for (let i = 1; i <= 10; i++) {
-    const operatorDocRef = doc(firestore, 'app-users', `operator_${i}`);
-    batch.set(operatorDocRef, {
+    // Create 10 Operator Users
+    for (let i = 1; i <= 10; i++) {
+      const operatorData = {
         username: `Operatore ${i}`,
         password: defaultPassword,
         role: 'operator',
+      };
+      const operatorDocRef = doc(firestore, 'app-users', `operator_${i}`);
+      batch.set(operatorDocRef, operatorData);
+    }
+    
+    // Non-blocking commit with contextual error handling
+    batch.commit().then(() => {
+        console.log('Initial users created.');
+    }).catch(error => {
+        console.error("Batch commit failed:", error);
+        // We can't know which specific doc failed in a batch, so we emit a general error for the collection.
+        const permissionError = new FirestorePermissionError({
+            path: 'app-users',
+            operation: 'create',
+            requestResourceData: {note: 'Batch write for initial users.'}
+        });
+        errorEmitter.emit('permission-error', permissionError);
     });
-  }
 
-  await batch.commit();
-  console.log('Initial users created.');
+  } catch (error) {
+    console.error("Failed to check for existing users:", error);
+    // This getDocs call can also fail due to permissions
+    if (error instanceof Error && error.message.includes('permission-denied')) {
+        const permissionError = new FirestorePermissionError({
+            path: 'app-users',
+            operation: 'list',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+    }
+  }
 };
 
 
@@ -83,29 +110,28 @@ export default function LoginForm() {
     
     try {
         const usersCollection = collection(firestore, 'app-users');
-        const q = query(usersCollection, where('username', '==', username));
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await getDocs(usersCollection);
 
-        if (querySnapshot.empty) {
-            toast({
-              variant: "destructive",
-              title: "Credenziali non valide",
-              description: "Il nome utente o la password non sono corretti. Riprova.",
-            });
-            setIsLoading(false);
-            return;
-        }
+        let foundUser: (User & { id: string }) | null = null;
+        querySnapshot.forEach((doc) => {
+            const userData = doc.data() as User;
+            if (userData.username === username && userData.password === password) {
+                foundUser = { ...userData, id: doc.id };
+            }
+        });
 
-        const userDoc = querySnapshot.docs[0];
-        const userData = userDoc.data() as User;
 
-        if (userData.password === password) {
+        if (foundUser) {
             const userToStore = {
-                id: userDoc.id,
-                username: userData.username,
-                role: userData.role
+                id: foundUser.id,
+                username: foundUser.username,
+                role: foundUser.role
             };
             localStorage.setItem('user', JSON.stringify(userToStore));
+            // Store role and username for other parts of the app that still use it
+            localStorage.setItem('userRole', foundUser.role);
+            localStorage.setItem('userName', foundUser.username);
+            localStorage.setItem('userId', foundUser.id);
             router.push('/dashboard');
         } else {
             toast({
@@ -115,13 +141,18 @@ export default function LoginForm() {
             });
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Login error:", error);
-        toast({
-          variant: "destructive",
-          title: "Errore di accesso",
-          description: "Si è verificato un errore durante il login. Riprova.",
-        });
+         if (error.message.includes('permission-denied')) {
+            const permissionError = new FirestorePermissionError({ path: 'app-users', operation: 'list' });
+            errorEmitter.emit('permission-error', permissionError);
+        } else {
+            toast({
+              variant: "destructive",
+              title: "Errore di accesso",
+              description: "Si è verificato un errore durante il login. Riprova.",
+            });
+        }
     } finally {
         setIsLoading(false);
     }
