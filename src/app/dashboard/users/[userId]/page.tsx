@@ -215,10 +215,10 @@ export default function UserProfilePage() {
             </Card>
 
             <Tabs defaultValue="shifts">
-                <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 h-auto md:h-10">
-                    <TabsTrigger value="shifts" className="gap-2"><Fingerprint className="h-4 w-4"/>Timbrature</TabsTrigger>
-                    <TabsTrigger value="leaves" className="gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
-                    <TabsTrigger value="supplies" className="gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
+                 <TabsList className="flex flex-col md:flex-row h-auto w-full md:w-auto md:inline-flex">
+                    <TabsTrigger value="shifts" className="w-full md:w-auto justify-start md:justify-center gap-2"><Fingerprint className="h-4 w-4"/>Timbrature</TabsTrigger>
+                    <TabsTrigger value="leaves" className="w-full md:w-auto justify-start md:justify-center gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
+                    <TabsTrigger value="supplies" className="w-full md:w-auto justify-start md:justify-center gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="shifts">
