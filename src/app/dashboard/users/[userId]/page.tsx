@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle, Package, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Package, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck, MapPin, Trash2 } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,8 @@ import { useFirestore } from '@/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LocationAddress } from '@/components/location-address';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
 
 type Geolocation = {
   latitude: number;
@@ -60,6 +61,13 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
     return defaultValue;
   }
 };
+
+const saveToStorage = <T,>(key: string, data: T) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, JSON.stringify(data));
+  window.dispatchEvent(new Event('storage'));
+};
+
 
 const getAvatarFallback = (name: string) => {
     if (!name) return "??";
@@ -127,34 +135,38 @@ export default function UserProfilePage() {
   const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (!firestore || !userId) return;
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedShiftToDelete, setSelectedShiftToDelete] = useState<string | null>(null);
 
-      setLoading(true);
+
+  const fetchAllData = async () => {
+    if (!firestore || !userId) return;
+
+    setLoading(true);
+    
+    const userDocRef = doc(firestore, 'app-users', userId);
+    const userDoc = await getDoc(userDocRef);
+
+    if (userDoc.exists()) {
+      const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
+      setUser(foundUser);
       
-      const userDocRef = doc(firestore, 'app-users', userId);
-      const userDoc = await getDoc(userDocRef);
+      const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
+      setLeaveRequests(allLeaves.filter(r => r.user === foundUser.username).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
 
-      if (userDoc.exists()) {
-        const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
-        setUser(foundUser);
-        
-        const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        setLeaveRequests(allLeaves.filter(r => r.user === foundUser.username).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+      const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
+      setSupplyRequests(allSupplies.filter(r => r.user === foundUser.username).sort((a,b) => b.id.localeCompare(a.id)));
 
-        const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        setSupplyRequests(allSupplies.filter(r => r.user === foundUser.username).sort((a,b) => b.id.localeCompare(a.id)));
+      const allShifts = getFromStorage<Shift[]>('shifts', []);
+      setShifts(allShifts.filter(s => s.userId === foundUser.id && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
+    } else {
+      setUser(null);
+    }
+    setLoading(false);
+  };
 
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
-        setShifts(allShifts.filter(s => s.userId === foundUser.id && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    };
-
-    fetchUserData();
+  useEffect(() => {
+    fetchAllData();
   }, [userId, firestore]);
 
   const summaryStats = useMemo(() => {
@@ -229,6 +241,22 @@ export default function UserProfilePage() {
           toast({ title: "Errore", description: "Impossibile aggiornare le ore.", variant: "destructive" });
           setUser(user);
       }
+  };
+
+  const openDeleteConfirmation = (shiftId: string) => {
+    setSelectedShiftToDelete(shiftId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteShift = () => {
+    if (!selectedShiftToDelete) return;
+    const allShifts = getFromStorage<Shift[]>('shifts', []);
+    const updatedShifts = allShifts.filter(s => s.id !== selectedShiftToDelete);
+    saveToStorage('shifts', updatedShifts);
+    setShifts(updatedShifts.filter(s => s.userId === userId && s.endTime)); // Update component state
+    toast({ title: "Timbratura eliminata", description: "La timbratura è stata rimossa con successo.", variant: "destructive"});
+    setIsDeleteDialogOpen(false);
+    setSelectedShiftToDelete(null);
   };
 
 
@@ -335,35 +363,49 @@ export default function UserProfilePage() {
                                     const overtimeHours = formatMinutesToHours(overtimeMinutes);
                                     
                                     return (
-                                        <Card key={shift.id}>
-                                            <CardHeader className="pb-2">
+                                        <Card key={shift.id} className="overflow-hidden">
+                                            <CardHeader className="flex flex-row justify-between items-start pb-2">
                                                 <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
+                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(shift.id)}>
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                    <span className="sr-only">Elimina timbratura</span>
+                                                </Button>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
-                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                                    <div className="flex items-center gap-2"><Clock className="text-primary"/> <span>Ingresso:</span></div>
-                                                    <div className="font-mono text-right flex flex-col items-end gap-1">
+                                             <div className="relative overflow-x-auto">
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm min-w-[300px]">
+                                                    <div className="flex items-center gap-2 font-medium"><Clock className="text-primary"/> Ingresso:</div>
+                                                    <div className="font-mono text-right flex justify-end items-center gap-2">
                                                         <span>{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
-                                                        <LocationAddress location={shift.startLocation} />
+                                                        {shift.startLocation && (
+                                                          <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.startLocation.latitude},${shift.startLocation.longitude}`} target="_blank" rel="noopener noreferrer">
+                                                            <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                                                          </Link>
+                                                        )}
                                                     </div>
                                                     
-                                                    <div className="flex items-center gap-2"><AlarmClockOff className="text-primary"/> <span>Uscita:</span></div>
-                                                    <div className="font-mono text-right flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-2 font-medium"><AlarmClockOff className="text-primary"/> Uscita:</div>
+                                                    <div className="font-mono text-right flex justify-end items-center gap-2">
                                                         <span>{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
-                                                         <LocationAddress location={shift.endLocation} />
+                                                         {shift.endLocation && (
+                                                          <Link href={`https://www.google.com/maps/search/?api=1&query=${shift.endLocation.latitude},${shift.endLocation.longitude}`} target="_blank" rel="noopener noreferrer">
+                                                            <MapPin className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                                                          </Link>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <hr/>
-                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                                    <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle /> <span>Pause:</span></div>
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm min-w-[300px]">
+                                                    <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle /> Pause:</div>
                                                     <div className="font-mono text-right font-semibold text-muted-foreground">{duration.pause}</div>
 
-                                                    <div className="flex items-center gap-2"><Briefcase/> <span>Ore Lavorate:</span></div>
+                                                    <div className="flex items-center gap-2 font-medium"><Briefcase/> Ore Lavorate:</div>
                                                     <div className="font-mono text-right font-bold">{duration.worked}</div>
                                                     
-                                                    <div className="flex items-center gap-2"><Timer /> <span>Straordinario:</span></div>
+                                                    <div className="flex items-center gap-2 font-medium"><Timer /> Straordinario:</div>
                                                     <div className={`font-mono text-right font-bold ${overtimeMinutes > 0 ? 'text-primary' : ''}`}>{overtimeMinutes > 0 ? overtimeHours : '-'}</div>
                                                 </div>
+                                             </div>
                                             </CardContent>
                                         </Card>
                                     )
@@ -461,6 +503,21 @@ export default function UserProfilePage() {
                 </TabsContent>
             </Tabs>
         </div>
+
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione non può essere annullata. La timbratura verrà eliminata in modo permanente.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setSelectedShiftToDelete(null)}>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteShift}>Conferma Eliminazione</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
