@@ -37,31 +37,20 @@ const initializeUsers = async (firestore: any) => {
       role: 'admin',
     };
     
-    // Use setDoc which allows specifying an ID.
-    // Wrap in a separate try/catch for the write operation.
-    try {
-        await setDoc(adminDocRef, adminData);
-    } catch (writeError: any) {
-        if (writeError.message.includes('permission-denied') || writeError.message.includes('insufficient permissions')) {
-            const permissionError = new FirestorePermissionError({
-                path: adminDocRef.path,
-                operation: 'create',
-                requestResourceData: adminData,
-            });
-            errorEmitter.emit('permission-error', permissionError);
-        } else {
-             console.error("Failed to write admin user:", writeError);
-        }
-    }
-  } catch (readError: any) {
-     if (readError.message.includes('permission-denied') || readError.message.includes('insufficient permissions')) {
+    await setDoc(adminDocRef, adminData);
+
+  } catch (error: any) {
+     if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
+        const operation = error.code === 'permission-denied' && error.message.includes('create') ? 'create' : 'get';
         const permissionError = new FirestorePermissionError({
             path: adminDocRef.path,
-            operation: 'get',
+            operation: operation,
+            // Only include resource data on write operations
+            ...(operation === 'create' && { requestResourceData: { username: 'Amministratore', password: '0000', role: 'admin' } }),
         });
         errorEmitter.emit('permission-error', permissionError);
     } else {
-        console.error("Failed to check for admin user:", readError);
+        console.error("Failed to initialize admin user:", error);
     }
   }
 };
