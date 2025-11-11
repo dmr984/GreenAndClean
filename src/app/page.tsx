@@ -21,7 +21,7 @@ export default function LoginPage() {
           <Briefcase className="h-10 w-10 mx-auto text-primary" />
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
-            Inserisci il tuo nome utente e la password per accedere. <br />
+            Seleziona il tuo nome utente e inserisci la password per accedere. <br />
             La password predefinita al primo accesso è <span className="font-mono font-bold">0000</span>.
           </p>
         </div>

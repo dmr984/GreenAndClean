@@ -7,11 +7,17 @@ service cloud.firestore {
     // Allow anyone to read the list to populate the login form,
     // but only authenticated users can modify their own document.
     match /app-users/{userId} {
-      allow read: if true;
+      allow read, list: if true;
       allow update: if request.auth.uid == userId; // Placeholder, as we are not using Firebase Auth for login.
       // In a real app, this would need a secure way to verify user identity.
       // For this custom system, we trust the client logic. Creation/deletion is locked down.
-      allow create, delete: if false; 
+      allow delete: if false; 
+    }
+
+    // Allow anyone to create the admin user IF it does not exist.
+    // This rule is critical for the one-time setup of the app.
+    match /app-users/admin_user {
+      allow create: if !exists(/databases/$(database)/documents/app-users/admin_user);
     }
 
     // Allow anyone to get the list of users and read individual user documents

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, writeBatch, doc, query, where } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, query, where, getDoc, setDoc } from 'firebase/firestore';
 import { FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -21,55 +21,28 @@ type User = {
 
 // This function creates the initial users if they don't exist.
 const initializeUsers = async (firestore: any) => {
-  const usersCollectionRef = collection(firestore, 'app-users');
   try {
-    const snapshot = await getDocs(usersCollectionRef);
+    const adminDocRef = doc(firestore, 'app-users', 'admin_user');
+    const adminDoc = await getDoc(adminDocRef);
 
-    // If users already exist, do nothing.
-    if (!snapshot.empty) {
-      return;
+    if (adminDoc.exists()) {
+      return; // Admin user already exists
     }
 
-    const batch = writeBatch(firestore);
     const defaultPassword = '0000';
-
-    // Create Admin User
-    const adminRef = doc(firestore, 'app-users', 'admin_user');
-    batch.set(adminRef, {
+    // Use setDoc which allows specifying an ID
+    await setDoc(adminDocRef, {
       username: 'Amministratore',
       password: defaultPassword,
       role: 'admin',
     });
 
-    // Create 10 Operator Users
-    for (let i = 1; i <= 10; i++) {
-      const operatorDocRef = doc(usersCollectionRef); // Auto-generates ID
-      batch.set(operatorDocRef, {
-        username: `Operatore ${i}`,
-        password: defaultPassword,
-        role: 'operator',
-      });
-    }
-    
-    // Non-blocking commit with contextual error handling
-    batch.commit().catch(error => {
-      if (error.message.includes('permission-denied')) {
-        const permissionError = new FirestorePermissionError({
-          path: 'app-users', // The path being written to
-          operation: 'write', // The operation is a batched write
-          // We can't provide specific data for a batch, but we can indicate the intent
-        });
-        errorEmitter.emit('permission-error', permissionError);
-      }
-    });
-
   } catch (error) {
-    console.error("Failed to check for existing users:", error);
-    // This getDocs call can also fail due to permissions
-    if (error instanceof Error && error.message.includes('permission-denied')) {
+    console.error("Failed to initialize admin user:", error);
+    if (error instanceof Error && (error.message.includes('permission-denied') || error.message.includes('insufficient permissions'))) {
         const permissionError = new FirestorePermissionError({
-            path: 'app-users',
-            operation: 'list',
+            path: 'app-users/admin_user',
+            operation: 'write',
         });
         errorEmitter.emit('permission-error', permissionError);
     }
@@ -108,7 +81,7 @@ export default function LoginForm() {
             setUsers(userList);
         } catch (error) {
             console.error("Error fetching users for dropdown", error);
-            if (error instanceof Error && error.message.includes('permission-denied')) {
+            if (error instanceof Error && (error.message.includes('permission-denied') || error.message.includes('insufficient permissions'))) {
                 const permissionError = new FirestorePermissionError({
                     path: 'app-users',
                     operation: 'list',
@@ -169,7 +142,7 @@ export default function LoginForm() {
 
     } catch (error: any) {
         console.error("Login error:", error);
-         if (error.message.includes('permission-denied')) {
+         if (error.message.includes('permission-denied') || error.message.includes('insufficient permissions')) {
             const permissionError = new FirestorePermissionError({ path: 'app-users', operation: 'list' });
             errorEmitter.emit('permission-error', permissionError);
         } else {
