@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck, MapPin } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Package, Briefcase, Plus, Minus, Clock, PauseCircle, Timer, AlarmClockOff, CalendarDays, Hourglass, TrendingUp, CalendarCheck } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import { useFirestore } from '@/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { LocationAddress } from '@/components/location-address';
 
 type Geolocation = {
   latitude: number;
@@ -260,21 +261,6 @@ export default function UserProfilePage() {
     );
   }
   
-  const LocationLink = ({ location }: { location?: Geolocation }) => {
-    if (!location) return null;
-    return (
-      <a
-        href={`https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-primary hover:underline"
-      >
-        <MapPin className="h-3 w-3" />
-        <span>Vedi Mappa</span>
-      </a>
-    );
-  };
-
   const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
     <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
         <div className="text-primary">{icon}</div>
@@ -326,8 +312,8 @@ export default function UserProfilePage() {
             </Card>
 
             <Tabs defaultValue="shifts">
-                 <TabsList className="flex flex-col md:flex-row h-auto w-full md:w-auto md:inline-flex">
-                    <TabsTrigger value="shifts" className="w-full md:w-auto justify-start md:justify-center gap-2"><Fingerprint className="h-4 w-4"/>Timbrature</TabsTrigger>
+                <TabsList className="flex flex-col md:flex-row h-auto w-full md:w-auto md:inline-flex">
+                    <TabsTrigger value="shifts" className="w-full md:w-auto justify-start md:justify-center gap-2"><Briefcase className="h-4 w-4"/>Timbrature</TabsTrigger>
                     <TabsTrigger value="leaves" className="w-full md:w-auto justify-start md:justify-center gap-2"><CheckCircle className="h-4 w-4"/>Ferie e Permessi</TabsTrigger>
                     <TabsTrigger value="supplies" className="w-full md:w-auto justify-start md:justify-center gap-2"><Package className="h-4 w-4"/>Richieste Forniture</TabsTrigger>
                 </TabsList>
@@ -356,10 +342,16 @@ export default function UserProfilePage() {
                                             <CardContent className="space-y-3">
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                                                     <div className="flex items-center gap-2"><Clock className="text-primary"/> <span>Ingresso:</span></div>
-                                                    <div className="font-mono text-right flex items-center justify-end gap-2">{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})} <LocationLink location={shift.startLocation} /></div>
+                                                    <div className="font-mono text-right flex flex-col items-end gap-1">
+                                                        <span>{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                        <LocationAddress location={shift.startLocation} />
+                                                    </div>
                                                     
                                                     <div className="flex items-center gap-2"><AlarmClockOff className="text-primary"/> <span>Uscita:</span></div>
-                                                    <div className="font-mono text-right flex items-center justify-end gap-2">{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})} <LocationLink location={shift.endLocation} /></div>
+                                                    <div className="font-mono text-right flex flex-col items-end gap-1">
+                                                        <span>{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span>
+                                                         <LocationAddress location={shift.endLocation} />
+                                                    </div>
                                                 </div>
                                                 <hr/>
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -472,6 +464,3 @@ export default function UserProfilePage() {
     </>
   );
 }
-
-    
-
