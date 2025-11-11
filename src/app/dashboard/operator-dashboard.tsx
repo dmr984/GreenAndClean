@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar } from "@/components/ui/calendar";
 import { it } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
 
 // Helper to get shifts from localStorage
 const getShiftsFromStorage = (): Shift[] => {
@@ -18,6 +17,8 @@ const getShiftsFromStorage = (): Shift[] => {
 export function OperatorDashboard() {
   const [shifts, setShifts] = React.useState<Shift[]>([]);
   const [selectedDayShifts, setSelectedDayShifts] = React.useState<Shift[]>([]);
+  const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
+  const [popoverTarget, setPopoverTarget] = React.useState<HTMLElement | null>(null);
 
   // Function to update shifts from storage, can be passed to ClockWidget
   const refreshShifts = () => {
@@ -46,13 +47,17 @@ export function OperatorDashboard() {
     },
   };
 
-  const handleDayClick = (day: Date, modifiers: { completed?: boolean }) => {
+  const handleDayClick = (day: Date, modifiers: { completed?: boolean }, e: React.MouseEvent<HTMLButtonElement>) => {
     if (modifiers.completed) {
       const dayString = day.toISOString().split('T')[0];
       const shiftsForDay = shifts.filter(s => s.date === dayString && s.startTime && s.endTime);
       setSelectedDayShifts(shiftsForDay);
+      setPopoverTarget(e.currentTarget);
+      setIsPopoverOpen(true);
     } else {
       setSelectedDayShifts([]);
+      setIsPopoverOpen(false);
+      setPopoverTarget(null);
     }
   };
 
@@ -74,21 +79,21 @@ export function OperatorDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Popover>
+            <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
               <PopoverTrigger asChild>
-                <div>
-                   <Calendar
-                      mode="single"
-                      className="rounded-md"
-                      locale={it}
-                      modifiers={modifiers}
-                      modifiersStyles={modifiersStyles}
-                      onDayClick={handleDayClick}
-                    />
-                </div>
+                {/* The trigger is now virtual, managed by state */}
+                <div ref={setPopoverTarget} />
               </PopoverTrigger>
+              <Calendar
+                mode="single"
+                className="rounded-md"
+                locale={it}
+                modifiers={modifiers}
+                modifiersStyles={modifiersStyles}
+                onDayClick={(day, mods, e) => handleDayClick(day, mods, e.currentTarget)}
+              />
               {selectedDayShifts.length > 0 && (
-                 <PopoverContent className="w-80">
+                 <PopoverContent className="w-80" style={{ zIndex: 100 }}>
                   <div className="grid gap-4">
                     <div className="space-y-2">
                       <h4 className="font-medium leading-none">Dettaglio Turno</h4>
@@ -100,9 +105,9 @@ export function OperatorDashboard() {
                       {selectedDayShifts.map(shift => (
                          <div key={shift.id} className="grid grid-cols-2 items-center gap-4 text-sm">
                            <span className="font-medium">Entrata:</span>
-                           <span className="text-right">{new Date(shift.startTime!).toLocaleTimeString('it-IT')}</span>
+                           <span className="text-right">{new Date(shift.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
                            <span className="font-medium">Uscita:</span>
-                           <span className="text-right">{new Date(shift.endTime!).toLocaleTimeString('it-IT')}</span>
+                           <span className="text-right">{new Date(shift.endTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
                          </div>
                       ))}
                     </div>
