@@ -13,6 +13,8 @@ export type Pause = {
 
 export type Shift = {
   id: string;
+  userId: string;
+  userName: string;
   date: string;
   startTime: string | null;
   endTime: string | null;
@@ -41,9 +43,11 @@ const saveShiftsToStorage = (shifts: Shift[]) => {
 
 interface ClockWidgetProps {
   onShiftComplete?: () => void;
+  userId: string;
+  userName: string;
 }
 
-export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
+export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetProps) {
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
   const [isOnPause, setIsOnPause] = useState(false);
@@ -52,13 +56,13 @@ export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
   // Load active shift on component mount
   useEffect(() => {
     const shifts = getShiftsFromStorage();
-    const currentActiveShift = shifts.find(s => s.startTime && !s.endTime) || null;
+    const currentActiveShift = shifts.find(s => s.userId === userId && s.startTime && !s.endTime) || null;
     setActiveShift(currentActiveShift);
     if(currentActiveShift){
        const activePause = currentActiveShift.pauses.find(p => p.startTime && !p.endTime);
        setIsOnPause(!!activePause);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
@@ -100,6 +104,8 @@ export function ClockWidget({ onShiftComplete }: ClockWidgetProps) {
     const shifts = getShiftsFromStorage();
     const newShift: Shift = {
         id: `SHIFT${Date.now()}`,
+        userId: userId,
+        userName: userName,
         date: now.toISOString().split('T')[0],
         startTime: now.toISOString(),
         endTime: null,

@@ -5,39 +5,40 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, CheckCircle, Package, Fingerprint, Clock, Briefcase, Plus, Minus } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import React, { useEffect, useState, useMemo } from 'react';
+import { ArrowLeft, CheckCircle, Package, Fingerprint, Briefcase, Plus, Minus } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore } from '@/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 type User = {
   id: string;
-  name: string;
-  code: string;
-  location: string;
-  role: string;
+  username: string;
+  password?: string;
+  location?: string;
+  role: 'admin' | 'operator';
   expectedHours?: number;
 };
 
 type LeaveRequest = { id: string; user: string; type: string; from: string; to: string; status: string; };
 type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: string; };
-type Shift = { id: string; startTime: string | null; endTime: string | null; pauses: { startTime: string; endTime: string | null }[] };
+type Shift = { 
+  id: string; 
+  userId: string;
+  startTime: string | null; 
+  endTime: string | null; 
+  pauses: { startTime: string; endTime: string | null }[] 
+};
 
 const getUsersFromStorage = (): User[] => {
   if (typeof window === 'undefined') return [];
   const storedUsers = localStorage.getItem('app-users');
   return storedUsers ? JSON.parse(storedUsers) : [];
-};
-
-const saveUsersToStorage = (users: User[]) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('app-users', JSON.stringify(users));
-  window.dispatchEvent(new Event('storage'));
 };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -91,8 +92,8 @@ const calculateDuration = (start: string | null, end: string | null, pauses: { s
 export default function UserProfilePage() {
   const params = useParams();
   const userId = params.userId as string;
-  const router = useRouter();
   const { toast } = useToast();
+  const firestore = useFirestore();
 
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -102,30 +103,37 @@ export default function UserProfilePage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
 
   useEffect(() => {
-    let foundUser: User | undefined;
-    const users = getUsersFromStorage();
-    foundUser = users.find(u => u.id === userId);
-    
-    setUser(foundUser || null);
+    const fetchUserData = async () => {
+      if (!firestore || !userId) return;
 
-    if (foundUser) {
+      setLoading(true);
+      
+      const userDocRef = doc(firestore, 'app-users', userId);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
+        setUser(foundUser);
+        
         const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        setLeaveRequests(allLeaves.filter(r => r.user === foundUser!.name));
+        setLeaveRequests(allLeaves.filter(r => r.user === foundUser.username));
 
         const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        setSupplyRequests(allSupplies.filter(r => r.user === foundUser!.name));
+        setSupplyRequests(allSupplies.filter(r => r.user === foundUser.username));
 
         const allShifts = getFromStorage<Shift[]>('shifts', []);
-        // NOTE: Shifts don't have user associated, this would need a rework of the clock-in logic
-        // For now, we assume we show all shifts, but ideally this would be filtered by user ID.
-        setShifts(allShifts.filter(s => s.endTime)); // Only show completed shifts
-    }
+        setShifts(allShifts.filter(s => s.userId === foundUser.id && s.endTime)); // Filter by userId
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    };
 
-    setLoading(false);
-  }, [userId]);
+    fetchUserData();
+  }, [userId, firestore]);
 
-  const handleExpectedHoursChange = (amount: number) => {
-      if (!user) return;
+  const handleExpectedHoursChange = async (amount: number) => {
+      if (!user || !firestore) return;
       
       const currentHours = user.expectedHours || 0;
       const newHours = Math.max(0, currentHours + amount);
@@ -133,11 +141,15 @@ export default function UserProfilePage() {
       const updatedUser = { ...user, expectedHours: newHours };
       setUser(updatedUser);
 
-      const allUsers = getUsersFromStorage();
-      const updatedUsers = allUsers.map(u => u.id === userId ? updatedUser : u);
-      saveUsersToStorage(updatedUsers);
-
-      toast({ title: "Ore aggiornate", description: `Ore giornaliere previste impostate a ${newHours}.` });
+      const userDocRef = doc(firestore, 'app-users', userId);
+      try {
+          await updateDoc(userDocRef, { expectedHours: newHours });
+          toast({ title: "Ore aggiornate", description: `Ore giornaliere previste impostate a ${newHours}.` });
+      } catch (e) {
+          toast({ title: "Errore", description: "Impossibile aggiornare le ore.", variant: "destructive" });
+          // Revert optimistic update
+          setUser(user);
+      }
   };
 
 
@@ -179,11 +191,11 @@ export default function UserProfilePage() {
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     <Avatar className="h-20 w-20">
-                        <AvatarFallback className="text-3xl">{getAvatarFallback(user.name)}</AvatarFallback>
+                        <AvatarFallback className="text-3xl">{getAvatarFallback(user.username)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                        <CardTitle className="text-3xl">{user.name}</CardTitle>
-                        <CardDescription className="text-lg">Codice: {user.code} | Luogo: {user.location}</CardDescription>
+                        <CardTitle className="text-3xl">{user.username}</CardTitle>
+                        <CardDescription className="text-lg">Password: {user.password} | Luogo: {user.location}</CardDescription>
                     </div>
                      <div className="flex items-center gap-2">
                         <Label htmlFor="expected-hours" className="text-lg">Ore Previste:</Label>
