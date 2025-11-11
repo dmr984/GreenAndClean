@@ -10,7 +10,6 @@ import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
@@ -33,12 +32,6 @@ type Shift = {
   startTime: string | null; 
   endTime: string | null; 
   pauses: { startTime: string; endTime: string | null }[] 
-};
-
-const getUsersFromStorage = (): User[] => {
-  if (typeof window === 'undefined') return [];
-  const storedUsers = localStorage.getItem('app-users');
-  return storedUsers ? JSON.parse(storedUsers) : [];
 };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -122,7 +115,7 @@ export default function UserProfilePage() {
         setSupplyRequests(allSupplies.filter(r => r.user === foundUser.username));
 
         const allShifts = getFromStorage<Shift[]>('shifts', []);
-        setShifts(allShifts.filter(s => s.userId === foundUser.id && s.endTime)); // Filter by userId
+        setShifts(allShifts.filter(s => s.userId === foundUser.id && s.endTime));
       } else {
         setUser(null);
       }

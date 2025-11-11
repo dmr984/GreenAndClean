@@ -7,8 +7,10 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 type User = {
   id: string;
@@ -27,48 +29,57 @@ export default function LoginForm() {
   const [password, setPassword] = React.useState('');
 
   useEffect(() => {
-    async function fetchUsers() {
-      if (!firestore) return;
-      setIsLoading(true);
+    async function setupUsers() {
+        if (!firestore) return;
+        setIsLoading(true);
 
-      try {
-        const usersCollection = collection(firestore, 'app-users');
-        const querySnapshot = await getDocs(usersCollection);
-        const userList: User[] = [];
-        querySnapshot.forEach((doc) => {
-          userList.push({ id: doc.id, ...doc.data() } as User);
-        });
-        
-        // Ensure admin user exists, if not, add it for the first run.
-        if (!userList.some(u => u.role === 'admin')) {
-            // This is a simple seeding mechanism. In a real app, this would be handled by a setup script.
-            // For now, we assume an admin user "Amministratore" with password "0000" should exist.
-            // We won't create it here to keep client-side logic simple, but we'll add it to the dropdown
-            // to allow the first login.
-            userList.unshift({id: 'admin_user', username: 'Amministratore', role: 'admin'});
+        try {
+            // Ensure admin user exists.
+            const adminDocRef = doc(firestore, 'app-users', 'admin_user');
+            const adminDoc = await getDoc(adminDocRef);
+
+            if (!adminDoc.exists()) {
+                await setDoc(adminDocRef, {
+                    username: 'Amministratore',
+                    password: '0000',
+                    role: 'admin'
+                });
+            }
+
+            // Fetch all users
+            const usersCollection = collection(firestore, 'app-users');
+            const querySnapshot = await getDocs(usersCollection);
+            const userList: User[] = [];
+            querySnapshot.forEach((doc) => {
+                userList.push({ id: doc.id, ...doc.data() } as User);
+            });
+
+            userList.sort((a, b) => {
+                if (a.role === 'admin') return -1;
+                if (b.role === 'admin') return 1;
+                return a.username.localeCompare(b.username);
+            });
+            setUsers(userList);
+
+        } catch (error: any) {
+             const contextualError = new FirestorePermissionError({
+                path: 'app-users',
+                operation: 'list', 
+            });
+            errorEmitter.emit('permission-error', contextualError);
+            toast({
+                variant: "destructive",
+                title: "Errore di permessi",
+                description: "Impossibile caricare gli utenti. Controlla le regole di Firestore."
+            });
+        } finally {
+            setIsLoading(false);
         }
-
-        userList.sort((a, b) => {
-          if (a.role === 'admin') return -1;
-          if (b.role === 'admin') return 1;
-          return a.username.localeCompare(b.username);
-        });
-        setUsers(userList);
-
-      } catch (error: any) {
-        console.error("Error fetching users:", error);
-        toast({
-          variant: "destructive",
-          title: "Errore di caricamento",
-          description: "Impossibile caricare l'elenco degli utenti. Controlla la console per i dettagli."
-        });
-      } finally {
-        setIsLoading(false);
-      }
     }
 
-    fetchUsers();
-  }, [firestore, toast]);
+    setupUsers();
+}, [firestore, toast]);
+
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -94,21 +105,6 @@ export default function LoginForm() {
       return;
     }
     
-    // Special case for initial admin login
-    if (username === 'Amministratore' && password === '0000') {
-         const userToStore = {
-          id: 'admin_user',
-          username: 'Amministratore',
-          role: 'admin'
-        };
-        localStorage.setItem('user', JSON.stringify(userToStore));
-        localStorage.setItem('userRole', userToStore.role);
-        localStorage.setItem('userName', userToStore.username);
-        localStorage.setItem('userId', userToStore.id);
-        router.push('/dashboard');
-        return;
-    }
-
     try {
       const usersCollection = collection(firestore, 'app-users');
       const q = query(usersCollection, where("username", "==", username), where("password", "==", password));
@@ -138,11 +134,15 @@ export default function LoginForm() {
       }
 
     } catch (error: any) {
-        console.error("Login error:", error);
+        const contextualError = new FirestorePermissionError({
+            path: 'app-users',
+            operation: 'list',
+        });
+        errorEmitter.emit('permission-error', contextualError);
         toast({
           variant: "destructive",
           title: "Errore di accesso",
-          description: "Si è verificato un errore durante il login. Riprova.",
+          description: "Si è verificato un errore di permessi durante il login.",
         });
     } finally {
       setIsLoading(false);
