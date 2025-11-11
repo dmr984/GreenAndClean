@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, Trash, Edit, User } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Trash, Edit, User, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -20,7 +20,6 @@ type AppUser = {
   username: string;
   role: 'admin' | 'operator';
   password?: string;
-  // Add other fields if necessary, e.g., location
   location?: string;
 };
 
@@ -68,6 +67,7 @@ export default function UsersPage() {
 
   const handleAddUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!firestore) return;
     const form = event.currentTarget;
     const username = (form.elements.namedItem('username') as HTMLInputElement).value;
     const location = (form.elements.namedItem('location') as HTMLInputElement).value;
@@ -108,7 +108,7 @@ export default function UsersPage() {
 
   const handleEditUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedUser) return;
+    if (!selectedUser || !firestore) return;
 
     const form = event.currentTarget;
     const username = (form.elements.namedItem('username') as HTMLInputElement).value;
@@ -141,7 +141,7 @@ export default function UsersPage() {
   };
   
   const handleDeleteUser = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !firestore) return;
     
     try {
         await deleteDoc(doc(firestore, 'app-users', selectedUser.id));
@@ -216,11 +216,11 @@ export default function UsersPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {operatorUsers.map((user) => (
             <Card key={user.id} className="flex flex-col">
-                <CardHeader className="flex flex-row items-center gap-4">
+                <CardHeader className="flex flex-row items-center gap-4 pb-4">
                     <Avatar className="h-12 w-12">
                          <AvatarFallback>{getAvatarFallback(user.username)}</AvatarFallback>
                     </Avatar>
-                    <div>
+                    <div className="flex-1">
                         <CardTitle>{user.username}</CardTitle>
                         <CardDescription>{user.location}</CardDescription>
                     </div>
@@ -247,8 +247,11 @@ export default function UsersPage() {
                         </DropdownMenu>
                     </div>
                 </CardHeader>
-                <CardContent className="flex-grow">
-                    {/* Content can be added here if needed */}
+                <CardContent className="flex-grow space-y-2">
+                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <KeyRound className="h-4 w-4" />
+                        <span className="font-mono text-base text-foreground">{user.password}</span>
+                   </div>
                 </CardContent>
                 <CardFooter>
                     <Button asChild className="w-full" disabled>
