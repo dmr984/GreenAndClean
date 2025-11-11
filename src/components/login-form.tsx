@@ -4,11 +4,13 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
 import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { FirestorePermissionError, errorEmitter } from '@/firebase';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 
 type User = {
   id: string;
@@ -32,8 +34,8 @@ const initializeUsers = async (firestore: any) => {
     const defaultPassword = '0000';
 
     // Create Admin User
-    const adminDocRef = doc(firestore, 'app-users', 'admin_user');
-    batch.set(adminDocRef, {
+    const adminRef = doc(firestore, 'app-users', 'admin_user');
+    batch.set(adminRef, {
       username: 'Amministratore',
       password: defaultPassword,
       role: 'admin',
@@ -50,16 +52,7 @@ const initializeUsers = async (firestore: any) => {
     }
     
     // Non-blocking commit with contextual error handling
-    batch.commit().catch(error => {
-        console.error("Batch commit failed:", error);
-        // We can't know which specific doc failed in a batch, so we emit a general error for the collection.
-        const permissionError = new FirestorePermissionError({
-            path: 'app-users',
-            operation: 'create',
-            requestResourceData: {note: 'Batch write for initial users.'}
-        });
-        errorEmitter.emit('permission-error', permissionError);
-    });
+    await batch.commit();
 
   } catch (error) {
     console.error("Failed to check for existing users:", error);
@@ -80,14 +73,38 @@ export default function LoginForm() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
+  const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
 
-  React.useEffect(() => {
-    if (firestore) {
-      initializeUsers(firestore);
+  useEffect(() => {
+    async function setupUsers() {
+        if (!firestore) return;
+        setIsLoading(true);
+        await initializeUsers(firestore);
+
+        try {
+            const usersCollection = collection(firestore, 'app-users');
+            const querySnapshot = await getDocs(usersCollection);
+            const userList: User[] = [];
+            querySnapshot.forEach((doc) => {
+                userList.push({ id: doc.id, ...doc.data() } as User);
+            });
+            // Sort users: Admin first, then operators
+            userList.sort((a, b) => {
+                if (a.role === 'admin') return -1;
+                if (b.role === 'admin') return 1;
+                return a.username.localeCompare(b.username);
+            });
+            setUsers(userList);
+        } catch (error) {
+            console.error("Error fetching users for dropdown", error);
+        } finally {
+            setIsLoading(false);
+        }
     }
-  }, [firestore]);
+    setupUsers();
+}, [firestore]);
 
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -98,7 +115,7 @@ export default function LoginForm() {
       toast({
         variant: "destructive",
         title: "Campi mancanti",
-        description: "Inserisci nome utente e password.",
+        description: "Seleziona un utente e inserisci la password.",
       });
       setIsLoading(false);
       return;
@@ -159,7 +176,18 @@ export default function LoginForm() {
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
         <Label htmlFor="username">Nome Utente</Label>
-        <Input id="username" name="username" value={username} onChange={e => setUsername(e.target.value)} required />
+        <Select onValueChange={setUsername} value={username} required>
+            <SelectTrigger id="username">
+                <SelectValue placeholder="Seleziona un utente..." />
+            </SelectTrigger>
+            <SelectContent>
+                 {users.map((user) => (
+                    <SelectItem key={user.id} value={user.username}>
+                       {user.username}
+                    </SelectItem>
+                 ))}
+            </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-2">
         <Label htmlFor="password">Password</Label>
