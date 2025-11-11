@@ -49,9 +49,10 @@ interface ClockWidgetProps {
 
 export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetProps) {
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
-  const [elapsedTime, setElapsedTime] = useState("00:00:00");
   const [isOnPause, setIsOnPause] = useState(false);
   const { toast } = useToast();
+  const [lastActionTime, setLastActionTime] = useState<string | null>(null);
+
 
   // Load active shift on component mount
   useEffect(() => {
@@ -61,43 +62,16 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     if(currentActiveShift){
        const activePause = currentActiveShift.pauses.find(p => p.startTime && !p.endTime);
        setIsOnPause(!!activePause);
+       if (activePause) {
+           setLastActionTime(new Date(activePause.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+       } else if (currentActiveShift.startTime) {
+           setLastActionTime(new Date(currentActiveShift.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+       }
+    } else {
+        setLastActionTime(null);
     }
   }, [userId]);
 
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    if (activeShift?.startTime && !isOnPause) {
-      const shiftStartTime = new Date(activeShift.startTime);
-      const totalPauseDuration = activeShift.pauses
-        .filter(p => p.endTime)
-        .reduce((total, p) => total + (new Date(p.endTime!).getTime() - new Date(p.startTime).getTime()), 0);
-        
-      intervalId = setInterval(() => {
-        const now = new Date();
-        // Adjust for current active pause if any
-        const currentPause = activeShift.pauses.find(p => p.startTime && !p.endTime);
-        const currentPauseDuration = currentPause ? now.getTime() - new Date(currentPause.startTime).getTime() : 0;
-        
-        const diff = now.getTime() - shiftStartTime.getTime() - totalPauseDuration - currentPauseDuration;
-
-        const hours = String(Math.floor(diff / (1000 * 60 * 60))).padStart(2, "0");
-        const minutes = String(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, "0");
-        const seconds = String(Math.floor((diff % (1000 * 60)) / 1000)).padStart(2, "0");
-
-        setElapsedTime(`${hours}:${minutes}:${seconds}`);
-      }, 1000);
-    } else {
-        // If not clocked in, reset time. If on pause, time is frozen by not running the interval.
-        if(!activeShift) setElapsedTime("00:00:00");
-    }
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [activeShift, isOnPause]);
 
   const handleClockIn = () => {
     const now = new Date();
@@ -113,9 +87,10 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     };
     saveShiftsToStorage([...shifts, newShift]);
     setActiveShift(newShift);
+    setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
     toast({
         title: "Inizio Turno",
-        description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString()}.`,
+        description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
     });
   }
 
@@ -123,18 +98,24 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
       const now = new Date();
       const shifts = getShiftsFromStorage();
       if (activeShift) {
-        if(isOnPause) { // End pause before clocking out
-            handlePauseToggle();
+        let shiftToUpdate = { ...activeShift };
+        
+        // If on pause, end pause first
+        if (isOnPause) {
+            const updatedPauses = shiftToUpdate.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString() } : p);
+            shiftToUpdate.pauses = updatedPauses;
         }
+
         const updatedShifts = shifts.map(s => 
-            s.id === activeShift.id ? { ...s, endTime: now.toISOString() } : s
+            s.id === activeShift.id ? { ...shiftToUpdate, endTime: now.toISOString() } : s
         );
         saveShiftsToStorage(updatedShifts);
         setActiveShift(null);
         setIsOnPause(false);
+        setLastActionTime(null);
         toast({
             title: "Fine Turno",
-            description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString()}.`,
+            description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
         });
         if (onShiftComplete) onShiftComplete();
       }
@@ -159,6 +140,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
         saveShiftsToStorage(updatedShifts);
         setIsOnPause(false);
         if(updatedShift) setActiveShift(updatedShift);
+        setLastActionTime(new Date(updatedShift!.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
         toast({ title: "Fine Pausa", description: "Hai ripreso a lavorare." });
 
     } else { // Start pause
@@ -173,8 +155,19 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
         saveShiftsToStorage(updatedShifts);
         setIsOnPause(true);
         if(updatedShift) setActiveShift(updatedShift);
+        setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
         toast({ title: "Inizio Pausa", description: "Hai messo in pausa il tuo turno." });
     }
+  }
+
+  const getStatusDescription = () => {
+      if (!activeShift) {
+          return "Tocca per iniziare il tuo turno.";
+      }
+      if (isOnPause) {
+          return `In pausa dalle ${lastActionTime}`;
+      }
+      return `Turno iniziato alle ${lastActionTime}`;
   }
 
   const isClockedIn = !!activeShift;
@@ -187,21 +180,17 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
           <CardTitle className="text-2xl">Gestione Turno</CardTitle>
         </div>
         <CardDescription>
-          {isClockedIn ? (isOnPause ? "Sei attualmente in pausa." : "Sei attualmente in turno.") : "Tocca per iniziare il tuo turno."}
+          {getStatusDescription()}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center justify-center gap-4">
-        <div className="text-5xl font-bold font-mono tracking-tighter text-center p-4 rounded-lg bg-muted w-full">
-          {elapsedTime}
-        </div>
-        {!isClockedIn && (
+        {!isClockedIn ? (
             <Button onClick={handleClockIn} className="w-full font-bold" size="lg">
                 <LogIn className="mr-2 h-4 w-4" /> Timbra Entrata
             </Button>
-        )}
-        {isClockedIn && (
+        ) : (
           <div className="grid grid-cols-2 gap-4 w-full">
-              <Button onClick={handlePauseToggle} className="font-bold" size="lg" variant={isOnPause ? "default" : "outline"}>
+              <Button onClick={handlePauseToggle} className="font-bold" size="lg" variant={isOnPause ? "default" : "outline"} disabled={!isClockedIn}>
                   {isOnPause ? (
                     <>
                         <Play className="mr-2 h-4 w-4" /> Termina Pausa
@@ -212,15 +201,10 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
                     </>
                   )}
               </Button>
-            <Button onClick={handleClockOut} className="font-bold" size="lg" variant="destructive">
+            <Button onClick={handleClockOut} className="font-bold" size="lg" variant="destructive" disabled={!isClockedIn}>
                 <LogOut className="mr-2 h-4 w-4" /> Timbra Uscita
             </Button>
           </div>
-        )}
-        {isClockedIn && activeShift?.startTime && (
-          <p className="text-sm text-muted-foreground">
-            Turno iniziato alle {new Date(activeShift.startTime).toLocaleTimeString()}
-          </p>
         )}
       </CardContent>
     </Card>
