@@ -52,7 +52,16 @@ const initializeUsers = async (firestore: any) => {
     }
     
     // Non-blocking commit with contextual error handling
-    await batch.commit();
+    batch.commit().catch(error => {
+      if (error.message.includes('permission-denied')) {
+        const permissionError = new FirestorePermissionError({
+          path: 'app-users', // The path being written to
+          operation: 'write', // The operation is a batched write
+          // We can't provide specific data for a batch, but we can indicate the intent
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      }
+    });
 
   } catch (error) {
     console.error("Failed to check for existing users:", error);
@@ -99,6 +108,13 @@ export default function LoginForm() {
             setUsers(userList);
         } catch (error) {
             console.error("Error fetching users for dropdown", error);
+            if (error instanceof Error && error.message.includes('permission-denied')) {
+                const permissionError = new FirestorePermissionError({
+                    path: 'app-users',
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            }
         } finally {
             setIsLoading(false);
         }
