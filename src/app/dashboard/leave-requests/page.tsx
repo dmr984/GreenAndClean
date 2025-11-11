@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MoreHorizontal, Check, X, Trash2 } from "lucide-react";
+import { MoreHorizontal, Check, X, Trash2, Edit, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 
 // ==================================
@@ -66,6 +68,7 @@ export default function LeaveRequestsPage() {
     const [requests, setRequests] = React.useState<LeaveRequest[]>([]);
     const [isRejectDialogOpen, setIsRejectDialogOpen] = React.useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+    const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [selectedRequest, setSelectedRequest] = React.useState<LeaveRequest | null>(null);
     const [rejectionReason, setRejectionReason] = React.useState("");
     const { toast } = useToast();
@@ -73,6 +76,8 @@ export default function LeaveRequestsPage() {
 
     // Draft state for new request with auto-saving
     const [draft, setDraft] = React.useState<Partial<LeaveRequest>>({});
+    const [editDraft, setEditDraft] = React.useState<Partial<LeaveRequest>>({});
+
 
     React.useEffect(() => {
         setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
@@ -163,6 +168,45 @@ export default function LeaveRequestsPage() {
         updateAllRequests(updated);
         toast({ title: "Richiesta Eliminata", variant: "destructive"});
         setIsDeleteDialogOpen(false);
+        setSelectedRequest(null);
+    }
+
+    const openEditDialog = (request: LeaveRequest) => {
+        setSelectedRequest(request);
+        setEditDraft({ ...request });
+        setIsEditDialogOpen(true);
+    }
+
+    const handleEditDraftChange = (field: keyof LeaveRequest, value: string) => {
+        setEditDraft(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleEditRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!selectedRequest || !editDraft) return;
+
+        if (!editDraft.type || !editDraft.from || !editDraft.to) {
+            toast({ title: "Campi mancanti", description: "Per favore compila tutti i campi richiesti.", variant: "destructive" });
+            return;
+        }
+
+        if (editDraft.type === 'Permesso' && (!editDraft.timeFrom || !editDraft.timeTo)) {
+            toast({ title: "Orario mancante", description: "Per i permessi, specifica l'orario di inizio e fine.", variant: "destructive" });
+            return;
+        }
+
+        const updatedRequest: LeaveRequest = {
+            ...selectedRequest,
+            ...editDraft,
+            timeFrom: editDraft.type === 'Permesso' ? editDraft.timeFrom : undefined,
+            timeTo: editDraft.type === 'Permesso' ? editDraft.timeTo : undefined,
+        };
+        
+        const updated = requests.map(r => r.id === selectedRequest.id ? updatedRequest : r);
+        updateAllRequests(updated);
+        
+        toast({ title: "Richiesta Modificata", description: "La tua richiesta è stata aggiornata." });
+        setIsEditDialogOpen(false);
         setSelectedRequest(null);
     }
 
@@ -275,15 +319,26 @@ export default function LeaveRequestsPage() {
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     ) : (
-                                                         <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
-                                                            disabled={req.status !== 'In attesa'}
-                                                            onClick={() => openDeleteDialog(req)}
-                                                          >
-                                                            <Trash2 className="h-4 w-4 text-destructive"/>
-                                                            <span className="sr-only">Elimina richiesta</span>
-                                                        </Button>
+                                                         <div className="flex justify-end gap-1">
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                disabled={req.status !== 'In attesa'}
+                                                                onClick={() => openEditDialog(req)}
+                                                            >
+                                                                <Pencil className="h-4 w-4 text-blue-500"/>
+                                                                <span className="sr-only">Modifica richiesta</span>
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                disabled={req.status !== 'In attesa'}
+                                                                onClick={() => openDeleteDialog(req)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4 text-destructive"/>
+                                                                <span className="sr-only">Elimina richiesta</span>
+                                                            </Button>
+                                                         </div>
                                                     )}
                                                 </TableCell>
                                             </TableRow>
@@ -324,6 +379,63 @@ export default function LeaveRequestsPage() {
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
+
+                     {/* Operator Edit Dialog */}
+                    <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Modifica Richiesta</DialogTitle>
+                                <DialogDescription>
+                                Aggiorna i dettagli della tua richiesta di ferie/permesso.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <form id="edit-request-form" onSubmit={handleEditRequestSubmit}>
+                                <div className="p-4 space-y-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="edit-type">Tipo</Label>
+                                        <Select name="type" required value={editDraft.type || ""} onValueChange={(value) => handleEditDraftChange('type', value)}>
+                                            <SelectTrigger id="edit-type"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Ferie">Ferie</SelectItem>
+                                                <SelectItem value="Malattia">Malattia</SelectItem>
+                                                <SelectItem value="Permesso">Permesso</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="edit-from-date">Dal</Label>
+                                            <Input id="edit-from-date" name="from-date" type="date" value={editDraft.from || ""} onChange={(e) => handleEditDraftChange('from', e.target.value)} required />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="edit-to-date">Al</Label>
+                                            <Input id="edit-to-date" name="to-date" type="date" value={editDraft.to || ""} onChange={(e) => handleEditDraftChange('to', e.target.value)} required />
+                                        </div>
+                                    </div>
+                                    {editDraft.type === 'Permesso' && (
+                                        <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+                                            <div>
+                                                <Label htmlFor="edit-time-from">Dalle ore</Label>
+                                                <Input id="edit-time-from" name="time-from" type="time" value={editDraft.timeFrom || ""} onChange={(e) => handleEditDraftChange('timeFrom', e.target.value)} required />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="edit-time-to">Alle ore</Label>
+                                                <Input id="edit-time-to" name="time-to" type="time" value={editDraft.timeTo || ""} onChange={(e) => handleEditDraftChange('timeTo', e.target.value)} required />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <Label htmlFor="edit-reason">Motivo (opzionale)</Label>
+                                        <Textarea id="edit-reason" name="reason" placeholder="Fornisci un motivo per la richiesta..." value={editDraft.reason || ""} onChange={(e) => handleEditDraftChange('reason', e.target.value)} />
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Annulla</Button>
+                                    <Button type="submit">Salva Modifiche</Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
                 </CardContent>
             </Card>
         </div>
