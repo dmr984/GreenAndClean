@@ -2,11 +2,64 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // TEMPORARY: Allow open access to get the app working.
-    // We will implement secure rules in a later step.
+    match /operators/{operatorId} {
+      allow read, write: if request.auth != null && request.auth.uid == operatorId;
+    }
+
+    match /admins/{adminId} {
+      allow read, write: if request.auth != null && request.auth.uid == adminId;
+    }
+
+    match /operators/{operatorId}/shifts/{shiftId} {
+      allow read, write: if request.auth != null && request.auth.uid == operatorId;
+    }
+
+    match /operators/{operatorId}/leaveRequests/{leaveRequestId} {
+      allow create: if request.auth != null && request.resource.data.operatorId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && request.auth.uid == operatorId;
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /operators/{operatorId}/supplyRequests/{supplyRequestId} {
+      allow read, write: if request.auth != null && request.auth.uid == operatorId;
+    }
+
+    match /roles_admin/{adminId} {
+      allow read: if request.auth != null;
+    }
+
+    // Admin access rules
+    match /shifts/{shiftId} {
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    match /leave-requests/{leaveRequestId} {
+       allow create: if request.auth != null;
+       allow read, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+     match /supply-requests/{supplyRequestId} {
+      allow read, update: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+     match /extra-shift-requests/{requestId} {
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+     match /app-users/{userId} {
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      allow read: if request.auth != null && request.auth.uid == userId;
+    }
+     match /communications/{commId} {
+      allow read, write: if request.auth != null;
+    }
+     match /warehouse-items/{itemId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Default deny
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
