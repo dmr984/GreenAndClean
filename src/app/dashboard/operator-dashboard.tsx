@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { ClockWidget, type Shift } from "@/components/dashboard/clock-widget";
 import { WorkSchedule } from '@/components/dashboard/work-schedule';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CalendarCheck, Hourglass, TrendingUp, Megaphone } from 'lucide-react';
+import { CalendarCheck, Hourglass, TrendingUp, Megaphone, Timer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ type UserData = {
   id: string;
   username: string;
   role: 'admin' | 'operator';
+  expectedHours?: number;
 };
 
 type LeaveRequest = {
@@ -61,6 +62,20 @@ const StatCard = ({ icon, label, value, badgeCount }: { icon: React.ReactNode, l
     </Card>
 );
 
+const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
+    if (!start || !end) return { workedMinutes: 0 };
+
+    const startTime = new Date(start).getTime();
+    const endTime = new Date(end).getTime();
+    
+    const pauseMillis = pauses
+        .filter(p => p.endTime)
+        .reduce((acc, p) => acc + (new Date(p.endTime!).getTime() - new Date(p.startTime).getTime()), 0);
+
+    const workedMillis = endTime - startTime - pauseMillis;
+    return { workedMinutes: Math.floor(workedMillis / 60000) };
+};
+
 const formatMinutesToHours = (totalMinutes: number) => {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
@@ -108,6 +123,14 @@ export function OperatorDashboard() {
     const approvedShifts = shifts.filter(s => s.status === 'Approvato');
     const workedDays = new Set(approvedShifts.map(s => new Date(s.startTime!).toISOString().split('T')[0])).size;
 
+    const totalOvertimeMinutes = approvedShifts.reduce((total, shift) => {
+        const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
+        const expectedMinutes = (user?.expectedHours || 0) * 60;
+        const overtime = Math.max(0, workedMinutes - expectedMinutes);
+        return total + overtime;
+    }, 0);
+
+
     const vacationDays = leaveRequests.reduce((total, req) => {
         if (req.status === 'Approvata' && req.type === 'Ferie') {
             const start = new Date(req.from);
@@ -137,9 +160,10 @@ export function OperatorDashboard() {
         workedDays,
         vacationDays,
         permitHours: formatMinutesToHours(permitMinutes),
+        overtime: formatMinutesToHours(totalOvertimeMinutes),
         unreadAnnouncements,
     };
-}, [shifts, leaveRequests, announcements]);
+}, [shifts, leaveRequests, announcements, user]);
 
   const markAnnouncementAsRead = (announcementId: string) => {
     const readAnnouncements = getFromStorage<string[]>('read-announcements', []);
@@ -168,7 +192,7 @@ export function OperatorDashboard() {
             <StatCard icon={<TrendingUp className="h-5 w-5"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
             <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
             <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso" value={summaryStats.permitHours} />
-            <StatCard icon={<Megaphone className="h-5 w-5"/>} label="Annunci" value={recentAnnouncements.length} badgeCount={summaryStats.unreadAnnouncements}/>
+            <StatCard icon={<Timer className="h-5 w-5"/>} label="Straordinari" value={summaryStats.overtime} />
       </div>
 
       <div className="grid gap-4 md:gap-8 lg:grid-cols-2">
@@ -178,7 +202,12 @@ export function OperatorDashboard() {
           <Card className="mt-4 md:mt-8">
             <CardHeader>
                 <CardTitle>Annunci Recenti</CardTitle>
-                <CardDescription>Le ultime comunicazioni dall'amministrazione.</CardDescription>
+                <CardDescription>
+                  Le ultime comunicazioni dall'amministrazione.
+                  {summaryStats.unreadAnnouncements > 0 && 
+                      <Badge variant="destructive" className="ml-2">{summaryStats.unreadAnnouncements} Nuov{summaryStats.unreadAnnouncements > 1 ? 'i' : 'o'}</Badge>
+                  }
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 {recentAnnouncements.length > 0 ? (
