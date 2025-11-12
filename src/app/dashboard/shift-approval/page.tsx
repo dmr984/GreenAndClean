@@ -5,6 +5,9 @@ import { CheckCircle, Briefcase, Clock, PauseCircle, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useFirestore } from "@/firebase";
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+
 
 type Shift = {
   id: string;
@@ -17,21 +20,6 @@ type Shift = {
   status: 'In attesa' | 'Approvato';
 };
 
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
-};
 
 const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
     if (!start || !end) return { total: 'N/A', pause: 'N/A', worked: 'N/A' };
@@ -58,31 +46,42 @@ const calculateDuration = (start: string | null, end: string | null, pauses: Shi
 
 export default function ShiftApprovalPage() {
     const { toast } = useToast();
+    const firestore = useFirestore();
     const [pendingShifts, setPendingShifts] = React.useState<Shift[]>([]);
 
     React.useEffect(() => {
-        const loadShifts = () => {
-            const allShifts = getFromStorage<Shift[]>('shifts', []);
-            // Filter for completed shifts that are pending approval on the client-side
-            const completedPendingShifts = allShifts.filter(s => s.status === 'In attesa' && s.endTime);
+        if (!firestore) return;
+        const shiftsCollection = collection(firestore, 'shifts');
+        // Simplified query to fetch shifts with 'In attesa' status
+        const q = query(shiftsCollection, where('status', '==', 'In attesa'));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const shiftsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
+            // Filter for completed shifts on the client-side
+            const completedPendingShifts = shiftsData.filter(s => s.endTime);
             setPendingShifts(completedPendingShifts.sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime()));
-        };
-        
-        loadShifts();
-        window.addEventListener('storage', loadShifts);
-        return () => window.removeEventListener('storage', loadShifts);
-    }, []);
-
-    const handleApproveShift = (shiftId: string) => {
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
-        const updatedShifts = allShifts.map(s => s.id === shiftId ? { ...s, status: 'Approvato' } : s);
-        saveToStorage('shifts', updatedShifts);
-        
-        setPendingShifts(prev => prev.filter(s => s.id !== shiftId));
-        toast({
-            title: "Turno Approvato",
-            description: "Il turno di lavoro è stato approvato con successo.",
         });
+
+        return () => unsubscribe();
+    }, [firestore]);
+
+    const handleApproveShift = async (shiftId: string) => {
+        if (!firestore) return;
+        
+        const shiftRef = doc(firestore, 'shifts', shiftId);
+        try {
+            await updateDoc(shiftRef, { status: 'Approvato' });
+            toast({
+                title: "Turno Approvato",
+                description: "Il turno di lavoro è stato approvato con successo.",
+            });
+        } catch (error) {
+             toast({
+                title: "Errore",
+                description: "Impossibile approvare il turno.",
+                variant: 'destructive'
+            });
+        }
     };
 
     return (
@@ -113,7 +112,7 @@ export default function ShiftApprovalPage() {
                                         <div>
                                             <CardTitle className="text-xl">{shift.userName}</CardTitle>
                                             <CardDescription>
-                                                {new Date(shift.date).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'})}
+                                                {new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'})}
                                             </CardDescription>
                                         </div>
                                         <Button size="sm" onClick={() => handleApproveShift(shift.id)}>
@@ -135,3 +134,5 @@ export default function ShiftApprovalPage() {
         </div>
     );
 }
+
+    

@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Briefcase, CalendarCheck, Package, ClipboardCheck, Megaphone, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 // Mock types to match the request pages
 type LeaveRequest = {
@@ -29,41 +31,45 @@ export function AdminDashboard() {
   const [pendingSupplyRequests, setPendingSupplyRequests] = React.useState(0);
   const [pendingShifts, setPendingShifts] = React.useState(0);
   const [pendingExtraShifts, setPendingExtraShifts] = React.useState(0);
+  const firestore = useFirestore();
 
 
   React.useEffect(() => {
-    const updateBadges = () => {
-      if (typeof window !== 'undefined') {
-        const storedLeave = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        setPendingLeaveRequests(storedLeave.filter(r => r.status === 'In attesa').length);
+    if (!firestore) return;
 
-        const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        setPendingSupplyRequests(storedSupply.filter(r => r.status === 'In attesa').length);
-        
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
-        // Filter for completed shifts that are pending approval client-side
-        setPendingShifts(allShifts.filter(s => s.status === 'In attesa' && s.endTime).length);
-        
-        const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
-        setPendingExtraShifts(allExtraShifts.filter(r => r.status === 'pending').length);
-      }
+    // --- Leave Requests ---
+    const leaveQuery = query(collection(firestore, 'leave-requests'), where('status', '==', 'In attesa'));
+    const unsubLeave = onSnapshot(leaveQuery, snapshot => {
+        setPendingLeaveRequests(snapshot.size);
+    });
+
+    // --- Supply Requests ---
+    const supplyQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'In attesa'));
+    const unsubSupply = onSnapshot(supplyQuery, snapshot => {
+        setPendingSupplyRequests(snapshot.size);
+    });
+
+    // --- Shift Approvals ---
+    const shiftsQuery = query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
+    const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
+        const completedPendingShifts = snapshot.docs.filter(doc => doc.data().endTime).length;
+        setPendingShifts(completedPendingShifts);
+    });
+
+    // --- Extra Shift Requests ---
+     const extraShiftsQuery = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
+     const unsubExtraShifts = onSnapshot(extraShiftsQuery, snapshot => {
+        setPendingExtraShifts(snapshot.size);
+    });
+
+    return () => {
+        unsubLeave();
+        unsubSupply();
+        unsubShifts();
+        unsubExtraShifts();
     };
 
-    updateBadges();
-    window.addEventListener('storage', updateBadges);
-    return () => window.removeEventListener('storage', updateBadges);
-
-  }, []);
-
-  const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-      if (typeof window === 'undefined') return defaultValue;
-      const stored = localStorage.getItem(key);
-      try {
-        return stored ? JSON.parse(stored) : defaultValue;
-      } catch (e) {
-        return defaultValue;
-      }
-  };
+  }, [firestore]);
 
 
   return (
@@ -157,3 +163,5 @@ export function AdminDashboard() {
     </>
   );
 }
+
+    
