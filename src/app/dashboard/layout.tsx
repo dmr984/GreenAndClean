@@ -78,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       
       const shiftsQuery = query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
       unsubscribes.push(onSnapshot(shiftsQuery, snapshot => {
-        const completedPendingShifts = snapshot.docs.filter(doc => doc.data().endTime).length;
+        const completedPendingShifts = snapshot.docs.filter(doc => !!doc.data().endTime).length;
         setPendingShifts(completedPendingShifts);
       }));
       

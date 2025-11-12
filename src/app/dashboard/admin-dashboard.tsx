@@ -60,7 +60,7 @@ export function AdminDashboard() {
     // --- Shift Approvals ---
     const shiftsQuery = query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
      const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
-        const completedPendingShifts = snapshot.docs.filter(doc => doc.data().endTime).length;
+        const completedPendingShifts = snapshot.docs.filter(doc => !!doc.data().endTime).length;
         setPendingShifts(completedPendingShifts);
     });
 

@@ -57,7 +57,7 @@ export default function ShiftApprovalPage() {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const shiftsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
             // Filter for completed shifts on the client side
-            const completedPendingShifts = shiftsData.filter(s => s.endTime);
+            const completedPendingShifts = shiftsData.filter(s => !!s.endTime);
             setPendingShifts(completedPendingShifts.sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime()));
         });
 
