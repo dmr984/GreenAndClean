@@ -1,16 +1,14 @@
 'use client';
 import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone, ClipboardCheck, Clock } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone, ClipboardCheck, Clock, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { OperatorDashboard } from './operator-dashboard';
 
 type UserData = {
   id: string;
@@ -150,6 +148,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </Button>
                       </>
                     )}
+                    <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/history')}>
+                        <History className="h-5 w-5" /> Storico Attività
+                    </Button>
                     <Separator className="my-2"/>
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
                         <Settings className="h-5 w-5" /> Impostazioni Profilo
@@ -184,7 +185,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-           {isBaseDashboard ? (isAdmin ? <AdminDashboard /> : <OperatorDashboard />) : children}
+           {children}
         </main>
     </div>
     <ChangeCodeDialog 
