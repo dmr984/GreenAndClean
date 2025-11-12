@@ -3,8 +3,10 @@
 import React, { useMemo } from 'react';
 import { ClockWidget, type Shift } from "@/components/dashboard/clock-widget";
 import { WorkSchedule } from '@/components/dashboard/work-schedule';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CalendarCheck, Hourglass, TrendingUp } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { CalendarCheck, Hourglass, TrendingUp, Megaphone } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 type UserData = {
   id: string;
@@ -23,6 +25,15 @@ type LeaveRequest = {
   status: 'In attesa' | 'Approvata' | 'Rifiutata';
 };
 
+type Announcement = {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  recipients: string[]; // 'all' or array of user IDs
+};
+
+
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
   const stored = localStorage.getItem(key);
@@ -33,8 +44,11 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
-const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
-    <Card>
+const StatCard = ({ icon, label, value, badgeCount }: { icon: React.ReactNode, label: string, value: string | number, badgeCount?: number }) => (
+    <Card className="relative">
+         {badgeCount && badgeCount > 0 && 
+            <Badge variant="destructive" className="absolute -top-2 -right-2">{badgeCount}</Badge>
+         }
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{label}</CardTitle>
             <div className="text-muted-foreground">{icon}</div>
@@ -54,6 +68,7 @@ const formatMinutesToHours = (totalMinutes: number) => {
 export function OperatorDashboard() {
   const [shifts, setShifts] = React.useState<Shift[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
+  const [announcements, setAnnouncements] = React.useState<Announcement[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
 
   const refreshData = React.useCallback(() => {
@@ -69,6 +84,15 @@ export function OperatorDashboard() {
 
         const allLeaveRequests = getFromStorage<LeaveRequest[]>('leave-requests', []);
         setLeaveRequests(allLeaveRequests.filter(r => r.user === currentUser.username));
+
+        const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
+        const readAnnouncements = getFromStorage<string[]>('read-announcements', []);
+        
+        const userAnnouncements = allAnnouncements
+            .filter(a => a.recipients.includes('all') || a.recipients.includes(currentUser.id))
+            .map(a => ({...a, read: readAnnouncements.includes(a.id)}));
+
+        setAnnouncements(userAnnouncements);
     }
   }, []);
 
@@ -105,12 +129,24 @@ export function OperatorDashboard() {
         return total;
     }, 0);
 
+    const unreadAnnouncements = announcements.filter(a => !a.read).length;
+
     return {
         workedDays,
         vacationDays,
         permitHours: formatMinutesToHours(permitMinutes),
+        unreadAnnouncements,
     };
-}, [shifts, leaveRequests]);
+}, [shifts, leaveRequests, announcements]);
+
+  const markAnnouncementAsRead = (announcementId: string) => {
+    const readAnnouncements = getFromStorage<string[]>('read-announcements', []);
+    if (!readAnnouncements.includes(announcementId)) {
+        const updatedRead = [...readAnnouncements, announcementId];
+        localStorage.setItem('read-announcements', JSON.stringify(updatedRead));
+        refreshData(); // Re-render to update the 'read' state
+    }
+  }
 
 
   if (!user) {
@@ -118,6 +154,7 @@ export function OperatorDashboard() {
   }
   
   const approvedShifts = shifts.filter(s => s.status === 'Approvato');
+  const recentAnnouncements = announcements.slice(0, 3);
 
   return (
     <>
@@ -125,18 +162,56 @@ export function OperatorDashboard() {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo Operatore</h2>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-4 md:mb-8">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4 md:mb-8">
             <StatCard icon={<TrendingUp className="h-5 w-5"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
             <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
             <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso" value={summaryStats.permitHours} />
+            <StatCard icon={<Megaphone className="h-5 w-5"/>} label="Annunci" value={recentAnnouncements.length} badgeCount={summaryStats.unreadAnnouncements}/>
       </div>
 
       <div className="grid gap-4 md:gap-8 lg:grid-cols-2">
         <div className="lg:col-span-1">
           <ClockWidget onShiftComplete={refreshData} userId={user.id} userName={user.username} />
+          
+          <Card className="mt-4 md:mt-8">
+            <CardHeader>
+                <CardTitle>Annunci Recenti</CardTitle>
+                <CardDescription>Le ultime comunicazioni dall'amministrazione.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {recentAnnouncements.length > 0 ? (
+                    <div className="space-y-4">
+                        {recentAnnouncements.map(ann => (
+                             <Card key={ann.id} className={ann.read ? "bg-muted/50" : ""}>
+                                <CardHeader className="pb-2">
+                                    <div className="flex justify-between items-center">
+                                       <CardTitle className="text-base">{ann.title}</CardTitle>
+                                       {!ann.read && <Badge variant="destructive">Nuovo</Badge>}
+                                    </div>
+                                    <CardDescription>{new Date(ann.date).toLocaleString('it-IT')}</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <p className="text-sm whitespace-pre-wrap">{ann.content}</p>
+                                    {!ann.read && (
+                                        <div className="text-right mt-2">
+                                            <Button variant="link" size="sm" onClick={() => markAnnouncementAsRead(ann.id)}>Segna come letto</Button>
+                                        </div>
+                                    )}
+                                </CardContent>
+                             </Card>
+                        ))}
+                    </div>
+                ): (
+                    <p className="text-muted-foreground text-center py-8">Nessun annuncio recente.</p>
+                )}
+                 <Link href="/dashboard/announcements" className="w-full">
+                    <Button variant="outline" className="w-full mt-4">Vedi tutti gli annunci</Button>
+                </Link>
+            </CardContent>
+          </Card>
         </div>
         <div className="lg:col-span-1">
-          <WorkSchedule shifts={approvedShifts} />
+          <WorkSchedule shifts={approvedShifts} leaveRequests={leaveRequests} />
         </div>
       </div>
     </>

@@ -14,11 +14,17 @@ type SupplyRequest = {
   id: string;
   status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale';
 };
-
+type Shift = {
+  id: string;
+  endTime: string | null;
+  status: 'In attesa' | 'Approvato';
+}
 
 export function AdminDashboard() {
   const [pendingLeaveRequests, setPendingLeaveRequests] = React.useState(0);
   const [pendingSupplyRequests, setPendingSupplyRequests] = React.useState(0);
+  const [pendingShifts, setPendingShifts] = React.useState(0);
+
 
   React.useEffect(() => {
     const updateBadges = () => {
@@ -28,6 +34,9 @@ export function AdminDashboard() {
 
         const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
         setPendingSupplyRequests(storedSupply.filter(r => r.status === 'In attesa').length);
+        
+        const allShifts = getFromStorage<Shift[]>('shifts', []);
+        setPendingShifts(allShifts.filter(s => s.endTime && s.status === 'In attesa').length);
       }
     };
 
@@ -116,7 +125,12 @@ export function AdminDashboard() {
             </Card>
         </Link>
         <Link href="/dashboard/shift-approval" className="h-full">
-            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
+                 {pendingShifts > 0 &&
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-sm sm:text-base h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded-full">
+                    {pendingShifts}
+                  </Badge>
+                }
                 <CardHeader>
                     <ClipboardCheck className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>

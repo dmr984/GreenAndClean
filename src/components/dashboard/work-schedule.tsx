@@ -9,20 +9,50 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Shift } from './clock-widget';
 import { ScrollArea } from '../ui/scroll-area';
 
+type LeaveRequest = {
+  id: string;
+  user: string;
+  type: string;
+  from: string;
+  to: string;
+  status: 'In attesa' | 'Approvata' | 'Rifiutata';
+};
+
 interface WorkScheduleProps {
     shifts: Shift[];
+    leaveRequests: LeaveRequest[];
 }
 
-export function WorkSchedule({ shifts }: WorkScheduleProps) {
-  const [selectedDayShifts, setSelectedDayShifts] = React.useState<Shift[]>([]);
+export function WorkSchedule({ shifts, leaveRequests }: WorkScheduleProps) {
+  const [selectedDayInfo, setSelectedDayInfo] = React.useState<{ shifts: Shift[], leave: LeaveRequest | null } | null>(null);
   const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
   const [popoverTarget, setPopoverTarget] = React.useState<HTMLElement | null>(null);
 
-  // The shifts are now pre-filtered (only approved), so we just use them
   const completedDays = shifts.map(shift => new Date(shift.date));
   
+  const getDatesBetween = (startDate: Date, endDate: Date) => {
+    const dates = [];
+    let currentDate = new Date(startDate.toISOString().split('T')[0]);
+    const lastDate = new Date(endDate.toISOString().split('T')[0]);
+    while (currentDate <= lastDate) {
+        dates.push(new Date(currentDate));
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return dates;
+  };
+  
+  const approvedVacationDays = leaveRequests
+    .filter(req => req.status === 'Approvata' && req.type === 'Ferie')
+    .flatMap(req => getDatesBetween(new Date(req.from), new Date(req.to)));
+
+  const approvedSicknessDays = leaveRequests
+    .filter(req => req.status === 'Approvata' && req.type === 'Malattia')
+    .flatMap(req => getDatesBetween(new Date(req.from), new Date(req.to)));
+
   const modifiers = {
     completed: completedDays,
+    vacation: approvedVacationDays,
+    sickness: approvedSicknessDays,
   };
   
   const modifiersStyles = {
@@ -31,17 +61,35 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
         color: 'hsl(var(--primary-foreground))',
         borderRadius: '0.5rem'
     },
+    vacation: {
+        backgroundColor: 'hsl(35 100% 80%)',
+        color: 'hsl(35 50% 20%)',
+        borderRadius: '0.5rem'
+    },
+    sickness: {
+        backgroundColor: 'hsl(0 84% 80%)',
+        color: 'hsl(var(--destructive-foreground))',
+        borderRadius: '0.5rem'
+    },
   };
 
-  const handleDayClick = (day: Date, modifiers: { completed?: boolean }, e: React.MouseEvent<HTMLButtonElement>) => {
-    if (modifiers.completed) {
+  const handleDayClick = (day: Date, modifiers: { completed?: boolean, vacation?: boolean, sickness?: boolean }, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (modifiers.completed || modifiers.vacation || modifiers.sickness) {
       const dayString = day.toISOString().split('T')[0];
       const shiftsForDay = shifts.filter(s => s.date === dayString);
-      setSelectedDayShifts(shiftsForDay);
+      const leaveForDay = leaveRequests.find(req => {
+        if(req.status !== 'Approvata') return false;
+        const from = new Date(req.from).getTime();
+        const to = new Date(req.to).getTime();
+        const clickedDay = new Date(dayString).getTime();
+        return clickedDay >= from && clickedDay <= to;
+      }) || null;
+
+      setSelectedDayInfo({ shifts: shiftsForDay, leave: leaveForDay });
       setPopoverTarget(e.currentTarget);
       setIsPopoverOpen(true);
     } else {
-      setSelectedDayShifts([]);
+      setSelectedDayInfo(null);
       setIsPopoverOpen(false);
       setPopoverTarget(null);
     }
@@ -54,7 +102,7 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
       <CardHeader>
         <CardTitle className="text-2xl">Storico Turni Approvati</CardTitle>
         <CardDescription>
-          Visualizza i tuoi turni approvati nel calendario o nella lista.
+          Visualizza i tuoi turni approvati, ferie e malattie nel calendario o nella lista.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -76,25 +124,35 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
                 modifiersStyles={modifiersStyles}
                 onDayClick={(day, mods, e) => handleDayClick(day, mods, e.currentTarget)}
               />
-              {selectedDayShifts.length > 0 && (
+              {selectedDayInfo && (
                  <PopoverContent className="w-80" style={{ zIndex: 100 }}>
                   <div className="grid gap-4">
                     <div className="space-y-2">
-                      <h4 className="font-medium leading-none">Dettaglio Turno</h4>
+                      <h4 className="font-medium leading-none">Dettaglio Giorno</h4>
                       <p className="text-sm text-muted-foreground">
-                        Orari del {new Date(selectedDayShifts[0].date).toLocaleDateString('it-IT')}
+                        Eventi del {new Date(selectedDayInfo.shifts[0]?.date || selectedDayInfo.leave!.from).toLocaleDateString('it-IT')}
                       </p>
                     </div>
-                    <div className="grid gap-2">
-                      {selectedDayShifts.map(shift => (
-                         <div key={shift.id} className="grid grid-cols-2 items-center gap-4 text-sm">
-                           <span className="font-medium">Entrata:</span>
-                           <span className="text-right">{new Date(shift.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
-                           <span className="font-medium">Uscita:</span>
-                           <span className="text-right">{new Date(shift.endTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
-                         </div>
-                      ))}
-                    </div>
+                    
+                    {selectedDayInfo.shifts.length > 0 && (
+                        <div className="grid gap-2">
+                            <h5 className='text-sm font-semibold'>Turno di Lavoro</h5>
+                            {selectedDayInfo.shifts.map(shift => (
+                                <div key={shift.id} className="grid grid-cols-2 items-center gap-4 text-sm">
+                                <span className="font-medium">Entrata:</span>
+                                <span className="text-right">{new Date(shift.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="font-medium">Uscita:</span>
+                                <span className="text-right">{new Date(shift.endTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                     {selectedDayInfo.leave && (
+                        <div className="grid gap-2">
+                            <h5 className='text-sm font-semibold'>{selectedDayInfo.leave.type}</h5>
+                            <p className="text-sm text-muted-foreground">Approvato</p>
+                        </div>
+                    )}
                   </div>
                 </PopoverContent>
               )}

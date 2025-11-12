@@ -5,6 +5,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LeaveRequestForm } from "./components/leave-request-form";
 import { LeaveRequestsList } from "./components/leave-requests-list";
+import { Button } from "@/components/ui/button";
+import { PlusCircle, Bed } from "lucide-react";
+import { AddSicknessDialog } from "./components/add-sickness-dialog";
 
 // ==================================
 // SHARED TYPES & UTILS
@@ -52,12 +55,21 @@ export default function LeaveRequestsPage() {
     const { toast } = useToast();
     const [userRole, setUserRole] = React.useState<string|null>(null);
     const [userName, setUserName] = React.useState<string|null>(null);
+    const [isSicknessDialogOpen, setIsSicknessDialogOpen] = React.useState(false);
 
     React.useEffect(() => {
         const storedUser = getFromStorage<{role?: string, username?: string}>('user', {});
         setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
         setUserRole(storedUser.role || null);
         setUserName(storedUser.username || null);
+        
+        const handleStorageChange = () => {
+             setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
+        }
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+
     }, []);
     
     const updateAllRequests = (updatedRequests: LeaveRequest[]) => {
@@ -90,6 +102,12 @@ export default function LeaveRequestsPage() {
                 <h2 className="text-3xl font-bold tracking-tight">
                     {isAdmin ? "Gestione Richieste Ferie/Permessi" : "Le Tue Richieste di Ferie/Permessi"}
                 </h2>
+                 {isAdmin && (
+                    <Button size="sm" onClick={() => setIsSicknessDialogOpen(true)}>
+                        <Bed className="mr-2 h-4 w-4"/>
+                        Aggiungi Malattia
+                    </Button>
+                )}
             </div>
             <Card>
                 <CardHeader>
@@ -113,6 +131,14 @@ export default function LeaveRequestsPage() {
                     />
                 </CardContent>
             </Card>
+
+            {isAdmin && 
+                <AddSicknessDialog 
+                    isOpen={isSicknessDialogOpen}
+                    onOpenChange={setIsSicknessDialogOpen}
+                    onSicknessAdded={() => setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []))}
+                />
+            }
         </div>
     );
 };
