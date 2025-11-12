@@ -24,7 +24,7 @@ interface WorkScheduleProps {
 }
 
 export function WorkSchedule({ shifts, leaveRequests }: WorkScheduleProps) {
-  const [selectedDayInfo, setSelectedDayInfo] = React.useState<{ shifts: Shift[], leave: LeaveRequest | null } | null>(null);
+  const [selectedDayInfo, setSelectedDayInfo] = React.useState<{ day: Date, shifts: Shift[], leave: LeaveRequest | null } | null>(null);
   const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
   const [popoverTarget, setPopoverTarget] = React.useState<HTMLElement | null>(null);
 
@@ -85,7 +85,7 @@ export function WorkSchedule({ shifts, leaveRequests }: WorkScheduleProps) {
         return clickedDay >= from && clickedDay <= to;
       }) || null;
 
-      setSelectedDayInfo({ shifts: shiftsForDay, leave: leaveForDay });
+      setSelectedDayInfo({ day, shifts: shiftsForDay, leave: leaveForDay });
       setPopoverTarget(e.currentTarget);
       setIsPopoverOpen(true);
     } else {
@@ -132,7 +132,7 @@ export function WorkSchedule({ shifts, leaveRequests }: WorkScheduleProps) {
                     <div className="space-y-2">
                       <h4 className="font-medium leading-none">Dettaglio Giorno</h4>
                       <p className="text-sm text-muted-foreground">
-                        Eventi del {new Date(selectedDayInfo.shifts[0]?.date || selectedDayInfo.leave!.from).toLocaleDateString('it-IT')}
+                        Eventi del {new Date(selectedDayInfo.day).toLocaleDateString('it-IT')}
                       </p>
                     </div>
                     
