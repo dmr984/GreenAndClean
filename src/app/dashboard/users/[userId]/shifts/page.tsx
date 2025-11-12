@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2, Edit, Pencil, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2, Pencil, CheckCircle } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -138,6 +138,12 @@ export default function UserShiftsPage() {
         };
 
         fetchUserData();
+        
+        const handleStorageChange = () => fetchUserData();
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => window.removeEventListener('storage', handleStorageChange);
+
     }, [userId, firestore]);
 
     const openDeleteConfirmation = (shift: Shift) => {

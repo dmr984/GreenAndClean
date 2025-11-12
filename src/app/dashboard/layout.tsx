@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone, ClipboardCheck, Clock, History } from 'lucide-react';
@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { Badge } from '@/components/ui/badge';
 
 type UserData = {
   id: string;
@@ -16,13 +17,74 @@ type UserData = {
   role: 'admin' | 'operator';
 };
 
+// Generic function to get data from localStorage, now outside the component
+const getFromStorage = <T,>(key: string, defaultValue: T): T => {
+    if (typeof window === 'undefined') return defaultValue;
+    const stored = localStorage.getItem(key);
+    try {
+        return stored ? JSON.parse(stored) : defaultValue;
+    } catch (e) {
+        return defaultValue;
+    }
+};
+
+// Mock types to match the request pages
+type LeaveRequest = { id: string; status: string; };
+type SupplyRequest = { id: string; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; };
+type Shift = { id: string; endTime: string | null; status: 'In attesa' | 'Approvato'; }
+type ExtraShiftRequest = { id: string; status: 'pending' | 'approved'; }
+type Announcement = { id: string, readBy: string[], hiddenFor: string[], recipients: string[] };
+
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
-  const [user, setUser] = React.useState<UserData | null>(null);
+  const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  const calculateNotifications = useCallback(() => {
+    if (typeof window === 'undefined' || !user) return 0;
+    
+    let count = 0;
+    
+    if (user.role === 'admin') {
+      const storedLeave = getFromStorage<LeaveRequest[]>('leave-requests', []);
+      count += storedLeave.filter(r => r.status === 'In attesa').length;
+
+      const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
+      count += storedSupply.filter(r => r.status === 'In attesa').length;
+      
+      const allShifts = getFromStorage<Shift[]>('shifts', []);
+      count += allShifts.filter(s => s.endTime && s.status === 'In attesa').length;
+      
+      const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
+      count += allExtraShifts.filter(r => r.status === 'pending').length;
+    }
+
+    const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
+    const userAnnouncements = allAnnouncements.filter(a => {
+        const isRecipient = a.recipients?.includes('all') || a.recipients?.includes(user.id);
+        const isHidden = a.hiddenFor?.includes(user.id);
+        return isRecipient && !isHidden;
+    });
+    const unreadAnnouncements = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
+    count += unreadAnnouncements;
+    
+    return count;
+  }, [user]);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setNotificationCount(calculateNotifications());
+    };
+
+    handleStorageChange(); // Initial calculation
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [calculateNotifications]);
+  
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -34,17 +96,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const userData: UserData = JSON.parse(storedUser);
     setUser(userData);
     
-    const isAdminPage = pathname.startsWith('/dashboard/users') || 
-                        pathname === '/dashboard/warehouse' || 
-                        pathname === '/dashboard/shift-approval' ||
-                        pathname === '/dashboard/extra-shifts';
+    // Logic to check permissions is now in a separate effect
+    // to avoid re-running this on every render.
+    setIsLoading(false);
 
-    if (userData.role === 'operator' && isAdminPage) {
-        router.replace('/dashboard');
-    } else {
-        setIsLoading(false);
+  }, [router]);
+
+  useEffect(() => {
+    if (user) {
+        const isAdminPage = pathname.startsWith('/dashboard/users') ||
+                            pathname.startsWith('/dashboard/warehouse') ||
+                            pathname.startsWith('/dashboard/shift-approval') ||
+                            pathname.startsWith('/dashboard/extra-shifts');
+
+        if (user.role === 'operator' && isAdminPage) {
+            router.replace('/dashboard');
+        }
     }
-  }, [pathname, router.replace]);
+  }, [user, pathname, router]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -94,8 +163,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            <div className="flex items-center gap-2">
             <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="shrink-0">
+                <Button variant="outline" size="icon" className="shrink-0 relative">
                   <Menu className="h-5 w-5" />
+                  {notificationCount > 0 && (
+                     <Badge variant="destructive" className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center rounded-full p-1 text-xs">
+                        {notificationCount}
+                     </Badge>
+                  )}
                   <span className="sr-only">Apri menu di navigazione</span>
                 </Button>
               </SheetTrigger>
@@ -133,9 +207,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/warehouse')}>
                             <Warehouse className="h-5 w-5" /> Gestione Magazzino
                         </Button>
-                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/announcements')}>
-                            <Megaphone className="h-5 w-5" /> Annunci
-                        </Button>
                       </>
                     ) : (
                       <>
@@ -145,11 +216,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
                             <Package className="h-5 w-5" /> Richieste Forniture
                         </Button>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/announcements')}>
-                            <Megaphone className="h-5 w-5" /> Annunci
-                        </Button>
                       </>
                     )}
+                    <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/announcements')}>
+                        <Megaphone className="h-5 w-5" /> Annunci
+                    </Button>
                     <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/history')}>
                         <History className="h-5 w-5" /> Storico Attività
                     </Button>
