@@ -44,7 +44,7 @@ service cloud.firestore {
        
        // Allow users to read THEIR OWN requests (list and get)
        allow read: if request.auth != null && (
-         (request.query.limit <= 100 && request.query.where.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username) ||
+         (request.path[2] == 'leave-requests' && request.query.where.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username) ||
          (resource.data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username)
        );
        
@@ -52,7 +52,7 @@ service cloud.firestore {
        allow update, delete: if request.auth != null && get(/databases/$(database)/documents/leave-requests/$(leaveRequestId)).data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username;
 
        // Allow admins to do anything
-       allow read, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+       allow read, write, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
     
      match /supply-requests/{supplyRequestId} {
