@@ -18,9 +18,8 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
   const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
   const [popoverTarget, setPopoverTarget] = React.useState<HTMLElement | null>(null);
 
-  const completedDays = shifts
-    .filter(shift => shift.startTime && shift.endTime)
-    .map(shift => new Date(shift.date));
+  // The shifts are now pre-filtered (only approved), so we just use them
+  const completedDays = shifts.map(shift => new Date(shift.date));
   
   const modifiers = {
     completed: completedDays,
@@ -37,7 +36,7 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
   const handleDayClick = (day: Date, modifiers: { completed?: boolean }, e: React.MouseEvent<HTMLButtonElement>) => {
     if (modifiers.completed) {
       const dayString = day.toISOString().split('T')[0];
-      const shiftsForDay = shifts.filter(s => s.date === dayString && s.startTime && s.endTime);
+      const shiftsForDay = shifts.filter(s => s.date === dayString);
       setSelectedDayShifts(shiftsForDay);
       setPopoverTarget(e.currentTarget);
       setIsPopoverOpen(true);
@@ -48,16 +47,14 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
     }
   };
   
-  const sortedCompletedShifts = shifts
-    .filter(s => s.startTime && s.endTime)
-    .sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
+  const sortedCompletedShifts = [...shifts].sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">I Tuoi Turni</CardTitle>
+        <CardTitle className="text-2xl">Storico Turni Approvati</CardTitle>
         <CardDescription>
-          Visualizza i tuoi turni completati nel calendario o nella lista.
+          Visualizza i tuoi turni approvati nel calendario o nella lista.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -119,7 +116,7 @@ export function WorkSchedule({ shifts }: WorkScheduleProps) {
                     </div>
                 ) : (
                     <div className="text-center text-muted-foreground py-16">
-                        <p>Nessun turno completato da mostrare.</p>
+                        <p>Nessun turno approvato da mostrare.</p>
                     </div>
                 )}
              </ScrollArea>
