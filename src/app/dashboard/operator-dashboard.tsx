@@ -169,7 +169,7 @@ export function OperatorDashboard() {
         }
     });
 
-    const unreadAnnouncements = announcements.filter(a => user && !a.readBy.includes(user.id)).length;
+    const unreadAnnouncements = announcements.filter(a => user && !(a.readBy || []).includes(user.id)).length;
 
     return {
         workedDays,
@@ -184,9 +184,14 @@ export function OperatorDashboard() {
     if(!user) return;
     const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
     const target = allAnnouncements.find(a => a.id === announcementId);
-    if(target && !target.readBy.includes(user.id)) {
-        target.readBy.push(user.id);
-        saveToStorage('announcements', allAnnouncements);
+    if(target) {
+        if (!target.readBy) {
+            target.readBy = [];
+        }
+        if(!target.readBy.includes(user.id)) {
+            target.readBy.push(user.id);
+            saveToStorage('announcements', allAnnouncements);
+        }
     }
   }
 
@@ -197,7 +202,7 @@ export function OperatorDashboard() {
   
   const approvedShifts = shifts.filter(s => s.status === 'Approvato');
   const recentAnnouncements = announcements.slice(0, 3);
-  const unreadAnnouncements = announcements.filter(a => user && !a.readBy.includes(user.id));
+  const unreadAnnouncements = announcements.filter(a => user && !(a.readBy || []).includes(user.id));
 
   return (
     <>
@@ -230,7 +235,7 @@ export function OperatorDashboard() {
                 {recentAnnouncements.length > 0 ? (
                     <div className="space-y-4">
                         {recentAnnouncements.map(ann => {
-                            const isRead = ann.readBy.includes(user.id);
+                            const isRead = (ann.readBy || []).includes(user.id);
                             return (
                              <Card key={ann.id} className={isRead ? "bg-muted/50" : ""}>
                                 <CardHeader className="pb-2">
