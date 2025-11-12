@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone, ClipboardCheck, Clock, History } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, ClipboardCheck, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -224,11 +224,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <nav className="grid gap-2 text-lg font-medium">
                     {isAdmin ? (
                       <>
-                        <NavButton path="/dashboard/users" icon={<User className="h-5 w-5" />} label="Gestione Operatori" />
-                        <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Richieste Ferie" count={pendingLeave}/>
-                        <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" count={pendingSupply} />
-                        <NavButton path="/dashboard/shift-approval" icon={<ClipboardCheck className="h-5 w-5" />} label="Approvazione Turni" count={pendingShifts} />
-                        <NavButton path="/dashboard/extra-shifts" icon={<Clock className="h-5 w-5" />} label="Timbrature Extra" count={pendingExtraShifts} />
                         <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
                       </>
                     ) : (
