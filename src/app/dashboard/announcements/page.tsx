@@ -173,7 +173,7 @@ export default function AnnouncementsPage() {
         if (target && !target.hiddenFor.includes(userId)) {
             target.hiddenFor.push(userId);
             saveAnnouncementsToStorage(allAnnouncements);
-            toast({ title: isAdmin ? "Annuncio Nascosto" : "Annuncio Eliminato"});
+            toast({ title: "Annuncio Nascosto"});
         }
     };
     
@@ -385,5 +385,3 @@ export default function AnnouncementsPage() {
         </div>
     );
 }
-
-    
