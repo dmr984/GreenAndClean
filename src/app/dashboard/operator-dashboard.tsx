@@ -115,7 +115,8 @@ export function OperatorDashboard() {
     const currentYear = now.getFullYear();
 
     const shiftsThisMonth = shifts.filter(s => {
-        const shiftDate = new Date(s.startTime!);
+        if (!s.startTime) return false;
+        const shiftDate = new Date(s.startTime);
         return s.status === 'Approvato' && shiftDate.getMonth() === currentMonth && shiftDate.getFullYear() === currentYear;
     });
 
@@ -176,20 +177,17 @@ export function OperatorDashboard() {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo Operatore</h2>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4 md:mb-8">
+      <div className="grid gap-4 md:gap-8">
+        <ClockWidget onShiftComplete={refreshData} userId={user.id} userName={user.username} />
+        
+        <div className="grid gap-4 md:grid-cols-2">
             <StatCard icon={<TrendingUp className="h-5 w-5"/>} label="Giorni Lavorati (Mese)" value={summaryStats.workedDays} />
             <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie (Mese)" value={summaryStats.vacationDays} />
             <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso (Mese)" value={summaryStats.permitHours} />
             <StatCard icon={<Timer className="h-5 w-5"/>} label="Straordinari (Mese)" value={summaryStats.overtime} />
-      </div>
+        </div>
 
-      <div className="grid gap-4 md:gap-8 lg:grid-cols-2">
-        <div className="lg:col-span-1">
-          <ClockWidget onShiftComplete={refreshData} userId={user.id} userName={user.username} />
-        </div>
-        <div className="lg:col-span-1">
-          <WorkSchedule shifts={approvedShifts} leaveRequests={leaveRequests} />
-        </div>
+        <WorkSchedule shifts={approvedShifts} leaveRequests={leaveRequests} />
       </div>
     </>
   );
