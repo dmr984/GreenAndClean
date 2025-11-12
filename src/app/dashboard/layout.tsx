@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, User, Lock, CalendarCheck, Package, Warehouse, Megaphone, ClipboardCheck, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -39,6 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const isAdminPage = pathname.startsWith('/dashboard/users') || 
                         pathname === '/dashboard/warehouse' || 
                         pathname === '/dashboard/shift-approval' ||
+                        pathname === '/dashboard/extra-shifts' ||
                         pathname === '/dashboard/announcements';
 
     if (userData.role === 'operator' && isAdminPage) {
@@ -128,6 +129,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </Button>
                          <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/shift-approval')}>
                             <ClipboardCheck className="h-5 w-5" /> Approvazione Turni
+                        </Button>
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/extra-shifts')}>
+                            <Clock className="h-5 w-5" /> Timbrature Extra
                         </Button>
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/warehouse')}>
                             <Warehouse className="h-5 w-5" /> Gestione Magazzino

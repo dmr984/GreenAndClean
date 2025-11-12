@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, CalendarCheck, Warehouse, Package, ClipboardCheck, Megaphone } from 'lucide-react';
+import { Users, CalendarCheck, Warehouse, Package, ClipboardCheck, Megaphone, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
@@ -19,11 +19,16 @@ type Shift = {
   endTime: string | null;
   status: 'In attesa' | 'Approvato';
 }
+type ExtraShiftRequest = {
+  id: string;
+  status: 'pending' | 'approved';
+}
 
 export function AdminDashboard() {
   const [pendingLeaveRequests, setPendingLeaveRequests] = React.useState(0);
   const [pendingSupplyRequests, setPendingSupplyRequests] = React.useState(0);
   const [pendingShifts, setPendingShifts] = React.useState(0);
+  const [pendingExtraShifts, setPendingExtraShifts] = React.useState(0);
 
 
   React.useEffect(() => {
@@ -37,6 +42,9 @@ export function AdminDashboard() {
         
         const allShifts = getFromStorage<Shift[]>('shifts', []);
         setPendingShifts(allShifts.filter(s => s.endTime && s.status === 'In attesa').length);
+        
+        const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
+        setPendingExtraShifts(allExtraShifts.filter(r => r.status === 'pending').length);
       }
     };
 
@@ -136,6 +144,21 @@ export function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <CardTitle className="text-xl sm:text-2xl">Approvazione Turni</CardTitle>
+                </CardContent>
+            </Card>
+        </Link>
+         <Link href="/dashboard/extra-shifts" className="h-full">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center relative">
+                 {pendingExtraShifts > 0 &&
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 text-sm sm:text-base h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded-full">
+                    {pendingExtraShifts}
+                  </Badge>
+                }
+                <CardHeader>
+                    <Clock className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Timbrature Extra</CardTitle>
                 </CardContent>
             </Card>
         </Link>

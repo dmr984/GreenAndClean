@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, LogIn, LogOut, Coffee, Play, MapPin, LoaderCircle } from "lucide-react";
+import { Clock, LogIn, LogOut, Coffee, Play, MapPin, LoaderCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -31,23 +31,33 @@ export type Shift = {
   status: 'In attesa' | 'Approvato';
 };
 
-// Helper to get shifts from localStorage
-const getShiftsFromStorage = (): Shift[] => {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('shifts');
+type ExtraShiftRequest = {
+    id: string;
+    userId: string;
+    userName: string;
+    date: string;
+    status: 'pending' | 'approved';
+}
+
+// Helper to get data from localStorage
+const getFromStorage = <T,>(key: string, defaultValue: T): T => {
+  if (typeof window === 'undefined') return defaultValue;
+  const stored = localStorage.getItem(key);
   try {
-    const shifts = stored ? JSON.parse(stored) : [];
-    // Ensure all shifts have a `pauses` and `status` property
-    return shifts.map((s: any) => ({ ...s, pauses: s.pauses || [], status: s.status || 'In attesa' }));
+    const data = stored ? JSON.parse(stored) : defaultValue;
+    if (key === 'shifts') {
+        return (data as any[]).map(s => ({ ...s, pauses: s.pauses || [], status: s.status || 'In attesa' })) as T;
+    }
+    return data;
   } catch (e) {
-    return [];
+    return defaultValue;
   }
 };
 
-// Helper to save shifts to localStorage
-const saveShiftsToStorage = (shifts: Shift[]) => {
+// Helper to save data to localStorage
+const saveToStorage = (key: string, data: any) => {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('shifts', JSON.stringify(shifts));
+  localStorage.setItem(key, JSON.stringify(data));
   window.dispatchEvent(new Event('storage'));
 };
 
@@ -64,6 +74,8 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
   const [lastActionTime, setLastActionTime] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("");
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [needsExtraShiftApproval, setNeedsExtraShiftApproval] = useState(false);
+  const [extraShiftRequestStatus, setExtraShiftRequestStatus] = useState<'not_requested' | 'pending' | 'approved'>('not_requested');
 
 
   // Effect for the live clock
@@ -75,12 +87,12 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     return () => clearInterval(timer); // Cleanup
   }, []);
 
-  // Load active shift on component mount
-  useEffect(() => {
-    const shifts = getShiftsFromStorage();
+  const checkShiftStatus = () => {
+    const shifts = getFromStorage<Shift[]>('shifts', []);
     const currentActiveShift = shifts.find(s => s.userId === userId && s.startTime && !s.endTime) || null;
     setActiveShift(currentActiveShift);
-    if(currentActiveShift){
+
+    if (currentActiveShift) {
        const activePause = currentActiveShift.pauses.find(p => p.startTime && !p.endTime);
        setIsOnPause(!!activePause);
        if (activePause) {
@@ -89,8 +101,31 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
            setLastActionTime(new Date(currentActiveShift.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
        }
     } else {
+        // No active shift, check if they need approval for an extra one
+        const todayString = new Date().toISOString().split('T')[0];
+        const hasCompletedShiftToday = shifts.some(s => s.userId === userId && s.date === todayString && s.endTime);
+        setNeedsExtraShiftApproval(hasCompletedShiftToday);
+
+        if (hasCompletedShiftToday) {
+            const extraRequests = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
+            const todaysRequest = extraRequests.find(r => r.userId === userId && r.date === todayString);
+            if (todaysRequest) {
+                setExtraShiftRequestStatus(todaysRequest.status);
+            } else {
+                setExtraShiftRequestStatus('not_requested');
+            }
+        } else {
+            setExtraShiftRequestStatus('not_requested');
+        }
         setLastActionTime(null);
     }
+  }
+
+  // Load active shift and check status on component mount and storage change
+  useEffect(() => {
+    checkShiftStatus();
+    window.addEventListener('storage', checkShiftStatus);
+    return () => window.removeEventListener('storage', checkShiftStatus);
   }, [userId]);
 
   const getCurrentPosition = (): Promise<Geolocation> => {
@@ -130,10 +165,15 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
   };
 
   const handleClockIn = async () => {
+    if (needsExtraShiftApproval && extraShiftRequestStatus !== 'approved') {
+        toast({ title: "Approvazione richiesta", description: "Hai già un turno completato oggi. Devi richiedere l'approvazione per una nuova timbratura.", variant: "destructive" });
+        return;
+    }
+    
     try {
         const location = await getCurrentPosition();
         const now = new Date();
-        const shifts = getShiftsFromStorage();
+        const shifts = getFromStorage<Shift[]>('shifts', []);
         const newShift: Shift = {
             id: `SHIFT${Date.now()}`,
             userId: userId,
@@ -145,8 +185,9 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
             pauses: [],
             status: 'In attesa',
         };
-        saveShiftsToStorage([...shifts, newShift]);
+        saveToStorage('shifts', [...shifts, newShift]);
         setActiveShift(newShift);
+        setNeedsExtraShiftApproval(false); // Reset check after successful clock-in
         setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
         toast({
             title: "Inizio Turno",
@@ -161,15 +202,31 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     }
   }
 
+  const handleRequestExtraShift = () => {
+    const todayString = new Date().toISOString().split('T')[0];
+    const requests = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
+    
+    const newRequest: ExtraShiftRequest = {
+        id: `ESR-${userId}-${todayString}`,
+        userId,
+        userName,
+        date: todayString,
+        status: 'pending'
+    };
+
+    saveToStorage('extra-shift-requests', [...requests, newRequest]);
+    setExtraShiftRequestStatus('pending');
+    toast({ title: "Richiesta Inviata", description: "La tua richiesta per una timbratura extra è stata inviata all'amministratore." });
+  }
+
   const handleClockOut = async () => {
     try {
         const location = await getCurrentPosition();
         const now = new Date();
-        const shifts = getShiftsFromStorage();
+        const shifts = getFromStorage<Shift[]>('shifts', []);
         if (activeShift) {
             let shiftToUpdate = { ...activeShift };
             
-            // If on pause, end pause first
             if (isOnPause) {
                 const updatedPauses = shiftToUpdate.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
                 shiftToUpdate.pauses = updatedPauses;
@@ -178,10 +235,14 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
             const updatedShifts = shifts.map(s => 
                 s.id === activeShift.id ? { ...shiftToUpdate, endTime: now.toISOString(), endLocation: location } : s
             );
-            saveShiftsToStorage(updatedShifts);
+            saveToStorage('shifts', updatedShifts);
             setActiveShift(null);
             setIsOnPause(false);
             setLastActionTime(null);
+            
+            // Re-check for next day
+            checkShiftStatus();
+
             toast({
                 title: "Fine Turno",
                 description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
@@ -202,7 +263,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     try {
         const location = await getCurrentPosition();
         const now = new Date();
-        const shifts = getShiftsFromStorage();
+        const shifts = getFromStorage<Shift[]>('shifts', []);
         let updatedShift: Shift | null = null;
         
         if (isOnPause) { // End pause
@@ -214,7 +275,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
                 }
                 return s;
             });
-            saveShiftsToStorage(updatedShifts);
+            saveToStorage('shifts', updatedShifts);
             setIsOnPause(false);
             if(updatedShift) setActiveShift(updatedShift);
             setLastActionTime(new Date(updatedShift!.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
@@ -229,7 +290,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
                 }
                 return s;
             });
-            saveShiftsToStorage(updatedShifts);
+            saveToStorage('shifts', updatedShifts);
             setIsOnPause(true);
             if(updatedShift) setActiveShift(updatedShift);
             setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
@@ -246,6 +307,13 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
 
   const getStatusDescription = () => {
       if (!activeShift) {
+        if (needsExtraShiftApproval) {
+            switch(extraShiftRequestStatus) {
+                case 'pending': return "Richiesta timbratura extra in attesa di approvazione.";
+                case 'approved': return "Approvato! Ora puoi effettuare una nuova timbratura.";
+                default: return "Hai già completato un turno oggi.";
+            }
+        }
           return "Tocca per iniziare il tuo turno.";
       }
       if (isOnPause) {
@@ -256,6 +324,32 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
   
   const isButtonDisabled = isGettingLocation || !userId;
   const isClockedIn = !!activeShift;
+
+  const renderClockInButton = () => {
+    if (needsExtraShiftApproval) {
+        switch(extraShiftRequestStatus) {
+            case 'pending':
+                return <Button className="w-full font-bold" size="lg" disabled> <LoaderCircle className="animate-spin mr-2"/> In Attesa di Approvazione</Button>;
+            case 'approved':
+                return <Button onClick={handleClockIn} className="w-full font-bold" size="lg" disabled={isButtonDisabled}>
+                {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : <LogIn className="mr-2 h-4 w-4" />}
+                Timbra Entrata (Extra)
+            </Button>;
+            case 'not_requested':
+                return <Button onClick={handleRequestExtraShift} className="w-full font-bold" variant="secondary" size="lg" disabled={isButtonDisabled}>
+                {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : <AlertCircle className="mr-2 h-4 w-4" />}
+                Richiedi Timbratura Extra
+            </Button>;
+        }
+    }
+
+    return (
+         <Button onClick={handleClockIn} className="w-full font-bold" size="lg" disabled={isButtonDisabled}>
+            {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : <LogIn className="mr-2 h-4 w-4" />}
+            Timbra Entrata
+        </Button>
+    )
+  }
 
   return (
     <Card>
@@ -273,10 +367,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
           {currentTime || "--:--"}
         </div>
         {!isClockedIn ? (
-            <Button onClick={handleClockIn} className="w-full font-bold" size="lg" disabled={isButtonDisabled}>
-                {isGettingLocation ? <LoaderCircle className="animate-spin mr-2"/> : <LogIn className="mr-2 h-4 w-4" />}
-                Timbra Entrata
-            </Button>
+            renderClockInButton()
         ) : (
           <div className="grid grid-cols-2 gap-4 w-full">
               <Button onClick={handlePauseToggle} className="font-bold" size="lg" variant={isOnPause ? "default" : "outline"} disabled={isButtonDisabled}>
