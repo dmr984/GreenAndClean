@@ -111,7 +111,7 @@ export function OperatorDashboard() {
 
         const allAnnouncements = getFromStorage<any[]>('announcements', []);
         const userAnnouncements = allAnnouncements
-            .map(a => ({ ...a, hiddenFor: a.hiddenFor || [] })) // Data migration fix
+            .map(a => ({ ...a, hiddenFor: a.hiddenFor || [], readBy: a.readBy || [] })) // Data migration fix
             .filter(a => (a.recipients.includes('all') || a.recipients.includes(currentUser.id)) && !a.hiddenFor.includes(currentUser.id));
         setAnnouncements(userAnnouncements);
     }
