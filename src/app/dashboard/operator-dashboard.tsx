@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { CalendarCheck, Hourglass, TrendingUp, Megaphone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 type UserData = {
   id: string;
@@ -31,6 +32,7 @@ type Announcement = {
   content: string;
   date: string;
   recipients: string[]; // 'all' or array of user IDs
+  read?: boolean;
 };
 
 
