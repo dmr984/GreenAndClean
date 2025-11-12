@@ -181,7 +181,7 @@ export function OperatorDashboard() {
         <ClockWidget onShiftComplete={refreshData} userId={user.id} userName={user.username} />
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
-          <div className="lg:col-span-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+          <div className="lg:col-span-1 grid grid-cols-2 gap-4">
             <StatCard icon={<TrendingUp className="h-5 w-5"/>} label="Giorni Lavorati (Mese)" value={summaryStats.workedDays} />
             <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie (Mese)" value={summaryStats.vacationDays} />
             <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso (Mese)" value={summaryStats.permitHours} />
