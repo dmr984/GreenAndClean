@@ -48,6 +48,12 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
+const saveToStorage = (key: string, data: any) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(key, JSON.stringify(data));
+    window.dispatchEvent(new Event('storage'));
+};
+
 const StatCard = ({ icon, label, value, badgeCount }: { icon: React.ReactNode, label: string, value: string | number, badgeCount?: number }) => (
     <Card className="relative">
          {badgeCount && badgeCount > 0 && 
@@ -103,8 +109,9 @@ export function OperatorDashboard() {
         const allLeaveRequests = getFromStorage<LeaveRequest[]>('leave-requests', []);
         setLeaveRequests(allLeaveRequests.filter(r => r.user === currentUser.username));
 
-        const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
+        const allAnnouncements = getFromStorage<any[]>('announcements', []);
         const userAnnouncements = allAnnouncements
+            .map(a => ({ ...a, hiddenFor: a.hiddenFor || [] })) // Data migration fix
             .filter(a => (a.recipients.includes('all') || a.recipients.includes(currentUser.id)) && !a.hiddenFor.includes(currentUser.id));
         setAnnouncements(userAnnouncements);
     }
@@ -190,7 +197,7 @@ export function OperatorDashboard() {
   
   const approvedShifts = shifts.filter(s => s.status === 'Approvato');
   const recentAnnouncements = announcements.slice(0, 3);
-  const unreadAnnouncements = announcements.filter(a => !a.readBy.includes(user.id));
+  const unreadAnnouncements = announcements.filter(a => user && !a.readBy.includes(user.id));
 
   return (
     <>
