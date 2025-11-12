@@ -67,10 +67,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const calculateNotifications = useCallback(() => {
     if (typeof window === 'undefined' || !user || !firestore) return;
     
-    let leaveCount = 0;
-    let supplyCount = 0;
-    let extraShiftCount = 0;
-    
     const unsubscribes: (()=>void)[] = [];
 
     if (user.role === 'admin') {
