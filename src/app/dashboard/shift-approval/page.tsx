@@ -133,5 +133,3 @@ export default function ShiftApprovalPage() {
         </div>
     );
 }
-
-    
