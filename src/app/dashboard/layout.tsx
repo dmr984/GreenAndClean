@@ -86,14 +86,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       unsubscribes.push(onSnapshot(extraShiftsQuery, snapshot => setPendingExtraShifts(snapshot.size)));
     }
     
-    const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
-    const userAnnouncements = allAnnouncements.filter(a => {
-        const isRecipient = a.recipients?.includes('all') || a.recipients?.includes(user.id);
-        const isHidden = a.hiddenFor?.includes(user.id);
-        return isRecipient && !isHidden;
+    const announcementsUnsub = onSnapshot(collection(firestore, 'announcements'), (snapshot) => {
+        const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
+        const userAnnouncements = allAnnouncements.filter(a => {
+            const isRecipient = a.recipients?.includes('all') || a.recipients?.includes(user.id);
+            const isHidden = a.hiddenFor?.includes(user.id);
+            return isRecipient && !isHidden;
+        });
+        const unreadCount = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
+        setUnreadAnnouncements(unreadCount);
     });
-    const unreadCount = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
-    setUnreadAnnouncements(unreadCount);
+    unsubscribes.push(announcementsUnsub);
     
     return () => unsubscribes.forEach(unsub => unsub());
 
