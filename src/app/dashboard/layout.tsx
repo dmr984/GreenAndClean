@@ -22,7 +22,16 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
     if (typeof window === 'undefined') return defaultValue;
     const stored = localStorage.getItem(key);
     try {
-        return stored ? JSON.parse(stored) : defaultValue;
+        const data = stored ? JSON.parse(stored) : defaultValue;
+        // Backward compatibility for old announcements
+        if (key === 'announcements' && Array.isArray(data)) {
+            return data.map(a => ({
+                ...a,
+                readBy: a.readBy || [],
+                hiddenFor: a.hiddenFor || []
+            })) as T;
+        }
+        return data;
     } catch (e) {
         return defaultValue;
     }
@@ -42,26 +51,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [notificationCount, setNotificationCount] = useState(0);
+
+  // State for individual notification counts
+  const [pendingLeave, setPendingLeave] = useState(0);
+  const [pendingSupply, setPendingSupply] = useState(0);
+  const [pendingShifts, setPendingShifts] = useState(0);
+  const [pendingExtraShifts, setPendingExtraShifts] = useState(0);
+  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [totalNotifications, setTotalNotifications] = useState(0);
 
   const calculateNotifications = useCallback(() => {
-    if (typeof window === 'undefined' || !user) return 0;
+    if (typeof window === 'undefined' || !user) return;
     
-    let count = 0;
+    let leaveCount = 0;
+    let supplyCount = 0;
+    let shiftCount = 0;
+    let extraShiftCount = 0;
     
     if (user.role === 'admin') {
       const storedLeave = getFromStorage<LeaveRequest[]>('leave-requests', []);
-      count += storedLeave.filter(r => r.status === 'In attesa').length;
+      leaveCount = storedLeave.filter(r => r.status === 'In attesa').length;
 
       const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
-      count += storedSupply.filter(r => r.status === 'In attesa').length;
+      supplyCount = storedSupply.filter(r => r.status === 'In attesa').length;
       
       const allShifts = getFromStorage<Shift[]>('shifts', []);
-      count += allShifts.filter(s => s.endTime && s.status === 'In attesa').length;
+      shiftCount = allShifts.filter(s => s.endTime && s.status === 'In attesa').length;
       
       const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
-      count += allExtraShifts.filter(r => r.status === 'pending').length;
+      extraShiftCount = allExtraShifts.filter(r => r.status === 'pending').length;
     }
+    
+    setPendingLeave(leaveCount);
+    setPendingSupply(supplyCount);
+    setPendingShifts(shiftCount);
+    setPendingExtraShifts(extraShiftCount);
 
     const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
     const userAnnouncements = allAnnouncements.filter(a => {
@@ -69,35 +93,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const isHidden = a.hiddenFor?.includes(user.id);
         return isRecipient && !isHidden;
     });
-    const unreadAnnouncements = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
-    count += unreadAnnouncements;
-    
-    return count;
+    const unreadCount = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
+    setUnreadAnnouncements(unreadCount);
+
   }, [user]);
+  
+  useEffect(() => {
+    const total = pendingLeave + pendingSupply + pendingShifts + pendingExtraShifts + unreadAnnouncements;
+    setTotalNotifications(total);
+  }, [pendingLeave, pendingSupply, pendingShifts, pendingExtraShifts, unreadAnnouncements]);
+
 
   useEffect(() => {
     const handleStorageChange = () => {
-      setNotificationCount(calculateNotifications());
+      calculateNotifications();
     };
 
-    handleStorageChange(); // Initial calculation
+    if(user) {
+        handleStorageChange(); // Initial calculation
+    }
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [calculateNotifications]);
+  }, [calculateNotifications, user]);
   
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
+    const storedUser = getFromStorage<UserData | null>('user', null);
     if (!storedUser) {
       router.replace('/');
       return; 
     }
     
-    const userData: UserData = JSON.parse(storedUser);
-    setUser(userData);
-    
-    // Logic to check permissions is now in a separate effect
-    // to avoid re-running this on every render.
+    setUser(storedUser);
     setIsLoading(false);
 
   }, [router]);
@@ -148,6 +175,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setIsSidebarOpen(false);
     router.push(path);
   }
+  
+  const NavButton = ({ path, icon, label, count }: { path: string, icon: React.ReactNode, label: string, count?: number }) => (
+    <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation(path)}>
+        {icon}
+        <span className="flex-1 text-left">{label}</span>
+        {count && count > 0 && <Badge variant="destructive" className="h-6 w-6 justify-center p-1">{count}</Badge>}
+    </Button>
+  );
+
 
   if (isLoading || !user) {
     return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
@@ -165,9 +201,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" className="shrink-0 relative">
                   <Menu className="h-5 w-5" />
-                  {notificationCount > 0 && (
-                     <Badge variant="destructive" className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center rounded-full p-1 text-xs">
-                        {notificationCount}
+                  {totalNotifications > 0 && (
+                     <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full p-1 text-xs">
                      </Badge>
                   )}
                   <span className="sr-only">Apri menu di navigazione</span>
@@ -189,41 +224,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <nav className="grid gap-2 text-lg font-medium">
                     {isAdmin ? (
                       <>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/users')}>
-                            <User className="h-5 w-5" /> Gestione Operatori
-                        </Button>
-                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/leave-requests')}>
-                            <CalendarCheck className="h-5 w-5" /> Richieste Ferie
-                        </Button>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
-                            <Package className="h-5 w-5" /> Richieste Forniture
-                        </Button>
-                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/shift-approval')}>
-                            <ClipboardCheck className="h-5 w-5" /> Approvazione Turni
-                        </Button>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/extra-shifts')}>
-                            <Clock className="h-5 w-5" /> Timbrature Extra
-                        </Button>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/warehouse')}>
-                            <Warehouse className="h-5 w-5" /> Gestione Magazzino
-                        </Button>
+                        <NavButton path="/dashboard/users" icon={<User className="h-5 w-5" />} label="Gestione Operatori" />
+                        <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Richieste Ferie" count={pendingLeave}/>
+                        <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" count={pendingSupply} />
+                        <NavButton path="/dashboard/shift-approval" icon={<ClipboardCheck className="h-5 w-5" />} label="Approvazione Turni" count={pendingShifts} />
+                        <NavButton path="/dashboard/extra-shifts" icon={<Clock className="h-5 w-5" />} label="Timbrature Extra" count={pendingExtraShifts} />
+                        <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
                       </>
                     ) : (
                       <>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/leave-requests')}>
-                            <CalendarCheck className="h-5 w-5" /> Le mie Ferie
-                        </Button>
-                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
-                            <Package className="h-5 w-5" /> Richieste Forniture
-                        </Button>
+                         <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Le mie Ferie" />
+                         <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" />
                       </>
                     )}
-                    <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/announcements')}>
-                        <Megaphone className="h-5 w-5" /> Annunci
-                    </Button>
-                    <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/history')}>
-                        <History className="h-5 w-5" /> Storico Attività
-                    </Button>
+                    <NavButton path="/dashboard/announcements" icon={<Megaphone className="h-5 w-5" />} label="Annunci" count={unreadAnnouncements}/>
+                    <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
                     <Separator className="my-2"/>
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
                         <Settings className="h-5 w-5" /> Impostazioni Profilo
