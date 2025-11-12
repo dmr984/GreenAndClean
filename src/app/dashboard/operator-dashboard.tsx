@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { CalendarCheck, Hourglass, TrendingUp, Megaphone, Timer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 
 type UserData = {
   id: string;
@@ -48,12 +47,6 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
-const saveToStorage = (key: string, data: any) => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(key, JSON.stringify(data));
-    window.dispatchEvent(new Event('storage'));
-};
-
 const StatCard = ({ icon, label, value, badgeCount }: { icon: React.ReactNode, label: string, value: string | number, badgeCount?: number }) => (
     <Card className="relative">
          {badgeCount && badgeCount > 0 && 
@@ -92,7 +85,6 @@ const formatMinutesToHours = (totalMinutes: number) => {
 export function OperatorDashboard() {
   const [shifts, setShifts] = React.useState<Shift[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
-  const [announcements, setAnnouncements] = React.useState<Announcement[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
 
   const refreshData = React.useCallback(() => {
@@ -108,12 +100,6 @@ export function OperatorDashboard() {
 
         const allLeaveRequests = getFromStorage<LeaveRequest[]>('leave-requests', []);
         setLeaveRequests(allLeaveRequests.filter(r => r.user === currentUser.username));
-
-        const allAnnouncements = getFromStorage<any[]>('announcements', []);
-        const userAnnouncements = allAnnouncements
-            .map(a => ({ ...a, hiddenFor: a.hiddenFor || [], readBy: a.readBy || [] })) // Data migration fix
-            .filter(a => (a.recipients.includes('all') || a.recipients.includes(currentUser.id)) && !a.hiddenFor.includes(currentUser.id));
-        setAnnouncements(userAnnouncements);
     }
   }, []);
 
@@ -169,31 +155,13 @@ export function OperatorDashboard() {
         }
     });
 
-    const unreadAnnouncements = announcements.filter(a => user && !(a.readBy || []).includes(user.id)).length;
-
     return {
         workedDays,
         vacationDays,
         permitHours: formatMinutesToHours(permitMinutes),
         overtime: formatMinutesToHours(totalOvertimeMinutes),
-        unreadAnnouncements,
     };
-}, [shifts, leaveRequests, announcements, user]);
-
-  const markAnnouncementAsRead = (announcementId: string) => {
-    if(!user) return;
-    const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
-    const target = allAnnouncements.find(a => a.id === announcementId);
-    if(target) {
-        if (!target.readBy) {
-            target.readBy = [];
-        }
-        if(!target.readBy.includes(user.id)) {
-            target.readBy.push(user.id);
-            saveToStorage('announcements', allAnnouncements);
-        }
-    }
-  }
+}, [shifts, leaveRequests, user]);
 
 
   if (!user) {
@@ -201,8 +169,6 @@ export function OperatorDashboard() {
   }
   
   const approvedShifts = shifts.filter(s => s.status === 'Approvato');
-  const recentAnnouncements = announcements.slice(0, 3);
-  const unreadAnnouncements = announcements.filter(a => user && !(a.readBy || []).includes(user.id));
 
   return (
     <>
@@ -220,51 +186,6 @@ export function OperatorDashboard() {
       <div className="grid gap-4 md:gap-8 lg:grid-cols-2">
         <div className="lg:col-span-1">
           <ClockWidget onShiftComplete={refreshData} userId={user.id} userName={user.username} />
-          
-          <Card className="mt-4 md:mt-8">
-            <CardHeader>
-                <CardTitle>Annunci Recenti</CardTitle>
-                <CardDescription>
-                  Le ultime comunicazioni dall'amministrazione.
-                  {unreadAnnouncements.length > 0 && 
-                      <Badge variant="destructive" className="ml-2">{unreadAnnouncements.length} Nuov{unreadAnnouncements.length > 1 ? 'i' : 'o'}</Badge>
-                  }
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                {recentAnnouncements.length > 0 ? (
-                    <div className="space-y-4">
-                        {recentAnnouncements.map(ann => {
-                            const isRead = (ann.readBy || []).includes(user.id);
-                            return (
-                             <Card key={ann.id} className={isRead ? "bg-muted/50" : ""}>
-                                <CardHeader className="pb-2">
-                                    <div className="flex justify-between items-center">
-                                       <CardTitle className="text-base">{ann.title}</CardTitle>
-                                       {!isRead && <Badge variant="destructive">Nuovo</Badge>}
-                                    </div>
-                                    <CardDescription>{new Date(ann.date).toLocaleString('it-IT')}</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-sm whitespace-pre-wrap">{ann.content}</p>
-                                    {!isRead && (
-                                        <div className="text-right mt-2">
-                                            <Button variant="link" size="sm" onClick={() => markAnnouncementAsRead(ann.id)}>Segna come letto</Button>
-                                        </div>
-                                    )}
-                                </CardContent>
-                             </Card>
-                            )
-                        })}
-                    </div>
-                ): (
-                    <p className="text-muted-foreground text-center py-8">Nessun annuncio recente.</p>
-                )}
-                 <Link href="/dashboard/announcements" className="w-full">
-                    <Button variant="outline" className="w-full mt-4">Vedi tutti gli annunci</Button>
-                </Link>
-            </CardContent>
-          </Card>
         </div>
         <div className="lg:col-span-1">
           <WorkSchedule shifts={approvedShifts} leaveRequests={leaveRequests} />

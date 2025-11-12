@@ -37,8 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const isAdminPage = pathname.startsWith('/dashboard/users') || 
                         pathname === '/dashboard/warehouse' || 
                         pathname === '/dashboard/shift-approval' ||
-                        pathname === '/dashboard/extra-shifts' ||
-                        pathname === '/dashboard/announcements';
+                        pathname === '/dashboard/extra-shifts';
 
     if (userData.role === 'operator' && isAdminPage) {
         router.replace('/dashboard');
@@ -145,6 +144,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </Button>
                         <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/supply-requests')}>
                             <Package className="h-5 w-5" /> Richieste Forniture
+                        </Button>
+                        <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation('/dashboard/announcements')}>
+                            <Megaphone className="h-5 w-5" /> Annunci
                         </Button>
                       </>
                     )}

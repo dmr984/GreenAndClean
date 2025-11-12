@@ -2,12 +2,16 @@
 
 import * as React from "react";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarDays, CalendarCheck, Hourglass, TrendingUp } from "lucide-react";
+import { CalendarDays, CalendarCheck, Hourglass, TrendingUp, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 
 type AppUser = {
@@ -47,6 +51,12 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
+const saveToStorage = <T,>(key: string, data: T) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(key, JSON.stringify(data));
+    window.dispatchEvent(new Event('storage'));
+};
+
 const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
     if (!start || !end) return { workedMinutes: 0 };
     const startTime = new Date(start).getTime();
@@ -66,14 +76,14 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
     const monthlyData: { [key: string]: any } = {};
 
     const allData = [
-        ...shifts.filter(s => s.status === 'Approvato').map(s => ({ type: 'shift', date: s.startTime ? new Date(s.startTime) : new Date(), data: s })),
+        ...shifts.filter(s => s.status === 'Approvato' && s.startTime).map(s => ({ type: 'shift', date: new Date(s.startTime!), data: s })),
         ...leaveRequests.filter(r => r.status === 'Approvata').map(r => ({ type: 'leave', date: new Date(r.from), data: r }))
     ];
 
     for (const item of allData) {
         const monthKey = `${item.date.getFullYear()}-${String(item.date.getMonth() + 1).padStart(2, '0')}`;
         if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0 };
+            monthlyData[monthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0, sicknessDays: 0 };
         }
         
         if (item.type === 'shift') {
@@ -90,22 +100,24 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
             const start = new Date(req.from);
             const end = new Date(req.to);
 
-            let current = start;
+            let current = new Date(start);
             while (current <= end) {
                 const loopMonthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
                 if (!monthlyData[loopMonthKey]) {
-                     monthlyData[loopMonthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0 };
+                     monthlyData[loopMonthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0, sicknessDays: 0 };
                 }
 
                 if (req.type === 'Ferie') {
                     monthlyData[loopMonthKey].vacationDays += 1;
+                } else if (req.type === 'Malattia') {
+                    monthlyData[loopMonthKey].sicknessDays += 1;
                 } else if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
                      const [fromHours, fromMinutes] = req.timeFrom.split(':').map(Number);
                      const [toHours, toMinutes] = req.timeTo.split(':').map(Number);
                      const permitStart = new Date(0, 0, 0, fromHours, fromMinutes);
                      const permitEnd = new Date(0, 0, 0, toHours, toMinutes);
                      const diffMillis = permitEnd.getTime() - permitStart.getTime();
-                     if(current.toDateString() === start.toDateString()) { // Add permit hours only on the first day of the range
+                     if(current.toDateString() === start.toDateString()) {
                         monthlyData[loopMonthKey].permitMinutes += (diffMillis / (1000 * 60));
                      }
                 }
@@ -136,8 +148,8 @@ const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string
 
 export default function HistoryPage() {
     const firestore = useFirestore();
+    const { toast } = useToast();
     const [userRole, setUserRole] = React.useState<string | null>(null);
-    const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
     
     const [allUsers, setAllUsers] = React.useState<AppUser[]>([]);
     const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
@@ -148,11 +160,21 @@ export default function HistoryPage() {
     const [loading, setLoading] = React.useState(true);
     const [monthlyStats, setMonthlyStats] = React.useState<ReturnType<typeof processMonthlyData>>({});
 
+    // State for delete confirmation
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+    const [deleteTarget, setDeleteTarget] = React.useState<{userId: string, month: string} | null>(null);
+    const [confirmationStep, setConfirmationStep] = React.useState(1);
+    const [confirmationInput, setConfirmationInput] = React.useState("");
+
+    const loadAllData = React.useCallback(() => {
+        setAllShifts(getFromStorage<Shift[]>('shifts', []));
+        setAllLeaveRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
+    }, []);
+
     // Load user role and all users
     React.useEffect(() => {
         const storedUser = getFromStorage<{id: string, role: string}>('user', {id: '', role: ''});
         setUserRole(storedUser.role);
-        setCurrentUserId(storedUser.id);
         
         if (storedUser.role === 'operator') {
             setSelectedUserId(storedUser.id);
@@ -163,23 +185,27 @@ export default function HistoryPage() {
         const usersUnsubscribe = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
             const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
                                 .filter(u => u.role === 'operator');
-            setAllUsers(userList);
+             const adminUserDoc = snapshot.docs.find(doc => doc.id === 'admin_user');
+             const adminUser = adminUserDoc ? {id: adminUserDoc.id, ...adminUserDoc.data()} as AppUser : null;
+             
+             if(storedUser.role === 'operator') {
+                const currentUser = snapshot.docs.find(doc => doc.id === storedUser.id);
+                if(currentUser) setAllUsers([{id: currentUser.id, ...currentUser.data()} as AppUser]);
+             } else {
+                setAllUsers(userList);
+             }
         });
 
-        const handleStorageChange = () => {
-             setAllShifts(getFromStorage<Shift[]>('shifts', []));
-             setAllLeaveRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
-        };
-        handleStorageChange(); // Initial load
-        window.addEventListener('storage', handleStorageChange);
+        loadAllData();
+        window.addEventListener('storage', loadAllData);
         
         setLoading(false);
 
         return () => {
             usersUnsubscribe();
-            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('storage', loadAllData);
         };
-    }, [firestore]);
+    }, [firestore, loadAllData]);
     
     // Process data when selected user or data changes
     React.useEffect(() => {
@@ -188,18 +214,74 @@ export default function HistoryPage() {
             return;
         }
 
-        const selectedUser = allUsers.find(u => u.id === selectedUserId) || (userRole === 'operator' ? getFromStorage<AppUser>('user', {} as AppUser) : null);
+        const selectedUserDoc = doc(firestore, 'app-users', selectedUserId);
+        getDoc(selectedUserDoc).then(docSnap => {
+            if (docSnap.exists()) {
+                const selectedUser = { id: docSnap.id, ...docSnap.data() } as AppUser;
+                const userShifts = allShifts.filter(s => s.userId === selectedUserId);
+                const userLeaves = allLeaveRequests.filter(l => l.user === selectedUser.username);
 
-        if (!selectedUser) return;
+                const stats = processMonthlyData(userShifts, userLeaves, selectedUser);
+                setMonthlyStats(stats);
+            }
+        });
         
-        const userShifts = allShifts.filter(s => s.userId === selectedUserId);
-        const userLeaves = allLeaveRequests.filter(l => l.user === selectedUser.username);
-
-        const stats = processMonthlyData(userShifts, userLeaves, selectedUser);
-        setMonthlyStats(stats);
-        
-    }, [selectedUserId, allUsers, allShifts, allLeaveRequests, userRole]);
+    }, [selectedUserId, allUsers, allShifts, allLeaveRequests, firestore]);
     
+    const handleDeleteMonthClick = (userId: string, month: string) => {
+        setDeleteTarget({userId, month});
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleConfirmDelete = () => {
+        const confirmWord = "ELIMINA";
+        if (confirmationInput.toUpperCase() !== confirmWord) {
+            toast({ title: "Testo non corretto", variant: "destructive" });
+            return;
+        }
+
+        if (confirmationStep < 3) {
+            setConfirmationStep(prev => prev + 1);
+            setConfirmationInput("");
+            toast({title: `Conferma ${confirmationStep+1} di 3`});
+            return;
+        }
+
+        // Final confirmation
+        if (!deleteTarget) return;
+
+        const { userId, month } = deleteTarget;
+        const [year, monthNum] = month.split('-').map(Number);
+        
+        const shiftsToKeep = allShifts.filter(s => {
+            if (s.userId !== userId) return true;
+            if(!s.startTime) return true; // keep incomplete shifts
+            const shiftDate = new Date(s.startTime);
+            return shiftDate.getFullYear() !== year || (shiftDate.getMonth() + 1) !== monthNum;
+        });
+
+        const selectedUser = allUsers.find(u => u.id === userId);
+        const leaveRequestsToKeep = allLeaveRequests.filter(l => {
+             if (l.user !== selectedUser?.username) return true;
+             const leaveDate = new Date(l.from);
+             return leaveDate.getFullYear() !== year || (leaveDate.getMonth() + 1) !== monthNum;
+        });
+        
+        saveToStorage('shifts', shiftsToKeep);
+        saveToStorage('leave-requests', leaveRequestsToKeep);
+        loadAllData();
+
+        toast({ title: "Storico Mese Eliminato", variant: "destructive" });
+        resetDeleteDialog();
+    };
+    
+    const resetDeleteDialog = () => {
+        setIsDeleteDialogOpen(false);
+        setDeleteTarget(null);
+        setConfirmationStep(1);
+        setConfirmationInput("");
+    };
+
     const isAdmin = userRole === 'admin';
     const sortedMonths = Object.keys(monthlyStats).sort((a,b) => b.localeCompare(a));
     
@@ -221,6 +303,7 @@ export default function HistoryPage() {
     }
     
     return (
+        <>
         <div className="flex flex-col gap-8">
             <div className="flex items-center justify-between space-y-2">
                 <h2 className="text-3xl font-bold tracking-tight">Storico Attività</h2>
@@ -259,7 +342,16 @@ export default function HistoryPage() {
                                 const data = monthlyStats[monthKey];
                                 return (
                                 <AccordionItem value={monthKey} key={monthKey}>
-                                    <AccordionTrigger className="text-xl font-semibold">{getMonthName(monthKey)}</AccordionTrigger>
+                                    <AccordionTrigger className="text-xl font-semibold">
+                                        <div className="flex items-center justify-between w-full">
+                                            <span>{getMonthName(monthKey)}</span>
+                                             {isAdmin && selectedUserId && (
+                                                <Button variant="ghost" size="icon" className="mr-2" onClick={(e) => { e.stopPropagation(); handleDeleteMonthClick(selectedUserId, monthKey); }}>
+                                                    <Trash2 className="h-5 w-5 text-destructive" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </AccordionTrigger>
                                     <AccordionContent>
                                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 p-4">
                                             <StatCard icon={<CalendarDays className="h-5 w-5"/>} label="Giorni Lavorati" value={data.workedDays} />
@@ -277,5 +369,30 @@ export default function HistoryPage() {
                 </CardContent>
              </Card>
         </div>
+
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione è irreversibile. Verranno eliminati tutti i turni e le assenze per <strong>{allUsers.find(u => u.id === deleteTarget?.userId)?.username}</strong> nel mese di <strong>{deleteTarget ? getMonthName(deleteTarget.month) : ''}</strong>.
+                        <br/><br/>
+                        Per confermare, scrivi <strong>ELIMINA</strong> qui sotto ({confirmationStep}/3).
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <Input 
+                    value={confirmationInput}
+                    onChange={(e) => setConfirmationInput(e.target.value)}
+                    placeholder="Scrivi ELIMINA per confermare"
+                />
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={resetDeleteDialog}>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmDelete}>
+                        {confirmationStep < 3 ? "Conferma" : "Elimina Definitivamente"}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 }

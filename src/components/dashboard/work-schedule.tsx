@@ -57,18 +57,18 @@ export function WorkSchedule({ shifts, leaveRequests }: WorkScheduleProps) {
   
   const modifiersStyles = {
     completed: { 
-        backgroundColor: 'hsl(var(--primary) / 0.3)', 
-        color: 'hsl(var(--primary-foreground))',
+        backgroundColor: 'hsl(142 71% 85%)', // Verde
+        color: 'hsl(142 90% 25%)',
         borderRadius: '0.5rem'
     },
     vacation: {
-        backgroundColor: 'hsl(35 100% 80%)',
-        color: 'hsl(35 50% 20%)',
+        backgroundColor: 'hsl(48 95% 85%)', // Giallo
+        color: 'hsl(48 90% 25%)',
         borderRadius: '0.5rem'
     },
     sickness: {
-        backgroundColor: 'hsl(0 84% 80%)',
-        color: 'hsl(var(--destructive-foreground))',
+        backgroundColor: 'hsl(0 84% 85%)', // Rosso
+        color: 'hsl(0 90% 25%)',
         borderRadius: '0.5rem'
     },
   };
@@ -95,7 +95,9 @@ export function WorkSchedule({ shifts, leaveRequests }: WorkScheduleProps) {
     }
   };
   
-  const sortedCompletedShifts = [...shifts].sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
+  const sortedCompletedShifts = [...shifts]
+    .sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime())
+    .slice(0, 30); // Show only the last 30 shifts
 
   return (
     <Card>
