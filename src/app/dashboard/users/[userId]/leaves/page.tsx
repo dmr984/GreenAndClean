@@ -105,19 +105,10 @@ export default function UserLeavesPage() {
                     <CardDescription>Visualizza tutte le richieste di ferie e permessi inviate.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                     <ScrollArea className="h-[calc(100vh-20rem)]">
-                     {leaveRequests.length > 0 ? (
-                        <div className="relative w-full overflow-auto">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b">
-                                        <th className="px-4 py-2 text-left font-medium text-muted-foreground">Periodo</th>
-                                        <th className="px-4 py-2 text-left font-medium text-muted-foreground">Tipo</th>
-                                        <th className="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Motivo</th>
-                                        <th className="px-4 py-2 text-right font-medium text-muted-foreground">Stato</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                    {leaveRequests.length > 0 ? (
+                        <>
+                            {/* Mobile View - Cards */}
+                            <div className="md:hidden space-y-4">
                                 {leaveRequests.map(req => {
                                     const fromDate = new Date(req.from).toLocaleDateString('it-IT');
                                     const toDate = new Date(req.to).toLocaleDateString('it-IT');
@@ -125,20 +116,55 @@ export default function UserLeavesPage() {
                                     if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
                                         period += ` (${req.timeFrom}-${req.timeTo})`;
                                     }
-                                return(
-                                    <tr key={req.id} className="border-b">
-                                        <td className="p-4 align-middle font-medium">{period}</td>
-                                        <td className="p-4 align-middle">{req.type}</td>
-                                        <td className="p-4 align-middle text-muted-foreground truncate max-w-xs hidden sm:table-cell">{req.reason || '-'}</td>
-                                        <td className="p-4 align-middle text-right"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></td>
-                                    </tr>
-                                )
+                                    return (
+                                        <Card key={req.id} className="w-full">
+                                            <CardHeader className="flex flex-row justify-between items-start pb-2">
+                                                <CardTitle className="text-base">{req.type}</CardTitle>
+                                                <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
+                                            </CardHeader>
+                                            <CardContent className="space-y-1 text-sm">
+                                                <p><span className="font-medium">Periodo:</span> {period}</p>
+                                                <p><span className="font-medium">Motivo:</span> {req.reason || '-'}</p>
+                                            </CardContent>
+                                        </Card>
+                                    );
                                 })}
-                                </tbody>
-                            </table>
-                        </div>
-                     ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di ferie o permesso trovata.</p>}
-                     </ScrollArea>
+                            </div>
+                            {/* Desktop View - Table */}
+                            <div className="hidden md:block">
+                                <ScrollArea className="h-[calc(100vh-22rem)]">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="border-b">
+                                                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Periodo</th>
+                                                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tipo</th>
+                                                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Motivo</th>
+                                                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Stato</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {leaveRequests.map(req => {
+                                                const fromDate = new Date(req.from).toLocaleDateString('it-IT');
+                                                const toDate = new Date(req.to).toLocaleDateString('it-IT');
+                                                let period = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+                                                if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
+                                                    period += ` (${req.timeFrom}-${req.timeTo})`;
+                                                }
+                                                return (
+                                                    <tr key={req.id} className="border-b">
+                                                        <td className="p-4 align-middle font-medium">{period}</td>
+                                                        <td className="p-4 align-middle">{req.type}</td>
+                                                        <td className="p-4 align-middle text-muted-foreground truncate max-w-xs">{req.reason || '-'}</td>
+                                                        <td className="p-4 align-middle text-right"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </ScrollArea>
+                            </div>
+                        </>
+                    ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di ferie o permesso trovata.</p>}
                 </CardContent>
             </Card>
         </div>

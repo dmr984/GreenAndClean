@@ -11,7 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
-type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; };
+type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; adminNotes?: string };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
@@ -58,7 +58,6 @@ export default function UserSuppliesPage() {
                     const currentUserName = userData.username;
                     setUserName(currentUserName);
 
-                    // Fetch data that depends on username
                     const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
                     setSupplyRequests(allSupplies.filter(r => r.user === currentUserName).sort((a,b) => b.id.localeCompare(a.id)));
                 } else {
@@ -106,41 +105,41 @@ export default function UserSuppliesPage() {
                 </CardHeader>
                 <CardContent>
                     <ScrollArea className="h-[calc(100vh-20rem)]">
-                    {supplyRequests.length > 0 ? (
-                        <div className="space-y-4">
-                        {supplyRequests.map(req => (
-                            <Card key={req.id}>
-                                <CardHeader className="flex flex-row justify-between items-center pb-3">
-                                     <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
-                                     <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="relative w-full overflow-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className="border-b">
-                                                    <th className="px-4 py-2 text-left font-medium text-muted-foreground">Prodotto</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-muted-foreground">Qt. Richiesta</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-muted-foreground">Qt. Consegnata</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
+                        {supplyRequests.length > 0 ? (
+                            <div className="space-y-4">
+                                {supplyRequests.map(req => (
+                                    <Card key={req.id}>
+                                        <CardHeader className="flex flex-row justify-between items-start pb-3">
+                                            <div>
+                                                <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
+                                                <p className="text-sm text-muted-foreground">ID: {req.id}</p>
+                                            </div>
+                                            <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="space-y-2 text-sm">
                                                 {Object.entries(req.items).map(([name, qty]) => (
-                                                    <tr key={name} className="border-b">
-                                                        <td className="p-4 align-middle">{name}</td>
-                                                        <td className="p-4 align-middle text-center">{qty}</td>
-                                                        <td className="p-4 align-middle text-center font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</td>
-                                                    </tr>
+                                                    <div key={name} className="flex justify-between border-b pb-2 last:border-none">
+                                                        <span>{name}</span>
+                                                        <div className="text-right">
+                                                            <p>Richiesti: <span className="font-medium">{qty}</span></p>
+                                                            <p>Consegnati: <span className="font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</span></p>
+                                                        </div>
+                                                    </div>
                                                 ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                        </div>
-                    ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di forniture trovata.</p>}
-                   </ScrollArea>
+                                            </div>
+                                            {req.adminNotes && (
+                                                <div className="mt-4 p-3 bg-muted rounded-md text-sm">
+                                                    <h4 className="font-semibold">Note Admin:</h4>
+                                                    <p className="text-muted-foreground">{req.adminNotes}</p>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di forniture trovata.</p>}
+                    </ScrollArea>
                 </CardContent>
             </Card>
         </div>
