@@ -41,11 +41,20 @@ service cloud.firestore {
     match /leave-requests/{leaveRequestId} {
        // Allow users to create their own requests
        allow create: if request.auth != null;
-       // Allow admins to read/update/delete all requests
+       
+       // Allow users to read THEIR OWN requests (list and get)
+       allow read: if request.auth != null && (
+         (request.query.limit <= 100 && request.query.where.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username) ||
+         (resource.data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username)
+       );
+       
+       // Allow users to update/delete THEIR OWN requests (if pending)
+       allow update, delete: if request.auth != null && get(/databases/$(database)/documents/leave-requests/$(leaveRequestId)).data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username;
+
+       // Allow admins to do anything
        allow read, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-       // Allow users to read/update/delete THEIR OWN requests
-       allow read, update, delete: if request.auth != null && request.resource.data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username;
     }
+    
      match /supply-requests/{supplyRequestId} {
       allow read, update: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
