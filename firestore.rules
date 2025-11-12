@@ -16,8 +16,7 @@ service cloud.firestore {
 
     match /leave-requests/{leaveRequestId} {
       allow create: if request.auth != null && request.resource.data.operatorId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && request.resource.data.operatorId == request.auth.uid;
-      // Admin override for all operations
+      allow read, update, delete: if request.auth != null && (request.resource.data.operatorId == request.auth.uid || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
@@ -28,8 +27,7 @@ service cloud.firestore {
 
     match /supply-requests/{supplyRequestId} {
         allow create: if request.auth != null;
-        allow read, update, delete: if request.auth != null && request.resource.data.user == request.auth.token.name;
-        // Admin override for all operations
+        allow read, update, delete: if request.auth != null && (request.resource.data.user == request.auth.token.name || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
         allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
     
@@ -41,7 +39,6 @@ service cloud.firestore {
       allow read: if request.auth != null;
     }
 
-    // Admin access rules for collections
     match /shifts/{shiftId} {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
@@ -50,8 +47,8 @@ service cloud.firestore {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
      match /app-users/{userId} {
-      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true; // Allow reading user list for login
+      allow write: if request.auth != null && (request.auth.uid == userId || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
      match /communications/{commId} {
       allow read, write: if request.auth != null;
