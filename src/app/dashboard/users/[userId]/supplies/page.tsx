@@ -1,15 +1,17 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useToast } from '@/hooks/use-toast';
 
 type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; adminNotes?: string };
 
@@ -21,6 +23,12 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   } catch (e) {
     return defaultValue;
   }
+};
+
+const saveToStorage = <T,>(key: string, data: T) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, JSON.stringify(data));
+  window.dispatchEvent(new Event('storage'));
 };
 
 const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -38,10 +46,13 @@ export default function UserSuppliesPage() {
     const router = useRouter();
     const userId = params.userId as string;
     const firestore = useFirestore();
+    const { toast } = useToast();
 
     const [userName, setUserName] = useState<string | null>(null);
     const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [selectedRequestToDelete, setSelectedRequestToDelete] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -73,6 +84,25 @@ export default function UserSuppliesPage() {
 
         fetchUserData();
     }, [userId, firestore]);
+    
+    const openDeleteConfirmation = (requestId: string) => {
+        setSelectedRequestToDelete(requestId);
+        setIsDeleteDialogOpen(true);
+    };
+    
+    const handleDeleteRequest = () => {
+        if (!selectedRequestToDelete) return;
+        
+        const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
+        const updatedSupplies = allSupplies.filter(r => r.id !== selectedRequestToDelete);
+        saveToStorage('supply-requests', updatedSupplies);
+
+        setSupplyRequests(prev => prev.filter(r => r.id !== selectedRequestToDelete));
+        
+        toast({ title: "Richiesta eliminata", description: "La richiesta è stata rimossa con successo.", variant: "destructive"});
+        setIsDeleteDialogOpen(false);
+        setSelectedRequestToDelete(null);
+    };
 
     if (loading) {
         return (
@@ -96,52 +126,75 @@ export default function UserSuppliesPage() {
     }
     
     return (
-        <div className="flex flex-col gap-6">
-            <h2 className="text-3xl font-bold tracking-tight">Storico Richieste Forniture di {userName}</h2>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Riepilogo Richieste</CardTitle>
-                    <CardDescription>Visualizza tutte le richieste di forniture inviate dall'operatore.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <ScrollArea className="h-[calc(100vh-20rem)]">
-                        {supplyRequests.length > 0 ? (
-                            <div className="space-y-4">
-                                {supplyRequests.map(req => (
-                                    <Card key={req.id}>
-                                        <CardHeader className="flex flex-row justify-between items-start pb-3">
-                                            <div>
-                                                <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
-                                                <p className="text-sm text-muted-foreground">ID: {req.id}</p>
-                                            </div>
-                                            <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-2 text-sm">
-                                                {Object.entries(req.items).map(([name, qty]) => (
-                                                    <div key={name} className="flex justify-between border-b pb-2 last:border-none">
-                                                        <span>{name}</span>
-                                                        <div className="text-right">
-                                                            <p>Richiesti: <span className="font-medium">{qty}</span></p>
-                                                            <p>Consegnati: <span className="font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</span></p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            {req.adminNotes && (
-                                                <div className="mt-4 p-3 bg-muted rounded-md text-sm">
-                                                    <h4 className="font-semibold">Note Admin:</h4>
-                                                    <p className="text-muted-foreground">{req.adminNotes}</p>
+        <>
+            <div className="flex flex-col gap-6">
+                <h2 className="text-3xl font-bold tracking-tight">Storico Richieste Forniture di {userName}</h2>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Riepilogo Richieste</CardTitle>
+                        <CardDescription>Visualizza tutte le richieste di forniture inviate dall'operatore.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <ScrollArea className="h-[calc(100vh-20rem)]">
+                            {supplyRequests.length > 0 ? (
+                                <div className="space-y-4">
+                                    {supplyRequests.map(req => (
+                                        <Card key={req.id}>
+                                            <CardHeader className="flex flex-row justify-between items-start pb-3">
+                                                <div>
+                                                    <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
+                                                    <p className="text-sm text-muted-foreground">ID: {req.id}</p>
                                                 </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
-                        ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di forniture trovata.</p>}
-                    </ScrollArea>
-                </CardContent>
-            </Card>
-        </div>
+                                                <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
+                                            </CardHeader>
+                                            <CardContent className="pb-2">
+                                                <div className="space-y-2 text-sm">
+                                                    {Object.entries(req.items).map(([name, qty]) => (
+                                                        <div key={name} className="flex justify-between border-b pb-2 last:border-none">
+                                                            <span>{name}</span>
+                                                            <div className="text-right">
+                                                                <p>Richiesti: <span className="font-medium">{qty}</span></p>
+                                                                <p>Consegnati: <span className="font-bold">{req.fulfilledItems ? req.fulfilledItems[name] ?? 0 : '-'}</span></p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {req.adminNotes && (
+                                                    <div className="mt-4 p-3 bg-muted rounded-md text-sm">
+                                                        <h4 className="font-semibold">Note Admin:</h4>
+                                                        <p className="text-muted-foreground">{req.adminNotes}</p>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                            <CardFooter className="pb-3 pt-1 flex justify-end">
+                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req.id)}>
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                    <span className="sr-only">Elimina</span>
+                                                </Button>
+                                            </CardFooter>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : <p className="text-center text-muted-foreground py-16">Nessuna richiesta di forniture trovata.</p>}
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
+            </div>
+            
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione non può essere annullata. La richiesta verrà eliminata in modo permanente.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setSelectedRequestToDelete(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteRequest}>Conferma Eliminazione</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </>
     );
 }
