@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, CalendarCheck, Warehouse, Package, ClipboardCheck, Megaphone, Clock } from 'lucide-react';
+import { Briefcase, CalendarCheck, Warehouse, Package, ClipboardCheck, Megaphone, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
@@ -41,7 +41,8 @@ export function AdminDashboard() {
         setPendingSupplyRequests(storedSupply.filter(r => r.status === 'In attesa').length);
         
         const allShifts = getFromStorage<Shift[]>('shifts', []);
-        setPendingShifts(allShifts.filter(s => s.endTime && s.status === 'In attesa').length);
+        // Filter for completed shifts that are pending approval client-side
+        setPendingShifts(allShifts.filter(s => s.status === 'In attesa' && s.endTime).length);
         
         const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
         setPendingExtraShifts(allExtraShifts.filter(r => r.status === 'pending').length);
@@ -75,7 +76,7 @@ export function AdminDashboard() {
         <Link href="/dashboard/users" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
                 <CardHeader>
-                    <Users className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
+                    <Briefcase className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <CardTitle className="text-xl sm:text-2xl">Gestione Operatori</CardTitle>
@@ -109,16 +110,6 @@ export function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <CardTitle className="text-xl sm:text-2xl">Richieste Forniture</CardTitle>
-                </CardContent>
-            </Card>
-        </Link>
-        <Link href="/dashboard/warehouse" className="h-full">
-            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
-                <CardHeader>
-                    <Warehouse className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-                    <CardTitle className="text-xl sm:text-2xl">Gestione Magazzino</CardTitle>
                 </CardContent>
             </Card>
         </Link>

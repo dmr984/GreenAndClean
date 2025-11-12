@@ -63,7 +63,8 @@ export default function ShiftApprovalPage() {
     React.useEffect(() => {
         const loadShifts = () => {
             const allShifts = getFromStorage<Shift[]>('shifts', []);
-            const completedPendingShifts = allShifts.filter(s => s.endTime && s.status === 'In attesa');
+            // Filter for completed shifts that are pending approval on the client-side
+            const completedPendingShifts = allShifts.filter(s => s.status === 'In attesa' && s.endTime);
             setPendingShifts(completedPendingShifts.sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime()));
         };
         
