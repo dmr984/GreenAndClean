@@ -10,6 +10,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { Badge } from '@/components/ui/badge';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+
 
 type UserData = {
   id: string;
@@ -51,6 +54,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const firestore = useFirestore();
 
   // State for individual notification counts
   const [pendingLeave, setPendingLeave] = useState(0);
@@ -61,32 +65,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [totalNotifications, setTotalNotifications] = useState(0);
 
   const calculateNotifications = useCallback(() => {
-    if (typeof window === 'undefined' || !user) return;
+    if (typeof window === 'undefined' || !user || !firestore) return;
     
     let leaveCount = 0;
     let supplyCount = 0;
-    let shiftCount = 0;
     let extraShiftCount = 0;
     
-    if (user.role === 'admin') {
-      const storedLeave = getFromStorage<LeaveRequest[]>('leave-requests', []);
-      leaveCount = storedLeave.filter(r => r.status === 'In attesa').length;
+    const unsubscribes: (()=>void)[] = [];
 
-      const storedSupply = getFromStorage<SupplyRequest[]>('supply-requests', []);
-      supplyCount = storedSupply.filter(r => r.status === 'In attesa').length;
+    if (user.role === 'admin') {
+      const leaveQuery = query(collection(firestore, 'leave-requests'), where('status', '==', 'In attesa'));
+      unsubscribes.push(onSnapshot(leaveQuery, snapshot => setPendingLeave(snapshot.size)));
+
+      const supplyQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'In attesa'));
+      unsubscribes.push(onSnapshot(supplyQuery, snapshot => setPendingSupply(snapshot.size)));
       
-      const allShifts = getFromStorage<Shift[]>('shifts', []);
-      shiftCount = allShifts.filter(s => s.status === 'In attesa' && s.endTime).length;
+      const shiftsQuery = query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
+      unsubscribes.push(onSnapshot(shiftsQuery, snapshot => {
+        const completedPendingShifts = snapshot.docs.filter(doc => doc.data().endTime).length;
+        setPendingShifts(completedPendingShifts);
+      }));
       
-      const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
-      extraShiftCount = allExtraShifts.filter(r => r.status === 'pending').length;
+      const extraShiftsQuery = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
+      unsubscribes.push(onSnapshot(extraShiftsQuery, snapshot => setPendingExtraShifts(snapshot.size)));
     }
     
-    setPendingLeave(leaveCount);
-    setPendingSupply(supplyCount);
-    setPendingShifts(shiftCount);
-    setPendingExtraShifts(extraShiftCount);
-
     const allAnnouncements = getFromStorage<Announcement[]>('announcements', []);
     const userAnnouncements = allAnnouncements.filter(a => {
         const isRecipient = a.recipients?.includes('all') || a.recipients?.includes(user.id);
@@ -95,8 +98,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
     const unreadCount = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
     setUnreadAnnouncements(unreadCount);
+    
+    return () => unsubscribes.forEach(unsub => unsub());
 
-  }, [user]);
+  }, [user, firestore]);
   
   useEffect(() => {
     const total = pendingLeave + pendingSupply + pendingShifts + pendingExtraShifts + unreadAnnouncements;
@@ -105,15 +110,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 
   useEffect(() => {
-    const handleStorageChange = () => {
-      calculateNotifications();
-    };
-
     if(user) {
-        handleStorageChange(); // Initial calculation
+        const unsub = calculateNotifications();
+        
+        const handleStorageChange = () => {
+          calculateNotifications();
+        };
+        window.addEventListener('storage', handleStorageChange);
+        
+        return () => {
+            if(unsub) unsub();
+            window.removeEventListener('storage', handleStorageChange);
+        }
     }
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, [calculateNotifications, user]);
   
 
