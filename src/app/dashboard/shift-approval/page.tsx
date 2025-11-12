@@ -52,12 +52,10 @@ export default function ShiftApprovalPage() {
     React.useEffect(() => {
         if (!firestore) return;
         const shiftsCollection = collection(firestore, 'shifts');
-        // Simplified query to fetch shifts with 'In attesa' status
         const q = query(shiftsCollection, where('status', '==', 'In attesa'));
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const shiftsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
-            // Filter for completed shifts on the client-side
             const completedPendingShifts = shiftsData.filter(s => s.endTime);
             setPendingShifts(completedPendingShifts.sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime()));
         });
@@ -134,5 +132,3 @@ export default function ShiftApprovalPage() {
         </div>
     );
 }
-
-    
