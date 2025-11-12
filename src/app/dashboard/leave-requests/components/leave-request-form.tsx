@@ -12,9 +12,10 @@ import { addDoc, collection } from 'firebase/firestore';
 
 interface LeaveRequestFormProps {
     userName: string;
+    userId: string;
 }
 
-export function LeaveRequestForm({ userName }: LeaveRequestFormProps) {
+export function LeaveRequestForm({ userName, userId }: LeaveRequestFormProps) {
     const { toast } = useToast();
     const firestore = useFirestore();
     const [draft, setDraft] = React.useState<Partial<Omit<LeaveRequest, 'id'>>>({});
@@ -39,7 +40,8 @@ export function LeaveRequestForm({ userName }: LeaveRequestFormProps) {
 
         const newRequest: Omit<LeaveRequest, 'id'> = {
             user: userName,
-            type: draft.type,
+            operatorId: userId,
+            type: draft.type!,
             from: draft.from,
             to: draft.to,
             timeFrom: draft.type === 'Permesso' ? draft.timeFrom : undefined,

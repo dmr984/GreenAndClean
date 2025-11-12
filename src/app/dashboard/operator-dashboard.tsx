@@ -20,6 +20,7 @@ type UserData = {
 type LeaveRequest = {
   id: string;
   user: string;
+  operatorId: string;
   type: string;
   from: string;
   to: string;
@@ -82,7 +83,7 @@ export function OperatorDashboard() {
             setShifts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Shift)));
         });
         
-        const leavesQuery = query(collection(firestore, 'leave-requests'), where('user', '==', currentUser.username));
+        const leavesQuery = query(collection(firestore, 'leave-requests'), where('operatorId', '==', currentUser.id));
         const leavesUnsub = onSnapshot(leavesQuery, snapshot => {
             setLeaveRequests(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as LeaveRequest)));
         });

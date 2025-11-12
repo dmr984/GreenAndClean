@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -54,14 +53,15 @@ export function AddSicknessDialog({ isOpen, onOpenChange }: AddSicknessDialogPro
             return;
         }
 
-        const operatorName = operators.find(op => op.id === selectedOperator)?.username;
-        if(!operatorName) {
+        const operator = operators.find(op => op.id === selectedOperator);
+        if(!operator) {
             toast({ title: "Operatore non valido", variant: "destructive" });
             return;
         }
 
         const newSicknessRequest: Omit<LeaveRequest, 'id'> = {
-            user: operatorName,
+            user: operator.username,
+            operatorId: operator.id,
             type: 'Malattia',
             from: fromDate,
             to: toDate,
@@ -71,7 +71,7 @@ export function AddSicknessDialog({ isOpen, onOpenChange }: AddSicknessDialogPro
         
         try {
             await addDoc(collection(firestore, 'leave-requests'), newSicknessRequest);
-            toast({ title: "Malattia Registrata", description: `Periodo di malattia aggiunto per ${operatorName}.` });
+            toast({ title: "Malattia Registrata", description: `Periodo di malattia aggiunto per ${operator.username}.` });
             resetAndClose();
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile registrare il periodo di malattia.", variant: "destructive" });

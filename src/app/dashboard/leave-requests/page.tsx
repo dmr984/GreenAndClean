@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { LeaveRequestForm } from "./components/leave-request-form";
 import { LeaveRequestsList } from "./components/leave-requests-list";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Bed } from "lucide-react";
+import { Bed } from "lucide-react";
 import { AddSicknessDialog } from "./components/add-sickness-dialog";
 import { useFirestore } from "@/firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -17,7 +17,8 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 export type LeaveRequest = {
   id: string;
-  user: string;
+  user: string; // Kept for display, but logic will use operatorId
+  operatorId: string;
   type: string;
   from: string;
   to: string;
@@ -37,6 +38,7 @@ export default function LeaveRequestsPage() {
     const { toast } = useToast();
     const firestore = useFirestore();
     const [userRole, setUserRole] = React.useState<string|null>(null);
+    const [userId, setUserId] = React.useState<string|null>(null);
     const [userName, setUserName] = React.useState<string|null>(null);
     const [isSicknessDialogOpen, setIsSicknessDialogOpen] = React.useState(false);
 
@@ -46,14 +48,13 @@ export default function LeaveRequestsPage() {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const isAdmin = storedUser.role === 'admin';
         setUserRole(storedUser.role || null);
+        setUserId(storedUser.id || null);
         setUserName(storedUser.username || null);
         
         let q = query(collection(firestore, 'leave-requests'));
 
-        // If the user is not an admin, we only fetch their own leave requests.
-        // This is crucial for security rules to work correctly.
-        if (!isAdmin && storedUser.username) {
-            q = query(collection(firestore, 'leave-requests'), where("user", "==", storedUser.username));
+        if (!isAdmin && storedUser.id) {
+            q = query(collection(firestore, 'leave-requests'), where("operatorId", "==", storedUser.id));
         }
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -73,8 +74,6 @@ export default function LeaveRequestsPage() {
     }, [firestore, toast]);
 
     const isAdmin = userRole === 'admin';
-    // The filtering is now primarily done by the Firestore query, but we keep this for safety.
-    const userRequests = isAdmin ? requests : requests.filter(r => r.user === userName);
 
     return (
         <div className="flex flex-col gap-8">
@@ -97,13 +96,14 @@ export default function LeaveRequestsPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-8">
-                    {!isAdmin && userName && (
+                    {!isAdmin && userName && userId && (
                         <LeaveRequestForm
                             userName={userName}
+                            userId={userId}
                          />
                     )}
                     <LeaveRequestsList
-                        requests={userRequests}
+                        requests={requests}
                         isAdmin={isAdmin}
                     />
                 </CardContent>

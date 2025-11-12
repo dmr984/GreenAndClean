@@ -14,9 +14,9 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == operatorId;
     }
 
-    match /operators/{operatorId}/leaveRequests/{leaveRequestId} {
+    match /leave-requests/{leaveRequestId} {
       allow create: if request.auth != null && request.resource.data.operatorId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && request.auth.uid == operatorId;
+      allow read, update, delete: if request.auth != null && (request.resource.data.operatorId == request.auth.uid || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
     match /announcements/{announcementId} {
@@ -37,26 +37,8 @@ service cloud.firestore {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
     
-    // Corrected rule for leave-requests collection
-    match /leave-requests/{leaveRequestId} {
-       // Allow users to create their own requests
-       allow create: if request.auth != null;
-       
-       // Allow users to read THEIR OWN requests (list and get)
-       allow read: if request.auth != null && (
-         (request.path[2] == 'leave-requests' && request.query.where.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username) ||
-         (resource.data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username)
-       );
-       
-       // Allow users to update/delete THEIR OWN requests (if pending)
-       allow update, delete: if request.auth != null && get(/databases/$(database)/documents/leave-requests/$(leaveRequestId)).data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username;
-
-       // Allow admins to do anything
-       allow read, write, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-    
      match /supply-requests/{supplyRequestId} {
-      allow read, update: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      allow read, update: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.authuid));
     }
      match /extra-shift-requests/{requestId} {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));

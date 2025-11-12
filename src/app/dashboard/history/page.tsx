@@ -32,7 +32,8 @@ type Shift = {
 
 type LeaveRequest = { 
     id: string; 
-    user: string; 
+    user: string;
+    operatorId: string;
     type: string; 
     from: string; 
     to: string; 
@@ -199,7 +200,7 @@ export default function HistoryPage() {
         const selectedUser = allUsers.find(u => u.id === selectedUserId);
         if (selectedUser) {
             const userShifts = allShifts.filter(s => s.userId === selectedUserId);
-            const userLeaves = allLeaveRequests.filter(l => l.user === selectedUser.username);
+            const userLeaves = allLeaveRequests.filter(l => l.operatorId === selectedUserId);
 
             const stats = processMonthlyData(userShifts, userLeaves, selectedUser);
             setMonthlyStats(stats);
@@ -240,9 +241,8 @@ export default function HistoryPage() {
         });
         shiftsToDelete.forEach(s => batch.delete(doc(firestore, 'shifts', s.id)));
 
-        const selectedUser = allUsers.find(u => u.id === userId);
         const leaveRequestsToDelete = allLeaveRequests.filter(l => {
-             if (l.user !== selectedUser?.username) return false;
+             if (l.operatorId !== userId) return false;
              const leaveDate = new Date(l.from);
              return leaveDate.getFullYear() === year && (leaveDate.getMonth() + 1) === monthNum;
         });
