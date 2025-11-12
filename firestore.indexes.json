@@ -2,7 +2,7 @@
   "indexes": [
     {
       "collectionGroup": "shifts",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "status",
@@ -16,7 +16,7 @@
     },
     {
       "collectionGroup": "shifts",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "userId",
@@ -30,7 +30,7 @@
     },
     {
       "collectionGroup": "extra-shift-requests",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "userId",
@@ -44,7 +44,7 @@
     },
     {
       "collectionGroup": "leave-requests",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "user",
@@ -59,3 +59,5 @@
   ],
   "fieldOverrides": []
 }
+
+    
