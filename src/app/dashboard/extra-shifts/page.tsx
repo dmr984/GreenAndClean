@@ -6,6 +6,8 @@ import { CheckCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useFirestore } from "@/firebase";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 
 type ExtraShiftRequest = {
   id: string;
@@ -15,49 +17,42 @@ type ExtraShiftRequest = {
   status: 'pending' | 'approved';
 };
 
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
-};
-
 
 export default function ExtraShiftApprovalPage() {
     const { toast } = useToast();
+    const firestore = useFirestore();
     const [pendingRequests, setPendingRequests] = React.useState<ExtraShiftRequest[]>([]);
 
     React.useEffect(() => {
-        const loadRequests = () => {
-            const allRequests = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
-            const pending = allRequests.filter(s => s.status === 'pending');
-            setPendingRequests(pending.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-        };
-        
-        loadRequests();
-        window.addEventListener('storage', loadRequests);
-        return () => window.removeEventListener('storage', loadRequests);
-    }, []);
+        if (!firestore) return;
 
-    const handleApproveRequest = (requestId: string) => {
-        const allRequests = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
-        const updatedRequests = allRequests.map(s => s.id === requestId ? { ...s, status: 'approved' } : s);
-        saveToStorage('extra-shift-requests', updatedRequests);
+        const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
         
-        setPendingRequests(prev => prev.filter(s => s.id !== requestId));
-        toast({
-            title: "Richiesta Approvata",
-            description: "L'operatore è stato autorizzato a effettuare una nuova timbratura.",
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtraShiftRequest));
+            setPendingRequests(requests.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
         });
+
+        return () => unsubscribe();
+    }, [firestore]);
+
+    const handleApproveRequest = async (requestId: string) => {
+        if (!firestore) return;
+        
+        const requestRef = doc(firestore, 'extra-shift-requests', requestId);
+        try {
+            await updateDoc(requestRef, { status: 'approved' });
+            toast({
+                title: "Richiesta Approvata",
+                description: "L'operatore è stato autorizzato a effettuare una nuova timbratura.",
+            });
+        } catch (error) {
+            toast({
+                title: "Errore",
+                description: "Impossibile approvare la richiesta.",
+                variant: 'destructive'
+            });
+        }
     };
 
     return (

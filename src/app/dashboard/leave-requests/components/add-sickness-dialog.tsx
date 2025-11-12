@@ -9,9 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { LeaveRequest } from '../page';
-import { getFromStorage, saveToStorage } from '../page';
 import { useFirestore } from '@/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 
 
 type AppUser = {
@@ -23,10 +22,9 @@ type AppUser = {
 interface AddSicknessDialogProps {
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
-    onSicknessAdded: () => void;
 }
 
-export function AddSicknessDialog({ isOpen, onOpenChange, onSicknessAdded }: AddSicknessDialogProps) {
+export function AddSicknessDialog({ isOpen, onOpenChange }: AddSicknessDialogProps) {
     const { toast } = useToast();
     const firestore = useFirestore();
 
@@ -48,10 +46,10 @@ export function AddSicknessDialog({ isOpen, onOpenChange, onSicknessAdded }: Add
     }, [firestore]);
 
 
-    const handleAddSickness = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleAddSickness = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
-        if (!selectedOperator || !fromDate || !toDate) {
+        if (!firestore || !selectedOperator || !fromDate || !toDate) {
             toast({ title: "Campi mancanti", description: "Seleziona un operatore e le date.", variant: "destructive" });
             return;
         }
@@ -62,8 +60,7 @@ export function AddSicknessDialog({ isOpen, onOpenChange, onSicknessAdded }: Add
             return;
         }
 
-        const newSicknessRequest: LeaveRequest = {
-            id: `LR${Date.now()}`,
+        const newSicknessRequest: Omit<LeaveRequest, 'id'> = {
             user: operatorName,
             type: 'Malattia',
             from: fromDate,
@@ -72,12 +69,13 @@ export function AddSicknessDialog({ isOpen, onOpenChange, onSicknessAdded }: Add
             status: 'Approvata'
         };
         
-        const existingRequests = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        saveToStorage('leave-requests', [newSicknessRequest, ...existingRequests]);
-        
-        toast({ title: "Malattia Registrata", description: `Periodo di malattia aggiunto per ${operatorName}.` });
-        onSicknessAdded();
-        resetAndClose();
+        try {
+            await addDoc(collection(firestore, 'leave-requests'), newSicknessRequest);
+            toast({ title: "Malattia Registrata", description: `Periodo di malattia aggiunto per ${operatorName}.` });
+            resetAndClose();
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile registrare il periodo di malattia.", variant: "destructive" });
+        }
     };
     
     const resetAndClose = () => {
@@ -136,4 +134,3 @@ export function AddSicknessDialog({ isOpen, onOpenChange, onSicknessAdded }: Add
         </Dialog>
     );
 }
-

@@ -14,15 +14,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import type { LeaveRequest } from '../page';
+import { useFirestore } from '@/firebase';
+import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 interface LeaveRequestsListProps {
     requests: LeaveRequest[];
     isAdmin: boolean;
-    onUpdateRequest: (request: LeaveRequest) => void;
-    onDeleteRequest: (requestId: string) => void;
 }
 
-export function LeaveRequestsList({ requests, isAdmin, onUpdateRequest, onDeleteRequest }: LeaveRequestsListProps) {
+export function LeaveRequestsList({ requests, isAdmin }: LeaveRequestsListProps) {
+    const firestore = useFirestore();
     const [isRejectDialogOpen, setIsRejectDialogOpen] = React.useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -31,12 +32,19 @@ export function LeaveRequestsList({ requests, isAdmin, onUpdateRequest, onDelete
     const { toast } = useToast();
     const [editDraft, setEditDraft] = React.useState<Partial<LeaveRequest>>({});
 
-    const handleApprove = (id: string) => {
-        const request = requests.find(r => r.id === id);
-        if(request) {
-            onUpdateRequest({ ...request, status: "Approvata" });
-            toast({ title: "Richiesta Approvata", variant: "default" });
+    const handleUpdateRequest = async (id: string, updates: Partial<LeaveRequest>) => {
+        if (!firestore) return;
+        const docRef = doc(firestore, 'leave-requests', id);
+        try {
+            await updateDoc(docRef, updates);
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile aggiornare la richiesta.", variant: 'destructive' });
         }
+    }
+
+    const handleApprove = (id: string) => {
+        handleUpdateRequest(id, { status: "Approvata" });
+        toast({ title: "Richiesta Approvata", variant: "default" });
     }
     
     const openRejectDialog = (request: LeaveRequest) => {
@@ -46,7 +54,7 @@ export function LeaveRequestsList({ requests, isAdmin, onUpdateRequest, onDelete
     
     const handleRejectSubmit = () => {
         if (!selectedRequest) return;
-        onUpdateRequest({ ...selectedRequest, status: "Rifiutata", adminNotes: rejectionReason });
+        handleUpdateRequest(selectedRequest.id, { status: "Rifiutata", adminNotes: rejectionReason });
         toast({ title: "Richiesta Rifiutata", variant: "destructive" });
         setIsRejectDialogOpen(false);
         setSelectedRequest(null);
@@ -58,12 +66,17 @@ export function LeaveRequestsList({ requests, isAdmin, onUpdateRequest, onDelete
         setIsDeleteDialogOpen(true);
     }
     
-    const handleDeleteRequest = () => {
-        if (!selectedRequest) return;
-        onDeleteRequest(selectedRequest.id);
-        toast({ title: "Richiesta Eliminata", variant: "destructive"});
-        setIsDeleteDialogOpen(false);
-        setSelectedRequest(null);
+    const handleDeleteRequest = async () => {
+        if (!selectedRequest || !firestore) return;
+        try {
+            await deleteDoc(doc(firestore, 'leave-requests', selectedRequest.id));
+            toast({ title: "Richiesta Eliminata", variant: "destructive"});
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile eliminare la richiesta.", variant: "destructive"});
+        } finally {
+            setIsDeleteDialogOpen(false);
+            setSelectedRequest(null);
+        }
     }
 
     const openEditDialog = (request: LeaveRequest) => {
@@ -90,15 +103,14 @@ export function LeaveRequestsList({ requests, isAdmin, onUpdateRequest, onDelete
             return;
         }
 
-        const updatedRequest: LeaveRequest = {
-            ...selectedRequest,
+        const updatedRequest: Partial<LeaveRequest> = {
             ...editDraft,
             status: 'In attesa', // Reset status on edit
             timeFrom: editDraft.type === 'Permesso' ? editDraft.timeFrom : undefined,
             timeTo: editDraft.type === 'Permesso' ? editDraft.timeTo : undefined,
         };
         
-        onUpdateRequest(updatedRequest);
+        handleUpdateRequest(selectedRequest.id, updatedRequest);
         
         toast({ title: "Richiesta Modificata", description: "La tua richiesta è stata aggiornata." });
         setIsEditDialogOpen(false);

@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useFirestore } from "@/firebase";
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 
 type WarehouseItem = {
   id: string;
@@ -18,26 +20,10 @@ type WarehouseItem = {
   quantity: number;
 };
 
-// Function to get items from localStorage
-const getItemsFromStorage = (): WarehouseItem[] => {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('warehouse-items');
-  try {
-    return stored ? JSON.parse(stored) : [];
-  } catch (e) {
-    return [];
-  }
-};
-
-// Function to save items to localStorage
-const saveItemsToStorage = (items: WarehouseItem[]) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('warehouse-items', JSON.stringify(items));
-  window.dispatchEvent(new Event('storage'));
-};
 
 export default function WarehousePage() {
   const { toast } = useToast();
+  const firestore = useFirestore();
   const [items, setItems] = React.useState<WarehouseItem[]>([]);
   const [isItemDialogOpen, setIsItemDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
@@ -45,34 +31,35 @@ export default function WarehousePage() {
   const [isEditing, setIsEditing] = React.useState(false);
 
   React.useEffect(() => {
-    setItems(getItemsFromStorage());
-  }, []);
+    if (!firestore) return;
+    const unsubscribe = onSnapshot(collection(firestore, 'warehouse-items'), (snapshot) => {
+        setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WarehouseItem)));
+    });
+    return () => unsubscribe();
+  }, [firestore]);
 
-  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!firestore) return;
+
     const form = event.currentTarget;
     const name = (form.elements.namedItem('name') as HTMLInputElement).value;
     const quantity = Number((form.elements.namedItem('quantity') as HTMLInputElement).value);
 
-    let updatedItems: WarehouseItem[];
-
-    if (isEditing && selectedItem) {
-      // Edit item
-      updatedItems = items.map(i => i.id === selectedItem.id ? { ...i, name, quantity } : i);
-      toast({ title: "Prodotto Modificato", description: `"${name}" è stato aggiornato.` });
-    } else {
-      // Add new item
-      const newItem: WarehouseItem = {
-        id: `ITEM${Date.now()}`,
-        name,
-        quantity,
-      };
-      updatedItems = [...items, newItem];
-      toast({ title: "Prodotto Aggiunto", description: `"${name}" è stato aggiunto al magazzino.` });
+    try {
+        if (isEditing && selectedItem) {
+          // Edit item
+          const docRef = doc(firestore, 'warehouse-items', selectedItem.id);
+          await updateDoc(docRef, { name, quantity });
+          toast({ title: "Prodotto Modificato", description: `"${name}" è stato aggiornato.` });
+        } else {
+          // Add new item
+          await addDoc(collection(firestore, 'warehouse-items'), { name, quantity });
+          toast({ title: "Prodotto Aggiunto", description: `"${name}" è stato aggiunto al magazzino.` });
+        }
+    } catch (error) {
+        toast({ title: "Errore", description: "Impossibile salvare il prodotto.", variant: "destructive"});
     }
-    
-    setItems(updatedItems);
-    saveItemsToStorage(updatedItems);
 
     setIsItemDialogOpen(false);
     setSelectedItem(null);
@@ -80,30 +67,36 @@ export default function WarehousePage() {
     form.reset();
   };
   
-  const handleDeleteItem = () => {
-    if (!selectedItem) return;
+  const handleDeleteItem = async () => {
+    if (!selectedItem || !firestore) return;
     
-    const updatedItems = items.filter(item => item.id !== selectedItem.id)
-    setItems(updatedItems);
-    saveItemsToStorage(updatedItems);
+    try {
+        await deleteDoc(doc(firestore, 'warehouse-items', selectedItem.id));
+        toast({
+          title: "Prodotto Eliminato",
+          description: `"${selectedItem.name}" è stato rimosso dal magazzino.`,
+          variant: "destructive"
+        });
+    } catch (error) {
+        toast({ title: "Errore", description: "Impossibile eliminare il prodotto.", variant: "destructive"});
+    }
 
-    toast({
-      title: "Prodotto Eliminato",
-      description: `"${selectedItem.name}" è stato rimosso dal magazzino.`,
-      variant: "destructive"
-    });
     setIsDeleteDialogOpen(false);
     setSelectedItem(null);
   }
 
-  const handleQuantityChange = (itemId: string, amount: number) => {
-    const updatedItems = items.map(item =>
-        item.id === itemId
-          ? { ...item, quantity: Math.max(0, item.quantity + amount) } // Prevent negative quantity
-          : item
-      );
-    setItems(updatedItems);
-    saveItemsToStorage(updatedItems);
+  const handleQuantityChange = async (itemId: string, amount: number) => {
+    if (!firestore) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    const newQuantity = Math.max(0, item.quantity + amount);
+    const docRef = doc(firestore, 'warehouse-items', itemId);
+    try {
+        await updateDoc(docRef, { quantity: newQuantity });
+    } catch(error) {
+        toast({ title: "Errore", description: "Impossibile aggiornare la quantità.", variant: "destructive"});
+    }
   };
   
   const openDialog = (item: WarehouseItem | null, editing: boolean) => {

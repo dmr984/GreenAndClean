@@ -8,6 +8,8 @@ import { LeaveRequestsList } from "./components/leave-requests-list";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Bed } from "lucide-react";
 import { AddSicknessDialog } from "./components/add-sickness-dialog";
+import { useFirestore } from "@/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
 
 // ==================================
 // SHARED TYPES & UTILS
@@ -26,26 +28,6 @@ export type LeaveRequest = {
   adminNotes?: string;
 };
 
-// Generic function to get data from localStorage
-export const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    console.error(`Failed to parse ${key} from storage`, e);
-    return defaultValue;
-  }
-};
-
-// Generic function to save data to localStorage
-export const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
-};
-
-
 // ==================================
 // MAIN PAGE COMPONENT
 // ==================================
@@ -53,45 +35,26 @@ export const saveToStorage = <T,>(key: string, data: T) => {
 export default function LeaveRequestsPage() {
     const [requests, setRequests] = React.useState<LeaveRequest[]>([]);
     const { toast } = useToast();
+    const firestore = useFirestore();
     const [userRole, setUserRole] = React.useState<string|null>(null);
     const [userName, setUserName] = React.useState<string|null>(null);
     const [isSicknessDialogOpen, setIsSicknessDialogOpen] = React.useState(false);
 
     React.useEffect(() => {
-        const storedUser = getFromStorage<{role?: string, username?: string}>('user', {});
-        setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
+        if (!firestore) return;
+        
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUserRole(storedUser.role || null);
         setUserName(storedUser.username || null);
         
-        const handleStorageChange = () => {
-             setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
-        }
+        const unsubscribe = onSnapshot(collection(firestore, 'leave-requests'), (snapshot) => {
+            const requestList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest));
+            setRequests(requestList.sort((a,b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+        });
 
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
+        return () => unsubscribe();
 
-    }, []);
-    
-    const updateAllRequests = (updatedRequests: LeaveRequest[]) => {
-        setRequests(updatedRequests);
-        saveToStorage('leave-requests', updatedRequests);
-    };
-
-    const handleNewRequest = (newRequest: LeaveRequest) => {
-        const updatedRequests = [newRequest, ...requests];
-        updateAllRequests(updatedRequests);
-        toast({ title: "Richiesta Inviata", description: "La tua richiesta è stata inviata per l'approvazione." });
-    };
-
-    const handleUpdateRequest = (updatedRequest: LeaveRequest) => {
-        const updatedRequests = requests.map(r => r.id === updatedRequest.id ? updatedRequest : r);
-        updateAllRequests(updatedRequests);
-    }
-    
-    const handleDeleteRequest = (requestId: string) => {
-        const updatedRequests = requests.filter(r => r.id !== requestId);
-        updateAllRequests(updatedRequests);
-    }
+    }, [firestore]);
 
     const isAdmin = userRole === 'admin';
     const userRequests = isAdmin ? requests : requests.filter(r => r.user === userName);
@@ -120,14 +83,11 @@ export default function LeaveRequestsPage() {
                     {!isAdmin && userName && (
                         <LeaveRequestForm
                             userName={userName}
-                            onNewRequest={handleNewRequest}
                          />
                     )}
                     <LeaveRequestsList
                         requests={userRequests}
                         isAdmin={isAdmin}
-                        onUpdateRequest={handleUpdateRequest}
-                        onDeleteRequest={handleDeleteRequest}
                     />
                 </CardContent>
             </Card>
@@ -136,7 +96,6 @@ export default function LeaveRequestsPage() {
                 <AddSicknessDialog 
                     isOpen={isSicknessDialogOpen}
                     onOpenChange={setIsSicknessDialogOpen}
-                    onSicknessAdded={() => setRequests(getFromStorage<LeaveRequest[]>('leave-requests', []))}
                 />
             }
         </div>

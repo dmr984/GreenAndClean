@@ -7,32 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { LeaveRequest } from '../page';
-import { getFromStorage, saveToStorage } from '../page';
+import { useFirestore } from '@/firebase';
+import { addDoc, collection } from 'firebase/firestore';
 
 interface LeaveRequestFormProps {
     userName: string;
-    onNewRequest: (request: LeaveRequest) => void;
 }
 
-export function LeaveRequestForm({ userName, onNewRequest }: LeaveRequestFormProps) {
+export function LeaveRequestForm({ userName }: LeaveRequestFormProps) {
     const { toast } = useToast();
-    const [draft, setDraft] = React.useState<Partial<LeaveRequest>>({});
-
-    React.useEffect(() => {
-        const savedDraft = getFromStorage<Partial<LeaveRequest>>('leave-request-draft', {});
-        setDraft(savedDraft);
-    }, []);
-
-    React.useEffect(() => {
-        saveToStorage('leave-request-draft', draft);
-    }, [draft]);
+    const firestore = useFirestore();
+    const [draft, setDraft] = React.useState<Partial<Omit<LeaveRequest, 'id'>>>({});
 
     const handleDraftChange = (field: keyof LeaveRequest, value: string) => {
         setDraft(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleNewRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleNewRequestSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!firestore) return;
         
         if (!draft.type || !draft.from || !draft.to) {
             toast({ title: "Campi mancanti", description: "Per favore compila tutti i campi richiesti.", variant: "destructive" });
@@ -44,8 +37,7 @@ export function LeaveRequestForm({ userName, onNewRequest }: LeaveRequestFormPro
             return;
         }
 
-        const newRequest: LeaveRequest = {
-            id: `LR${Date.now()}`,
+        const newRequest: Omit<LeaveRequest, 'id'> = {
             user: userName,
             type: draft.type,
             from: draft.from,
@@ -56,8 +48,13 @@ export function LeaveRequestForm({ userName, onNewRequest }: LeaveRequestFormPro
             status: 'In attesa'
         };
         
-        onNewRequest(newRequest);
-        setDraft({}); // Clear draft
+        try {
+            await addDoc(collection(firestore, 'leave-requests'), newRequest);
+            toast({ title: "Richiesta Inviata", description: "La tua richiesta è stata inviata per l'approvazione." });
+            setDraft({}); // Clear draft
+        } catch (error) {
+             toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+        }
     };
 
     return (

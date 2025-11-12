@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useFirestore } from "@/firebase";
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 
 
 // ==================================
@@ -39,67 +41,49 @@ type WarehouseItem = {
   quantity: number;
 };
 
-// Generic function to get data from localStorage
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    console.error(`Failed to parse ${key} from storage`, e);
-    return defaultValue;
-  }
-};
-
-// Generic function to save data to localStorage
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage')); 
-};
-
 
 // ==================================
 // MAIN PAGE COMPONENT
 // ==================================
 
 export default function SupplyRequestsPage() {
+    const { toast } = useToast();
+    const firestore = useFirestore();
+
     const [requests, setRequests] = React.useState<SupplyRequest[]>([]);
     const [warehouseItems, setWarehouseItems] = React.useState<WarehouseItem[]>([]);
+    
     const [isManageRequestDialogOpen, setIsManageRequestDialogOpen] = React.useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
     const [selectedRequest, setSelectedRequest] = React.useState<SupplyRequest | null>(null);
     const [manageFormState, setManageFormState] = React.useState<{ fulfilledItems: { [key: string]: number }, notes: string }>({ fulfilledItems: {}, notes: "" });
-    const { toast } = useToast();
+    
     const [userRole, setUserRole] = React.useState<string|null>(null);
     const [userName, setUserName] = React.useState<string|null>(null);
 
-    // Draft state for new request with auto-saving
+    // Draft state for new request
     const [draftItems, setDraftItems] = React.useState<{ [itemName: string]: number }>({});
     
     React.useEffect(() => {
+        if (!firestore) return;
+
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUserRole(storedUser.role);
         setUserName(storedUser.username);
-        setRequests(getFromStorage<SupplyRequest[]>('supply-requests', []));
-        setWarehouseItems(getFromStorage<WarehouseItem[]>('warehouse-items', []));
         
-        if (storedUser.role === 'operator') {
-            setDraftItems(getFromStorage<{ [itemName: string]: number }>('supply-request-draft', {}));
-        }
-    }, []);
+        const requestsUnsub = onSnapshot(collection(firestore, 'supply-requests'), (snapshot) => {
+            setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest)));
+        });
 
-    // Auto-save draft to localStorage whenever it changes
-    React.useEffect(() => {
-        if (userRole === 'operator') {
-            saveToStorage('supply-request-draft', draftItems);
-        }
-    }, [draftItems, userRole]);
+        const warehouseUnsub = onSnapshot(collection(firestore, 'warehouse-items'), (snapshot) => {
+            setWarehouseItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WarehouseItem)));
+        });
 
-    const updateAllRequests = (updatedRequests: SupplyRequest[]) => {
-        setRequests(updatedRequests);
-        saveToStorage('supply-requests', updatedRequests);
-    };
+        return () => {
+            requestsUnsub();
+            warehouseUnsub();
+        }
+    }, [firestore]);
 
     const handleItemQuantityChange = (itemName: string, amount: number) => {
         setDraftItems(prev => {
@@ -113,22 +97,25 @@ export default function SupplyRequestsPage() {
         });
     };
 
-    const handleNewRequestSubmit = () => {
-        if (Object.keys(draftItems).length === 0) {
+    const handleNewRequestSubmit = async () => {
+        if (Object.keys(draftItems).length === 0 || !firestore) {
             toast({ title: "Nessun prodotto selezionato", description: "Aggiungi almeno un prodotto alla richiesta.", variant: "destructive" });
             return;
         }
 
-        const newRequest: SupplyRequest = {
-            id: `SR${Date.now()}`,
+        const newRequest = {
             user: userName || 'Operatore',
             items: draftItems,
-            status: 'In attesa',
+            status: 'In attesa' as const,
         };
         
-        updateAllRequests([newRequest, ...requests]);
-        toast({ title: "Richiesta Inviata", description: "La tua richiesta di forniture è stata inviata." });
-        setDraftItems({}); // Clear draft
+        try {
+            await addDoc(collection(firestore, 'supply-requests'), newRequest);
+            toast({ title: "Richiesta Inviata", description: "La tua richiesta di forniture è stata inviata." });
+            setDraftItems({}); // Clear draft
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+        }
     };
   
     const openManageDialog = (request: SupplyRequest) => {
@@ -142,80 +129,88 @@ export default function SupplyRequestsPage() {
         setIsDeleteDialogOpen(true);
     };
 
-    const handleDeleteRequest = () => {
-        if (!selectedRequest) return;
-        const updated = requests.filter(r => r.id !== selectedRequest.id);
-        updateAllRequests(updated);
-        toast({ title: "Richiesta Eliminata", variant: "destructive"});
-        setIsDeleteDialogOpen(false);
-        setSelectedRequest(null);
+    const handleDeleteRequest = async () => {
+        if (!selectedRequest || !firestore) return;
+        try {
+            await deleteDoc(doc(firestore, 'supply-requests', selectedRequest.id));
+            toast({ title: "Richiesta Eliminata", variant: "destructive"});
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile eliminare la richiesta.", variant: "destructive"});
+        } finally {
+            setIsDeleteDialogOpen(false);
+            setSelectedRequest(null);
+        }
     };
     
-    const handleManageRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleManageRequestSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!selectedRequest) return;
+        if (!selectedRequest || !firestore) return;
       
         const action = (e.nativeEvent as any).submitter.value as 'approve' | 'reject';
+        const requestRef = doc(firestore, 'supply-requests', selectedRequest.id);
       
-        let status: SupplyRequest['status'] = selectedRequest.status;
-        
-        // Handle rejection
-        if (action === 'reject') {
-            status = 'Rifiutata';
-            const updated = requests.map(r => r.id === selectedRequest.id ? { ...r, status, fulfilledItems: {}, adminNotes: manageFormState.notes } : r);
-            updateAllRequests(updated);
-            toast({ title: "Richiesta Rifiutata" });
-        } else { // Handle approval
-            const currentStock = getFromStorage<WarehouseItem[]>('warehouse-items', []);
-            let canFulfill = true;
-            let updatedStock = [...currentStock];
-
-            // Check stock availability
-            for (const itemName in manageFormState.fulfilledItems) {
-                const requestedQty = manageFormState.fulfilledItems[itemName];
-                const stockItem = updatedStock.find(i => i.name === itemName);
-                if (!stockItem || stockItem.quantity < requestedQty) {
-                    toast({
-                        title: "Quantità non disponibile",
-                        description: `Disponibilità per ${itemName}: ${stockItem?.quantity ?? 0}.`,
-                        variant: "destructive"
-                    });
-                    canFulfill = false;
-                    break;
-                }
-            }
-
-            if (!canFulfill) return;
-
-            // Update stock
-            for (const itemName in manageFormState.fulfilledItems) {
-                 const fulfilledQty = manageFormState.fulfilledItems[itemName];
-                 updatedStock = updatedStock.map(item => 
-                    item.name === itemName ? { ...item, quantity: item.quantity - fulfilledQty } : item
-                 );
-            }
-            saveToStorage('warehouse-items', updatedStock);
-            setWarehouseItems(updatedStock);
-
-            // Determine status
-            const isPartial = Object.keys(selectedRequest.items).some(key => (manageFormState.fulfilledItems[key] || 0) < selectedRequest.items[key]);
-            const totalFulfilled = Object.values(manageFormState.fulfilledItems).reduce((a, b) => a + b, 0);
-
-            let toastMessage = "";
-            if (totalFulfilled === 0 && selectedRequest.status !== 'Approvata') {
-                 status = 'Approvata'; // Approved but 0 items given
-                 toastMessage = "Richiesta approvata (0 unità fornite)";
-            } else if (isPartial) {
-                status = 'Parziale';
-                toastMessage = "Richiesta Approvata Parzialmente";
+        try {
+            if (action === 'reject') {
+                await updateDoc(requestRef, {
+                    status: 'Rifiutata',
+                    fulfilledItems: {},
+                    adminNotes: manageFormState.notes
+                });
+                toast({ title: "Richiesta Rifiutata" });
             } else {
-                status = 'Approvata';
-                toastMessage = "Richiesta Approvata Completamente";
+                let canFulfill = true;
+
+                // Check stock availability
+                for (const itemName in manageFormState.fulfilledItems) {
+                    const requestedQty = manageFormState.fulfilledItems[itemName];
+                    const stockItem = warehouseItems.find(i => i.name === itemName);
+                    if (!stockItem || stockItem.quantity < requestedQty) {
+                        toast({
+                            title: "Quantità non disponibile",
+                            description: `Disponibilità per ${itemName}: ${stockItem?.quantity ?? 0}.`,
+                            variant: "destructive"
+                        });
+                        canFulfill = false;
+                        break;
+                    }
+                }
+
+                if (!canFulfill) return;
+
+                // Update stock
+                for (const itemName in manageFormState.fulfilledItems) {
+                     const fulfilledQty = manageFormState.fulfilledItems[itemName];
+                     const itemToUpdate = warehouseItems.find(item => item.name === itemName);
+                     if (itemToUpdate) {
+                        const itemRef = doc(firestore, 'warehouse-items', itemToUpdate.id);
+                        await updateDoc(itemRef, { quantity: itemToUpdate.quantity - fulfilledQty });
+                     }
+                }
+
+                // Determine status and update request
+                const isPartial = Object.keys(selectedRequest.items).some(key => (manageFormState.fulfilledItems[key] || 0) < selectedRequest.items[key]);
+                const totalFulfilled = Object.values(manageFormState.fulfilledItems).reduce((a, b) => a + b, 0);
+
+                let status: SupplyRequest['status'] = 'Approvata';
+                let toastMessage = "Richiesta Approvata Completamente";
+
+                if (totalFulfilled === 0 && selectedRequest.status !== 'Approvata') {
+                     status = 'Approvata'; // Approved but 0 items given
+                     toastMessage = "Richiesta approvata (0 unità fornite)";
+                } else if (isPartial) {
+                    status = 'Parziale';
+                    toastMessage = "Richiesta Approvata Parzialmente";
+                }
+                
+                await updateDoc(requestRef, {
+                    status,
+                    fulfilledItems: manageFormState.fulfilledItems,
+                    adminNotes: manageFormState.notes
+                });
+                toast({ title: toastMessage });
             }
-            
-            const updated = requests.map(r => r.id === selectedRequest.id ? { ...r, status, fulfilledItems: manageFormState.fulfilledItems, adminNotes: manageFormState.notes } : r);
-            updateAllRequests(updated);
-            if(toastMessage) toast({ title: toastMessage });
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile gestire la richiesta.", variant: "destructive" });
         }
     
         setIsManageRequestDialogOpen(false);

@@ -15,11 +15,14 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useFirestore } from "@/firebase";
+import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc } from "firebase/firestore";
 
 
-type User = {
+type AppUser = {
   id: string;
-  name: string;
+  username: string;
+  role: 'admin' | 'operator';
 };
 
 type Announcement = {
@@ -32,50 +35,15 @@ type Announcement = {
   hiddenFor: string[]; // array of user IDs who have hidden it
 };
 
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-    if (typeof window === 'undefined') return defaultValue;
-    const stored = localStorage.getItem(key);
-    try {
-        return stored ? JSON.parse(stored) : defaultValue;
-    } catch(e) {
-        return defaultValue;
-    }
-};
-
-const saveToStorage = (key: string, data: any) => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(key, JSON.stringify(data));
-    window.dispatchEvent(new Event('storage'));
-};
-
-const getUsersFromStorage = (): User[] => {
-    const storedUsers = getFromStorage<{id: string; username: string}[]>('app-users', []);
-    return storedUsers.map(u => ({ id: u.id, name: u.username }));
-};
-
-const getAnnouncementsFromStorage = (): Announcement[] => {
-    const announcements = getFromStorage<any[]>('announcements', []);
-    // Data migration for backward compatibility
-    return announcements.map(a => ({
-        ...a,
-        readBy: a.readBy || (a.read ? ['all_legacy'] : []),
-        hiddenFor: a.hiddenFor || []
-    }));
-};
-
-const saveAnnouncementsToStorage = (announcements: Announcement[]) => {
-    saveToStorage('announcements', announcements);
-};
-
-
 export default function AnnouncementsPage() {
     const { toast } = useToast();
+    const firestore = useFirestore();
     const [userRole, setUserRole] = React.useState<string|null>(null);
     const [userId, setUserId] = React.useState<string|null>(null);
     const [announcements, setAnnouncements] = React.useState<Announcement[]>([]);
     
     // Admin state
-    const [operators, setOperators] = React.useState<User[]>([]);
+    const [operators, setOperators] = React.useState<AppUser[]>([]);
     const [title, setTitle] = React.useState("");
     const [content, setContent] = React.useState("");
     const [recipientType, setRecipientType] = React.useState("all");
@@ -86,28 +54,36 @@ export default function AnnouncementsPage() {
     
 
     React.useEffect(() => {
-        const storedUser = getFromStorage<{role?: string, id?: string}>('user', {});
+        if (!firestore) return;
+
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUserRole(storedUser.role || null);
         setUserId(storedUser.id || null);
 
-        const handleStorageChange = () => {
-            const allAnnouncements = getAnnouncementsFromStorage();
-            if (storedUser.role === 'admin') {
-                setOperators(getUsersFromStorage().filter(u => u.name !== 'Amministratore'));
-                // Admin sees announcements not hidden by them
+        const usersUnsub = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
+             const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
+                                .filter(u => u.role === 'operator');
+            setOperators(userList);
+        });
+
+        const announcementsUnsub = onSnapshot(collection(firestore, 'announcements'), (snapshot) => {
+            const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
+            
+            if (storedUser.role === 'admin' && storedUser.id) {
                 setAnnouncements(allAnnouncements.filter(a => !a.hiddenFor.includes(storedUser.id!)));
             } else if (storedUser.id) {
                  const userAnnouncements = allAnnouncements
                     .filter(a => (a.recipients.includes('all') || a.recipients.includes(storedUser.id!)) && !a.hiddenFor.includes(storedUser.id!));
-                setAnnouncements(userAnnouncements);
+                setAnnouncements(userAnnouncements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             }
-        };
+        });
 
-        handleStorageChange();
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
+        return () => {
+            usersUnsub();
+            announcementsUnsub();
+        }
 
-    }, []);
+    }, [firestore]);
 
     const handleSelectOperator = (operatorId: string) => {
         setSelectedOperators(prev => 
@@ -117,8 +93,9 @@ export default function AnnouncementsPage() {
         );
     };
 
-    const handleSendAnnouncement = (e: React.FormEvent) => {
+    const handleSendAnnouncement = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!firestore) return;
 
         if (!title || !content) {
             toast({ title: "Campi mancanti", description: "Titolo e contenuto sono obbligatori.", variant: "destructive" });
@@ -136,45 +113,44 @@ export default function AnnouncementsPage() {
             recipients = selectedOperators;
         }
 
-        const newAnnouncement: Announcement = {
-            id: `ANN${Date.now()}`,
-            title,
-            content,
-            date: new Date().toISOString(),
-            recipients,
-            readBy: [],
-            hiddenFor: []
-        };
+        try {
+            await addDoc(collection(firestore, "announcements"), {
+                title,
+                content,
+                date: new Date().toISOString(),
+                recipients,
+                readBy: [],
+                hiddenFor: []
+            });
 
-        const existingAnnouncements = getAnnouncementsFromStorage();
-        saveAnnouncementsToStorage([newAnnouncement, ...existingAnnouncements]);
-
-        toast({ title: "Annuncio Inviato", description: "Il tuo annuncio è stato inviato con successo." });
-
-        // Reset form
-        setTitle("");
-        setContent("");
-        setRecipientType("all");
-        setSelectedOperators([]);
-    };
+            toast({ title: "Annuncio Inviato", description: "Il tuo annuncio è stato inviato con successo." });
     
-    const markAsRead = (id: string) => {
-        if (!userId) return;
-        const allAnnouncements = getAnnouncementsFromStorage();
-        const target = allAnnouncements.find(a => a.id === id);
-        if (target && !target.readBy.includes(userId)) {
-            target.readBy.push(userId);
-            saveAnnouncementsToStorage(allAnnouncements);
+            // Reset form
+            setTitle("");
+            setContent("");
+            setRecipientType("all");
+            setSelectedOperators([]);
+
+        } catch (error) {
+             toast({ title: "Errore", description: "Impossibile inviare l'annuncio.", variant: "destructive" });
         }
     };
     
-    const hideForCurrentUser = (id: string) => {
-        if (!userId) return;
-        const allAnnouncements = getAnnouncementsFromStorage();
-        const target = allAnnouncements.find(a => a.id === id);
+    const markAsRead = async (id: string) => {
+        if (!userId || !firestore) return;
+        const target = announcements.find(a => a.id === id);
+        if (target && !target.readBy.includes(userId)) {
+            const docRef = doc(firestore, 'announcements', id);
+            await updateDoc(docRef, { readBy: arrayUnion(userId) });
+        }
+    };
+    
+    const hideForCurrentUser = async (id: string) => {
+        if (!userId || !firestore) return;
+        const target = announcements.find(a => a.id === id);
         if (target && !target.hiddenFor.includes(userId)) {
-            target.hiddenFor.push(userId);
-            saveAnnouncementsToStorage(allAnnouncements);
+             const docRef = doc(firestore, 'announcements', id);
+            await updateDoc(docRef, { hiddenFor: arrayUnion(userId) });
             toast({ title: "Annuncio Nascosto"});
         }
     };
@@ -184,17 +160,20 @@ export default function AnnouncementsPage() {
         setIsHardDeleteDialogOpen(true);
     };
     
-    const handleHardDelete = () => {
-        if (!selectedAnnouncement) return;
-        const allAnnouncements = getAnnouncementsFromStorage();
-        const updatedAnnouncements = allAnnouncements.filter(a => a.id !== selectedAnnouncement.id);
-        saveAnnouncementsToStorage(updatedAnnouncements);
-        toast({ title: "Annuncio Eliminato per Tutti", variant: "destructive" });
-        setIsHardDeleteDialogOpen(false);
-        setSelectedAnnouncement(null);
+    const handleHardDelete = async () => {
+        if (!selectedAnnouncement || !firestore) return;
+        try {
+            await deleteDoc(doc(firestore, 'announcements', selectedAnnouncement.id));
+            toast({ title: "Annuncio Eliminato per Tutti", variant: "destructive" });
+            setIsHardDeleteDialogOpen(false);
+            setSelectedAnnouncement(null);
+        } catch (error) {
+             toast({ title: "Errore", description: "Impossibile eliminare l'annuncio.", variant: "destructive" });
+        }
     };
     
     const isAdmin = userRole === 'admin';
+    const sortedAnnouncements = [...announcements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
     if (isAdmin && userId) {
         return (
@@ -251,7 +230,7 @@ export default function AnnouncementsPage() {
                                                             checked={selectedOperators.includes(op.id)}
                                                             onCheckedChange={() => handleSelectOperator(op.id)}
                                                           />
-                                                          <Label htmlFor={`op-${op.id}`} className="font-normal text-base">{op.name}</Label>
+                                                          <Label htmlFor={`op-${op.id}`} className="font-normal text-base">{op.username}</Label>
                                                       </div>
                                                   ))}
                                               </div>
@@ -275,9 +254,9 @@ export default function AnnouncementsPage() {
                     </CardHeader>
                     <CardContent>
                         <ScrollArea className="h-[70vh]">
-                        {announcements.length > 0 ? (
+                        {sortedAnnouncements.length > 0 ? (
                             <div className="space-y-4 pr-4">
-                                {announcements.map(ann => (
+                                {sortedAnnouncements.map(ann => (
                                      <Card key={ann.id} className="bg-muted/30">
                                         <CardHeader className="pb-3">
                                             <div className="flex justify-between items-start">
@@ -348,9 +327,9 @@ export default function AnnouncementsPage() {
                 </CardHeader>
                 <CardContent>
                     <ScrollArea className="h-[70vh]">
-                    {announcements.length > 0 ? (
+                    {sortedAnnouncements.length > 0 ? (
                         <div className="space-y-4 pr-4">
-                            {announcements.map(ann => {
+                            {sortedAnnouncements.map(ann => {
                                 const isRead = ann.readBy.includes(userId!);
                                 return (
                                  <Card key={ann.id} onClick={() => markAsRead(ann.id)} className={`transition-colors ${isRead ? 'bg-muted/50' : 'hover:bg-muted/20 cursor-pointer'}`}>

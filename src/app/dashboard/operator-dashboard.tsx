@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { CalendarCheck, Hourglass, TrendingUp, Timer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { useFirestore } from '@/firebase';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 
 type UserData = {
   id: string;
@@ -24,27 +26,6 @@ type LeaveRequest = {
   timeFrom?: string;
   timeTo?: string;
   status: 'In attesa' | 'Approvata' | 'Rifiutata';
-};
-
-type Announcement = {
-  id: string;
-  title: string;
-  content: string;
-  date: string;
-  recipients: string[]; // 'all' or array of user IDs
-  readBy: string[]; // array of user IDs who have read it
-  hiddenFor: string[]; // array of user IDs who have hidden it
-};
-
-
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
 };
 
 const StatCard = ({ icon, label, value, badgeCount }: { icon: React.ReactNode, label: string, value: string | number, badgeCount?: number }) => (
@@ -83,31 +64,35 @@ const formatMinutesToHours = (totalMinutes: number) => {
 }
 
 export function OperatorDashboard() {
+  const firestore = useFirestore();
   const [shifts, setShifts] = React.useState<Shift[]>([]);
   const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
   const [user, setUser] = React.useState<UserData | null>(null);
 
-  const refreshData = React.useCallback(() => {
-    if (typeof window === 'undefined') return;
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !firestore) return;
 
     const storedUser = localStorage.getItem('user');
     if(storedUser) {
         const currentUser: UserData = JSON.parse(storedUser);
         setUser(currentUser);
 
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
-        setShifts(allShifts.filter(s => s.userId === currentUser.id));
+        const shiftsQuery = query(collection(firestore, 'shifts'), where('userId', '==', currentUser.id));
+        const shiftsUnsub = onSnapshot(shiftsQuery, snapshot => {
+            setShifts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Shift)));
+        });
+        
+        const leavesQuery = query(collection(firestore, 'leave-requests'), where('user', '==', currentUser.username));
+        const leavesUnsub = onSnapshot(leavesQuery, snapshot => {
+            setLeaveRequests(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as LeaveRequest)));
+        });
 
-        const allLeaveRequests = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        setLeaveRequests(allLeaveRequests.filter(r => r.user === currentUser.username));
+        return () => {
+            shiftsUnsub();
+            leavesUnsub();
+        }
     }
-  }, []);
-
-  React.useEffect(() => {
-    refreshData();
-    window.addEventListener('storage', refreshData);
-    return () => window.removeEventListener('storage', refreshData);
-  }, [refreshData]);
+  }, [firestore]);
 
   const summaryStats = useMemo(() => {
     const now = new Date();
@@ -178,7 +163,7 @@ export function OperatorDashboard() {
       </div>
 
       <div className="grid gap-4 md:gap-8">
-        <ClockWidget onShiftComplete={refreshData} userId={user.id} userName={user.username} />
+        <ClockWidget userId={user.id} userName={user.username} />
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
           <div className="lg:col-span-1 grid grid-cols-2 gap-4">

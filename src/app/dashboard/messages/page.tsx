@@ -10,6 +10,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import Link from "next/link";
+import { useFirestore } from "@/firebase";
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 
 
 type Communication = {
@@ -19,24 +21,6 @@ type Communication = {
   text: string;
   timestamp: string;
   read: boolean;
-};
-
-// Generic function to get data from localStorage
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-// Generic function to save data to localStorage
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
 };
 
 const getAvatarFallback = (name?: string) => {
@@ -55,6 +39,7 @@ const generateEmailFromName = (name: string) => {
 
 export default function CommunicationsPage() {
     const { toast } = useToast();
+    const firestore = useFirestore();
     const [userRole, setUserRole] = React.useState<string | null>(null);
     const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
     const [currentUserName, setCurrentUserName] = React.useState<string | null>(null);
@@ -67,37 +52,29 @@ export default function CommunicationsPage() {
     const [selectedCommId, setSelectedCommId] = React.useState<string | null>(null);
 
     React.useEffect(() => {
-        const role = getFromStorage<string|null>('userRole', null);
-        const userId = getFromStorage<string|null>('userId', null);
-        const userName = getFromStorage<string|null>('userName', null);
+        if (!firestore) return;
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        setUserRole(storedUser.role || null);
+        setCurrentUserId(storedUser.id || null);
+        setCurrentUserName(storedUser.username || null);
 
-        setUserRole(role);
-        setCurrentUserId(userId);
-        setCurrentUserName(userName);
-
-        const handleStorageChange = () => {
-            const allComms = getFromStorage<Communication[]>('communications', []);
+        const unsubscribe = onSnapshot(collection(firestore, 'communications'), (snapshot) => {
+            const allComms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Communication));
             setCommunications(allComms.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        };
-
-        handleStorageChange(); // Initial load
-        window.addEventListener('storage', handleStorageChange);
+        });
+        
         setLoading(false);
+        return () => unsubscribe();
+    }, [firestore]);
 
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, []);
-
-    const handleSendCommunication = (e: React.FormEvent) => {
+    const handleSendCommunication = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newCommunication.trim() || !currentUserId || !currentUserName) {
+        if (!newCommunication.trim() || !currentUserId || !currentUserName || !firestore) {
             toast({ variant: "destructive", title: "Errore", description: "Impossibile inviare comunicazione vuota." });
             return;
         }
 
-        const communication: Communication = {
-            id: `COM${Date.now()}`,
+        const communication = {
             userId: currentUserId,
             userName: currentUserName,
             text: newCommunication.trim(),
@@ -105,11 +82,13 @@ export default function CommunicationsPage() {
             read: false,
         };
 
-        const updatedCommunications = [communication, ...communications];
-        saveToStorage('communications', updatedCommunications);
-        setCommunications(updatedCommunications);
-        setNewCommunication("");
-        toast({ title: "Comunicazione Inviata", description: "La tua comunicazione è stata inviata all'amministratore." });
+        try {
+            await addDoc(collection(firestore, 'communications'), communication);
+            setNewCommunication("");
+            toast({ title: "Comunicazione Inviata", description: "La tua comunicazione è stata inviata all'amministratore." });
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile inviare la comunicazione.", variant: "destructive" });
+        }
     };
 
     const handleDeleteClick = (id: string) => {
@@ -117,20 +96,26 @@ export default function CommunicationsPage() {
         setIsDeleteDialogOpen(true);
     }
 
-    const handleDeleteConfirm = () => {
-        if (!selectedCommId) return;
-        const updated = communications.filter(c => c.id !== selectedCommId);
-        saveToStorage('communications', updated);
-        setCommunications(updated);
-        toast({ title: "Comunicazione eliminata" });
-        setIsDeleteDialogOpen(false);
-        setSelectedCommId(null);
+    const handleDeleteConfirm = async () => {
+        if (!selectedCommId || !firestore) return;
+        try {
+            await deleteDoc(doc(firestore, 'communications', selectedCommId));
+            toast({ title: "Comunicazione eliminata" });
+        } catch (error) {
+             toast({ title: "Errore", description: "Impossibile eliminare la comunicazione.", variant: "destructive" });
+        } finally {
+            setIsDeleteDialogOpen(false);
+            setSelectedCommId(null);
+        }
     }
 
-    const markAsRead = (id: string) => {
-        const updated = communications.map(c => c.id === id ? { ...c, read: true } : c);
-        setCommunications(updated);
-        saveToStorage('communications', updated);
+    const markAsRead = async (id: string) => {
+        if (!firestore) return;
+        try {
+            await updateDoc(doc(firestore, 'communications', id), { read: true });
+        } catch (error) {
+            console.error("Failed to mark as read:", error);
+        }
     };
 
     const isAdmin = userRole === 'admin';

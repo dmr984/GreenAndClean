@@ -5,6 +5,8 @@ import { Clock, LogIn, LogOut, Coffee, Play, MapPin, LoaderCircle, AlertCircle }
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useFirestore } from "@/firebase";
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, setDoc } from "firebase/firestore";
 
 type Geolocation = {
   latitude: number;
@@ -39,38 +41,16 @@ type ExtraShiftRequest = {
     status: 'pending' | 'approved';
 }
 
-// Helper to get data from localStorage
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    const data = stored ? JSON.parse(stored) : defaultValue;
-    if (key === 'shifts') {
-        return (data as any[]).map(s => ({ ...s, pauses: s.pauses || [], status: s.status || 'In attesa' })) as T;
-    }
-    return data;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-// Helper to save data to localStorage
-const saveToStorage = (key: string, data: any) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
-};
-
 interface ClockWidgetProps {
-  onShiftComplete?: () => void;
   userId: string;
   userName: string;
 }
 
-export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetProps) {
+export function ClockWidget({ userId, userName }: ClockWidgetProps) {
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [isOnPause, setIsOnPause] = useState(false);
   const { toast } = useToast();
+  const firestore = useFirestore();
   const [lastActionTime, setLastActionTime] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("");
   const [isGettingLocation, setIsGettingLocation] = useState(false);
@@ -87,46 +67,50 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     return () => clearInterval(timer); // Cleanup
   }, []);
 
-  const checkShiftStatus = () => {
-    const shifts = getFromStorage<Shift[]>('shifts', []);
-    const currentActiveShift = shifts.find(s => s.userId === userId && s.startTime && !s.endTime) || null;
-    setActiveShift(currentActiveShift);
+  // Load active shift and check status on component mount and storage change
+  useEffect(() => {
+    if (!firestore || !userId) return;
 
-    if (currentActiveShift) {
-       const activePause = currentActiveShift.pauses.find(p => p.startTime && !p.endTime);
-       setIsOnPause(!!activePause);
-       if (activePause) {
-           setLastActionTime(new Date(activePause.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
-       } else if (currentActiveShift.startTime) {
-           setLastActionTime(new Date(currentActiveShift.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
-       }
-    } else {
-        // No active shift, check if they need approval for an extra one
-        const todayString = new Date().toISOString().split('T')[0];
-        const hasCompletedShiftToday = shifts.some(s => s.userId === userId && s.date === todayString && s.endTime);
-        setNeedsExtraShiftApproval(hasCompletedShiftToday);
+    const todayString = new Date().toISOString().split('T')[0];
 
-        if (hasCompletedShiftToday) {
-            const extraRequests = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
-            const todaysRequest = extraRequests.find(r => r.userId === userId && r.date === todayString);
-            if (todaysRequest) {
-                setExtraShiftRequestStatus(todaysRequest.status);
-            } else {
-                setExtraShiftRequestStatus('not_requested');
+    // Listen to all shifts for the user
+    const shiftsQuery = query(collection(firestore, 'shifts'), where('userId', '==', userId));
+    const shiftsUnsub = onSnapshot(shiftsQuery, (snapshot) => {
+        const shifts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
+        const currentActiveShift = shifts.find(s => s.startTime && !s.endTime) || null;
+        setActiveShift(currentActiveShift);
+
+        if (currentActiveShift) {
+            const activePause = currentActiveShift.pauses.find(p => p.startTime && !p.endTime);
+            setIsOnPause(!!activePause);
+            if (activePause) {
+                setLastActionTime(new Date(activePause.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+            } else if (currentActiveShift.startTime) {
+                setLastActionTime(new Date(currentActiveShift.startTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
             }
+        } else {
+            const hasCompletedShiftToday = shifts.some(s => s.date === todayString && s.endTime);
+            setNeedsExtraShiftApproval(hasCompletedShiftToday);
+            setLastActionTime(null);
+        }
+    });
+
+    // Listen to extra shift requests for today
+    const extraShiftQuery = query(collection(firestore, 'extra-shift-requests'), where('userId', '==', userId), where('date', '==', todayString));
+    const extraShiftUnsub = onSnapshot(extraShiftQuery, (snapshot) => {
+        if (!snapshot.empty) {
+            const todaysRequest = snapshot.docs[0].data() as ExtraShiftRequest;
+            setExtraShiftRequestStatus(todaysRequest.status);
         } else {
             setExtraShiftRequestStatus('not_requested');
         }
-        setLastActionTime(null);
-    }
-  }
+    });
 
-  // Load active shift and check status on component mount and storage change
-  useEffect(() => {
-    checkShiftStatus();
-    window.addEventListener('storage', checkShiftStatus);
-    return () => window.removeEventListener('storage', checkShiftStatus);
-  }, [userId]);
+    return () => {
+        shiftsUnsub();
+        extraShiftUnsub();
+    }
+  }, [firestore, userId]);
 
   const getCurrentPosition = (): Promise<Geolocation> => {
     setIsGettingLocation(true);
@@ -170,12 +154,12 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
         return;
     }
     
+    if (!firestore) return;
+
     try {
         const location = await getCurrentPosition();
         const now = new Date();
-        const shifts = getFromStorage<Shift[]>('shifts', []);
-        const newShift: Shift = {
-            id: `SHIFT${Date.now()}`,
+        const newShift = {
             userId: userId,
             userName: userName,
             date: now.toISOString().split('T')[0],
@@ -183,12 +167,10 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
             endTime: null,
             startLocation: location,
             pauses: [],
-            status: 'In attesa',
+            status: 'In attesa' as const,
         };
-        saveToStorage('shifts', [...shifts, newShift]);
-        setActiveShift(newShift);
+        await addDoc(collection(firestore, 'shifts'), newShift);
         setNeedsExtraShiftApproval(false); // Reset check after successful clock-in
-        setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
         toast({
             title: "Inizio Turno",
             description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
@@ -202,104 +184,84 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
     }
   }
 
-  const handleRequestExtraShift = () => {
+  const handleRequestExtraShift = async () => {
+    if (!firestore) return;
     const todayString = new Date().toISOString().split('T')[0];
-    const requests = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
     
-    const newRequest: ExtraShiftRequest = {
-        id: `ESR-${userId}-${todayString}`,
+    const newRequest = {
         userId,
         userName,
         date: todayString,
-        status: 'pending'
+        status: 'pending' as const
     };
 
-    saveToStorage('extra-shift-requests', [...requests, newRequest]);
-    setExtraShiftRequestStatus('pending');
-    toast({ title: "Richiesta Inviata", description: "La tua richiesta per una timbratura extra è stata inviata all'amministratore." });
+    try {
+        const docRef = doc(firestore, 'extra-shift-requests', `ESR-${userId}-${todayString}`);
+        await setDoc(docRef, newRequest);
+        toast({ title: "Richiesta Inviata", description: "La tua richiesta per una timbratura extra è stata inviata all'amministratore." });
+    } catch (error) {
+        toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+    }
   }
 
   const handleClockOut = async () => {
+    if (!firestore || !activeShift) return;
+
     try {
         const location = await getCurrentPosition();
         const now = new Date();
-        const shifts = getFromStorage<Shift[]>('shifts', []);
-        if (activeShift) {
-            let shiftToUpdate = { ...activeShift };
-            
-            if (isOnPause) {
-                const updatedPauses = shiftToUpdate.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
-                shiftToUpdate.pauses = updatedPauses;
-            }
-
-            const updatedShifts = shifts.map(s => 
-                s.id === activeShift.id ? { ...shiftToUpdate, endTime: now.toISOString(), endLocation: location } : s
-            );
-            saveToStorage('shifts', updatedShifts);
-            setActiveShift(null);
-            setIsOnPause(false);
-            setLastActionTime(null);
-            
-            // Re-check for next day
-            checkShiftStatus();
-
-            toast({
-                title: "Fine Turno",
-                description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
-            });
-            if (onShiftComplete) onShiftComplete();
+        
+        let shiftToUpdate = { ...activeShift };
+        
+        if (isOnPause) {
+            const updatedPauses = shiftToUpdate.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
+            shiftToUpdate.pauses = updatedPauses;
         }
+
+        const shiftRef = doc(firestore, 'shifts', activeShift.id);
+        await updateDoc(shiftRef, {
+            endTime: now.toISOString(),
+            endLocation: location,
+            pauses: shiftToUpdate.pauses
+        });
+
+        toast({
+            title: "Fine Turno",
+            description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
+        });
     } catch (error: any) {
         toast({
-            title: "Errore di Posizione",
-            description: error.message,
+            title: "Errore",
+            description: error.message || "Impossibile timbrare l'uscita.",
             variant: "destructive"
         })
     }
   }
 
   const handlePauseToggle = async () => {
-    if (!activeShift) return;
+    if (!activeShift || !firestore) return;
     try {
         const location = await getCurrentPosition();
         const now = new Date();
-        const shifts = getFromStorage<Shift[]>('shifts', []);
-        let updatedShift: Shift | null = null;
+        const shiftRef = doc(firestore, 'shifts', activeShift.id);
         
+        let updatedPauses: Pause[];
+
         if (isOnPause) { // End pause
-            const updatedShifts = shifts.map(s => {
-                if (s.id === activeShift.id) {
-                    const updatedPauses = s.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
-                    updatedShift = { ...s, pauses: updatedPauses };
-                    return updatedShift;
-                }
-                return s;
-            });
-            saveToStorage('shifts', updatedShifts);
-            setIsOnPause(false);
-            if(updatedShift) setActiveShift(updatedShift);
-            setLastActionTime(new Date(updatedShift!.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+            updatedPauses = activeShift.pauses.map(p => p.endTime === null ? { ...p, endTime: now.toISOString(), endLocation: location } : p);
+            await updateDoc(shiftRef, { pauses: updatedPauses });
             toast({ title: "Fine Pausa", description: "Hai ripreso a lavorare." });
 
         } else { // Start pause
             const newPause: Pause = { startTime: now.toISOString(), endTime: null, startLocation: location };
-            const updatedShifts = shifts.map(s => {
-                if (s.id === activeShift.id) {
-                    updatedShift = { ...s, pauses: [...s.pauses, newPause] };
-                    return updatedShift;
-                }
-                return s;
-            });
-            saveToStorage('shifts', updatedShifts);
-            setIsOnPause(true);
-            if(updatedShift) setActiveShift(updatedShift);
-            setLastActionTime(now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' }));
+            updatedPauses = [...activeShift.pauses, newPause];
+            await updateDoc(shiftRef, { pauses: updatedPauses });
             toast({ title: "Inizio Pausa", description: "Hai messo in pausa il tuo turno." });
         }
     } catch(error: any) {
         toast({
-            title: "Errore di Posizione",
-            description: error.message,
+            title: "Errore",
+            description: error.message || "Impossibile gestire la pausa.",
             variant: "destructive"
         })
     }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc, query, where, writeBatch } from "firebase/firestore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -39,22 +39,6 @@ type LeaveRequest = {
     timeFrom?: string; 
     timeTo?: string; 
     status: 'In attesa' | 'Approvata' | 'Rifiutata';
-};
-
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-const saveToStorage = <T,>(key: string, data: T) => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(key, JSON.stringify(data));
-    window.dispatchEvent(new Event('storage'));
 };
 
 const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
@@ -166,14 +150,9 @@ export default function HistoryPage() {
     const [confirmationStep, setConfirmationStep] = React.useState(1);
     const [confirmationInput, setConfirmationInput] = React.useState("");
 
-    const loadAllData = React.useCallback(() => {
-        setAllShifts(getFromStorage<Shift[]>('shifts', []));
-        setAllLeaveRequests(getFromStorage<LeaveRequest[]>('leave-requests', []));
-    }, []);
-
     // Load user role and all users
     React.useEffect(() => {
-        const storedUser = getFromStorage<{id: string, role: string}>('user', {id: '', role: ''});
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUserRole(storedUser.role);
         
         if (storedUser.role === 'operator') {
@@ -185,9 +164,6 @@ export default function HistoryPage() {
         const usersUnsubscribe = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
             const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
                                 .filter(u => u.role === 'operator');
-             const adminUserDoc = snapshot.docs.find(doc => doc.id === 'admin_user');
-             const adminUser = adminUserDoc ? {id: adminUserDoc.id, ...adminUserDoc.data()} as AppUser : null;
-             
              if(storedUser.role === 'operator') {
                 const currentUser = snapshot.docs.find(doc => doc.id === storedUser.id);
                 if(currentUser) setAllUsers([{id: currentUser.id, ...currentUser.data()} as AppUser]);
@@ -196,16 +172,22 @@ export default function HistoryPage() {
              }
         });
 
-        loadAllData();
-        window.addEventListener('storage', loadAllData);
+        const shiftsUnsub = onSnapshot(collection(firestore, 'shifts'), (snapshot) => {
+            setAllShifts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
+        });
+
+        const leavesUnsub = onSnapshot(collection(firestore, 'leave-requests'), (snapshot) => {
+            setAllLeaveRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest)));
+        });
         
         setLoading(false);
 
         return () => {
             usersUnsubscribe();
-            window.removeEventListener('storage', loadAllData);
+            shiftsUnsub();
+            leavesUnsub();
         };
-    }, [firestore, loadAllData]);
+    }, [firestore]);
     
     // Process data when selected user or data changes
     React.useEffect(() => {
@@ -214,17 +196,14 @@ export default function HistoryPage() {
             return;
         }
 
-        const selectedUserDoc = doc(firestore, 'app-users', selectedUserId);
-        getDoc(selectedUserDoc).then(docSnap => {
-            if (docSnap.exists()) {
-                const selectedUser = { id: docSnap.id, ...docSnap.data() } as AppUser;
-                const userShifts = allShifts.filter(s => s.userId === selectedUserId);
-                const userLeaves = allLeaveRequests.filter(l => l.user === selectedUser.username);
+        const selectedUser = allUsers.find(u => u.id === selectedUserId);
+        if (selectedUser) {
+            const userShifts = allShifts.filter(s => s.userId === selectedUserId);
+            const userLeaves = allLeaveRequests.filter(l => l.user === selectedUser.username);
 
-                const stats = processMonthlyData(userShifts, userLeaves, selectedUser);
-                setMonthlyStats(stats);
-            }
-        });
+            const stats = processMonthlyData(userShifts, userLeaves, selectedUser);
+            setMonthlyStats(stats);
+        }
         
     }, [selectedUserId, allUsers, allShifts, allLeaveRequests, firestore]);
     
@@ -233,7 +212,7 @@ export default function HistoryPage() {
         setIsDeleteDialogOpen(true);
     };
 
-    const handleConfirmDelete = () => {
+    const handleConfirmDelete = async () => {
         const confirmWord = "ELIMINA";
         if (confirmationInput.toUpperCase() !== confirmWord) {
             toast({ title: "Testo non corretto", variant: "destructive" });
@@ -247,32 +226,36 @@ export default function HistoryPage() {
             return;
         }
 
-        // Final confirmation
-        if (!deleteTarget) return;
+        if (!deleteTarget || !firestore) return;
 
         const { userId, month } = deleteTarget;
         const [year, monthNum] = month.split('-').map(Number);
         
-        const shiftsToKeep = allShifts.filter(s => {
-            if (s.userId !== userId) return true;
-            if(!s.startTime) return true; // keep incomplete shifts
+        const batch = writeBatch(firestore);
+
+        const shiftsToDelete = allShifts.filter(s => {
+            if (s.userId !== userId || !s.startTime) return false;
             const shiftDate = new Date(s.startTime);
-            return shiftDate.getFullYear() !== year || (shiftDate.getMonth() + 1) !== monthNum;
+            return shiftDate.getFullYear() === year && (shiftDate.getMonth() + 1) === monthNum;
         });
+        shiftsToDelete.forEach(s => batch.delete(doc(firestore, 'shifts', s.id)));
 
         const selectedUser = allUsers.find(u => u.id === userId);
-        const leaveRequestsToKeep = allLeaveRequests.filter(l => {
-             if (l.user !== selectedUser?.username) return true;
+        const leaveRequestsToDelete = allLeaveRequests.filter(l => {
+             if (l.user !== selectedUser?.username) return false;
              const leaveDate = new Date(l.from);
-             return leaveDate.getFullYear() !== year || (leaveDate.getMonth() + 1) !== monthNum;
+             return leaveDate.getFullYear() === year && (leaveDate.getMonth() + 1) === monthNum;
         });
+        leaveRequestsToDelete.forEach(l => batch.delete(doc(firestore, 'leave-requests', l.id)));
         
-        saveToStorage('shifts', shiftsToKeep);
-        saveToStorage('leave-requests', leaveRequestsToKeep);
-        loadAllData();
-
-        toast({ title: "Storico Mese Eliminato", variant: "destructive" });
-        resetDeleteDialog();
+        try {
+            await batch.commit();
+            toast({ title: "Storico Mese Eliminato", variant: "destructive" });
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile eliminare lo storico.", variant: "destructive" });
+        } finally {
+            resetDeleteDialog();
+        }
     };
     
     const resetDeleteDialog = () => {
