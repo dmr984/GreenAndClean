@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, Bed } from "lucide-react";
 import { AddSicknessDialog } from "./components/add-sickness-dialog";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 // ==================================
 // SHARED TYPES & UTILS
@@ -44,19 +44,36 @@ export default function LeaveRequestsPage() {
         if (!firestore) return;
         
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const isAdmin = storedUser.role === 'admin';
         setUserRole(storedUser.role || null);
         setUserName(storedUser.username || null);
         
-        const unsubscribe = onSnapshot(collection(firestore, 'leave-requests'), (snapshot) => {
+        let q = query(collection(firestore, 'leave-requests'));
+
+        // If the user is not an admin, we only fetch their own leave requests.
+        // This is crucial for security rules to work correctly.
+        if (!isAdmin && storedUser.username) {
+            q = query(collection(firestore, 'leave-requests'), where("user", "==", storedUser.username));
+        }
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             const requestList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest));
             setRequests(requestList.sort((a,b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+        }, (error) => {
+            console.error("Error fetching leave requests:", error);
+            toast({
+                title: "Errore di caricamento",
+                description: "Impossibile caricare le richieste di ferie. Controlla i permessi.",
+                variant: "destructive",
+            });
         });
 
         return () => unsubscribe();
 
-    }, [firestore]);
+    }, [firestore, toast]);
 
     const isAdmin = userRole === 'admin';
+    // The filtering is now primarily done by the Firestore query, but we keep this for safety.
     const userRequests = isAdmin ? requests : requests.filter(r => r.user === userName);
 
     return (

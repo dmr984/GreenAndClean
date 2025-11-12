@@ -36,9 +36,15 @@ service cloud.firestore {
     match /shifts/{shiftId} {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
+    
+    // Corrected rule for leave-requests collection
     match /leave-requests/{leaveRequestId} {
+       // Allow users to create their own requests
        allow create: if request.auth != null;
+       // Allow admins to read/update/delete all requests
        allow read, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+       // Allow users to read/update/delete THEIR OWN requests
+       allow read, update, delete: if request.auth != null && request.resource.data.user == get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.username;
     }
      match /supply-requests/{supplyRequestId} {
       allow read, update: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
@@ -48,7 +54,7 @@ service cloud.firestore {
     }
      match /app-users/{userId} {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
      match /communications/{commId} {
       allow read, write: if request.auth != null;
@@ -57,9 +63,5 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
   }
 }
