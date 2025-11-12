@@ -3,13 +3,16 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2, Edit, Pencil } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useFirestore } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -102,7 +105,9 @@ export default function UserShiftsPage() {
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [selectedShiftToDelete, setSelectedShiftToDelete] = useState<string | null>(null);
+    const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [editDraft, setEditDraft] = useState<{startTime: string, endTime: string}>({startTime: '', endTime: ''});
     
      useEffect(() => {
         const fetchUserData = async () => {
@@ -117,7 +122,6 @@ export default function UserShiftsPage() {
                 if (userDoc.exists()) {
                     setUser({ id: userDoc.id, ...userDoc.data() } as User);
                     
-                    // Fetch shifts after user is confirmed
                     const allShifts = getFromStorage<Shift[]>('shifts', []);
                     setShifts(allShifts.filter(s => s.userId === userId && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
                 } else {
@@ -134,21 +138,62 @@ export default function UserShiftsPage() {
         fetchUserData();
     }, [userId, firestore]);
 
-    const openDeleteConfirmation = (shiftId: string) => {
-        setSelectedShiftToDelete(shiftId);
+    const openDeleteConfirmation = (shift: Shift) => {
+        setSelectedShift(shift);
         setIsDeleteDialogOpen(true);
     };
 
     const handleDeleteShift = () => {
-        if (!selectedShiftToDelete) return;
+        if (!selectedShift) return;
         const allShifts = getFromStorage<Shift[]>('shifts', []);
-        const updatedShifts = allShifts.filter(s => s.id !== selectedShiftToDelete);
+        const updatedShifts = allShifts.filter(s => s.id !== selectedShift.id);
         saveToStorage('shifts', updatedShifts);
-        setShifts(updatedShifts.filter(s => s.userId === userId && s.endTime)); // Update component state
-        toast({ title: "Timbratura eliminata", description: "La timbratura è stata rimossa con successo.", variant: "destructive"});
+        setShifts(prev => prev.filter(s => s.id !== selectedShift!.id));
+        toast({ title: "Timbratura eliminata", variant: "destructive"});
         setIsDeleteDialogOpen(false);
-        setSelectedShiftToDelete(null);
+        setSelectedShift(null);
     };
+
+    const openEditDialog = (shift: Shift) => {
+        setSelectedShift(shift);
+        if (shift.startTime && shift.endTime) {
+            const start = new Date(shift.startTime);
+            const end = new Date(shift.endTime);
+            setEditDraft({
+                startTime: `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`,
+                endTime: `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`,
+            });
+        }
+        setIsEditDialogOpen(true);
+    }
+    
+    const handleEditShift = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedShift || !editDraft.startTime || !editDraft.endTime) return;
+        
+        const allShifts = getFromStorage<Shift[]>('shifts', []);
+
+        const updatedShifts = allShifts.map(s => {
+            if (s.id === selectedShift.id) {
+                 const newStartDate = new Date(s.startTime!);
+                 const [startHours, startMinutes] = editDraft.startTime.split(':').map(Number);
+                 newStartDate.setHours(startHours, startMinutes);
+
+                 const newEndDate = new Date(s.endTime!);
+                 const [endHours, endMinutes] = editDraft.endTime.split(':').map(Number);
+                 newEndDate.setHours(endHours, endMinutes);
+
+                 return { ...s, startTime: newStartDate.toISOString(), endTime: newEndDate.toISOString() };
+            }
+            return s;
+        });
+
+        saveToStorage('shifts', updatedShifts);
+        setShifts(updatedShifts.filter(s => s.userId === userId && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
+        toast({ title: "Timbratura aggiornata" });
+        setIsEditDialogOpen(false);
+        setSelectedShift(null);
+    }
 
     if (loading) {
         return (
@@ -178,7 +223,7 @@ export default function UserShiftsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Riepilogo dei turni di lavoro</CardTitle>
-                    <CardDescription>Visualizza tutti i turni completati, con dettaglio ore e straordinari.</CardDescription>
+                    <CardDescription>Visualizza e modifica tutti i turni completati, con dettaglio ore e straordinari.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <ScrollArea className="h-[calc(100vh-20rem)] w-full pr-4">
@@ -194,14 +239,20 @@ export default function UserShiftsPage() {
                                 <Card key={shift.id} className="overflow-hidden">
                                     <CardHeader className="flex flex-row justify-between items-start bg-muted/30 p-4">
                                         <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
-                                        <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(shift.id)}>
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                            <span className="sr-only">Elimina timbratura</span>
-                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(shift)}>
+                                                <Pencil className="h-4 w-4" />
+                                                <span className="sr-only">Modifica timbratura</span>
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(shift)}>
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                                <span className="sr-only">Elimina timbratura</span>
+                                            </Button>
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="p-4">
-                                        <div className="relative w-full overflow-x-auto">
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                        <div className="w-full overflow-x-auto">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm min-w-[400px]">
                                             <div className="font-medium space-y-2">
                                                 <div className="flex items-center gap-2"><Clock className="text-primary h-5 w-5"/>Ingresso:
                                                     <span className="font-mono flex items-center gap-2">
@@ -254,11 +305,51 @@ export default function UserShiftsPage() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setSelectedShiftToDelete(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setSelectedShift(null)}>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteShift}>Conferma Eliminazione</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Modifica Orari Timbratura</DialogTitle>
+                        <DialogDescription>
+                            Aggiorna gli orari di ingresso e uscita per questo turno. Le pause non sono modificabili.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {selectedShift && (
+                    <form id="edit-shift-form" onSubmit={handleEditShift}>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-2 items-center gap-4">
+                                <Label htmlFor="start-time">Orario Ingresso</Label>
+                                <Input 
+                                    id="start-time" 
+                                    type="time" 
+                                    value={editDraft.startTime}
+                                    onChange={(e) => setEditDraft(d => ({...d, startTime: e.target.value}))}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 items-center gap-4">
+                                <Label htmlFor="end-time">Orario Uscita</Label>
+                                <Input 
+                                    id="end-time" 
+                                    type="time" 
+                                    value={editDraft.endTime}
+                                    onChange={(e) => setEditDraft(d => ({...d, endTime: e.target.value}))}
+                                />
+                            </div>
+                        </div>
+                         <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Annulla</Button>
+                            <Button type="submit">Salva Modifiche</Button>
+                        </DialogFooter>
+                    </form>
+                    )}
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }

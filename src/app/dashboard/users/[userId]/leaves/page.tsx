@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Pencil } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 
 type LeaveRequest = { id: string; user: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
@@ -51,58 +56,88 @@ export default function UserLeavesPage() {
     const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [selectedRequestToDelete, setSelectedRequestToDelete] = useState<string | null>(null);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
+    const [editDraft, setEditDraft] = useState<Partial<LeaveRequest>>({});
+
+
+    const fetchUserData = () => {
+        if (!userId || !firestore) return;
+
+        setLoading(true);
+        
+        getDoc(doc(firestore, 'app-users', userId)).then(userDoc => {
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const currentUserName = userData.username;
+                setUserName(currentUserName);
+
+                const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
+                setLeaveRequests(allLeaves.filter(r => r.user === currentUserName).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+            } else {
+                setUserName(null);
+            }
+        }).catch(error => {
+            console.error("Error fetching user data:", error);
+            setUserName(null);
+        }).finally(() => {
+            setLoading(false);
+        });
+    };
 
     useEffect(() => {
-        const fetchUserData = async () => {
-            if (!userId || !firestore) return;
-
-            setLoading(true);
-            
-            try {
-                const userDocRef = doc(firestore, 'app-users', userId);
-                const userDoc = await getDoc(userDocRef);
-
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    const currentUserName = userData.username;
-                    setUserName(currentUserName);
-
-                    // Fetch data that depends on username
-                    const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-                    setLeaveRequests(allLeaves.filter(r => r.user === currentUserName).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
-                } else {
-                    setUserName(null);
-                }
-            } catch (error) {
-                console.error("Error fetching user data:", error);
-                setUserName(null);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchUserData();
     }, [userId, firestore]);
 
-    const openDeleteConfirmation = (requestId: string) => {
-        setSelectedRequestToDelete(requestId);
+    const openDeleteConfirmation = (request: LeaveRequest) => {
+        setSelectedRequest(request);
         setIsDeleteDialogOpen(true);
     };
 
     const handleDeleteRequest = () => {
-        if (!selectedRequestToDelete) return;
+        if (!selectedRequest) return;
         
         const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        const updatedLeaves = allLeaves.filter(r => r.id !== selectedRequestToDelete);
+        const updatedLeaves = allLeaves.filter(r => r.id !== selectedRequest.id);
         saveToStorage('leave-requests', updatedLeaves);
 
-        setLeaveRequests(prev => prev.filter(r => r.id !== selectedRequestToDelete));
+        setLeaveRequests(prev => prev.filter(r => r.id !== selectedRequest!.id));
         
-        toast({ title: "Richiesta eliminata", description: "La richiesta è stata rimossa con successo.", variant: "destructive"});
+        toast({ title: "Richiesta eliminata", variant: "destructive"});
         setIsDeleteDialogOpen(false);
-        setSelectedRequestToDelete(null);
+        setSelectedRequest(null);
     };
+
+    const openEditDialog = (request: LeaveRequest) => {
+        setSelectedRequest(request);
+        setEditDraft({ ...request });
+        setIsEditDialogOpen(true);
+    }
+    
+    const handleEditDraftChange = (field: keyof LeaveRequest, value: string) => {
+        setEditDraft(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleEditRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!selectedRequest || !editDraft) return;
+
+        if (!editDraft.type || !editDraft.from || !editDraft.to) {
+            toast({ title: "Campi mancanti", variant: "destructive" });
+            return;
+        }
+
+        const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
+        const updatedLeaves = allLeaves.map(r => r.id === selectedRequest.id ? { ...r, ...editDraft, status: 'In attesa' } as LeaveRequest : r);
+        saveToStorage('leave-requests', updatedLeaves);
+
+        setLeaveRequests(updatedLeaves.filter(r => r.user === userName).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+
+        toast({ title: "Richiesta Modificata" });
+        setIsEditDialogOpen(false);
+        setSelectedRequest(null);
+    };
+
 
     if (loading) {
         return (
@@ -132,7 +167,7 @@ export default function UserLeavesPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Riepilogo Richieste</CardTitle>
-                        <CardDescription>Visualizza tutte le richieste di ferie e permessi inviate.</CardDescription>
+                        <CardDescription>Visualizza e gestisci tutte le richieste di ferie e permessi.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {leaveRequests.length > 0 ? (
@@ -156,8 +191,12 @@ export default function UserLeavesPage() {
                                                     <p><span className="font-medium">Periodo:</span> {period}</p>
                                                     <p><span className="font-medium">Motivo:</span> {req.reason || '-'}</p>
                                                 </CardContent>
-                                                <CardFooter className="pb-3 pt-1 flex justify-end">
-                                                    <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req.id)}>
+                                                <CardFooter className="pb-3 pt-1 flex justify-end gap-1">
+                                                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(req)}>
+                                                        <Pencil className="h-4 w-4" />
+                                                        <span className="sr-only">Modifica</span>
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req)}>
                                                         <Trash2 className="h-4 w-4 text-destructive" />
                                                         <span className="sr-only">Elimina</span>
                                                     </Button>
@@ -193,8 +232,12 @@ export default function UserLeavesPage() {
                                                             <td className="p-4 align-middle">{req.type}</td>
                                                             <td className="p-4 align-middle text-muted-foreground truncate max-w-xs">{req.reason || '-'}</td>
                                                             <td className="p-4 align-middle text-center"><Badge variant={getStatusVariant(req.status)}>{req.status}</Badge></td>
-                                                            <td className="p-4 align-middle text-right">
-                                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req.id)}>
+                                                            <td className="p-4 align-middle text-right space-x-1">
+                                                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(req)}>
+                                                                    <Pencil className="h-4 w-4" />
+                                                                    <span className="sr-only">Modifica</span>
+                                                                </Button>
+                                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req)}>
                                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                                     <span className="sr-only">Elimina</span>
                                                                 </Button>
@@ -221,11 +264,67 @@ export default function UserLeavesPage() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setSelectedRequestToDelete(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteRequest}>Conferma Eliminazione</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Modifica Richiesta</DialogTitle>
+                        <DialogDescription>
+                        Aggiorna i dettagli della richiesta. Lo stato tornerà "In attesa".
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form id="edit-request-form" onSubmit={handleEditRequestSubmit}>
+                        <div className="p-4 space-y-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="edit-type">Tipo</Label>
+                                <Select name="type" required value={editDraft.type || ""} onValueChange={(value) => handleEditDraftChange('type', value)}>
+                                    <SelectTrigger id="edit-type"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Ferie">Ferie</SelectItem>
+                                        <SelectItem value="Malattia">Malattia</SelectItem>
+                                        <SelectItem value="Permesso">Permesso</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="edit-from-date">Dal</Label>
+                                    <Input id="edit-from-date" name="from-date" type="date" value={editDraft.from || ""} onChange={(e) => handleEditDraftChange('from', e.target.value)} required />
+                                </div>
+                                <div>
+                                    <Label htmlFor="edit-to-date">Al</Label>
+                                    <Input id="edit-to-date" name="to-date" type="date" value={editDraft.to || ""} onChange={(e) => handleEditDraftChange('to', e.target.value)} required />
+                                </div>
+                            </div>
+                            {editDraft.type === 'Permesso' && (
+                                <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+                                    <div>
+                                        <Label htmlFor="edit-time-from">Dalle ore</Label>
+                                        <Input id="edit-time-from" name="time-from" type="time" value={editDraft.timeFrom || ""} onChange={(e) => handleEditDraftChange('timeFrom', e.target.value)} required />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="edit-time-to">Alle ore</Label>
+                                        <Input id="edit-time-to" name="time-to" type="time" value={editDraft.timeTo || ""} onChange={(e) => handleEditDraftChange('timeTo', e.target.value)} required />
+                                    </div>
+                                </div>
+                            )}
+                            <div>
+                                <Label htmlFor="edit-reason">Motivo (opzionale)</Label>
+                                <Textarea id="edit-reason" name="reason" placeholder="Fornisci un motivo per la richiesta..." value={editDraft.reason || ""} onChange={(e) => handleEditDraftChange('reason', e.target.value)} />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Annulla</Button>
+                            <Button type="submit">Salva Modifiche</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

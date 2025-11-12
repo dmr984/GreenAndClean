@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Pencil, Minus, Plus } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +11,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from '@/hooks/use-toast';
 
 type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; adminNotes?: string };
+type WarehouseItem = { id: string; name: string; quantity: number; };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
@@ -50,9 +52,13 @@ export default function UserSuppliesPage() {
 
     const [userName, setUserName] = useState<string | null>(null);
     const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>([]);
+    const [warehouseItems, setWarehouseItems] = useState<WarehouseItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [selectedRequestToDelete, setSelectedRequestToDelete] = useState<string | null>(null);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
+    const [editDraftItems, setEditDraftItems] = useState<{ [itemName: string]: number }>({});
+
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -71,6 +77,7 @@ export default function UserSuppliesPage() {
 
                     const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
                     setSupplyRequests(allSupplies.filter(r => r.user === currentUserName).sort((a,b) => b.id.localeCompare(a.id)));
+                    setWarehouseItems(getFromStorage<WarehouseItem[]>('warehouse-items', []));
                 } else {
                     setUserName(null);
                 }
@@ -85,23 +92,62 @@ export default function UserSuppliesPage() {
         fetchUserData();
     }, [userId, firestore]);
     
-    const openDeleteConfirmation = (requestId: string) => {
-        setSelectedRequestToDelete(requestId);
+    const openDeleteConfirmation = (request: SupplyRequest) => {
+        setSelectedRequest(request);
         setIsDeleteDialogOpen(true);
     };
     
     const handleDeleteRequest = () => {
-        if (!selectedRequestToDelete) return;
+        if (!selectedRequest) return;
         
         const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        const updatedSupplies = allSupplies.filter(r => r.id !== selectedRequestToDelete);
+        const updatedSupplies = allSupplies.filter(r => r.id !== selectedRequest.id);
         saveToStorage('supply-requests', updatedSupplies);
 
-        setSupplyRequests(prev => prev.filter(r => r.id !== selectedRequestToDelete));
+        setSupplyRequests(prev => prev.filter(r => r.id !== selectedRequest!.id));
         
-        toast({ title: "Richiesta eliminata", description: "La richiesta è stata rimossa con successo.", variant: "destructive"});
+        toast({ title: "Richiesta eliminata", variant: "destructive"});
         setIsDeleteDialogOpen(false);
-        setSelectedRequestToDelete(null);
+        setSelectedRequest(null);
+    };
+
+    const openEditDialog = (request: SupplyRequest) => {
+        setSelectedRequest(request);
+        setEditDraftItems(request.items);
+        setIsEditDialogOpen(true);
+    }
+    
+    const handleItemQuantityChange = (itemName: string, amount: number) => {
+        setEditDraftItems(prev => {
+            const currentQuantity = prev[itemName] || 0;
+            const newQuantity = Math.max(0, currentQuantity + amount);
+            if (newQuantity === 0) {
+                const { [itemName]: _, ...rest } = prev;
+                return rest;
+            }
+            return { ...prev, [itemName]: newQuantity };
+        });
+    };
+    
+    const handleEditRequestSubmit = () => {
+        if (!selectedRequest) return;
+         if (Object.keys(editDraftItems).length === 0) {
+            toast({ title: "Nessun prodotto", description: "La richiesta non può essere vuota.", variant: "destructive" });
+            return;
+        }
+
+        const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
+        const updatedSupplies = allSupplies.map(r => 
+            r.id === selectedRequest.id 
+            ? { ...r, items: editDraftItems, status: 'In attesa' } as SupplyRequest
+            : r
+        );
+        saveToStorage('supply-requests', updatedSupplies);
+        
+        setSupplyRequests(updatedSupplies.filter(r => r.user === userName).sort((a,b) => b.id.localeCompare(a.id)));
+        toast({ title: "Richiesta Modificata", description: "La richiesta è stata aggiornata e dovrà essere riapprovata." });
+        setIsEditDialogOpen(false);
+        setSelectedRequest(null);
     };
 
     if (loading) {
@@ -132,7 +178,7 @@ export default function UserSuppliesPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Riepilogo Richieste</CardTitle>
-                        <CardDescription>Visualizza tutte le richieste di forniture inviate dall'operatore.</CardDescription>
+                        <CardDescription>Visualizza e gestisci tutte le richieste di forniture.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ScrollArea className="h-[calc(100vh-20rem)]">
@@ -166,8 +212,12 @@ export default function UserSuppliesPage() {
                                                     </div>
                                                 )}
                                             </CardContent>
-                                            <CardFooter className="pb-3 pt-1 flex justify-end">
-                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req.id)}>
+                                            <CardFooter className="pb-3 pt-1 flex justify-end gap-1">
+                                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(req)}>
+                                                    <Pencil className="h-4 w-4" />
+                                                    <span className="sr-only">Modifica</span>
+                                                </Button>
+                                                <Button variant="ghost" size="icon" onClick={() => openDeleteConfirmation(req)}>
                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                     <span className="sr-only">Elimina</span>
                                                 </Button>
@@ -190,11 +240,39 @@ export default function UserSuppliesPage() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setSelectedRequestToDelete(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteRequest}>Conferma Eliminazione</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Modifica Richiesta Fornitura</DialogTitle>
+                        <DialogDescription>Aggiungi o rimuovi prodotti e quantità. La richiesta tornerà in stato "In attesa".</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+                        <div className="space-y-2">
+                            {warehouseItems.map(item => (
+                                <div key={item.id} className="flex justify-between items-center p-2 rounded-md border">
+                                    <span className="font-medium">{item.name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleItemQuantityChange(item.name, -1)}><Minus className="h-4 w-4" /></Button>
+                                        <span className="min-w-[40px] text-center font-bold text-lg">{editDraftItems[item.name] || 0}</span>
+                                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleItemQuantityChange(item.name, 1)}><Plus className="h-4 w-4" /></Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                         {warehouseItems.length === 0 && <p className="text-muted-foreground text-center">Magazzino vuoto.</p>}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Annulla</Button>
+                        <Button onClick={handleEditRequestSubmit} disabled={Object.keys(editDraftItems).length === 0}>Salva Modifiche</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }
