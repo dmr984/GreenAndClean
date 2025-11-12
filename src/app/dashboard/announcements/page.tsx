@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Megaphone, Send, Users, User } from "lucide-react";
+import { Megaphone, Send, Users, User, Trash2, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 type User = {
   id: string;
@@ -24,11 +26,12 @@ type Announcement = {
   content: string;
   date: string;
   recipients: string[]; // 'all' or array of user IDs
-  read?: boolean;
+  readBy: string[]; // array of user IDs who have read it
+  hiddenFor: string[]; // array of user IDs who have hidden it
 };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-    if (typeof window === 'undefined') return [];
+    if (typeof window === 'undefined') return defaultValue;
     const stored = localStorage.getItem(key);
     try {
         return stored ? JSON.parse(stored) : defaultValue;
@@ -49,7 +52,13 @@ const getUsersFromStorage = (): User[] => {
 };
 
 const getAnnouncementsFromStorage = (): Announcement[] => {
-    return getFromStorage<Announcement[]>('announcements', []);
+    const announcements = getFromStorage<any[]>('announcements', []);
+    // Data migration for backward compatibility
+    return announcements.map(a => ({
+        ...a,
+        readBy: a.readBy || (a.read ? ['all_legacy'] : []),
+        hiddenFor: a.hiddenFor || []
+    }));
 };
 
 const saveAnnouncementsToStorage = (announcements: Announcement[]) => {
@@ -70,6 +79,9 @@ export default function AnnouncementsPage() {
     const [recipientType, setRecipientType] = React.useState("all");
     const [selectedOperators, setSelectedOperators] = React.useState<string[]>([]);
     
+    const [isHardDeleteDialogOpen, setIsHardDeleteDialogOpen] = React.useState(false);
+    const [selectedAnnouncement, setSelectedAnnouncement] = React.useState<Announcement | null>(null);
+    
 
     React.useEffect(() => {
         const storedUser = getFromStorage<{role?: string, id?: string}>('user', {});
@@ -80,12 +92,11 @@ export default function AnnouncementsPage() {
             const allAnnouncements = getAnnouncementsFromStorage();
             if (storedUser.role === 'admin') {
                 setOperators(getUsersFromStorage().filter(u => u.name !== 'Amministratore'));
-                setAnnouncements(allAnnouncements);
+                // Admin sees announcements not hidden by them
+                setAnnouncements(allAnnouncements.filter(a => !a.hiddenFor.includes(storedUser.id!)));
             } else if (storedUser.id) {
-                 const readAnnouncements = getFromStorage<string[]>('read-announcements', []);
                  const userAnnouncements = allAnnouncements
-                    .filter(a => a.recipients.includes('all') || a.recipients.includes(storedUser.id!))
-                    .map(a => ({...a, read: readAnnouncements.includes(a.id)}));
+                    .filter(a => (a.recipients.includes('all') || a.recipients.includes(storedUser.id!)) && !a.hiddenFor.includes(storedUser.id!));
                 setAnnouncements(userAnnouncements);
             }
         };
@@ -128,7 +139,9 @@ export default function AnnouncementsPage() {
             title,
             content,
             date: new Date().toISOString(),
-            recipients
+            recipients,
+            readBy: [],
+            hiddenFor: []
         };
 
         const existingAnnouncements = getAnnouncementsFromStorage();
@@ -144,19 +157,49 @@ export default function AnnouncementsPage() {
     };
     
     const markAsRead = (id: string) => {
-        const readAnnouncements = getFromStorage<string[]>('read-announcements', []);
-        if(!readAnnouncements.includes(id)) {
-            saveToStorage('read-announcements', [...readAnnouncements, id]);
+        if (!userId) return;
+        const allAnnouncements = getAnnouncementsFromStorage();
+        const target = allAnnouncements.find(a => a.id === id);
+        if (target && !target.readBy.includes(userId)) {
+            target.readBy.push(userId);
+            saveAnnouncementsToStorage(allAnnouncements);
         }
+    };
+    
+    const hideForCurrentUser = (id: string) => {
+        if (!userId) return;
+        const allAnnouncements = getAnnouncementsFromStorage();
+        const target = allAnnouncements.find(a => a.id === id);
+        if (target && !target.hiddenFor.includes(userId)) {
+            target.hiddenFor.push(userId);
+            saveAnnouncementsToStorage(allAnnouncements);
+            toast({ title: isAdmin ? "Annuncio Nascosto" : "Annuncio Eliminato"});
+        }
+    };
+    
+    const openHardDeleteDialog = (announcement: Announcement) => {
+        setSelectedAnnouncement(announcement);
+        setIsHardDeleteDialogOpen(true);
+    };
+    
+    const handleHardDelete = () => {
+        if (!selectedAnnouncement) return;
+        const allAnnouncements = getAnnouncementsFromStorage();
+        const updatedAnnouncements = allAnnouncements.filter(a => a.id !== selectedAnnouncement.id);
+        saveAnnouncementsToStorage(updatedAnnouncements);
+        toast({ title: "Annuncio Eliminato per Tutti", variant: "destructive" });
+        setIsHardDeleteDialogOpen(false);
+        setSelectedAnnouncement(null);
     };
     
     const isAdmin = userRole === 'admin';
     
-    if (isAdmin) {
+    if (isAdmin && userId) {
         return (
+          <>
             <div className="flex flex-col gap-8">
                 <div className="flex items-center justify-between space-y-2">
-                    <h2 className="text-3xl font-bold tracking-tight">Invia un Annuncio</h2>
+                    <h2 className="text-3xl font-bold tracking-tight">Gestione Annunci</h2>
                 </div>
 
                 <Card>
@@ -222,7 +265,71 @@ export default function AnnouncementsPage() {
                         </form>
                     </CardContent>
                 </Card>
+                
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Bacheca Annunci Inviati</CardTitle>
+                        <CardDescription>Tutte le comunicazioni inviate. Da qui puoi nasconderle o eliminarle per tutti.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <ScrollArea className="h-[70vh]">
+                        {announcements.length > 0 ? (
+                            <div className="space-y-4 pr-4">
+                                {announcements.map(ann => (
+                                     <Card key={ann.id} className="bg-muted/30">
+                                        <CardHeader className="pb-3">
+                                            <div className="flex justify-between items-start">
+                                               <div className="flex-1">
+                                                 <CardTitle className="text-base">{ann.title}</CardTitle>
+                                                 <CardDescription>{new Date(ann.date).toLocaleString('it-IT')}</CardDescription>
+                                               </div>
+                                               <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon">
+                                                            <MoreVertical className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+                                                        <DropdownMenuItem onSelect={() => hideForCurrentUser(ann.id)}>Nascondi per me</DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onSelect={() => openHardDeleteDialog(ann)} className="text-destructive">Elimina per tutti</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-sm whitespace-pre-wrap">{ann.content}</p>
+                                        </CardContent>
+                                     </Card>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center text-muted-foreground py-16">
+                                <Megaphone className="mx-auto h-12 w-12 text-gray-400" />
+                                <p className="mt-4">Nessun annuncio inviato.</p>
+                            </div>
+                        )}
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
             </div>
+            
+            <AlertDialog open={isHardDeleteDialogOpen} onOpenChange={setIsHardDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                           Questa azione non può essere annullata. L'annuncio verrà eliminato in modo permanente per te e per tutti gli operatori.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleHardDelete}>Conferma Eliminazione</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+          </>
         );
     }
 
@@ -241,20 +348,30 @@ export default function AnnouncementsPage() {
                     <ScrollArea className="h-[70vh]">
                     {announcements.length > 0 ? (
                         <div className="space-y-4 pr-4">
-                            {announcements.map(ann => (
-                                 <Card key={ann.id} onClick={() => markAsRead(ann.id)} className={`cursor-pointer transition-colors ${ann.read ? 'bg-muted/50' : 'hover:bg-muted/20'}`}>
+                            {announcements.map(ann => {
+                                const isRead = ann.readBy.includes(userId!);
+                                return (
+                                 <Card key={ann.id} onClick={() => markAsRead(ann.id)} className={`transition-colors ${isRead ? 'bg-muted/50' : 'hover:bg-muted/20 cursor-pointer'}`}>
                                     <CardHeader className="pb-3">
-                                        <div className="flex justify-between items-center">
-                                           <CardTitle className="text-base">{ann.title}</CardTitle>
-                                           {!ann.read && <Badge variant="destructive">Nuovo</Badge>}
+                                        <div className="flex justify-between items-start">
+                                           <div className="flex-1">
+                                             <CardTitle className="text-base">{ann.title}</CardTitle>
+                                             <CardDescription>{new Date(ann.date).toLocaleString('it-IT')}</CardDescription>
+                                           </div>
+                                            <div className="flex items-center gap-2">
+                                                {!isRead && <Badge variant="destructive">Nuovo</Badge>}
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); hideForCurrentUser(ann.id); }}>
+                                                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                                </Button>
+                                            </div>
                                         </div>
-                                        <CardDescription>{new Date(ann.date).toLocaleString('it-IT')}</CardDescription>
                                     </CardHeader>
                                     <CardContent>
                                         <p className="text-sm whitespace-pre-wrap">{ann.content}</p>
                                     </CardContent>
                                  </Card>
-                            ))}
+                                )
+                            })}
                         </div>
                     ) : (
                         <div className="text-center text-muted-foreground py-16">
@@ -268,3 +385,5 @@ export default function AnnouncementsPage() {
         </div>
     );
 }
+
+    
