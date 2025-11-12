@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminDashboard } from '@/app/dashboard/admin-dashboard';
 import Link from 'next/link';
@@ -26,16 +26,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
       router.replace('/');
     } else {
       const userData: UserData = JSON.parse(storedUser);
       setUser(userData);
+      
+      const isAdminPage = pathname.startsWith('/dashboard/users') || 
+                          pathname === '/dashboard/warehouse' || 
+                          pathname === '/dashboard/shift-approval' ||
+                          pathname === '/dashboard/announcements';
+
+      if (userData.role === 'operator' && isAdminPage) {
+          router.replace('/dashboard');
+      } else {
+        setIsLoading(false);
+      }
     }
-    setIsLoading(false);
-  }, [router]);
+  }, [pathname, router]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -77,16 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   
   const isAdmin = user.role === 'admin';
   const isBaseDashboard = pathname === '/dashboard';
-  const isAdminPage = pathname.startsWith('/dashboard/users') || 
-                      pathname === '/dashboard/warehouse' || 
-                      pathname === '/dashboard/shift-approval' ||
-                      pathname === '/dashboard/announcements';
-
-  if (user.role === 'operator' && isAdminPage) {
-      router.replace('/dashboard');
-      return <div className="flex items-center justify-center min-h-screen">Reindirizzamento...</div>;
-  }
-
+  
   return (
     <>
     <div className="flex flex-col min-h-screen w-full">
