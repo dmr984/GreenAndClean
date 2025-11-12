@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Trash2, Pencil, Minus, Plus } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -60,37 +60,41 @@ export default function UserSuppliesPage() {
     const [editDraftItems, setEditDraftItems] = useState<{ [itemName: string]: number }>({});
 
 
-    useEffect(() => {
-        const fetchUserData = async () => {
-            if (!userId || !firestore) return;
+    const fetchUserData = useCallback(async () => {
+        if (!userId || !firestore) return;
 
-            setLoading(true);
-            
-            try {
-                const userDocRef = doc(firestore, 'app-users', userId);
-                const userDoc = await getDoc(userDocRef);
+        setLoading(true);
+        
+        try {
+            const userDocRef = doc(firestore, 'app-users', userId);
+            const userDoc = await getDoc(userDocRef);
 
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    const currentUserName = userData.username;
-                    setUserName(currentUserName);
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const currentUserName = userData.username;
+                setUserName(currentUserName);
 
-                    const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-                    setSupplyRequests(allSupplies.filter(r => r.user === currentUserName).sort((a,b) => b.id.localeCompare(a.id)));
-                    setWarehouseItems(getFromStorage<WarehouseItem[]>('warehouse-items', []));
-                } else {
-                    setUserName(null);
-                }
-            } catch (error) {
-                console.error("Error fetching user data:", error);
+                const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
+                setSupplyRequests(allSupplies.filter(r => r.user === currentUserName).sort((a,b) => b.id.localeCompare(a.id)));
+                setWarehouseItems(getFromStorage<WarehouseItem[]>('warehouse-items', []));
+            } else {
                 setUserName(null);
-            } finally {
-                setLoading(false);
             }
-        };
-
-        fetchUserData();
+        } catch (error) {
+            console.error("Error fetching user data:", error);
+            setUserName(null);
+        } finally {
+            setLoading(false);
+        }
     }, [userId, firestore]);
+
+    useEffect(() => {
+        fetchUserData();
+        window.addEventListener('storage', fetchUserData);
+        return () => {
+            window.removeEventListener('storage', fetchUserData);
+        };
+    }, [fetchUserData]);
     
     const openDeleteConfirmation = (request: SupplyRequest) => {
         setSelectedRequest(request);

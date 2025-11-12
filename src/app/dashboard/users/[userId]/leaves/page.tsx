@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Trash2, Pencil } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -61,7 +61,7 @@ export default function UserLeavesPage() {
     const [editDraft, setEditDraft] = useState<Partial<LeaveRequest>>({});
 
 
-    const fetchUserData = () => {
+    const fetchUserData = useCallback(() => {
         if (!userId || !firestore) return;
 
         setLoading(true);
@@ -83,11 +83,15 @@ export default function UserLeavesPage() {
         }).finally(() => {
             setLoading(false);
         });
-    };
+    }, [userId, firestore]);
 
     useEffect(() => {
         fetchUserData();
-    }, [userId, firestore]);
+        window.addEventListener('storage', fetchUserData);
+        return () => {
+            window.removeEventListener('storage', fetchUserData);
+        };
+    }, [fetchUserData]);
 
     const openDeleteConfirmation = (request: LeaveRequest) => {
         setSelectedRequest(request);
