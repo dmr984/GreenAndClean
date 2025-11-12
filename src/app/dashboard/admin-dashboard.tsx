@@ -137,7 +137,7 @@ export function AdminDashboard() {
                   </Badge>
                 }
                 <CardHeader>
-                    <CalendarCheck className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>_
+                    <CalendarCheck className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <CardTitle className="text-xl sm:text-2xl">Richieste Ferie</CardTitle>
