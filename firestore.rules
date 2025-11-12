@@ -16,7 +16,9 @@ service cloud.firestore {
 
     match /leave-requests/{leaveRequestId} {
       allow create: if request.auth != null && request.resource.data.operatorId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && (request.resource.data.operatorId == request.auth.uid || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+      allow read, update, delete: if request.auth != null && request.resource.data.operatorId == request.auth.uid;
+      // Admin override for all operations
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     match /announcements/{announcementId} {
@@ -24,6 +26,13 @@ service cloud.firestore {
       allow write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    match /supply-requests/{supplyRequestId} {
+        allow create: if request.auth != null;
+        allow read, update, delete: if request.auth != null && request.resource.data.user == request.auth.token.name;
+        // Admin override for all operations
+        allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
     match /operators/{operatorId}/supplyRequests/{supplyRequestId} {
       allow read, write: if request.auth != null && request.auth.uid == operatorId;
     }
@@ -32,14 +41,11 @@ service cloud.firestore {
       allow read: if request.auth != null;
     }
 
-    // Admin access rules
+    // Admin access rules for collections
     match /shifts/{shiftId} {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
     
-     match /supply-requests/{supplyRequestId} {
-      allow read, update: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.authuid));
-    }
      match /extra-shift-requests/{requestId} {
       allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
@@ -51,7 +57,7 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
      match /warehouse-items/{itemId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
   }
