@@ -59,10 +59,17 @@ export default function ShiftApprovalPage() {
             // Filter for completed shifts on the client side
             const completedPendingShifts = shiftsData.filter(s => !!s.endTime);
             setPendingShifts(completedPendingShifts.sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime()));
+        }, (err) => {
+            console.error("Error fetching shifts:", err);
+            toast({
+                title: "Errore di Caricamento",
+                description: "Impossibile caricare i turni da approvare.",
+                variant: 'destructive'
+            });
         });
 
         return () => unsubscribe();
-    }, [firestore]);
+    }, [firestore, toast]);
 
     const handleApproveShift = async (shiftId: string) => {
         if (!firestore) return;
