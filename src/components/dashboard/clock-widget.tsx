@@ -28,6 +28,7 @@ export type Shift = {
   startLocation?: Geolocation;
   endLocation?: Geolocation;
   pauses: Pause[];
+  status: 'In attesa' | 'Approvato';
 };
 
 // Helper to get shifts from localStorage
@@ -36,8 +37,8 @@ const getShiftsFromStorage = (): Shift[] => {
   const stored = localStorage.getItem('shifts');
   try {
     const shifts = stored ? JSON.parse(stored) : [];
-    // Ensure all shifts have a `pauses` property
-    return shifts.map((s: any) => ({ ...s, pauses: s.pauses || [] }));
+    // Ensure all shifts have a `pauses` and `status` property
+    return shifts.map((s: any) => ({ ...s, pauses: s.pauses || [], status: s.status || 'In attesa' }));
   } catch (e) {
     return [];
   }
@@ -142,6 +143,7 @@ export function ClockWidget({ onShiftComplete, userId, userName }: ClockWidgetPr
             endTime: null,
             startLocation: location,
             pauses: [],
+            status: 'In attesa',
         };
         saveShiftsToStorage([...shifts, newShift]);
         setActiveShift(newShift);

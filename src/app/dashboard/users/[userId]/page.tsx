@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle, Package, Briefcase, Plus, Minus, CalendarDays, Hourglass, TrendingUp, CalendarCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Package, Briefcase, Plus, Minus, CalendarDays, Hourglass, TrendingUp, CalendarCheck, ClipboardCheck } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,7 @@ type Shift = {
   startTime: string | null; 
   endTime: string | null; 
   pauses: { startTime: string; endTime: string | null }[];
+  status: 'In attesa' | 'Approvato';
 };
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -114,14 +115,15 @@ export default function UserProfilePage() {
   const summaryStats = useMemo(() => {
     if (!user) return null;
 
+    const approvedShifts = shifts.filter(s => s.status === 'Approvato');
     const workedDayDates = new Set(
-        shifts
+        approvedShifts
             .filter(s => s.startTime && s.endTime)
             .map(s => new Date(s.startTime!).toISOString().split('T')[0])
     );
     const workedDays = workedDayDates.size;
 
-    const totalOvertimeMinutes = shifts.reduce((total, shift) => {
+    const totalOvertimeMinutes = approvedShifts.reduce((total, shift) => {
         const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
         const expectedMinutes = (user.expectedHours || 0) * 60;
         const overtime = Math.max(0, workedMinutes - expectedMinutes);

@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2, Edit, Pencil } from 'lucide-react';
+import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2, Edit, Pencil, CheckCircle } from 'lucide-react';
 import React, { useEffect, useState, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useFirestore } from '@/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { Badge } from '@/components/ui/badge';
 
 
 type Geolocation = {
@@ -37,6 +38,7 @@ type Shift = {
   startLocation?: Geolocation;
   endLocation?: Geolocation;
   pauses: Pause[];
+  status: 'In attesa' | 'Approvato';
 };
 
 type User = {
@@ -231,14 +233,21 @@ export default function UserShiftsPage() {
                         <div className="space-y-4">
                         {shifts.map(shift => {
                             const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
-                            const expectedMinutes = (user.expectedHours || 0) * 60;
+                            const expectedMinutes = (user?.expectedHours || 0) * 60;
                             const overtimeMinutes = Math.max(0, duration.workedMinutes - expectedMinutes);
                             const overtimeHours = formatMinutesToHours(overtimeMinutes);
                             
                             return (
                                 <Card key={shift.id} className="overflow-hidden">
                                     <CardHeader className="flex flex-row justify-between items-start bg-muted/30 p-4">
-                                        <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
+                                        <div>
+                                            <CardTitle className="text-lg">{new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</CardTitle>
+                                             {shift.status === 'Approvato' ? (
+                                                <Badge variant="default" className="mt-1"><CheckCircle className="mr-1 h-3 w-3" />Approvato</Badge>
+                                             ) : (
+                                                <Badge variant="secondary" className="mt-1">In attesa</Badge>
+                                             )}
+                                        </div>
                                         <div className="flex items-center gap-1">
                                             <Button variant="ghost" size="icon" onClick={() => openEditDialog(shift)}>
                                                 <Pencil className="h-4 w-4" />
