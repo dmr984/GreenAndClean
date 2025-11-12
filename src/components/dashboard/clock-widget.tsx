@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, setDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, setDoc, FirestoreError } from "firebase/firestore";
 
 type Geolocation = {
   latitude: number;
@@ -148,6 +148,30 @@ export function ClockWidget({ userId, userName }: ClockWidgetProps) {
     });
   };
 
+  const handleError = (error: any, context: string) => {
+    let title = `Errore: ${context}`;
+    let description = "Si è verificato un errore sconosciuto.";
+
+    if (error instanceof FirestoreError) {
+        if (error.code === 'permission-denied') {
+            title = 'Errore di Permessi';
+            description = 'Non hai i permessi per eseguire questa operazione. Contatta un amministratore.';
+        } else {
+            title = 'Errore Database';
+            description = `Errore Firestore: ${error.message}`;
+        }
+    } else if (error instanceof Error) {
+        title = context === 'Posizione' ? 'Errore di Posizione' : `Errore: ${context}`;
+        description = error.message;
+    }
+    
+    toast({
+      title,
+      description,
+      variant: "destructive"
+    });
+  };
+
   const handleClockIn = async () => {
     if (needsExtraShiftApproval && extraShiftRequestStatus !== 'approved') {
         toast({ title: "Approvazione richiesta", description: "Hai già un turno completato oggi. Devi richiedere l'approvazione per una nuova timbratura.", variant: "destructive" });
@@ -176,11 +200,7 @@ export function ClockWidget({ userId, userName }: ClockWidgetProps) {
             description: `Hai timbrato l'entrata alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
         });
     } catch (error: any) {
-        toast({
-            title: "Errore di Posizione",
-            description: error.message,
-            variant: "destructive"
-        })
+        handleError(error, 'Timbratura Entrata');
     }
   }
 
@@ -200,7 +220,7 @@ export function ClockWidget({ userId, userName }: ClockWidgetProps) {
         await setDoc(docRef, newRequest);
         toast({ title: "Richiesta Inviata", description: "La tua richiesta per una timbratura extra è stata inviata all'amministratore." });
     } catch (error) {
-        toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+        handleError(error, 'Richiesta Extra');
     }
   }
 
@@ -230,11 +250,7 @@ export function ClockWidget({ userId, userName }: ClockWidgetProps) {
             description: `Hai timbrato l'uscita alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute:'2-digit' })}.`,
         });
     } catch (error: any) {
-        toast({
-            title: "Errore",
-            description: error.message || "Impossibile timbrare l'uscita.",
-            variant: "destructive"
-        })
+        handleError(error, 'Timbratura Uscita');
     }
   }
 
@@ -259,11 +275,7 @@ export function ClockWidget({ userId, userName }: ClockWidgetProps) {
             toast({ title: "Inizio Pausa", description: "Hai messo in pausa il tuo turno." });
         }
     } catch(error: any) {
-        toast({
-            title: "Errore",
-            description: error.message || "Impossibile gestire la pausa.",
-            variant: "destructive"
-        })
+        handleError(error, 'Gestione Pausa');
     }
   }
 
