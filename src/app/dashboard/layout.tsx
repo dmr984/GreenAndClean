@@ -76,7 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       supplyCount = storedSupply.filter(r => r.status === 'In attesa').length;
       
       const allShifts = getFromStorage<Shift[]>('shifts', []);
-      shiftCount = allShifts.filter(s => s.endTime && s.status === 'In attesa').length;
+      shiftCount = allShifts.filter(s => s.status === 'In attesa' && s.endTime).length;
       
       const allExtraShifts = getFromStorage<ExtraShiftRequest[]>('extra-shift-requests', []);
       extraShiftCount = allExtraShifts.filter(r => r.status === 'pending').length;
