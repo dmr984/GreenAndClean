@@ -30,22 +30,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
       router.replace('/');
-    } else {
-      const userData: UserData = JSON.parse(storedUser);
-      setUser(userData);
-      
-      const isAdminPage = pathname.startsWith('/dashboard/users') || 
-                          pathname === '/dashboard/warehouse' || 
-                          pathname === '/dashboard/shift-approval' ||
-                          pathname === '/dashboard/announcements';
-
-      if (userData.role === 'operator' && isAdminPage) {
-          router.replace('/dashboard');
-      } else {
-        setIsLoading(false);
-      }
+      return; 
     }
-  }, [pathname, router]);
+    
+    const userData: UserData = JSON.parse(storedUser);
+    setUser(userData);
+    
+    const isAdminPage = pathname.startsWith('/dashboard/users') || 
+                        pathname === '/dashboard/warehouse' || 
+                        pathname === '/dashboard/shift-approval' ||
+                        pathname === '/dashboard/announcements';
+
+    if (userData.role === 'operator' && isAdminPage) {
+        router.replace('/dashboard');
+    } else {
+        setIsLoading(false);
+    }
+  }, [pathname, router.replace]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
