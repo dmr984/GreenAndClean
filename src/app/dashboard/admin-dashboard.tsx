@@ -1,11 +1,15 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Briefcase, CalendarCheck, Package, ClipboardCheck, Megaphone, Clock, Warehouse } from 'lucide-react';
+import { Briefcase, CalendarCheck, Package, ClipboardCheck, Megaphone, Clock, Warehouse, Trash2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
+import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
 
 // Mock types to match the request pages
 type LeaveRequest = {
@@ -32,6 +36,10 @@ export function AdminDashboard() {
   const [pendingShifts, setPendingShifts] = React.useState(0);
   const [pendingExtraShifts, setPendingExtraShifts] = React.useState(0);
   const firestore = useFirestore();
+  const { toast } = useToast();
+
+  const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
+  const [resetConfirmation, setResetConfirmation] = React.useState('');
 
 
   React.useEffect(() => {
@@ -51,7 +59,7 @@ export function AdminDashboard() {
 
     // --- Shift Approvals ---
     const shiftsQuery = query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
-    const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
+     const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
         const completedPendingShifts = snapshot.docs.filter(doc => doc.data().endTime).length;
         setPendingShifts(completedPendingShifts);
     });
@@ -71,13 +79,45 @@ export function AdminDashboard() {
 
   }, [firestore]);
 
+  const handleResetData = async () => {
+    if (resetConfirmation !== 'AZZERA TUTTO') {
+        toast({ title: 'Conferma non valida', description: 'Scrivi "AZZERA TUTTO" per confermare.', variant: 'destructive' });
+        return;
+    }
+    if (!firestore) return;
+
+    const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'announcements', 'extra-shift-requests', 'communications'];
+    
+    toast({ title: 'Azzeramento in corso...', description: 'Potrebbe richiedere qualche secondo.' });
+
+    try {
+        const batch = writeBatch(firestore);
+        for (const coll of collectionsToDelete) {
+            const querySnapshot = await getDocs(collection(firestore, coll));
+            querySnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+        }
+        await batch.commit();
+
+        toast({ title: 'Azzeramento Completato', description: 'Tutti i dati transazionali sono stati eliminati.', variant: 'default' });
+
+    } catch (error) {
+        console.error("Error resetting data:", error);
+        toast({ title: 'Errore', description: 'Impossibile completare l\'azzeramento dei dati.', variant: 'destructive' });
+    } finally {
+        setIsResetDialogOpen(false);
+        setResetConfirmation('');
+    }
+  }
+
 
   return (
     <>
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo Admin</h2>
       </div>
-
+      
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Link href="/dashboard/users" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
@@ -160,6 +200,44 @@ export function AdminDashboard() {
             </Card>
         </Link>
       </div>
+      
+      <Card className="mt-8 border-destructive/50">
+        <CardHeader>
+            <div className="flex items-center gap-4">
+                <AlertTriangle className="h-8 w-8 text-destructive" />
+                <CardTitle>Zona Pericolosa</CardTitle>
+            </div>
+            <CardDescription>
+                Questa azione è irreversibile. Eliminerà tutti i dati relativi a turni, ferie, richieste di forniture, annunci e comunicazioni. Gli account utente non verranno eliminati.
+            </CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Button variant="destructive" onClick={() => setIsResetDialogOpen(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Azzera Dati Applicazione
+            </Button>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Questa azione non può essere annullata. Tutti i dati transazionali verranno eliminati in modo permanente. Per confermare, scrivi <span className="font-bold text-foreground">AZZERA TUTTO</span> nel campo qui sotto.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Input 
+                value={resetConfirmation}
+                onChange={(e) => setResetConfirmation(e.target.value)}
+                placeholder='Scrivi "AZZERA TUTTO"'
+            />
+            <AlertDialogFooter>
+                <AlertDialogCancel>Annulla</AlertDialogCancel>
+                <AlertDialogAction onClick={handleResetData}>Conferma e Azzera</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
