@@ -24,27 +24,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [isChangeCodeOpen, setIsChangeCodeOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
       router.replace('/');
-      return;
+    } else {
+      const userData: UserData = JSON.parse(storedUser);
+      setUser(userData);
     }
-    
-    const userData: UserData = JSON.parse(storedUser);
-    setUser(userData);
-
-    // Privacy enforcement
-    const isAdminPage = pathname.startsWith('/dashboard/users') || 
-                          pathname === '/dashboard/warehouse' || 
-                          pathname === '/dashboard/announcements';
-
-    if (userData.role === 'operator' && isAdminPage) {
-        router.replace('/dashboard');
-    }
-
-  }, [pathname, router]);
+    setIsLoading(false);
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -80,12 +71,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push(path);
   }
 
-  if(!user) {
-      return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
+  if (isLoading || !user) {
+    return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
   }
-
+  
   const isAdmin = user.role === 'admin';
   const isBaseDashboard = pathname === '/dashboard';
+  const isAdminPage = pathname.startsWith('/dashboard/users') || 
+                      pathname === '/dashboard/warehouse' || 
+                      pathname === '/dashboard/announcements';
+
+  if (user.role === 'operator' && isAdminPage) {
+      router.replace('/dashboard');
+      return <div className="flex items-center justify-center min-h-screen">Reindirizzamento...</div>;
+  }
 
   return (
     <>
