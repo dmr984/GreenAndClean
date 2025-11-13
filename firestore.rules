@@ -18,60 +18,39 @@ service cloud.firestore {
     match /{path=**} {
       allow read, write: if isAdmin();
     }
-
-    // Specific rules for non-admin users (operators)
-
-    // The roles_admin collection is get-able by any authenticated user if needed
-    // for client-side role checks, but not listable by non-admins.
-    match /roles_admin/{adminId} {
-      allow get: if request.auth != null;
-    }
-
-    // app-users collection: Read-all, but only owners can write to their own document.
+    
     match /app-users/{userId} {
       allow read: if request.auth != null;
       allow write: if isOwner(userId);
     }
     
-    // Operators can only create, read, update, and delete their own shifts.
     match /shifts/{shiftId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.userId);
     }
-
-    // Operators can only create and manage their own leave requests.
+    
     match /leave-requests/{leaveRequestId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.operatorId);
     }
-
-    // Operators can only create and read their own supply requests.
+    
     match /supply-requests/{supplyRequestId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.operatorId);
     }
     
-    // Operators can only create and read their own extra shift requests.
     match /extra-shift-requests/{requestId} {
       allow create: if request.auth != null;
       allow read: if isOwner(resource.data.userId);
     }
     
-    // Communications can only be created and read by their owner.
     match /communications/{commId} {
         allow create: if request.auth != null;
         allow read: if isOwner(resource.data.userId);
     }
-
-    // Announcements are readable by all authenticated users. Admins can write.
+    
     match /announcements/{announcementId} {
       allow read: if request.auth != null;
-      // Write access for admins is covered by the global rule.
-    }
-
-    // Warehouse items can only be managed by admins (covered by global rule).
-    match /warehouse-items/{itemId} {
-      // No explicit operator rules needed here.
     }
   }
 }
