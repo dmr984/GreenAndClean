@@ -46,41 +46,24 @@ service cloud.firestore {
     
     // Root level collections for admin queries
     match /shifts/{shiftId} {
-      // Admins can read all shifts
-      allow list, read: if isUserAuthenticated() && isAdmin();
-      // Users can create and update their own shifts
+      allow read, write: if isAdmin();
       allow create: if isUserAuthenticated();
-      allow update, read: if isUserAuthenticated() && resource.data.userId == request.auth.uid;
-      // Admins can delete shifts
-      allow delete: if isUserAuthenticated() && isAdmin();
+      allow read, update: if isUserAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
     match /leave-requests/{leaveRequestId} {
-      // Admins can read/list all requests
-      allow list, read: if isUserAuthenticated() && isAdmin();
-      // Users can create their own requests
+      allow read, write: if isAdmin();
       allow create: if isUserAuthenticated();
-      // Users can only read/update/delete their own requests
       allow read, update, delete: if isUserAuthenticated() && resource.data.operatorId == request.auth.uid;
-      // Admins can update any request (to approve/reject)
-      allow update: if isUserAuthenticated() && isAdmin();
     }
     
     match /supply-requests/{supplyRequestId} {
-        // Admins can read/list all requests
-        allow list, read: if isUserAuthenticated() && isAdmin();
-        // Users can create their own requests
-        allow create: if isUserAuthenticated();
-        // Users can read their own requests by checking the username field
-        allow read: if isUserAuthenticated() && resource.data.user == request.auth.token.name;
-        // Admins can update/delete any request
-        allow update, delete: if isUserAuthenticated() && isAdmin();
+      allow read, write: if isAdmin();
+      allow create: if isUserAuthenticated();
+      allow read: if isUserAuthenticated() && resource.data.user == request.auth.token.name;
     }
 
     match /extra-shift-requests/{requestId} {
-      // Admins can read/list all requests
-      allow list, read: if isUserAuthenticated() && isAdmin();
-      // Any authenticated user can create/read their own (will be filtered by user ID in the app)
       allow read, write: if isUserAuthenticated();
     }
 
