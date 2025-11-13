@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useMemoFirebase } from "@/firebase";
 import { collection, onSnapshot, addDoc, query, where, orderBy, doc, updateDoc } from "firebase/firestore";
 
 type Communication = {
@@ -29,25 +29,31 @@ export default function CommunicationsPage() {
     const [newCommunication, setNewCommunication] = React.useState("");
     const [loading, setLoading] = React.useState(true);
 
+    const commsQuery = useMemoFirebase(() => {
+        if (!firestore || !userRole) return null;
+        if (userRole === 'admin') {
+            return query(collection(firestore, 'communications'), orderBy('timestamp', 'desc'));
+        } else if (currentUserId) {
+            return query(collection(firestore, 'communications'), where('userId', '==', currentUserId), orderBy('timestamp', 'desc'));
+        }
+        return null;
+    }, [firestore, userRole, currentUserId]);
+
     React.useEffect(() => {
-        if (!firestore) return;
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const isAdmin = storedUser.role === 'admin';
         setUserRole(storedUser.role || null);
         setCurrentUserId(storedUser.id || null);
         setCurrentUserName(storedUser.username || null);
+    }, []);
 
-        let q;
-        if(isAdmin) {
-             q = query(collection(firestore, 'communications'), orderBy('timestamp', 'desc'));
-        } else if (storedUser.id) {
-             q = query(collection(firestore, 'communications'), where('userId', '==', storedUser.id), orderBy('timestamp', 'desc'));
-        } else {
+    React.useEffect(() => {
+        if (!commsQuery) {
             setLoading(false);
+            setCommunications([]);
             return;
         }
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        setLoading(true);
+        const unsubscribe = onSnapshot(commsQuery, (snapshot) => {
             const comms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Communication));
             setCommunications(comms);
             setLoading(false);
@@ -58,7 +64,7 @@ export default function CommunicationsPage() {
         });
         
         return () => unsubscribe();
-    }, [firestore, toast]);
+    }, [commsQuery, toast]);
 
     const handleSendCommunication = async (e: React.FormEvent) => {
         e.preventDefault();

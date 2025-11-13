@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useMemoFirebase } from "@/firebase";
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, query, where, writeBatch } from "firebase/firestore";
 
 
@@ -34,6 +34,7 @@ type SupplyRequest = {
   status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale';
   adminNotes?: string;
   fulfilledItems?: { [itemName: string]: number };
+  requestDate: string;
 };
 
 type WarehouseItem = {
@@ -66,33 +67,44 @@ export default function SupplyRequestsPage() {
     // Draft state for new request
     const [draftItems, setDraftItems] = React.useState<{ [itemName: string]: number }>({});
     
+    const requestsQuery = useMemoFirebase(() => {
+        if (!firestore || !userRole) return null;
+        if (userRole === 'admin') {
+            return query(collection(firestore, 'supply-requests'));
+        } else if (userId) {
+            return query(collection(firestore, 'supply-requests'), where('operatorId', '==', userId));
+        }
+        return null;
+    }, [firestore, userRole, userId]);
+
+    React.useEffect(() => {
+      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      setUserRole(storedUser.role);
+      setUserName(storedUser.username);
+      setUserId(storedUser.id);
+    }, []);
+
     React.useEffect(() => {
         if (!firestore) return;
-
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const isAdmin = storedUser.role === 'admin';
-        setUserRole(storedUser.role);
-        setUserName(storedUser.username);
-        setUserId(storedUser.id);
-        
-        let requestsQuery = query(collection(firestore, 'supply-requests'));
-        if (!isAdmin && storedUser.id) {
-            requestsQuery = query(collection(firestore, 'supply-requests'), where('operatorId', '==', storedUser.id));
-        }
-
-        const requestsUnsub = onSnapshot(requestsQuery, (snapshot) => {
-            setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest)));
-        });
 
         const warehouseUnsub = onSnapshot(collection(firestore, 'warehouse-items'), (snapshot) => {
             setWarehouseItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WarehouseItem)));
         });
 
-        return () => {
-            requestsUnsub();
-            warehouseUnsub();
-        }
+        return () => warehouseUnsub();
     }, [firestore]);
+
+    React.useEffect(() => {
+        if (!requestsQuery) {
+            setRequests([]);
+            return;
+        }
+        const requestsUnsub = onSnapshot(requestsQuery, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest));
+            setRequests(data.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()));
+        });
+        return () => requestsUnsub();
+    }, [requestsQuery]);
 
     const handleItemQuantityChange = (itemName: string, amount: number) => {
         setDraftItems(prev => {
@@ -117,6 +129,7 @@ export default function SupplyRequestsPage() {
             operatorId: userId,
             items: draftItems,
             status: 'In attesa' as const,
+            requestDate: new Date().toISOString(),
         };
         
         try {
@@ -306,7 +319,7 @@ export default function SupplyRequestsPage() {
                                         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2 gap-2">
                                             <div>
                                                 <CardTitle className="text-base">{req.user}</CardTitle>
-                                                <CardDescription>{new Date().toLocaleDateString()}</CardDescription>
+                                                <CardDescription>{new Date(req.requestDate).toLocaleString('it-IT')}</CardDescription>
                                             </div>
                                             <div className="flex items-center gap-2 self-end sm:self-center">
                                                 <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>

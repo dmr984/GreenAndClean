@@ -43,9 +43,16 @@ export default function UsersPage() {
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
         setUsers(userList.sort((a,b) => a.username.localeCompare(b.username)));
+    }, (error) => {
+        console.error("Permission error fetching users:", error);
+        toast({
+            title: "Errore di Permesso",
+            description: "Non hai i permessi per visualizzare gli operatori.",
+            variant: "destructive"
+        })
     });
     return () => unsubscribe();
-  }, [usersQuery]);
+  }, [usersQuery, toast]);
 
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -97,6 +104,7 @@ export default function UsersPage() {
         const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
         
         for (const coll of collectionsToDelete) {
+            // NOTE: operatorId is the field to check for ownership in related collections
             const q = query(collection(firestore, coll), where('operatorId', '==', selectedUser.id));
             const snapshot = await getDocs(q);
             snapshot.forEach(doc => batch.delete(doc.ref));

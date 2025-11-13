@@ -8,8 +8,8 @@ import { LeaveRequestsList } from "./components/leave-requests-list";
 import { Button } from "@/components/ui/button";
 import { Bed } from "lucide-react";
 import { AddSicknessDialog } from "./components/add-sickness-dialog";
-import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { useFirestore, useMemoFirebase } from "@/firebase";
+import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 
 export type LeaveRequest = {
   id: string;
@@ -33,28 +33,34 @@ export default function LeaveRequestsPage() {
     const [userId, setUserId] = React.useState<string|null>(null);
     const [userName, setUserName] = React.useState<string|null>(null);
     const [isSicknessDialogOpen, setIsSicknessDialogOpen] = React.useState(false);
+    
+    const requestsQuery = useMemoFirebase(() => {
+        if (!firestore || !userRole) return null;
+
+        if (userRole === 'admin') {
+            return query(collection(firestore, 'leave-requests'), orderBy('from', 'desc'));
+        } else if (userId) {
+            return query(collection(firestore, 'leave-requests'), where("operatorId", "==", userId), orderBy('from', 'desc'));
+        }
+        return null;
+    }, [firestore, userRole, userId]);
 
     React.useEffect(() => {
-        if (!firestore) return;
-        
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const isAdmin = storedUser.role === 'admin';
-        setUserRole(storedUser.role || null);
-        setUserId(storedUser.id || null);
-        setUserName(storedUser.username || null);
-        
-        let q;
-        if (isAdmin) {
-            q = query(collection(firestore, 'leave-requests'));
-        } else if (storedUser.id) {
-            q = query(collection(firestore, 'leave-requests'), where("operatorId", "==", storedUser.id));
-        } else {
-            return;
+      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      setUserRole(storedUser.role || null);
+      setUserId(storedUser.id || null);
+      setUserName(storedUser.username || null);
+    }, [])
+
+    React.useEffect(() => {
+        if (!requestsQuery) {
+          setRequests([]);
+          return;
         }
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
             const requestList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest));
-            setRequests(requestList.sort((a,b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+            setRequests(requestList);
         }, (error) => {
             console.error("Error fetching leave requests:", error);
             toast({
@@ -65,7 +71,7 @@ export default function LeaveRequestsPage() {
         });
 
         return () => unsubscribe();
-    }, [firestore, toast]);
+    }, [requestsQuery, toast]);
 
     const isAdmin = userRole === 'admin';
 

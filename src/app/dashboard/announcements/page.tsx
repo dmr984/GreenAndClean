@@ -15,8 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, query } from "firebase/firestore";
+import { useFirestore, useMemoFirebase } from "@/firebase";
+import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, query, orderBy } from "firebase/firestore";
 
 type AppUser = {
   id: string;
@@ -66,7 +66,7 @@ export default function AnnouncementsPage() {
             setOperators(userList);
         });
 
-        const announcementsQuery = query(collection(firestore, 'announcements'));
+        const announcementsQuery = query(collection(firestore, 'announcements'), orderBy('date', 'desc'));
         const announcementsUnsub = onSnapshot(announcementsQuery, (snapshot) => {
             const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
             
@@ -81,6 +81,7 @@ export default function AnnouncementsPage() {
             }
         }, (error) => {
              console.error("Error fetching announcements:", error);
+             toast({ title: "Errore di caricamento", description: "Impossibile caricare gli annunci.", variant: "destructive" });
         });
 
 
@@ -89,7 +90,7 @@ export default function AnnouncementsPage() {
             announcementsUnsub();
         }
 
-    }, [firestore]);
+    }, [firestore, toast]);
 
     const handleSelectOperator = (operatorId: string) => {
         setSelectedOperators(prev => 
@@ -179,7 +180,7 @@ export default function AnnouncementsPage() {
     };
     
     const isAdmin = userRole === 'admin';
-    const sortedAnnouncements = [...announcements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sortedAnnouncements = announcements; // Already sorted by query
     
     if (isAdmin) {
         return (

@@ -21,7 +21,7 @@ export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isLoading, setIsLoading] = React.useState(true); // Default to true to show loading initially
+  const [isLoading, setIsLoading] = React.useState(false); 
   const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -48,9 +48,10 @@ export default function LoginForm() {
                 role: 'admin'
             });
             await setDoc(adminRoleDocRef, { isAdmin: true });
+             console.log("Admin user created successfully.");
         }
       } catch(e) {
-        console.info("Could not set up admin user, might already exist or rules are not ready.", e);
+        console.info("Could not set up admin user, it might already exist or rules are not ready.", e);
       }
     }
     setupAdmin();
@@ -61,7 +62,7 @@ export default function LoginForm() {
         setIsLoading(true);
         return;
     }
-    
+    setIsLoading(true);
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
         snapshot.forEach((doc) => {
@@ -77,11 +78,16 @@ export default function LoginForm() {
         setIsLoading(false);
     }, (error) => {
         console.error("Error fetching users for login:", error);
+        toast({
+            title: "Errore di Connessione",
+            description: "Impossibile caricare la lista utenti. Controlla le regole di Firestore.",
+            variant: "destructive",
+        });
         setIsLoading(false);
     });
     
     return () => unsubscribe();
-  }, [usersQuery]);
+  }, [usersQuery, toast]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
