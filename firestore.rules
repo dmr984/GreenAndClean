@@ -15,8 +15,8 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    // Regola generale: gli amministratori hanno accesso completo a tutto.
-    // Questa regola risolve i problemi di permessi per le query di list.
+    // Regola globale: gli amministratori hanno accesso completo a tutto.
+    // Questa regola è la più permissiva e dovrebbe risolvere i problemi di permessi per le query di list.
     match /{path=**} {
       allow read, write: if isAdmin();
     }
@@ -50,7 +50,7 @@ service cloud.firestore {
     // Gli operatori possono creare e leggere solo le proprie richieste di forniture
     match /supply-requests/{supplyRequestId} {
       allow create: if request.auth != null;
-      allow read: if request.auth != null && resource.data.user == request.auth.token.name;
+      allow read, update, delete: if request.auth != null && resource.data.user == request.auth.token.name;
     }
     
     // Gli operatori possono creare e leggere solo le proprie richieste di timbratura extra
