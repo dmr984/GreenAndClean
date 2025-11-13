@@ -29,7 +29,8 @@ service cloud.firestore {
 
     match /leave-requests/{leaveRequestId} {
       allow create: if isUserAuthenticated() && request.resource.data.operatorId == request.auth.uid;
-      allow read, update, delete: if isUserAuthenticated() && (request.resource.data.operatorId == request.auth.uid || isAdmin());
+      allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
+      allow list: if isUserAuthenticated() && isAdmin();
     }
 
     match /announcements/{announcementId} {
@@ -39,10 +40,8 @@ service cloud.firestore {
     
     match /supply-requests/{supplyRequestId} {
         allow create: if isUserAuthenticated();
-        // Allow user to read their own requests, and admin to read any
-        allow read: if isUserAuthenticated() && (get(/databases/$(database)/documents/supply-requests/$(supplyRequestId)).data.user == request.auth.token.name || isAdmin());
-        // Allow admin to update/delete any request
-        allow update, delete: if isUserAuthenticated() && isAdmin();
+        allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
+        allow list: if isUserAuthenticated() && isAdmin();
     }
 
     match /operators/{operatorId}/supplyRequests/{supplyRequestId} {
@@ -64,9 +63,7 @@ service cloud.firestore {
     }
 
      match /app-users/{userId} {
-      // Allow any client to read the user list for the login dropdown.
-      allow read: if true; 
-      // Allow authenticated users to update their own info, or admins to update any.
+      allow read: if isUserAuthenticated();
       allow write: if isUserAuthenticated() && (isOwner(userId) || isAdmin());
     }
 
