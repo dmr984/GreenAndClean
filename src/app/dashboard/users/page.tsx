@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useMemoFirebase } from "@/firebase";
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
 type AppUser = {
@@ -32,15 +32,20 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = React.useState<AppUser | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
 
+  const usersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
+  }, [firestore]);
+
+
   React.useEffect(() => {
-    if (!firestore) return;
-    const unsubscribe = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
-        const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
-                                    .filter(u => u.role === 'operator');
+    if (!usersQuery) return;
+    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+        const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
         setUsers(userList.sort((a,b) => a.username.localeCompare(b.username)));
     });
     return () => unsubscribe();
-  }, [firestore]);
+  }, [usersQuery]);
 
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -89,7 +94,6 @@ export default function UsersPage() {
         const userRef = doc(firestore, 'app-users', selectedUser.id);
         batch.delete(userRef);
 
-        // Define collections to clean up
         const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
         
         for (const coll of collectionsToDelete) {

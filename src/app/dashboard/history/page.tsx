@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, doc, writeBatch } from "firebase/firestore";
+import { useFirestore, useMemoFirebase } from "@/firebase";
+import { collection, onSnapshot, doc, writeBatch, getDocs, query } from "firebase/firestore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -166,7 +166,8 @@ export default function HistoryPage() {
             setSelectedUserId(storedUser.id);
         }
 
-        const unsubUsers = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
+        const usersQuery = query(collection(firestore, 'app-users'));
+        const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
              const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
                                         .filter(u => u.role === 'operator');
             if (storedUser.role === 'operator') {
@@ -181,7 +182,8 @@ export default function HistoryPage() {
             setLoading(false);
         });
 
-        const unsubShifts = onSnapshot(collection(firestore, 'shifts'), (snapshot) => {
+        const shiftsQuery = query(collection(firestore, 'shifts'));
+        const unsubShifts = onSnapshot(shiftsQuery, (snapshot) => {
             setAllShifts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
              setLoading(false);
         }, (error) => {
@@ -189,7 +191,8 @@ export default function HistoryPage() {
             setLoading(false);
         });
 
-        const unsubLeaves = onSnapshot(collection(firestore, 'leave-requests'), (snapshot) => {
+        const leavesQuery = query(collection(firestore, 'leave-requests'));
+        const unsubLeaves = onSnapshot(leavesQuery, (snapshot) => {
             setAllLeaveRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest)));
              setLoading(false);
         }, (error) => {
@@ -253,19 +256,26 @@ export default function HistoryPage() {
             const shiftDate = new Date(s.startTime);
             return shiftDate.getFullYear() === year && (shiftDate.getMonth() + 1) === monthNum;
         });
-        shiftsToDelete.forEach(s => batch.delete(doc(firestore, 'shifts', s.id)));
 
         const leaveRequestsToDelete = allLeaveRequests.filter(l => {
              if (l.operatorId !== userId) return false;
              const leaveDate = new Date(l.from);
              return leaveDate.getFullYear() === year && (leaveDate.getMonth() + 1) === monthNum;
         });
-        leaveRequestsToDelete.forEach(l => batch.delete(doc(firestore, 'leave-requests', l.id)));
-        
+
         try {
+            const shiftsQuery = query(collection(firestore, 'shifts'), ...shiftsToDelete.map(s => doc(firestore, 'shifts', s.id)));
+            const shiftsSnapshot = await getDocs(shiftsQuery);
+            shiftsSnapshot.forEach(doc => batch.delete(doc.ref));
+    
+            const leavesQuery = query(collection(firestore, 'leave-requests'), ...leaveRequestsToDelete.map(l => doc(firestore, 'leave-requests', l.id)));
+            const leavesSnapshot = await getDocs(leavesQuery);
+            leavesSnapshot.forEach(doc => batch.delete(doc.ref));
+            
             await batch.commit();
             toast({ title: "Storico Mese Eliminato", variant: "destructive" });
         } catch (error) {
+            console.error("Error deleting month history:", error);
             toast({ title: "Errore", description: "Impossibile eliminare lo storico.", variant: "destructive" });
         } finally {
             resetDeleteDialog();

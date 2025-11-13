@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, where, doc, setDoc, getDoc } from 'firebase/firestore';
+import { useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -21,63 +21,67 @@ export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
 
+  const usersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'app-users'));
+  }, [firestore]);
+
+
   useEffect(() => {
-    async function setupUsers() {
-        if (!firestore) return;
-        setIsLoading(true);
+    async function setupAdmin() {
+      if (!firestore) return;
+      
+      const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
+      const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
-        try {
-            // Setup admin user and role if they don't exist
-            const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
-            const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
-
-            const adminDoc = await getDoc(adminUserDocRef);
-            if (!adminDoc.exists()) {
-                await setDoc(adminUserDocRef, {
-                    username: 'Amministratore',
-                    password: '0000',
-                    role: 'admin'
-                });
-                // The rule for roles_admin allows unauthenticated write.
-                await setDoc(adminRoleDocRef, { isAdmin: true });
-            }
-
-            // Fetch all users for the dropdown
-            const usersCollection = collection(firestore, 'app-users');
-            const querySnapshot = await getDocs(usersCollection);
-            const userList: User[] = [];
-            querySnapshot.forEach((doc) => {
-                userList.push({ id: doc.id, ...doc.data() } as User);
+      try {
+        const adminDoc = await getDoc(adminUserDocRef);
+        if (!adminDoc.exists()) {
+            await setDoc(adminUserDocRef, {
+                username: 'Amministratore',
+                password: '0000',
+                role: 'admin'
             });
-
-            userList.sort((a, b) => {
-                if (a.role === 'admin') return -1;
-                if (b.role === 'admin') return 1;
-                return a.username.localeCompare(b.username);
-            });
-            setUsers(userList);
-
-        } catch (error: any) {
-            console.error("Setup or fetch error:", error);
-            toast({
-                variant: "destructive",
-                title: "Errore di Inizializzazione",
-                description: "Impossibile caricare gli utenti. Controlla le regole di Firestore.",
-            });
-        } finally {
-            setIsLoading(false);
+            await setDoc(adminRoleDocRef, { isAdmin: true });
         }
+      } catch(e) {
+        console.info("Could not set up admin user, might already exist or rules are not ready.", e);
+      }
     }
+    setupAdmin();
+  }, [firestore]);
 
-    if (firestore) {
-      setupUsers();
+  useEffect(() => {
+    if (!usersQuery) {
+        setIsLoading(true);
+        return;
     }
-  }, [firestore, toast]);
+    setIsLoading(true);
+    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+        const userList: User[] = [];
+        snapshot.forEach((doc) => {
+            userList.push({ id: doc.id, ...doc.data() } as User);
+        });
+
+        userList.sort((a, b) => {
+            if (a.role === 'admin') return -1;
+            if (b.role === 'admin') return 1;
+            return a.username.localeCompare(b.username);
+        });
+        setUsers(userList);
+        setIsLoading(false);
+    }, (error) => {
+        console.error("Error fetching users for login:", error);
+        setIsLoading(false);
+    });
+    
+    return () => unsubscribe();
+  }, [usersQuery]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
