@@ -10,15 +10,21 @@ service cloud.firestore {
 
     function isAdmin() {
       // Check for admin role in 'roles_admin' collection.
-      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      // In this app, the user with id 'admin_user' is the admin.
+      // A more robust system would use a collection of admin UIDs.
+      // For now, we check the default admin user's ID.
+      // This is a temporary, stable solution for this specific app's structure.
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid)) || request.auth.uid == "admin_user";
     }
 
     // Global Admin Rule: Admins can read and write everything.
-    // This is the most permissive rule to prevent any permission-denied errors for admins.
+    // This is the most permissive rule to prevent any permission-denied errors for admins
+    // when listing collections.
     match /{path=**} {
       allow read, write: if isAdmin();
     }
     
+    // User-specific rules. These still apply to non-admins.
     match /app-users/{userId} {
       allow read: if request.auth != null;
       allow write: if isOwner(userId);
@@ -41,7 +47,7 @@ service cloud.firestore {
     
     match /extra-shift-requests/{requestId} {
       allow create: if request.auth != null;
-      allow read: if isOwner(resource.data.userId);
+      allow read, update, delete: if isOwner(resource.data.userId);
     }
     
     match /communications/{commId} {
@@ -49,6 +55,7 @@ service cloud.firestore {
         allow read: if isOwner(resource.data.userId);
     }
     
+    // Announcements are public to all authenticated users.
     match /announcements/{announcementId} {
       allow read: if request.auth != null;
     }
