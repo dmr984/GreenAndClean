@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore } from "@/firebase";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where, getDocs } from "firebase/firestore";
 
 type ExtraShiftRequest = {
   id: string;
@@ -22,19 +22,44 @@ export default function ExtraShiftApprovalPage() {
     const { toast } = useToast();
     const firestore = useFirestore();
     const [pendingRequests, setPendingRequests] = React.useState<ExtraShiftRequest[]>([]);
+    const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
         if (!firestore) return;
 
-        const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
+        const fetchRequests = async () => {
+            setLoading(true);
+            try {
+                const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
+                const snapshot = await getDocs(q);
+                const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtraShiftRequest));
+                setPendingRequests(requests.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+            } catch (error) {
+                console.error("Error fetching extra shift requests:", error);
+                toast({
+                    title: "Errore di Caricamento",
+                    description: "Impossibile caricare le richieste.",
+                    variant: 'destructive'
+                });
+            } finally {
+                setLoading(false);
+            }
+        };
         
+        fetchRequests();
+
+        // Optional: setup a listener that is safer or refresh manually
+        const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtraShiftRequest));
             setPendingRequests(requests.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+        }, (err) => {
+             console.error("Listener error on extra shifts:", err);
         });
 
+
         return () => unsubscribe();
-    }, [firestore]);
+    }, [firestore, toast]);
 
     const handleApproveRequest = async (requestId: string) => {
         if (!firestore) return;
@@ -42,6 +67,7 @@ export default function ExtraShiftApprovalPage() {
         const requestRef = doc(firestore, 'extra-shift-requests', requestId);
         try {
             await updateDoc(requestRef, { status: 'approved' });
+            setPendingRequests(prev => prev.filter(r => r.id !== requestId));
             toast({
                 title: "Richiesta Approvata",
                 description: "L'operatore è stato autorizzato a effettuare una nuova timbratura.",
@@ -54,6 +80,10 @@ export default function ExtraShiftApprovalPage() {
             });
         }
     };
+    
+    if (loading) {
+        return <p>Caricamento richieste...</p>
+    }
 
     return (
         <div className="flex flex-col gap-8">
