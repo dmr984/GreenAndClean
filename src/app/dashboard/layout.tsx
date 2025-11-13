@@ -139,7 +139,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <nav className="grid gap-2 text-lg font-medium">
                     {isAdmin ? (
                       <>
-                        <NavButton path="/dashboard/users" icon={<User className="h-5 w-5" />} label="Gestione Operatori" />
                         <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
                         <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
                       </>
