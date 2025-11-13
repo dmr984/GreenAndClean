@@ -8,9 +8,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // An admin's UID exists in either the 'admins' or 'roles_admin' collection.
-      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) || 
-             exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      // Admins have a document in the /roles_admin collection with their UID.
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
     
     function isUserAuthenticated() {
@@ -27,7 +26,7 @@ service cloud.firestore {
       allow read: if isUserAuthenticated();
     }
 
-    // All users can be read by admins, but only owners or admins can write.
+    // All app users can be read by admins, but only owners or admins can write.
     match /app-users/{userId} {
       allow list: if isUserAuthenticated() && isAdmin();
       allow read: if isUserAuthenticated();
@@ -38,38 +37,50 @@ service cloud.firestore {
     match /operators/{operatorId} {
       allow read: if isUserAuthenticated() && (isOwner(operatorId) || isAdmin());
       allow write: if isUserAuthenticated() && isOwner(operatorId);
+      
+      // Subcollections are owned by the operator
+      match /{subcollection}/{docId} {
+        allow read, write: if isUserAuthenticated() && isOwner(operatorId);
+      }
     }
     
-    match /operators/{operatorId}/{subcollection}/{docId} {
-      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
-    }
-
-    // Shifts: Admins can list/read all. Users can create/read their own.
+    // Root level collections for admin queries
     match /shifts/{shiftId} {
+      // Admins can read all shifts
       allow list, read: if isUserAuthenticated() && isAdmin();
-      allow read, create, update: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isUserAuthenticated() && resource.data.userId == request.auth.uid; // for completing shift
+      // Users can create and update their own shifts
+      allow create: if isUserAuthenticated();
+      allow update, read: if isUserAuthenticated() && resource.data.userId == request.auth.uid;
+      // Admins can delete shifts
       allow delete: if isUserAuthenticated() && isAdmin();
     }
     
-    // Leave Requests: Admins can list/read all. Users can manage their own.
     match /leave-requests/{leaveRequestId} {
+      // Admins can read/list all requests
       allow list, read: if isUserAuthenticated() && isAdmin();
-      allow read, create, update, delete: if isUserAuthenticated() && (request.resource.data.operatorId == request.auth.uid || resource.data.operatorId == request.auth.uid);
-      allow update: if isUserAuthenticated() && isAdmin(); // Admin can approve/reject
+      // Users can create their own requests
+      allow create: if isUserAuthenticated();
+      // Users can only read/update/delete their own requests
+      allow read, update, delete: if isUserAuthenticated() && resource.data.operatorId == request.auth.uid;
+      // Admins can update any request (to approve/reject)
+      allow update: if isUserAuthenticated() && isAdmin();
     }
     
-    // Supply Requests: Admins can list/read all. Users can create/read their own.
     match /supply-requests/{supplyRequestId} {
+        // Admins can read/list all requests
         allow list, read: if isUserAuthenticated() && isAdmin();
+        // Users can create their own requests
         allow create: if isUserAuthenticated();
+        // Users can read their own requests by checking the username field
         allow read: if isUserAuthenticated() && resource.data.user == request.auth.token.name;
+        // Admins can update/delete any request
         allow update, delete: if isUserAuthenticated() && isAdmin();
     }
 
-    // Extra Shift Requests: Admins can list/read all. Users can create their own.
-     match /extra-shift-requests/{requestId} {
+    match /extra-shift-requests/{requestId} {
+      // Admins can read/list all requests
       allow list, read: if isUserAuthenticated() && isAdmin();
+      // Any authenticated user can create/read their own (will be filtered by user ID in the app)
       allow read, write: if isUserAuthenticated();
     }
 
@@ -79,12 +90,14 @@ service cloud.firestore {
       allow write: if isUserAuthenticated() && isAdmin();
     }
     
-    // Generic collections that may be used by the application
-     match /communications/{commId} {
+    // This collection is not defined in backend.json, but provide rules for it
+    match /communications/{commId} {
       allow read, write: if isUserAuthenticated();
     }
+    
+    // Warehouse items can only be managed by admins.
      match /warehouse-items/{itemId} {
-      allow read, write: if isUserAuthenticated() && isAdmin();
+      allow read, list, write: if isUserAuthenticated() && isAdmin();
     }
   }
 }
