@@ -8,65 +8,75 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      // An admin's UID exists in either the 'admins' or 'roles_admin' collection.
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) || 
+             exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
     
     function isUserAuthenticated() {
       return request.auth != null;
     }
 
-    match /operators/{operatorId} {
-      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
-    }
-
+    // Admins collection for role management
     match /admins/{adminId} {
       allow read, write: if isUserAuthenticated() && isOwner(adminId);
-    }
-
-    match /operators/{operatorId}/shifts/{shiftId} {
-      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
-    }
-
-    match /leave-requests/{leaveRequestId} {
-      allow create: if isUserAuthenticated() && request.resource.data.operatorId == request.auth.uid;
-      allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
-      allow list: if isUserAuthenticated() && isAdmin();
-    }
-
-    match /announcements/{announcementId} {
-      allow read: if isUserAuthenticated();
-      allow write: if isUserAuthenticated() && isAdmin();
-    }
-    
-    match /supply-requests/{supplyRequestId} {
-        allow create: if isUserAuthenticated();
-        allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
-        allow list: if isUserAuthenticated() && isAdmin();
-    }
-
-    match /operators/{operatorId}/supplyRequests/{supplyRequestId} {
-      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
     }
 
     match /roles_admin/{adminId} {
       allow read: if isUserAuthenticated();
     }
 
-    match /shifts/{shiftId} {
-      allow read, update: if isUserAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow delete: if isUserAuthenticated() && isAdmin();
-    }
-    
-     match /extra-shift-requests/{requestId} {
-      allow read, write: if isUserAuthenticated();
-    }
-
-     match /app-users/{userId} {
+    // App Users can be read by admins, and written by their owner or an admin
+    match /app-users/{userId} {
       allow read: if isUserAuthenticated();
+      allow list: if isUserAuthenticated() && isAdmin();
       allow write: if isUserAuthenticated() && (isOwner(userId) || isAdmin());
     }
 
+    // Operator-specific data is owned by the operator
+    match /operators/{operatorId} {
+      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
+    }
+    
+    match /operators/{operatorId}/{subcollection}/{docId} {
+      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
+    }
+
+    // Shifts can be created by the user, and listed/read/updated by admins or the owner.
+    match /shifts/{shiftId} {
+      allow create: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read, update: if isUserAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isUserAuthenticated() && isAdmin();
+      allow delete: if isUserAuthenticated() && isAdmin();
+    }
+    
+    // Leave requests can be created by the user, read by user/admin, and listed by admins.
+    match /leave-requests/{leaveRequestId} {
+      allow create: if isUserAuthenticated() && request.resource.data.operatorId == request.auth.uid;
+      allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
+      allow list: if isUserAuthenticated() && isAdmin();
+    }
+    
+    // Supply requests follow the same pattern as leave requests.
+    match /supply-requests/{supplyRequestId} {
+        allow create: if isUserAuthenticated();
+        allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
+        allow list: if isUserAuthenticated() && isAdmin();
+    }
+
+    // Extra shift requests can be read/written by any authenticated user, but primarily managed by admins.
+     match /extra-shift-requests/{requestId} {
+      allow read, write: if isUserAuthenticated();
+      allow list: if isUserAuthenticated() && isAdmin();
+    }
+
+    // Announcements can be read by anyone, but only written by admins.
+    match /announcements/{announcementId} {
+      allow read: if isUserAuthenticated();
+      allow write: if isUserAuthenticated() && isAdmin();
+    }
+    
+    // Generic collections that may be used by the application
      match /communications/{commId} {
       allow read, write: if isUserAuthenticated();
     }
