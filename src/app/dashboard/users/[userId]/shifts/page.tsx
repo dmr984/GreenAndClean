@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Clock, PauseCircle, Timer, AlarmClockOff, Briefcase, MapPin, Trash2, Pencil, CheckCircle } from 'lucide-react';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useFirestore } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 
 
@@ -45,22 +45,6 @@ type User = {
     id: string;
     username: string;
     expectedHours?: number;
-};
-
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
 };
 
 const calculateDuration = (start: string | null, end: string | null, pauses: Pause[]) => {
@@ -112,38 +96,28 @@ export default function UserShiftsPage() {
     const [editDraft, setEditDraft] = useState<{startTime: string, endTime: string}>({startTime: '', endTime: ''});
     
      useEffect(() => {
-        const fetchUserData = async () => {
-            if (!userId || !firestore) return;
+        if (!userId || !firestore) return;
+        setLoading(true);
 
-            setLoading(true);
-            
-            try {
-                const userDocRef = doc(firestore, 'app-users', userId);
-                const userDoc = await getDoc(userDocRef);
-
-                if (userDoc.exists()) {
-                    setUser({ id: userDoc.id, ...userDoc.data() } as User);
-                    
-                    const allShifts = getFromStorage<Shift[]>('shifts', []);
-                    setShifts(allShifts.filter(s => s.userId === userId && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
-                } else {
-                    setUser(null);
-                }
-            } catch (error) {
-                console.error("Error fetching user data:", error);
+        getDoc(doc(firestore, 'app-users', userId)).then(userDoc => {
+            if(userDoc.exists()){
+                setUser({id: userDoc.id, ...userDoc.data()} as User);
+            } else {
                 setUser(null);
-            } finally {
-                setLoading(false);
             }
-        };
+        });
 
-        fetchUserData();
-        
-        const handleStorageChange = () => fetchUserData();
-        window.addEventListener('storage', handleStorageChange);
+        const q = query(collection(firestore, 'shifts'), where('userId', '==', userId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const userShifts = snapshot.docs
+                .map(d => ({id: d.id, ...d.data()} as Shift))
+                .filter(s => s.endTime)
+                .sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
+            setShifts(userShifts);
+            setLoading(false);
+        });
 
-        return () => window.removeEventListener('storage', handleStorageChange);
-
+        return () => unsubscribe();
     }, [userId, firestore]);
 
     const openDeleteConfirmation = (shift: Shift) => {
@@ -151,15 +125,17 @@ export default function UserShiftsPage() {
         setIsDeleteDialogOpen(true);
     };
 
-    const handleDeleteShift = () => {
-        if (!selectedShift) return;
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
-        const updatedShifts = allShifts.filter(s => s.id !== selectedShift.id);
-        saveToStorage('shifts', updatedShifts);
-        setShifts(prev => prev.filter(s => s.id !== selectedShift!.id));
-        toast({ title: "Timbratura eliminata", variant: "destructive"});
-        setIsDeleteDialogOpen(false);
-        setSelectedShift(null);
+    const handleDeleteShift = async () => {
+        if (!selectedShift || !firestore) return;
+        try {
+            await deleteDoc(doc(firestore, 'shifts', selectedShift.id));
+            toast({ title: "Timbratura eliminata", variant: "destructive"});
+        } catch(e) {
+            toast({ title: "Errore", description: "Impossibile eliminare la timbratura.", variant: "destructive"});
+        } finally {
+            setIsDeleteDialogOpen(false);
+            setSelectedShift(null);
+        }
     };
 
     const openEditDialog = (shift: Shift) => {
@@ -175,32 +151,30 @@ export default function UserShiftsPage() {
         setIsEditDialogOpen(true);
     }
     
-    const handleEditShift = (e: React.FormEvent) => {
+    const handleEditShift = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedShift || !editDraft.startTime || !editDraft.endTime) return;
+        if (!selectedShift || !editDraft.startTime || !editDraft.endTime || !firestore) return;
         
-        const allShifts = getFromStorage<Shift[]>('shifts', []);
+        const newStartDate = new Date(selectedShift.startTime!);
+        const [startHours, startMinutes] = editDraft.startTime.split(':').map(Number);
+        newStartDate.setHours(startHours, startMinutes);
 
-        const updatedShifts = allShifts.map(s => {
-            if (s.id === selectedShift.id) {
-                 const newStartDate = new Date(s.startTime!);
-                 const [startHours, startMinutes] = editDraft.startTime.split(':').map(Number);
-                 newStartDate.setHours(startHours, startMinutes);
+        const newEndDate = new Date(selectedShift.endTime!);
+        const [endHours, endMinutes] = editDraft.endTime.split(':').map(Number);
+        newEndDate.setHours(endHours, endMinutes);
 
-                 const newEndDate = new Date(s.endTime!);
-                 const [endHours, endMinutes] = editDraft.endTime.split(':').map(Number);
-                 newEndDate.setHours(endHours, endMinutes);
-
-                 return { ...s, startTime: newStartDate.toISOString(), endTime: newEndDate.toISOString() };
-            }
-            return s;
-        });
-
-        saveToStorage('shifts', updatedShifts);
-        setShifts(updatedShifts.filter(s => s.userId === userId && s.endTime).sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime()));
-        toast({ title: "Timbratura aggiornata" });
-        setIsEditDialogOpen(false);
-        setSelectedShift(null);
+        try {
+            await updateDoc(doc(firestore, 'shifts', selectedShift.id), {
+                startTime: newStartDate.toISOString(),
+                endTime: newEndDate.toISOString()
+            });
+            toast({ title: "Timbratura aggiornata" });
+        } catch(e) {
+            toast({ title: "Errore", description: "Impossibile aggiornare la timbratura.", variant: "destructive"});
+        } finally {
+            setIsEditDialogOpen(false);
+            setSelectedShift(null);
+        }
     }
 
     if (loading) {

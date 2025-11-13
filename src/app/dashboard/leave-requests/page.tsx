@@ -53,6 +53,7 @@ export default function LeaveRequestsPage() {
         
         let q = query(collection(firestore, 'leave-requests'));
 
+        // If the user is not an admin, filter requests by their operatorId
         if (!isAdmin && storedUser.id) {
             q = query(collection(firestore, 'leave-requests'), where("operatorId", "==", storedUser.id));
         }

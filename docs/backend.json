@@ -247,109 +247,17 @@
   "firestore": {
     "structure": [
       {
-        "path": "/operators/{operatorId}",
+        "path": "/app-users/{userId}",
         "definition": {
           "entityName": "Operator",
           "schema": {
             "$ref": "#/backend/entities/Operator"
           },
-          "description": "Stores information about cleaning operators. Uses path-based ownership for operator-specific data.",
+          "description": "Stores information about all users (admins and operators).",
           "params": [
             {
-              "name": "operatorId",
-              "description": "The unique identifier of the operator."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/admins/{adminId}",
-        "definition": {
-          "entityName": "Admin",
-          "schema": {
-            "$ref": "#/backend/entities/Admin"
-          },
-          "description": "Stores information about administrators. Uses path-based ownership for admin-specific data.",
-          "params": [
-            {
-              "name": "adminId",
-              "description": "The unique identifier of the admin."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/operators/{operatorId}/shifts/{shiftId}",
-        "definition": {
-          "entityName": "Shift",
-          "schema": {
-            "$ref": "#/backend/entities/Shift"
-          },
-          "description": "Stores shift data for each operator. Employs path-based ownership.",
-          "params": [
-            {
-              "name": "operatorId",
-              "description": "The unique identifier of the operator."
-            },
-            {
-              "name": "shiftId",
-              "description": "The unique identifier of the shift."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/operators/{operatorId}/leaveRequests/{leaveRequestId}",
-        "definition": {
-          "entityName": "LeaveRequest",
-          "schema": {
-            "$ref": "#/backend/entities/LeaveRequest"
-          },
-          "description": "Stores leave requests submitted by operators. Employs path-based ownership.",
-          "params": [
-            {
-              "name": "operatorId",
-              "description": "The unique identifier of the operator."
-            },
-            {
-              "name": "leaveRequestId",
-              "description": "The unique identifier of the leave request."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/announcements/{announcementId}",
-        "definition": {
-          "entityName": "Announcement",
-          "schema": {
-            "$ref": "#/backend/entities/Announcement"
-          },
-          "description": "Stores announcements created by administrators.  Authorization is based on admin role (existence check in /roles_admin/{uid}).",
-          "params": [
-            {
-              "name": "announcementId",
-              "description": "The unique identifier of the announcement."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/operators/{operatorId}/supplyRequests/{supplyRequestId}",
-        "definition": {
-          "entityName": "SupplyRequest",
-          "schema": {
-            "$ref": "#/backend/entities/SupplyRequest"
-          },
-          "description": "Stores supply requests submitted by operators. Uses path-based ownership.",
-          "params": [
-            {
-              "name": "operatorId",
-              "description": "The unique identifier of the operator."
-            },
-            {
-              "name": "supplyRequestId",
-              "description": "The unique identifier of the supply request."
+              "name": "userId",
+              "description": "The unique identifier of the user."
             }
           ]
         }
@@ -361,7 +269,7 @@
           "schema": {
             "$ref": "#/backend/entities/Admin"
           },
-          "description": "A collection to store admin roles. Existence of a document with the user's ID in this collection grants admin privileges. This enables secure list operations for admin-related data.",
+          "description": "A collection to store admin roles. Existence of a document with the user's ID in this collection grants admin privileges.",
           "params": [
             {
               "name": "adminId",
@@ -369,8 +277,104 @@
             }
           ]
         }
+      },
+      {
+        "path": "/shifts/{shiftId}",
+        "definition": {
+          "entityName": "Shift",
+          "schema": {
+            "$ref": "#/backend/entities/Shift"
+          },
+          "description": "Top-level collection for all shifts. Each document contains an operatorId.",
+          "params": [
+            {
+              "name": "shiftId",
+              "description": "The unique identifier of the shift."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/leave-requests/{leaveRequestId}",
+        "definition": {
+          "entityName": "LeaveRequest",
+          "schema": {
+            "$ref": "#/backend/entities/LeaveRequest"
+          },
+          "description": "Top-level collection for all leave requests. Each document contains an operatorId.",
+          "params": [
+            {
+              "name": "leaveRequestId",
+              "description": "The unique identifier of the leave request."
+            }
+          ]
+        }
+      },
+       {
+        "path": "/extra-shift-requests/{requestId}",
+        "definition": {
+          "entityName": "ExtraShiftRequest",
+          "schema": {
+            "$ref": "#/backend/entities/Shift"
+          },
+          "description": "Top-level collection for all extra shift requests. Each document contains a userId.",
+          "params": [
+            {
+              "name": "requestId",
+              "description": "The unique identifier of the extra shift request."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/announcements/{announcementId}",
+        "definition": {
+          "entityName": "Announcement",
+          "schema": {
+            "$ref": "#/backend/entities/Announcement"
+          },
+          "description": "Top-level collection for all announcements.",
+          "params": [
+            {
+              "name": "announcementId",
+              "description": "The unique identifier of the announcement."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/supply-requests/{supplyRequestId}",
+        "definition": {
+          "entityName": "SupplyRequest",
+          "schema": {
+            "$ref": "#/backend/entities/SupplyRequest"
+          },
+          "description": "Top-level collection for all supply requests. Each document contains an operatorId.",
+          "params": [
+            {
+              "name": "supplyRequestId",
+              "description": "The unique identifier of the supply request."
+            }
+          ]
+        }
+      },
+       {
+        "path": "/communications/{commId}",
+        "definition": {
+          "entityName": "Communication",
+          "schema": {
+            "$ref": "#/backend/entities/Announcement"
+          },
+          "description": "Top-level collection for all communications. Each document contains a userId.",
+          "params": [
+            {
+              "name": "commId",
+              "description": "The unique identifier of the communication."
+            }
+          ]
+        }
       }
     ],
-    "reasoning": "The Firestore data structure is designed to ensure authorization independence, clarity, and scalability for the WorkForce Hub application. It leverages path-based ownership for user-specific data and a dedicated collection for admins. This design avoids `get()` calls in security rules and facilitates secure list operations. Authorization Independence is achieved through the use of explicit path-based ownership and existence checks within specific role collections. The structure also separates data based on access requirements (Admin vs Operator data), and this supports required QAPs by allowing secure list operations within each designated area of the database. For example, operators can only list their own shifts, leave requests, and supply requests, while admins have read access across the board. Furthermore, all admin roles are determined using existence checks against the `/roles_admin/{uid}` collection."
+    "reasoning": "The Firestore data structure has been flattened to improve query performance and simplify security rules. Collections like shifts, leave-requests, and supply-requests are now at the top level. Each document within these collections contains a userId or operatorId to associate it with a specific user. This allows administrators to easily query all documents in a collection, while operators' access can be restricted to only documents containing their own ID. This resolves the permission errors caused by attempting collection group queries on a nested structure."
   }
 }

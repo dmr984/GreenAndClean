@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFirestore } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -18,23 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 
-type LeaveRequest = { id: string; user: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
-
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
-};
+type LeaveRequest = { id: string; operatorId: string; user: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
 
 const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -61,55 +45,51 @@ export default function UserLeavesPage() {
     const [editDraft, setEditDraft] = useState<Partial<LeaveRequest>>({});
 
 
-    const fetchUserData = useCallback(() => {
+    useEffect(() => {
         if (!userId || !firestore) return;
-
         setLoading(true);
         
-        getDoc(doc(firestore, 'app-users', userId)).then(userDoc => {
+        const userDocRef = doc(firestore, 'app-users', userId);
+        getDoc(userDocRef).then(userDoc => {
             if (userDoc.exists()) {
-                const userData = userDoc.data();
-                const currentUserName = userData.username;
-                setUserName(currentUserName);
-
-                const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-                setLeaveRequests(allLeaves.filter(r => r.user === currentUserName).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+                setUserName(userDoc.data().username);
             } else {
                 setUserName(null);
             }
         }).catch(error => {
             console.error("Error fetching user data:", error);
             setUserName(null);
-        }).finally(() => {
+        });
+
+        const q = query(collection(firestore, 'leave-requests'), where('operatorId', '==', userId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setLeaveRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest)).sort((a,b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching leave requests:", error);
             setLoading(false);
         });
-    }, [userId, firestore]);
 
-    useEffect(() => {
-        fetchUserData();
-        window.addEventListener('storage', fetchUserData);
-        return () => {
-            window.removeEventListener('storage', fetchUserData);
-        };
-    }, [fetchUserData]);
+        return () => unsubscribe();
+    }, [userId, firestore]);
 
     const openDeleteConfirmation = (request: LeaveRequest) => {
         setSelectedRequest(request);
         setIsDeleteDialogOpen(true);
     };
 
-    const handleDeleteRequest = () => {
-        if (!selectedRequest) return;
+    const handleDeleteRequest = async () => {
+        if (!selectedRequest || !firestore) return;
         
-        const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        const updatedLeaves = allLeaves.filter(r => r.id !== selectedRequest.id);
-        saveToStorage('leave-requests', updatedLeaves);
-
-        setLeaveRequests(prev => prev.filter(r => r.id !== selectedRequest!.id));
-        
-        toast({ title: "Richiesta eliminata", variant: "destructive"});
-        setIsDeleteDialogOpen(false);
-        setSelectedRequest(null);
+        try {
+            await deleteDoc(doc(firestore, 'leave-requests', selectedRequest.id));
+            toast({ title: "Richiesta eliminata", variant: "destructive"});
+        } catch (error) {
+             toast({ title: "Errore", description: "Impossibile eliminare la richiesta.", variant: "destructive"});
+        } finally {
+            setIsDeleteDialogOpen(false);
+            setSelectedRequest(null);
+        }
     };
 
     const openEditDialog = (request: LeaveRequest) => {
@@ -122,24 +102,31 @@ export default function UserLeavesPage() {
         setEditDraft(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleEditRequestSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleEditRequestSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!selectedRequest || !editDraft) return;
+        if (!selectedRequest || !editDraft || !firestore) return;
 
         if (!editDraft.type || !editDraft.from || !editDraft.to) {
             toast({ title: "Campi mancanti", variant: "destructive" });
             return;
         }
+        
+        const updatedData: Partial<LeaveRequest> = {
+            ...editDraft,
+            status: 'In attesa',
+            timeFrom: editDraft.type === 'Permesso' ? editDraft.timeFrom : undefined,
+            timeTo: editDraft.type === 'Permesso' ? editDraft.timeTo : undefined,
+        };
 
-        const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-        const updatedLeaves = allLeaves.map(r => r.id === selectedRequest.id ? { ...r, ...editDraft, status: 'In attesa' } as LeaveRequest : r);
-        saveToStorage('leave-requests', updatedLeaves);
-
-        setLeaveRequests(updatedLeaves.filter(r => r.user === userName).sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime()));
-
-        toast({ title: "Richiesta Modificata" });
-        setIsEditDialogOpen(false);
-        setSelectedRequest(null);
+        try {
+            await updateDoc(doc(firestore, 'leave-requests', selectedRequest.id), updatedData);
+            toast({ title: "Richiesta Modificata" });
+        } catch (error) {
+             toast({ title: "Errore", description: "Impossibile modificare la richiesta.", variant: "destructive"});
+        } finally {
+            setIsEditDialogOpen(false);
+            setSelectedRequest(null);
+        }
     };
 
 

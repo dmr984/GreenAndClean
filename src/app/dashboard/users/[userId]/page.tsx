@@ -6,12 +6,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, CheckCircle, Package, Briefcase, Plus, Minus, CalendarDays, Hourglass, TrendingUp, CalendarCheck, ClipboardCheck } from 'lucide-react';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 
 
 type User = {
@@ -23,7 +23,7 @@ type User = {
   expectedHours?: number;
 };
 
-type LeaveRequest = { id: string; user: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
+type LeaveRequest = { id: string; operatorId: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
 type Shift = { 
   id: string; 
   userId: string;
@@ -31,16 +31,6 @@ type Shift = {
   endTime: string | null; 
   pauses: { startTime: string; endTime: string | null }[];
   status: 'In attesa' | 'Approvato';
-};
-
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
 };
 
 const getAvatarFallback = (name: string) => {
@@ -85,31 +75,49 @@ export default function UserProfilePage() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     if (!firestore || !userId) return;
 
     setLoading(true);
     
-    const userDocRef = doc(firestore, 'app-users', userId);
-    const userDoc = await getDoc(userDocRef);
+    try {
+        const userDocRef = doc(firestore, 'app-users', userId);
+        const userDoc = await getDoc(userDocRef);
 
-    if (userDoc.exists()) {
-      const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
-      setUser(foundUser);
-      
-      const allLeaves = getFromStorage<LeaveRequest[]>('leave-requests', []);
-      setLeaveRequests(allLeaves.filter(r => r.user === foundUser.username));
-
-      const allShifts = getFromStorage<Shift[]>('shifts', []);
-      setShifts(allShifts.filter(s => s.userId === foundUser.id && s.endTime));
-    } else {
-      setUser(null);
+        if (userDoc.exists()) {
+            const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
+            setUser(foundUser);
+        } else {
+            setUser(null);
+        }
+    } catch (e) {
+        setUser(null);
     }
+
     setLoading(false);
-  };
+  }, [userId, firestore]);
 
   useEffect(() => {
     fetchAllData();
+  }, [fetchAllData]);
+
+  useEffect(() => {
+    if (!firestore || !userId) return;
+
+    const shiftsQuery = query(collection(firestore, 'shifts'), where('userId', '==', userId));
+    const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
+        setShifts(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Shift)).filter(s => s.endTime));
+    });
+
+    const leavesQuery = query(collection(firestore, 'leave-requests'), where('operatorId', '==', userId));
+    const unsubLeaves = onSnapshot(leavesQuery, snapshot => {
+        setLeaveRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()} as LeaveRequest)));
+    });
+
+    return () => {
+        unsubShifts();
+        unsubLeaves();
+    };
   }, [userId, firestore]);
 
   const summaryStats = useMemo(() => {

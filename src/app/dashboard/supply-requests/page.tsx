@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, query, where, writeBatch } from "firebase/firestore";
 
 
 // ==================================
@@ -29,6 +29,7 @@ import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "fireb
 type SupplyRequest = {
   id: string;
   user: string;
+  operatorId: string;
   items: { [itemName: string]: number }; // e.g. { "Sgrassatore": 5, "Panni Vetri": 10 }
   status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale';
   adminNotes?: string;
@@ -60,6 +61,7 @@ export default function SupplyRequestsPage() {
     
     const [userRole, setUserRole] = React.useState<string|null>(null);
     const [userName, setUserName] = React.useState<string|null>(null);
+    const [userId, setUserId] = React.useState<string|null>(null);
 
     // Draft state for new request
     const [draftItems, setDraftItems] = React.useState<{ [itemName: string]: number }>({});
@@ -68,10 +70,17 @@ export default function SupplyRequestsPage() {
         if (!firestore) return;
 
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const isAdmin = storedUser.role === 'admin';
         setUserRole(storedUser.role);
         setUserName(storedUser.username);
+        setUserId(storedUser.id);
         
-        const requestsUnsub = onSnapshot(collection(firestore, 'supply-requests'), (snapshot) => {
+        let requestsQuery = query(collection(firestore, 'supply-requests'));
+        if (!isAdmin && storedUser.id) {
+            requestsQuery = query(collection(firestore, 'supply-requests'), where('operatorId', '==', storedUser.id));
+        }
+
+        const requestsUnsub = onSnapshot(requestsQuery, (snapshot) => {
             setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest)));
         });
 
@@ -98,13 +107,14 @@ export default function SupplyRequestsPage() {
     };
 
     const handleNewRequestSubmit = async () => {
-        if (Object.keys(draftItems).length === 0 || !firestore) {
+        if (Object.keys(draftItems).length === 0 || !firestore || !userId || !userName) {
             toast({ title: "Nessun prodotto selezionato", description: "Aggiungi almeno un prodotto alla richiesta.", variant: "destructive" });
             return;
         }
 
         const newRequest = {
-            user: userName || 'Operatore',
+            user: userName,
+            operatorId: userId,
             items: draftItems,
             status: 'In attesa' as const,
         };
@@ -148,14 +158,16 @@ export default function SupplyRequestsPage() {
       
         const action = (e.nativeEvent as any).submitter.value as 'approve' | 'reject';
         const requestRef = doc(firestore, 'supply-requests', selectedRequest.id);
+        const batch = writeBatch(firestore);
       
         try {
             if (action === 'reject') {
-                await updateDoc(requestRef, {
+                batch.update(requestRef, {
                     status: 'Rifiutata',
                     fulfilledItems: {},
                     adminNotes: manageFormState.notes
                 });
+                await batch.commit();
                 toast({ title: "Richiesta Rifiutata" });
             } else {
                 let canFulfill = true;
@@ -181,9 +193,9 @@ export default function SupplyRequestsPage() {
                 for (const itemName in manageFormState.fulfilledItems) {
                      const fulfilledQty = manageFormState.fulfilledItems[itemName];
                      const itemToUpdate = warehouseItems.find(item => item.name === itemName);
-                     if (itemToUpdate) {
+                     if (itemToUpdate && fulfilledQty > 0) {
                         const itemRef = doc(firestore, 'warehouse-items', itemToUpdate.id);
-                        await updateDoc(itemRef, { quantity: itemToUpdate.quantity - fulfilledQty });
+                        batch.update(itemRef, { quantity: itemToUpdate.quantity - fulfilledQty });
                      }
                 }
 
@@ -202,11 +214,13 @@ export default function SupplyRequestsPage() {
                     toastMessage = "Richiesta Approvata Parzialmente";
                 }
                 
-                await updateDoc(requestRef, {
+                batch.update(requestRef, {
                     status,
                     fulfilledItems: manageFormState.fulfilledItems,
                     adminNotes: manageFormState.notes
                 });
+                
+                await batch.commit();
                 toast({ title: toastMessage });
             }
         } catch (error) {
@@ -238,8 +252,7 @@ export default function SupplyRequestsPage() {
     }
     
     const isAdmin = userRole === 'admin';
-    const userRequests = isAdmin ? requests : requests.filter(r => r.user === userName);
-
+    
     return (
         <div className="flex flex-col gap-8">
             <div className="flex items-center justify-between space-y-2">
@@ -284,11 +297,11 @@ export default function SupplyRequestsPage() {
 
                     <div>
                         <h3 className="text-lg font-semibold mb-2">Storico Richieste</h3>
-                        {userRequests.length === 0 ? (
+                        {requests.length === 0 ? (
                             <div className="text-center text-muted-foreground py-12"><p>Non ci sono richieste di forniture da mostrare.</p></div>
                         ) : (
                             <div className="space-y-4">
-                                {userRequests.map((req) => (
+                                {requests.map((req) => (
                                     <Card key={req.id}>
                                         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2 gap-2">
                                             <div>

@@ -2,36 +2,20 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/componentsui/button';
 import { ArrowLeft, Trash2, Pencil, Minus, Plus } from 'lucide-react';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFirestore } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from '@/hooks/use-toast';
 
-type SupplyRequest = { id: string; user: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; adminNotes?: string };
+type SupplyRequest = { id: string; user: string; operatorId: string; items: { [key: string]: number }; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; fulfilledItems?: { [key: string]: number }; adminNotes?: string };
 type WarehouseItem = { id: string; name: string; quantity: number; };
-
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') return defaultValue;
-  const stored = localStorage.getItem(key);
-  try {
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    return defaultValue;
-  }
-};
-
-const saveToStorage = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('storage'));
-};
 
 const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -60,59 +44,51 @@ export default function UserSuppliesPage() {
     const [editDraftItems, setEditDraftItems] = useState<{ [itemName: string]: number }>({});
 
 
-    const fetchUserData = useCallback(async () => {
+    useEffect(() => {
         if (!userId || !firestore) return;
-
         setLoading(true);
         
-        try {
-            const userDocRef = doc(firestore, 'app-users', userId);
-            const userDoc = await getDoc(userDocRef);
-
+        const userDocRef = doc(firestore, 'app-users', userId);
+        getDoc(userDocRef).then(userDoc => {
             if (userDoc.exists()) {
-                const userData = userDoc.data();
-                const currentUserName = userData.username;
-                setUserName(currentUserName);
-
-                const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-                setSupplyRequests(allSupplies.filter(r => r.user === currentUserName).sort((a,b) => b.id.localeCompare(a.id)));
-                setWarehouseItems(getFromStorage<WarehouseItem[]>('warehouse-items', []));
+                setUserName(userDoc.data().username);
             } else {
                 setUserName(null);
             }
-        } catch (error) {
-            console.error("Error fetching user data:", error);
-            setUserName(null);
-        } finally {
-            setLoading(false);
-        }
-    }, [userId, firestore]);
+        }).catch(console.error);
 
-    useEffect(() => {
-        fetchUserData();
-        window.addEventListener('storage', fetchUserData);
+        const suppliesQuery = query(collection(firestore, 'supply-requests'), where('operatorId', '==', userId));
+        const unsubSupplies = onSnapshot(suppliesQuery, snapshot => {
+            setSupplyRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()} as SupplyRequest)).sort((a,b) => (b.id || "").localeCompare(a.id || "")));
+            setLoading(false);
+        }, console.error);
+
+        const unsubWarehouse = onSnapshot(collection(firestore, 'warehouse-items'), snapshot => {
+             setWarehouseItems(snapshot.docs.map(d => ({id: d.id, ...d.data()} as WarehouseItem)));
+        });
+
         return () => {
-            window.removeEventListener('storage', fetchUserData);
+            unsubSupplies();
+            unsubWarehouse();
         };
-    }, [fetchUserData]);
+    }, [userId, firestore]);
     
     const openDeleteConfirmation = (request: SupplyRequest) => {
         setSelectedRequest(request);
         setIsDeleteDialogOpen(true);
     };
     
-    const handleDeleteRequest = () => {
-        if (!selectedRequest) return;
-        
-        const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        const updatedSupplies = allSupplies.filter(r => r.id !== selectedRequest.id);
-        saveToStorage('supply-requests', updatedSupplies);
-
-        setSupplyRequests(prev => prev.filter(r => r.id !== selectedRequest!.id));
-        
-        toast({ title: "Richiesta eliminata", variant: "destructive"});
-        setIsDeleteDialogOpen(false);
-        setSelectedRequest(null);
+    const handleDeleteRequest = async () => {
+        if (!selectedRequest || !firestore) return;
+        try {
+            await deleteDoc(doc(firestore, 'supply-requests', selectedRequest.id));
+            toast({ title: "Richiesta eliminata", variant: "destructive"});
+        } catch(e) {
+            toast({ title: "Errore", description: "Impossibile eliminare la richiesta.", variant: "destructive"});
+        } finally {
+             setIsDeleteDialogOpen(false);
+             setSelectedRequest(null);
+        }
     };
 
     const openEditDialog = (request: SupplyRequest) => {
@@ -133,25 +109,25 @@ export default function UserSuppliesPage() {
         });
     };
     
-    const handleEditRequestSubmit = () => {
-        if (!selectedRequest) return;
+    const handleEditRequestSubmit = async () => {
+        if (!selectedRequest || !firestore) return;
          if (Object.keys(editDraftItems).length === 0) {
             toast({ title: "Nessun prodotto", description: "La richiesta non può essere vuota.", variant: "destructive" });
             return;
         }
 
-        const allSupplies = getFromStorage<SupplyRequest[]>('supply-requests', []);
-        const updatedSupplies = allSupplies.map(r => 
-            r.id === selectedRequest.id 
-            ? { ...r, items: editDraftItems, status: 'In attesa' } as SupplyRequest
-            : r
-        );
-        saveToStorage('supply-requests', updatedSupplies);
-        
-        setSupplyRequests(updatedSupplies.filter(r => r.user === userName).sort((a,b) => b.id.localeCompare(a.id)));
-        toast({ title: "Richiesta Modificata", description: "La richiesta è stata aggiornata e dovrà essere riapprovata." });
-        setIsEditDialogOpen(false);
-        setSelectedRequest(null);
+        try {
+            await updateDoc(doc(firestore, 'supply-requests', selectedRequest.id), {
+                items: editDraftItems,
+                status: 'In attesa'
+            });
+            toast({ title: "Richiesta Modificata", description: "La richiesta è stata aggiornata e dovrà essere riapprovata." });
+        } catch (e) {
+            toast({ title: "Errore", description: "Impossibile modificare la richiesta.", variant: "destructive"});
+        } finally {
+            setIsEditDialogOpen(false);
+            setSelectedRequest(null);
+        }
     };
 
     if (loading) {

@@ -152,40 +152,42 @@ export default function HistoryPage() {
     const [confirmationInput, setConfirmationInput] = React.useState("");
 
     React.useEffect(() => {
+        if(!firestore) return;
+
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUserRole(storedUser.role);
         if (storedUser.role === 'operator') {
             setSelectedUserId(storedUser.id);
         }
 
-        const fetchInitialData = async () => {
-            if (!firestore) return;
-            setLoading(true);
-            try {
-                const usersSnapshot = await getDocs(collection(firestore, 'app-users'));
-                const userList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
+        const unsubUsers = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
+             const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
                                         .filter(u => u.role === 'operator');
-
-                if (storedUser.role === 'operator') {
-                    const currentUser = usersSnapshot.docs.find(doc => doc.id === storedUser.id);
-                    if (currentUser) setAllUsers([{id: currentUser.id, ...currentUser.data()} as AppUser]);
-                } else {
-                    setAllUsers(userList);
-                }
-
-                const shiftsSnapshot = await getDocs(collection(firestore, 'shifts'));
-                setAllShifts(shiftsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
-
-                const leavesSnapshot = await getDocs(collection(firestore, 'leave-requests'));
-                setAllLeaveRequests(leavesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest)));
-            } catch (e) {
-                console.error("Error fetching history data: ", e);
-                toast({ title: "Errore di caricamento", description: "Impossibile caricare i dati per lo storico.", variant: "destructive"});
-            } finally {
-                setLoading(false);
+            if (storedUser.role === 'operator') {
+                const currentUser = snapshot.docs.find(doc => doc.id === storedUser.id);
+                if (currentUser) setAllUsers([{id: currentUser.id, ...currentUser.data()} as AppUser]);
+            } else {
+                setAllUsers(userList);
             }
-        };
-        fetchInitialData();
+            setLoading(false);
+        });
+
+        const unsubShifts = onSnapshot(collection(firestore, 'shifts'), (snapshot) => {
+            setAllShifts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
+             setLoading(false);
+        });
+
+        const unsubLeaves = onSnapshot(collection(firestore, 'leave-requests'), (snapshot) => {
+            setAllLeaveRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest)));
+             setLoading(false);
+        });
+
+        return () => {
+            unsubUsers();
+            unsubShifts();
+            unsubLeaves();
+        }
+
     }, [firestore, toast]);
     
     // Process data when selected user or data changes
