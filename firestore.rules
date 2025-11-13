@@ -17,26 +17,27 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admins can be managed by other admins (or by themselves initially)
+    // Admins can be managed by other admins.
     match /admins/{adminId} {
       allow read, write: if isUserAuthenticated() && isAdmin();
     }
     
-    // Role collection is readable by authenticated users to check for admin status
+    // Role collection is readable by authenticated users to check for admin status.
     match /roles_admin/{adminId} {
       allow read: if isUserAuthenticated();
     }
 
-    // App Users can be read by admins, and written by their owner or an admin
+    // All users can be read by admins, but only owners or admins can write.
     match /app-users/{userId} {
-      allow read: if isUserAuthenticated();
       allow list: if isUserAuthenticated() && isAdmin();
+      allow read: if isUserAuthenticated();
       allow write: if isUserAuthenticated() && (isOwner(userId) || isAdmin());
     }
 
-    // Operator-specific data is owned by the operator
+    // Operator-specific data is owned by the operator, but readable by admins.
     match /operators/{operatorId} {
-      allow read, write: if isUserAuthenticated() && isOwner(operatorId);
+      allow read: if isUserAuthenticated() && (isOwner(operatorId) || isAdmin());
+      allow write: if isUserAuthenticated() && isOwner(operatorId);
     }
     
     match /operators/{operatorId}/{subcollection}/{docId} {
@@ -45,34 +46,31 @@ service cloud.firestore {
 
     // Shifts: Admins can list/read all. Users can create/read their own.
     match /shifts/{shiftId} {
-      allow read: if isUserAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow list: if isUserAuthenticated() && isAdmin();
-      allow create: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isUserAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow list, read: if isUserAuthenticated() && isAdmin();
+      allow read, create, update: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isUserAuthenticated() && resource.data.userId == request.auth.uid; // for completing shift
       allow delete: if isUserAuthenticated() && isAdmin();
     }
     
     // Leave Requests: Admins can list/read all. Users can manage their own.
     match /leave-requests/{leaveRequestId} {
-      allow read: if isUserAuthenticated() && (isAdmin() || resource.data.operatorId == request.auth.uid);
-      allow list: if isUserAuthenticated() && isAdmin();
-      allow create: if isUserAuthenticated() && request.resource.data.operatorId == request.auth.uid;
-      allow update, delete: if isUserAuthenticated() && (isAdmin() || resource.data.operatorId == request.auth.uid);
+      allow list, read: if isUserAuthenticated() && isAdmin();
+      allow read, create, update, delete: if isUserAuthenticated() && (request.resource.data.operatorId == request.auth.uid || resource.data.operatorId == request.auth.uid);
+      allow update: if isUserAuthenticated() && isAdmin(); // Admin can approve/reject
     }
     
     // Supply Requests: Admins can list/read all. Users can create/read their own.
     match /supply-requests/{supplyRequestId} {
-        allow read: if isUserAuthenticated() && (isAdmin() || resource.data.user == request.auth.token.name); // Using name temporarily as per app code
-        allow list: if isUserAuthenticated() && isAdmin();
+        allow list, read: if isUserAuthenticated() && isAdmin();
         allow create: if isUserAuthenticated();
+        allow read: if isUserAuthenticated() && resource.data.user == request.auth.token.name;
         allow update, delete: if isUserAuthenticated() && isAdmin();
     }
 
     // Extra Shift Requests: Admins can list/read all. Users can create their own.
      match /extra-shift-requests/{requestId} {
-      allow read: if isUserAuthenticated();
-      allow list: if isUserAuthenticated() && isAdmin();
-      allow write: if isUserAuthenticated();
+      allow list, read: if isUserAuthenticated() && isAdmin();
+      allow read, write: if isUserAuthenticated();
     }
 
     // Announcements can be read by anyone, but only written by admins.
