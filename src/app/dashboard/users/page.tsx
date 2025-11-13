@@ -27,7 +27,7 @@ export default function UsersPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isUserDialogOpen, setIsUserDialogOpen] = React.useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<AppUser | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
 
