@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
-import { InstallPWA } from '@/components/install-pwa';
 import { FirebaseClientProvider } from '@/firebase';
 
 export const metadata: Metadata = {
-  title: 'Serveco Cleaning',
+  title: 'Serveco Hub',
   description: 'Gestisci le tue operazioni di pulizia con facilità.',
   manifest: "/manifest.json",
 };
@@ -33,7 +32,6 @@ export default function RootLayout({
           {children}
         </FirebaseClientProvider>
         <Toaster />
-        {/* <InstallPWA /> */}
       </body>
     </html>
   );

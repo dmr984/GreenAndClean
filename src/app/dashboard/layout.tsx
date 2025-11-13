@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, ClipboardCheck, Clock, User, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, ClipboardCheck, Clock, User, MessageSquare, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -20,8 +20,7 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
     if (typeof window === 'undefined') return defaultValue;
     const stored = localStorage.getItem(key);
     try {
-        const data = stored ? JSON.parse(stored) : defaultValue;
-        return data;
+        return stored ? JSON.parse(stored) : defaultValue;
     } catch (e) {
         return defaultValue;
     }
@@ -55,11 +54,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
     
     window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-        window.removeEventListener('storage', handleStorageChange);
-    }
-
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [router]);
 
   const handleLogout = () => {
@@ -78,13 +73,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
      }
      return "U";
   }
-  
-  const handleProfileClick = () => {
-    setIsSidebarOpen(false);
-    if(user) {
-        router.push(`/dashboard/users/${user.id}`);
-    }
-  };
 
   const handleChangeCodeClick = () => {
       setIsSidebarOpen(false);
@@ -102,7 +90,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <span className="flex-1 text-left">{label}</span>
     </Button>
   );
-
 
   if (isLoading || !user) {
     return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
@@ -141,6 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <>
                         <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
                         <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
+                        <NavButton path="/dashboard/users" icon={<Users className="h-5 w-5" />} label="Gestione Operatori" />
                       </>
                     ) : (
                       <>

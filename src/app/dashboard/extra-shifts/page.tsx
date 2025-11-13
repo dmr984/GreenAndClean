@@ -1,13 +1,12 @@
-
 "use client";
 
 import * as React from "react";
-import { CheckCircle, Clock } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore } from "@/firebase";
-import { collection, doc, onSnapshot, query, updateDoc, where, getDocs } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 
 type ExtraShiftRequest = {
   id: string;
@@ -16,7 +15,6 @@ type ExtraShiftRequest = {
   date: string;
   status: 'pending' | 'approved';
 };
-
 
 export default function ExtraShiftApprovalPage() {
     const { toast } = useToast();
@@ -27,36 +25,20 @@ export default function ExtraShiftApprovalPage() {
     React.useEffect(() => {
         if (!firestore) return;
 
-        const fetchRequests = async () => {
-            setLoading(true);
-            try {
-                const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
-                const snapshot = await getDocs(q);
-                const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtraShiftRequest));
-                setPendingRequests(requests.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-            } catch (error) {
-                console.error("Error fetching extra shift requests:", error);
-                toast({
-                    title: "Errore di Caricamento",
-                    description: "Impossibile caricare le richieste.",
-                    variant: 'destructive'
-                });
-            } finally {
-                setLoading(false);
-            }
-        };
-        
-        fetchRequests();
-
-        // Optional: setup a listener that is safer or refresh manually
         const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtraShiftRequest));
             setPendingRequests(requests.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+            setLoading(false);
         }, (err) => {
              console.error("Listener error on extra shifts:", err);
+             toast({
+                title: "Errore di Caricamento",
+                description: "Impossibile caricare le richieste.",
+                variant: 'destructive'
+            });
+            setLoading(false);
         });
-
 
         return () => unsubscribe();
     }, [firestore, toast]);
@@ -67,7 +49,6 @@ export default function ExtraShiftApprovalPage() {
         const requestRef = doc(firestore, 'extra-shift-requests', requestId);
         try {
             await updateDoc(requestRef, { status: 'approved' });
-            setPendingRequests(prev => prev.filter(r => r.id !== requestId));
             toast({
                 title: "Richiesta Approvata",
                 description: "L'operatore è stato autorizzato a effettuare una nuova timbratura.",

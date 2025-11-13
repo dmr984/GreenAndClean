@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { useFirestore } from "@/firebase";
 import { collection, onSnapshot, addDoc, query, where, orderBy, doc, updateDoc } from "firebase/firestore";
 
-
 type Communication = {
   id: string;
   userId: string;
@@ -87,10 +86,14 @@ export default function CommunicationsPage() {
     
      const markAsRead = async (id: string) => {
         if (!firestore || userRole !== 'admin') return;
-        try {
-            await updateDoc(doc(firestore, 'communications', id), { read: true });
-        } catch (error) {
-            console.error("Failed to mark as read:", error);
+        const commRef = doc(firestore, 'communications', id);
+        const targetComm = communications.find(c => c.id === id);
+        if (targetComm && !targetComm.read) {
+            try {
+                await updateDoc(commRef, { read: true });
+            } catch (error) {
+                console.error("Failed to mark as read:", error);
+            }
         }
     };
     
@@ -140,7 +143,7 @@ export default function CommunicationsPage() {
                         <div className="space-y-3">
                             {communications.map(comm => (
                                 <div key={comm.id} className={`border p-4 rounded-md ${isAdmin && !comm.read ? 'bg-primary/10 border-primary cursor-pointer' : 'bg-muted/50'}`}
-                                 onClick={() => isAdmin && markAsRead(comm.id)}
+                                 onClick={() => markAsRead(comm.id)}
                                 >
                                     <div className="flex justify-between items-center text-sm text-muted-foreground mb-2">
                                         <span className="font-semibold">{comm.userName}</span>

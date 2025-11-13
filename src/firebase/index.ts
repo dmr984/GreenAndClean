@@ -8,12 +8,9 @@ import { useFirebase } from './provider';
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
   if (!getApps().length) {
-    // Always initialize with the provided config for consistency.
     const firebaseApp = initializeApp(firebaseConfig);
     return getSdks(firebaseApp);
   }
-
-  // If already initialized, return the SDKs with the already initialized App
   return getSdks(getApp());
 }
 
@@ -27,6 +24,7 @@ export function getSdks(firebaseApp: FirebaseApp) {
 /** Hook to access Firestore instance. */
 export const useFirestore = (): Firestore | null => {
   const context = useFirebase();
+  if (!context) return null;
   return context.firestore;
 };
 

@@ -16,8 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, query, where } from "firebase/firestore";
-
+import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, query } from "firebase/firestore";
 
 type AppUser = {
   id: string;
@@ -51,7 +50,6 @@ export default function AnnouncementsPage() {
     
     const [isHardDeleteDialogOpen, setIsHardDeleteDialogOpen] = React.useState(false);
     const [selectedAnnouncement, setSelectedAnnouncement] = React.useState<Announcement | null>(null);
-    
 
     React.useEffect(() => {
         if (!firestore) return;
@@ -68,19 +66,21 @@ export default function AnnouncementsPage() {
             setOperators(userList);
         });
 
-        const announcementsQuery = collection(firestore, 'announcements');
+        const announcementsQuery = query(collection(firestore, 'announcements'));
         const announcementsUnsub = onSnapshot(announcementsQuery, (snapshot) => {
             const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
             
             if (localUserRole === 'admin' && localUserId) {
                 // Admin sees all announcements not hidden by them
-                setAnnouncements(allAnnouncements.filter(a => !a.hiddenFor.includes(localUserId!)));
+                setAnnouncements(allAnnouncements.filter(a => !(a.hiddenFor || []).includes(localUserId!)));
             } else if (localUserId) {
                  // Operator sees 'all' or their specific announcements, not hidden by them
                  const userAnnouncements = allAnnouncements
-                    .filter(a => (a.recipients.includes('all') || a.recipients.includes(localUserId!)) && !a.hiddenFor.includes(localUserId!));
+                    .filter(a => (a.recipients.includes('all') || a.recipients.includes(localUserId!)) && !(a.hiddenFor || []).includes(localUserId!));
                 setAnnouncements(userAnnouncements);
             }
+        }, (error) => {
+             console.error("Error fetching announcements:", error);
         });
 
 
@@ -145,7 +145,7 @@ export default function AnnouncementsPage() {
     const markAsRead = async (id: string) => {
         if (!userId || !firestore) return;
         const target = announcements.find(a => a.id === id);
-        if (target && !target.readBy.includes(userId)) {
+        if (target && !(target.readBy || []).includes(userId)) {
             const docRef = doc(firestore, 'announcements', id);
             await updateDoc(docRef, { readBy: arrayUnion(userId) });
         }
@@ -154,7 +154,7 @@ export default function AnnouncementsPage() {
     const hideForCurrentUser = async (id: string) => {
         if (!userId || !firestore) return;
         const target = announcements.find(a => a.id === id);
-        if (target && !target.hiddenFor.includes(userId)) {
+        if (target && !(target.hiddenFor || []).includes(userId)) {
              const docRef = doc(firestore, 'announcements', id);
             await updateDoc(docRef, { hiddenFor: arrayUnion(userId) });
             toast({ title: "Annuncio Nascosto"});
@@ -181,7 +181,7 @@ export default function AnnouncementsPage() {
     const isAdmin = userRole === 'admin';
     const sortedAnnouncements = [...announcements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
-    if (isAdmin && userId) {
+    if (isAdmin) {
         return (
           <>
             <div className="flex flex-col gap-8">
@@ -336,7 +336,7 @@ export default function AnnouncementsPage() {
                     {sortedAnnouncements.length > 0 ? (
                         <div className="space-y-4 pr-4">
                             {sortedAnnouncements.map(ann => {
-                                const isRead = userId ? ann.readBy.includes(userId) : false;
+                                const isRead = userId ? (ann.readBy || []).includes(userId) : false;
                                 return (
                                  <Card key={ann.id} onClick={() => markAsRead(ann.id)} className={`transition-colors ${isRead ? 'bg-muted/50' : 'hover:bg-muted/20 cursor-pointer'}`}>
                                     <CardHeader className="pb-3">

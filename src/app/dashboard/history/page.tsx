@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -13,7 +12,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-
 
 type AppUser = {
   id: string;
@@ -205,7 +203,7 @@ export default function HistoryPage() {
             unsubLeaves();
         }
 
-    }, [firestore, toast]);
+    }, [firestore]);
     
     // Process data when selected user or data changes
     React.useEffect(() => {
@@ -218,12 +216,11 @@ export default function HistoryPage() {
         if (selectedUser) {
             const userShifts = allShifts.filter(s => s.userId === selectedUserId);
             const userLeaves = allLeaveRequests.filter(l => l.operatorId === selectedUserId);
-
             const stats = processMonthlyData(userShifts, userLeaves, selectedUser);
             setMonthlyStats(stats);
         }
         
-    }, [selectedUserId, allUsers, allShifts, allLeaveRequests, firestore]);
+    }, [selectedUserId, allUsers, allShifts, allLeaveRequests]);
     
     const handleDeleteMonthClick = (userId: string, month: string) => {
         setDeleteTarget({userId, month});
@@ -341,7 +338,7 @@ export default function HistoryPage() {
                     ) : sortedMonths.length === 0 ? (
                          <div className="text-center text-muted-foreground py-16">Nessun dato storico disponibile per questo operatore.</div>
                     ) : (
-                        <Accordion type="single" collapsible className="w-full" defaultValue={sortedMonths[0]}>
+                        <Accordion type="single" collapsible className="w-full" defaultValue={sortedMonths.length > 0 ? sortedMonths[0] : undefined}>
                             {sortedMonths.map(monthKey => {
                                 const data = monthlyStats[monthKey];
                                 return (
@@ -363,7 +360,7 @@ export default function HistoryPage() {
                                             <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie" value={data.vacationDays} />
                                             <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso" value={formatMinutesToHours(data.permitMinutes)} />
                                         </div>
-                                        {data.shifts.length > 0 && (
+                                        {data.shifts && data.shifts.length > 0 && (
                                              <div className="px-4">
                                                 <h4 className="font-semibold mb-2">Dettaglio Timbrature</h4>
                                                 <div className="border rounded-md">
@@ -376,8 +373,8 @@ export default function HistoryPage() {
                                                             <p className="font-mono text-lg font-bold">{formatMinutesToHours(workedMinutes)}</p>
                                                         </div>
                                                         <p className="text-sm text-muted-foreground">
-                                                            {new Date(shift.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.endTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                                                            <span className="ml-2">@ {selectedUser?.location}</span>
+                                                            {new Date(shift.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })} - {shift.endTime ? new Date(shift.endTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : 'In corso'}
+                                                            {selectedUser?.location && <span className="ml-2">@ {selectedUser.location}</span>}
                                                         </p>
                                                     </div>
                                                     )

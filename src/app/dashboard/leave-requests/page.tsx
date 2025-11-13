@@ -11,13 +11,9 @@ import { AddSicknessDialog } from "./components/add-sickness-dialog";
 import { useFirestore } from "@/firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 
-// ==================================
-// SHARED TYPES & UTILS
-// ==================================
-
 export type LeaveRequest = {
   id: string;
-  user: string; // Kept for display, but logic will use operatorId
+  user: string;
   operatorId: string;
   type: string;
   from: string;
@@ -28,10 +24,6 @@ export type LeaveRequest = {
   reason: string;
   adminNotes?: string;
 };
-
-// ==================================
-// MAIN PAGE COMPONENT
-// ==================================
 
 export default function LeaveRequestsPage() {
     const [requests, setRequests] = React.useState<LeaveRequest[]>([]);
@@ -52,15 +44,13 @@ export default function LeaveRequestsPage() {
         setUserName(storedUser.username || null);
         
         let q;
-        // If the user is an admin, fetch all requests. Otherwise, filter by their ID.
         if (isAdmin) {
             q = query(collection(firestore, 'leave-requests'));
         } else if (storedUser.id) {
             q = query(collection(firestore, 'leave-requests'), where("operatorId", "==", storedUser.id));
         } else {
-            return; // Don't fetch if no user ID and not admin
+            return;
         }
-
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const requestList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest));
@@ -69,13 +59,12 @@ export default function LeaveRequestsPage() {
             console.error("Error fetching leave requests:", error);
             toast({
                 title: "Errore di caricamento",
-                description: "Impossibile caricare le richieste di ferie. Controlla i permessi.",
+                description: "Impossibile caricare le richieste di ferie.",
                 variant: "destructive",
             });
         });
 
         return () => unsubscribe();
-
     }, [firestore, toast]);
 
     const isAdmin = userRole === 'admin';

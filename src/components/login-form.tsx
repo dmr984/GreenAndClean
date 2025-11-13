@@ -9,8 +9,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
 import { collection, getDocs, query, where, doc, setDoc, getDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { errorEmitter } from '@/firebase/error-emitter';
 
 type User = {
   id: string;
@@ -34,32 +32,22 @@ export default function LoginForm() {
         setIsLoading(true);
 
         try {
-            // Ensure admin user exists.
+            // Setup admin user and role if they don't exist
             const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
             const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
-            // This initial getDoc might fail if rules are not permissive enough for reads.
-            // However, the rules have been updated to allow unauthenticated reads on app-users.
-            // And unauthenticated writes on roles_admin.
-            try {
-              const adminDoc = await getDoc(adminUserDocRef);
-              if (!adminDoc.exists()) {
-                  // This part should only run once in the app's lifetime.
-                  // The rules specifically allow this for unauthenticated users.
-                  await setDoc(adminUserDocRef, {
-                      username: 'Amministratore',
-                      password: '0000',
-                      role: 'admin'
-                  });
-                   await setDoc(adminRoleDocRef, { isAdmin: true });
-              }
-            } catch (e) {
-                // This might fail if rules are not set up, but we proceed
-                console.warn("Could not set up admin user, might already exist or rules are restrictive.", e);
+            const adminDoc = await getDoc(adminUserDocRef);
+            if (!adminDoc.exists()) {
+                await setDoc(adminUserDocRef, {
+                    username: 'Amministratore',
+                    password: '0000',
+                    role: 'admin'
+                });
+                // The rule for roles_admin allows unauthenticated write.
+                await setDoc(adminRoleDocRef, { isAdmin: true });
             }
 
-
-            // Fetch all users
+            // Fetch all users for the dropdown
             const usersCollection = collection(firestore, 'app-users');
             const querySnapshot = await getDocs(usersCollection);
             const userList: User[] = [];
@@ -75,11 +63,12 @@ export default function LoginForm() {
             setUsers(userList);
 
         } catch (error: any) {
-             const contextualError = new FirestorePermissionError({
-                path: 'app-users',
-                operation: 'list', 
+            console.error("Setup or fetch error:", error);
+            toast({
+                variant: "destructive",
+                title: "Errore di Inizializzazione",
+                description: "Impossibile caricare gli utenti. Controlla le regole di Firestore.",
             });
-            errorEmitter.emit('permission-error', contextualError);
         } finally {
             setIsLoading(false);
         }
@@ -88,8 +77,7 @@ export default function LoginForm() {
     if (firestore) {
       setupUsers();
     }
-}, [firestore, toast]);
-
+  }, [firestore, toast]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -141,11 +129,12 @@ export default function LoginForm() {
       }
 
     } catch (error: any) {
-        const contextualError = new FirestorePermissionError({
-            path: 'app-users',
-            operation: 'list',
+       toast({
+          variant: "destructive",
+          title: "Errore di Accesso",
+          description: "Si è verificato un problema durante il login. Controlla la console.",
         });
-        errorEmitter.emit('permission-error', contextualError);
+        console.error(error);
     } finally {
       setIsLoading(false);
     }

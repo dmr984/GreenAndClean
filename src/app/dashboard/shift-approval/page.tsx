@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle, Briefcase, Clock, PauseCircle, Timer } from "lucide-react";
+import { CheckCircle, Briefcase, Clock, PauseCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore } from "@/firebase";
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-
 
 type Shift = {
   id: string;
@@ -19,7 +18,6 @@ type Shift = {
   pauses: { startTime: string; endTime: string | null }[];
   status: 'In attesa' | 'Approvato';
 };
-
 
 const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
     if (!start || !end) return { total: 'N/A', pause: 'N/A', worked: 'N/A' };
@@ -56,7 +54,6 @@ export default function ShiftApprovalPage() {
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const shiftsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
-            // Filter for completed shifts on the client side
             const completedPendingShifts = shiftsData
                 .filter(s => !!s.endTime)
                 .sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime());
@@ -120,7 +117,7 @@ export default function ShiftApprovalPage() {
                                         <div>
                                             <CardTitle className="text-xl">{shift.userName}</CardTitle>
                                             <CardDescription>
-                                                {new Date(shift.startTime!).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'})}
+                                                {shift.startTime ? new Date(shift.startTime).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'}) : 'Data non disponibile'}
                                             </CardDescription>
                                         </div>
                                         <Button size="sm" onClick={() => handleApproveShift(shift.id)}>
@@ -129,7 +126,11 @@ export default function ShiftApprovalPage() {
                                         </Button>
                                     </CardHeader>
                                     <CardContent className="space-y-2 text-sm">
-                                         <div className="flex items-center gap-2"><Clock className="text-primary h-5 w-5"/>Ingresso: <span className="font-mono">{new Date(shift.startTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span> - Uscita: <span className="font-mono">{new Date(shift.endTime!).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</span></div>
+                                         <div className="flex items-center gap-2">
+                                            <Clock className="text-primary h-5 w-5"/>
+                                            Ingresso: <span className="font-mono">{shift.startTime ? new Date(shift.startTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span> - 
+                                            Uscita: <span className="font-mono">{shift.endTime ? new Date(shift.endTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
+                                         </div>
                                          <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle className="h-5 w-5"/>Pause: <span className="font-mono font-semibold text-foreground">{duration.pause}</span></div>
                                          <div className="flex items-center gap-2 font-medium"><Briefcase className="h-5 w-5"/>Ore Lavorate: <span className="font-mono font-bold">{duration.worked}</span></div>
                                     </CardContent>

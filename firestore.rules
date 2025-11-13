@@ -9,88 +9,74 @@ service cloud.firestore {
 
     function isAdmin() {
       // Check if a document for the user exists in the roles_admin collection
+      // This rule is problematic for client-side checks because it requires a read.
+      // We will rely on server-side validation or client-side role checking after auth.
+      // For now, this is a placeholder. A robust solution uses custom claims.
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
-
-    // Admins have full access to everything. This rule must be first.
-    match /{path=**} {
-      allow read, write: if isAdmin();
-    }
     
-    // Rules for app-users collection
+    // Allow unauthenticated user creation and role setup for the very first time
     match /app-users/{userId} {
-      // Any authenticated user can read user profiles (e.g., for dropdowns)
-      // Also allow unauthenticated reads for the login page user list
-      allow read: if request.auth != null || request.auth == null;
-      // Only the owner of the profile can write (update) their own data
-      // Allow unauthenticated writes for initial admin user creation
-      allow write: if isOwner(userId) || request.auth == null;
-    }
-
-    // Allow admin user creation during setup
-    match /roles_admin/{userId} {
-      // Allow unauthenticated write for initial setup
-      allow write: if request.auth == null;
-      // Allow admins to read/write roles
+      allow read, write: if request.auth == null;
+      allow read, write: if request.auth.uid == userId;
       allow read, write: if isAdmin();
     }
-    
+     match /roles_admin/{userId} {
+      allow write: if request.auth == null;
+      allow read, write: if isAdmin();
+    }
+
+    // Authenticated users can read their own profile
+    match /app-users/{userId} {
+      allow read: if request.auth != null;
+      allow update: if request.auth.uid == userId;
+    }
+
     // Rules for top-level shifts collection
     match /shifts/{shiftId} {
-      // Any authenticated user can create a shift (clock-in)
       allow create: if request.auth != null;
-      // Only the user who created the shift can read, update, or delete it.
-      // Admins can do this via the global rule.
-      allow read, update, delete: if isOwner(resource.data.operatorId);
+      allow read, update, delete: if request.auth.uid == resource.data.userId || isAdmin();
     }
     
     // Rules for top-level leave-requests collection
     match /leave-requests/{leaveRequestId} {
-      // Any authenticated user can create a leave request
       allow create: if request.auth != null;
-      // Only the user who created the request can read, update, or delete it.
-      allow read, update, delete: if isOwner(resource.data.operatorId);
+      allow read, update, delete: if request.auth.uid == resource.data.operatorId || isAdmin();
     }
     
     // Rules for top-level supply-requests collection
     match /supply-requests/{supplyRequestId} {
-      // Any authenticated user can create a supply request
       allow create: if request.auth != null;
-      // Only the user who created the request can read, update, or delete it.
-      allow read, update, delete: if isOwner(resource.data.operatorId);
+      allow read, update, delete: if request.auth.uid == resource.data.operatorId || isAdmin();
     }
     
     // Rules for top-level extra-shift-requests collection
     match /extra-shift-requests/{requestId} {
-      // Any authenticated user can create an extra shift request
       allow create: if request.auth != null;
-      // Only the user who created the request can read, update, or delete it.
-      allow read, update, delete: if isOwner(resource.data.userId);
+      allow read, update, delete: if request.auth.uid == resource.data.userId || isAdmin();
     }
     
     // Rules for top-level communications collection
     match /communications/{commId} {
-      // Any authenticated user can create a communication
       allow create: if request.auth != null;
-      // Only the user who created the communication can read it.
-      // Admins can read all via the global rule.
-      allow read: if isOwner(resource.data.userId);
+      allow read, update: if request.auth.uid == resource.data.userId || isAdmin();
     }
     
     // Rules for top-level announcements collection
     match /announcements/{announcementId} {
-      // All authenticated users can read announcements.
       allow read: if request.auth != null;
-      // Only admins can write/create/delete announcements.
       allow write: if isAdmin();
     }
 
-     // Rules for top-level warehouse-items collection
+    // Rules for top-level warehouse-items collection
     match /warehouse-items/{itemId} {
-      // All authenticated users can read warehouse items.
       allow read: if request.auth != null;
-      // Only admins can write/create/delete warehouse items.
       allow write: if isAdmin();
+    }
+
+    // Global admin read/write access
+     match /{path=**} {
+      allow read, write: if isAdmin();
     }
   }
 }
