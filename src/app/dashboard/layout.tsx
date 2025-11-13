@@ -9,10 +9,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { Badge } from '@/components/ui/badge';
-import { useFirestore } from '@/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-
 
 type UserData = {
   id: string;
@@ -40,13 +36,6 @@ const getFromStorage = <T,>(key: string, defaultValue: T): T => {
     }
 };
 
-// Mock types to match the request pages
-type LeaveRequest = { id: string; status: string; };
-type SupplyRequest = { id: string; status: 'In attesa' | 'Approvata' | 'Rifiutata' | 'Parziale'; };
-type Shift = { id: string; endTime: string | null; status: 'In attesa' | 'Approvato'; }
-type ExtraShiftRequest = { id: string; status: 'pending' | 'approved'; }
-type Announcement = { id: string, readBy: string[], hiddenFor: string[], recipients: string[] };
-
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
@@ -54,76 +43,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const firestore = useFirestore();
-
-  // State for individual notification counts
-  const [pendingLeave, setPendingLeave] = useState(0);
-  const [pendingSupply, setPendingSupply] = useState(0);
-  const [pendingShifts, setPendingShifts] = useState(0);
-  const [pendingExtraShifts, setPendingExtraShifts] = useState(0);
-  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
-  const [totalNotifications, setTotalNotifications] = useState(0);
-
-  const calculateNotifications = useCallback(() => {
-    if (typeof window === 'undefined' || !user || !firestore) return;
-    
-    const unsubscribes: (()=>void)[] = [];
-
-    if (user.role === 'admin') {
-      const leaveQuery = query(collection(firestore, 'leave-requests'), where('status', '==', 'In attesa'));
-      unsubscribes.push(onSnapshot(leaveQuery, snapshot => setPendingLeave(snapshot.size)));
-
-      const supplyQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'In attesa'));
-      unsubscribes.push(onSnapshot(supplyQuery, snapshot => setPendingSupply(snapshot.size)));
-      
-      const shiftsQuery = query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
-      unsubscribes.push(onSnapshot(shiftsQuery, snapshot => {
-        const completedPendingShifts = snapshot.docs.filter(doc => !!doc.data().endTime).length;
-        setPendingShifts(completedPendingShifts);
-      }));
-      
-      const extraShiftsQuery = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
-      unsubscribes.push(onSnapshot(extraShiftsQuery, snapshot => setPendingExtraShifts(snapshot.size)));
-    }
-    
-    const announcementsUnsub = onSnapshot(collection(firestore, 'announcements'), (snapshot) => {
-        const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
-        const userAnnouncements = allAnnouncements.filter(a => {
-            const isRecipient = a.recipients?.includes('all') || a.recipients?.includes(user.id);
-            const isHidden = a.hiddenFor?.includes(user.id);
-            return isRecipient && !isHidden;
-        });
-        const unreadCount = userAnnouncements.filter(a => !a.readBy?.includes(user.id)).length;
-        setUnreadAnnouncements(unreadCount);
-    });
-    unsubscribes.push(announcementsUnsub);
-    
-    return () => unsubscribes.forEach(unsub => unsub());
-
-  }, [user, firestore]);
-  
-  useEffect(() => {
-    const total = pendingLeave + pendingSupply + pendingShifts + pendingExtraShifts + unreadAnnouncements;
-    setTotalNotifications(total);
-  }, [pendingLeave, pendingSupply, pendingShifts, pendingExtraShifts, unreadAnnouncements]);
-
-
-  useEffect(() => {
-    if(user) {
-        const unsub = calculateNotifications();
-        
-        const handleStorageChange = () => {
-          calculateNotifications();
-        };
-        window.addEventListener('storage', handleStorageChange);
-        
-        return () => {
-            if(unsub) unsub();
-            window.removeEventListener('storage', handleStorageChange);
-        }
-    }
-  }, [calculateNotifications, user]);
-  
 
   useEffect(() => {
     const storedUser = getFromStorage<UserData | null>('user', null);
@@ -184,11 +103,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push(path);
   }
   
-  const NavButton = ({ path, icon, label, count }: { path: string, icon: React.ReactNode, label: string, count?: number }) => (
+  const NavButton = ({ path, icon, label }: { path: string, icon: React.ReactNode, label: string }) => (
     <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation(path)}>
         {icon}
         <span className="flex-1 text-left">{label}</span>
-        {count && count > 0 && <Badge variant="destructive" className="h-6 w-6 justify-center p-1">{count}</Badge>}
     </Button>
   );
 
@@ -209,10 +127,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" className="shrink-0 relative">
                   <Menu className="h-5 w-5" />
-                  {totalNotifications > 0 && (
-                     <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full p-1 text-xs">
-                     </Badge>
-                  )}
                   <span className="sr-only">Apri menu di navigazione</span>
                 </Button>
               </SheetTrigger>
@@ -240,7 +154,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                          <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" />
                       </>
                     )}
-                    <NavButton path="/dashboard/announcements" icon={<Megaphone className="h-5 w-5" />} label="Annunci" count={unreadAnnouncements}/>
+                    <NavButton path="/dashboard/announcements" icon={<Megaphone className="h-5 w-5" />} label="Annunci"/>
                     <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
                     <Separator className="my-2"/>
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
