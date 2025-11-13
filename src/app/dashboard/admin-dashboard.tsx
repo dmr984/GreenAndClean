@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Briefcase, CalendarCheck, Package, ClipboardCheck, Clock, History, Warehouse } from 'lucide-react';
+import { CalendarCheck, Package, ClipboardCheck, Clock, History, Warehouse } from 'lucide-react';
 import Link from 'next/link';
 
 export function AdminDashboard() {

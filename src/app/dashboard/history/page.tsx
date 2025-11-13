@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, doc, getDocs, query, where, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, doc, writeBatch } from "firebase/firestore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -19,12 +19,14 @@ type AppUser = {
   id: string;
   username: string;
   role: 'admin' | 'operator';
-  expectedHours?: number;
+  location: string;
+  expectedHours?: number; // Daily expected hours
 };
 
 type Shift = { 
   id: string; 
   userId: string;
+  userName: string;
   startTime: string | null; 
   endTime: string | null; 
   pauses: { startTime: string; endTime: string | null }[];
@@ -42,6 +44,8 @@ type LeaveRequest = {
     timeTo?: string; 
     status: 'In attesa' | 'Approvata' | 'Rifiutata';
 };
+
+const DEFAULT_EXPECTED_HOURS = 3;
 
 const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
     if (!start || !end) return { workedMinutes: 0 };
@@ -70,7 +74,7 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
     for (const item of allData) {
         const monthKey = `${item.date.getFullYear()}-${String(item.date.getMonth() + 1).padStart(2, '0')}`;
         if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0, sicknessDays: 0 };
+            monthlyData[monthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0, sicknessDays: 0, shifts: [] };
         }
         
         if (item.type === 'shift') {
@@ -78,9 +82,10 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
             if (shift.startTime) {
                  monthlyData[monthKey].workedDays.add(new Date(shift.startTime).toISOString().split('T')[0]);
                  const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
-                 const expectedMinutes = (user?.expectedHours || 0) * 60;
+                 const expectedMinutes = (user?.expectedHours || DEFAULT_EXPECTED_HOURS) * 60;
                  const overtime = Math.max(0, workedMinutes - expectedMinutes);
                  monthlyData[monthKey].overtimeMinutes += overtime;
+                 monthlyData[monthKey].shifts.push(shift);
             }
         } else if (item.type === 'leave') {
             const req = item.data as LeaveRequest;
@@ -91,7 +96,7 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
             while (current <= end) {
                 const loopMonthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
                 if (!monthlyData[loopMonthKey]) {
-                     monthlyData[loopMonthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0, sicknessDays: 0 };
+                     monthlyData[loopMonthKey] = { workedDays: new Set(), vacationDays: 0, permitMinutes: 0, overtimeMinutes: 0, sicknessDays: 0, shifts: [] };
                 }
 
                 if (req.type === 'Ferie') {
@@ -116,6 +121,7 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
     // Convert Set to number
     Object.keys(monthlyData).forEach(key => {
         monthlyData[key].workedDays = monthlyData[key].workedDays.size;
+        monthlyData[key].shifts.sort((a: Shift, b: Shift) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
     });
 
     return monthlyData;
@@ -278,6 +284,7 @@ export default function HistoryPage() {
 
     const isAdmin = userRole === 'admin';
     const sortedMonths = Object.keys(monthlyStats).sort((a,b) => b.localeCompare(a));
+    const selectedUser = allUsers.find(u => u.id === selectedUserId);
     
     const getMonthName = (monthKey: string) => {
         const [year, month] = monthKey.split('-');
@@ -356,6 +363,28 @@ export default function HistoryPage() {
                                             <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie" value={data.vacationDays} />
                                             <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso" value={formatMinutesToHours(data.permitMinutes)} />
                                         </div>
+                                        {data.shifts.length > 0 && (
+                                             <div className="px-4">
+                                                <h4 className="font-semibold mb-2">Dettaglio Timbrature</h4>
+                                                <div className="border rounded-md">
+                                                {data.shifts.map((shift: Shift, index: number) => {
+                                                    const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
+                                                    return (
+                                                    <div key={shift.id} className={`p-3 ${index > 0 ? 'border-t' : ''}`}>
+                                                        <div className="flex justify-between items-center">
+                                                            <p className="font-semibold">{new Date(shift.startTime!).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'numeric' })}</p>
+                                                            <p className="font-mono text-lg font-bold">{formatMinutesToHours(workedMinutes)}</p>
+                                                        </div>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            {new Date(shift.startTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.endTime!).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                                                            <span className="ml-2">@ {selectedUser?.location}</span>
+                                                        </p>
+                                                    </div>
+                                                    )
+                                                })}
+                                                </div>
+                                             </div>
+                                        )}
                                     </AccordionContent>
                                 </AccordionItem>
                                 )
