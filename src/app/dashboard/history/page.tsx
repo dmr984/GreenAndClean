@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarDays, CalendarCheck, Hourglass, TrendingUp, Trash2 } from "lucide-react";
+import { CalendarDays, CalendarCheck, Hourglass, TrendingUp, Trash2, User as UserIcon } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -168,7 +168,7 @@ export default function HistoryPage() {
                 const currentUser = snapshot.docs.find(doc => doc.id === storedUser.id);
                 if (currentUser) setAllUsers([{id: currentUser.id, ...currentUser.data()} as AppUser]);
             } else {
-                setAllUsers(userList);
+                 setAllUsers(userList.sort((a, b) => a.username.localeCompare(b.username)));
             }
             setLoading(false);
         }, (error) => {
@@ -284,7 +284,7 @@ export default function HistoryPage() {
         return date.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
     }
 
-    if (loading) {
+    if (loading && isAdmin && allUsers.length === 0) {
         return (
              <div className="p-4 md:p-6 space-y-4">
                 <Skeleton className="h-8 w-64" />
@@ -326,17 +326,20 @@ export default function HistoryPage() {
                     )}
                     
                     {!selectedUserId && isAdmin ? (
-                         <div className="text-center text-muted-foreground py-16">Seleziona un operatore per iniziare.</div>
+                         <div className="text-center text-muted-foreground py-16">
+                            <UserIcon className="h-12 w-12 mx-auto text-gray-400" />
+                            <p className="mt-4">Seleziona un operatore per iniziare.</p>
+                         </div>
                     ) : sortedMonths.length === 0 ? (
-                         <div className="text-center text-muted-foreground py-16">Nessun dato storico disponibile.</div>
+                         <div className="text-center text-muted-foreground py-16">Nessun dato storico disponibile per questo operatore.</div>
                     ) : (
                         <Accordion type="single" collapsible className="w-full" defaultValue={sortedMonths[0]}>
                             {sortedMonths.map(monthKey => {
                                 const data = monthlyStats[monthKey];
                                 return (
                                 <AccordionItem value={monthKey} key={monthKey}>
-                                    <AccordionTrigger className="text-xl font-semibold">
-                                        <div className="flex items-center justify-between w-full">
+                                    <AccordionTrigger className="text-xl font-semibold hover:no-underline">
+                                        <div className="flex items-center justify-between w-full pr-4">
                                             <span>{getMonthName(monthKey)}</span>
                                              {isAdmin && selectedUserId && (
                                                 <Button variant="ghost" size="icon" className="mr-2" onClick={(e) => { e.stopPropagation(); handleDeleteMonthClick(selectedUserId, monthKey); }}>
@@ -380,7 +383,7 @@ export default function HistoryPage() {
                 />
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={resetDeleteDialog}>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirmDelete}>
+                    <AlertDialogAction onClick={handleConfirmDelete} disabled={confirmationInput.toUpperCase() !== 'ELIMINA'}>
                         {confirmationStep < 3 ? "Conferma" : "Elimina Definitivamente"}
                     </AlertDialogAction>
                 </AlertDialogFooter>

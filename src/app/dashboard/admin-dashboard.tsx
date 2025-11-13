@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Briefcase, CalendarCheck, Package, ClipboardCheck, Clock } from 'lucide-react';
+import { Briefcase, CalendarCheck, Package, ClipboardCheck, Clock, History } from 'lucide-react';
 import Link from 'next/link';
 
 // This component is intentionally simplified to be stable and avoid any Firestore permission errors.
@@ -61,6 +61,16 @@ export function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <CardTitle className="text-xl sm:text-2xl">Timbrature Extra</CardTitle>
+                </CardContent>
+            </Card>
+        </Link>
+         <Link href="/dashboard/history" className="h-full">
+            <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
+                <CardHeader>
+                    <History className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <CardTitle className="text-xl sm:text-2xl">Storico Attività</CardTitle>
                 </CardContent>
             </Card>
         </Link>
