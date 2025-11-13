@@ -5,8 +5,8 @@ import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore } from "@/firebase";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { useFirestore, useCollection, useMemoFirebase, FirestorePermissionError, errorEmitter } from "@/firebase";
+import { collection, doc, query, updateDoc, where } from "firebase/firestore";
 
 type ExtraShiftRequest = {
   id: string;
@@ -19,29 +19,31 @@ type ExtraShiftRequest = {
 export default function ExtraShiftApprovalPage() {
     const { toast } = useToast();
     const firestore = useFirestore();
-    const [pendingRequests, setPendingRequests] = React.useState<ExtraShiftRequest[]>([]);
-    const [loading, setLoading] = React.useState(true);
+
+    const pendingRequestsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
+    }, [firestore]);
+
+    const { data: pendingRequests, isLoading: loading, error: collectionError } = useCollection<ExtraShiftRequest>(pendingRequestsQuery);
 
     React.useEffect(() => {
-        if (!firestore) return;
+        if (collectionError) {
+             if (!(collectionError instanceof FirestorePermissionError)) {
+                toast({
+                    title: "Errore di Caricamento",
+                    description: "Impossibile caricare le richieste.",
+                    variant: 'destructive'
+                });
+             }
+        }
+    }, [collectionError, toast]);
+    
+    const sortedRequests = React.useMemo(() => {
+        if (!pendingRequests) return [];
+        return [...pendingRequests].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, [pendingRequests]);
 
-        const q = query(collection(firestore, 'extra-shift-requests'), where('status', '==', 'pending'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExtraShiftRequest));
-            setPendingRequests(requests.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-            setLoading(false);
-        }, (err) => {
-             console.error("Listener error on extra shifts:", err);
-             toast({
-                title: "Errore di Caricamento",
-                description: "Impossibile caricare le richieste.",
-                variant: 'destructive'
-            });
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [firestore, toast]);
 
     const handleApproveRequest = async (requestId: string) => {
         if (!firestore) return;
@@ -54,16 +56,26 @@ export default function ExtraShiftApprovalPage() {
                 description: "L'operatore è stato autorizzato a effettuare una nuova timbratura.",
             });
         } catch (error) {
-            toast({
-                title: "Errore",
-                description: "Impossibile approvare la richiesta.",
-                variant: 'destructive'
+            const contextualError = new FirestorePermissionError({
+                path: requestRef.path,
+                operation: 'update',
+                requestResourceData: { status: 'approved' }
             });
+            errorEmitter.emit('permission-error', contextualError);
         }
     };
     
     if (loading) {
         return <p>Caricamento richieste...</p>
+    }
+    
+    if (collectionError) {
+        return (
+             <div className="text-center text-red-500 py-12">
+                <p>Errore di permessi. Non è possibile visualizzare le richieste di timbratura extra.</p>
+                <p className="text-xs text-muted-foreground mt-2">Prova a ricaricare o contatta l'assistenza.</p>
+            </div>
+        )
     }
 
     return (
@@ -80,13 +92,13 @@ export default function ExtraShiftApprovalPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {pendingRequests.length === 0 ? (
+                    {sortedRequests.length === 0 ? (
                          <div className="text-center text-muted-foreground py-16">
                             <CheckCircle className="mx-auto h-12 w-12 text-gray-400" />
                             <p className="mt-4">Nessuna richiesta di timbratura extra. Ottimo lavoro!</p>
                         </div>
                     ) : (
-                        pendingRequests.map(req => (
+                        sortedRequests.map(req => (
                             <Card key={req.id}>
                                 <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3">
                                     <div>
