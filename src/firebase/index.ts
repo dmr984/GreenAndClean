@@ -27,12 +27,9 @@ export function getSdks(firebaseApp: FirebaseApp) {
 }
 
 /** Hook to access Firestore instance. */
-export const useFirestore = (): Firestore => {
-  const { firestore } = useFirebase();
-  if (!firestore) {
-    throw new Error("Firestore has not been initialized. Make sure you have a FirebaseProvider up the tree.");
-  }
-  return firestore;
+export const useFirestore = (): Firestore | null => {
+  const context = useFirebase();
+  return context.firestore;
 };
 
 export * from './provider';

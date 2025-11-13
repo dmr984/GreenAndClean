@@ -115,10 +115,14 @@ export default function UserShiftsPage() {
                 .sort((a,b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
             setShifts(userShifts);
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching shifts:", error);
+            toast({ title: "Errore", description: "Impossibile caricare le timbrature.", variant: "destructive" });
+            setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [userId, firestore]);
+    }, [userId, firestore, toast]);
 
     const openDeleteConfirmation = (shift: Shift) => {
         setSelectedShift(shift);

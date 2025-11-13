@@ -23,16 +23,6 @@ type User = {
   expectedHours?: number;
 };
 
-type LeaveRequest = { id: string; operatorId: string; type: string; from: string; to: string; timeFrom?: string; timeTo?: string; status: 'In attesa' | 'Approvata' | 'Rifiutata'; reason?: string };
-type Shift = { 
-  id: string; 
-  userId: string;
-  startTime: string | null; 
-  endTime: string | null; 
-  pauses: { startTime: string; endTime: string | null }[];
-  status: 'In attesa' | 'Approvato';
-};
-
 const getAvatarFallback = (name: string) => {
     if (!name) return "??";
     const parts = name.split(' ');
@@ -41,27 +31,6 @@ const getAvatarFallback = (name: string) => {
     }
     return name.substring(0, 2).toUpperCase();
 };
-
-const calculateDuration = (start: string | null, end: string | null, pauses: Shift['pauses']) => {
-    if (!start || !end) return { workedMinutes: 0 };
-
-    const startTime = new Date(start).getTime();
-    const endTime = new Date(end).getTime();
-    
-    const pauseMillis = pauses
-        .filter(p => p.endTime)
-        .reduce((acc, p) => acc + (new Date(p.endTime!).getTime() - new Date(p.startTime).getTime()), 0);
-
-    const workedMillis = endTime - startTime - pauseMillis;
-    return { workedMinutes: Math.floor(workedMillis / 60000) };
-};
-
-const formatMinutesToHours = (totalMinutes: number) => {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
 
 export default function UserProfilePage() {
   const params = useParams();
@@ -72,14 +41,9 @@ export default function UserProfilePage() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-
   const fetchAllData = useCallback(async () => {
     if (!firestore || !userId) return;
-
     setLoading(true);
-    
     try {
         const userDocRef = doc(firestore, 'app-users', userId);
         const userDoc = await getDoc(userDocRef);
@@ -92,85 +56,16 @@ export default function UserProfilePage() {
         }
     } catch (e) {
         setUser(null);
+        console.error("Error fetching user:", e);
+        toast({ title: "Errore", description: "Impossibile caricare i dati dell'utente.", variant: "destructive" });
+    } finally {
+        setLoading(false);
     }
-
-    setLoading(false);
-  }, [userId, firestore]);
+  }, [userId, firestore, toast]);
 
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
-
-  useEffect(() => {
-    if (!firestore || !userId) return;
-
-    const shiftsQuery = query(collection(firestore, 'shifts'), where('userId', '==', userId));
-    const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
-        setShifts(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Shift)).filter(s => s.endTime));
-    });
-
-    const leavesQuery = query(collection(firestore, 'leave-requests'), where('operatorId', '==', userId));
-    const unsubLeaves = onSnapshot(leavesQuery, snapshot => {
-        setLeaveRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()} as LeaveRequest)));
-    });
-
-    return () => {
-        unsubShifts();
-        unsubLeaves();
-    };
-  }, [userId, firestore]);
-
-  const summaryStats = useMemo(() => {
-    if (!user) return null;
-
-    const approvedShifts = shifts.filter(s => s.status === 'Approvato');
-    const workedDayDates = new Set(
-        approvedShifts
-            .filter(s => s.startTime && s.endTime)
-            .map(s => new Date(s.startTime!).toISOString().split('T')[0])
-    );
-    const workedDays = workedDayDates.size;
-
-    const totalOvertimeMinutes = approvedShifts.reduce((total, shift) => {
-        const { workedMinutes } = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
-        const expectedMinutes = (user.expectedHours || 0) * 60;
-        const overtime = Math.max(0, workedMinutes - expectedMinutes);
-        return total + overtime;
-    }, 0);
-
-    const vacationDays = leaveRequests.reduce((total, req) => {
-        if (req.status === 'Approvata' && req.type === 'Ferie') {
-            const start = new Date(req.from);
-            const end = new Date(req.to);
-            const diffTime = Math.abs(end.getTime() - start.getTime());
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include start day
-            return total + diffDays;
-        }
-        return total;
-    }, 0);
-
-    const permitMinutes = leaveRequests.reduce((total, req) => {
-        if (req.status === 'Approvata' && req.type === 'Permesso' && req.timeFrom && req.timeTo) {
-            const [fromHours, fromMinutes] = req.timeFrom.split(':').map(Number);
-            const [toHours, toMinutes] = req.timeTo.split(':').map(Number);
-            const start = new Date();
-            start.setHours(fromHours, fromMinutes, 0, 0);
-            const end = new Date();
-            end.setHours(toHours, toMinutes, 0, 0);
-            const diffMillis = end.getTime() - start.getTime();
-            return total + (diffMillis / (1000 * 60));
-        }
-        return total;
-    }, 0);
-
-    return {
-        workedDays,
-        overtime: formatMinutesToHours(totalOvertimeMinutes),
-        vacationDays,
-        permitHours: formatMinutesToHours(permitMinutes),
-    };
-  }, [shifts, leaveRequests, user]);
-
 
   const handleExpectedHoursChange = async (amount: number) => {
       if (!user || !firestore) return;
@@ -206,7 +101,7 @@ export default function UserProfilePage() {
     );
   }
 
-  if (!user) {
+  if (user === null) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
         <h2 className="text-2xl font-bold mb-4">Utente non trovato</h2>
@@ -220,18 +115,6 @@ export default function UserProfilePage() {
     );
   }
   
-  const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
-    <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{label}</CardTitle>
-            <div className="text-muted-foreground">{icon}</div>
-        </CardHeader>
-        <CardContent>
-            <div className="text-2xl font-bold">{value}</div>
-        </CardContent>
-    </Card>
-  );
-
   const SectionButton = ({ icon, label, href }: { icon: React.ReactNode, label: string, href: string }) => (
     <Link href={href} className="block">
         <Card className="text-center transition-all hover:bg-muted/50 hover:ring-2 hover:ring-primary">
@@ -274,39 +157,32 @@ export default function UserProfilePage() {
             </CardHeader>
         </Card>
 
-         {summaryStats && (
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-xl">Riepilogo Attività</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 grid-cols-2">
-                        <StatCard icon={<CalendarDays className="h-5 w-5"/>} label="Giorni Lavorati" value={summaryStats.workedDays} />
-                        <StatCard icon={<TrendingUp className="h-5 w-5"/>} label="Straordinari" value={summaryStats.overtime} />
-                        <StatCard icon={<CalendarCheck className="h-5 w-5"/>} label="Giorni Ferie" value={summaryStats.vacationDays} />
-                        <StatCard icon={<Hourglass className="h-5 w-5"/>} label="Ore Permesso" value={summaryStats.permitHours} />
-                    </div>
-                </CardContent>
-            </Card>
-         )}
+        <Card>
+            <CardHeader>
+                <CardTitle>Gestione Dati</CardTitle>
+                <CardDescription>Accedi allo storico delle attività di questo operatore.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <SectionButton 
+                        label="Timbrature" 
+                        href={`/dashboard/users/${userId}/shifts`} 
+                        icon={<Briefcase className="h-6 w-6"/>} 
+                    />
+                    <SectionButton 
+                        label="Ferie e Permessi" 
+                        href={`/dashboard/users/${userId}/leaves`}
+                        icon={<CheckCircle className="h-6 w-6"/>} 
+                    />
+                    <SectionButton 
+                        label="Richieste Forniture" 
+                        href={`/dashboard/users/${userId}/supplies`}
+                        icon={<Package className="h-6 w-6"/>} 
+                    />
+                </div>
+            </CardContent>
+        </Card>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <SectionButton 
-                label="Timbrature" 
-                href={`/dashboard/users/${userId}/shifts`} 
-                icon={<Briefcase className="h-6 w-6"/>} 
-            />
-            <SectionButton 
-                label="Ferie e Permessi" 
-                href={`/dashboard/users/${userId}/leaves`}
-                icon={<CheckCircle className="h-6 w-6"/>} 
-            />
-            <SectionButton 
-                label="Richieste Forniture" 
-                href={`/dashboard/users/${userId}/supplies`}
-                icon={<Package className="h-6 w-6"/>} 
-            />
-        </div>
     </div>
   );
 }

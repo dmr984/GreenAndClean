@@ -59,6 +59,7 @@ const formatMinutesToHours = (totalMinutes: number) => {
 
 const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user: AppUser | null) => {
     const monthlyData: { [key: string]: any } = {};
+    if (!user) return monthlyData;
 
     const allData = [
         ...shifts.filter(s => s.status === 'Approvato' && s.startTime).map(s => ({ type: 'shift', date: new Date(s.startTime!), data: s })),
@@ -170,16 +171,25 @@ export default function HistoryPage() {
                 setAllUsers(userList);
             }
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching users:", error);
+            setLoading(false);
         });
 
         const unsubShifts = onSnapshot(collection(firestore, 'shifts'), (snapshot) => {
             setAllShifts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
              setLoading(false);
+        }, (error) => {
+            console.error("Error fetching shifts:", error);
+            setLoading(false);
         });
 
         const unsubLeaves = onSnapshot(collection(firestore, 'leave-requests'), (snapshot) => {
             setAllLeaveRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest)));
              setLoading(false);
+        }, (error) => {
+            console.error("Error fetching leaves:", error);
+            setLoading(false);
         });
 
         return () => {

@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Button } from '@/componentsui/button';
+import { Button } from '@/components/ui/button';
 import { ArrowLeft, Trash2, Pencil, Minus, Plus } from 'lucide-react';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -169,7 +169,7 @@ export default function UserSuppliesPage() {
                                             <CardHeader className="flex flex-row justify-between items-start pb-3">
                                                 <div>
                                                     <p className="font-semibold">Richiesta del {new Date().toLocaleDateString('it-IT')}</p>
-                                                    <p className="text-sm text-muted-foreground">ID: {req.id}</p>
+                                                    <p className="text-sm text-muted-foreground">ID: {req.id.substring(0,8)}...</p>
                                                 </div>
                                                 <Badge variant={getStatusVariant(req.status)}>{req.status}</Badge>
                                             </CardHeader>
