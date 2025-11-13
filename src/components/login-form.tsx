@@ -35,23 +35,22 @@ export default function LoginForm() {
 
         try {
             // Ensure admin user exists.
-            const adminDocRef = doc(firestore, 'app-users', 'admin_user');
-            
+            const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
+            const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
+
             try {
-              const adminDoc = await getDoc(adminDocRef);
+              const adminDoc = await getDoc(adminUserDocRef);
               if (!adminDoc.exists()) {
-                  await setDoc(adminDocRef, {
+                  await setDoc(adminUserDocRef, {
                       username: 'Amministratore',
                       password: '0000',
                       role: 'admin'
                   });
+                   await setDoc(adminRoleDocRef, { isAdmin: true });
               }
             } catch (e) {
-                const contextualError = new FirestorePermissionError({
-                    path: 'app-users/admin_user',
-                    operation: 'get', 
-                });
-                errorEmitter.emit('permission-error', contextualError);
+                // This might fail if rules are not set up, but we proceed
+                console.warn("Could not set up admin user, might already exist or rules are restrictive.", e);
             }
 
 
