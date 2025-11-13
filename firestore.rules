@@ -3,43 +3,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
     function isAdmin() {
-      // Check for admin role in 'roles_admin' collection.
-      // In this app, the user with id 'admin_user' is the admin.
-      // A more robust system would use a collection of admin UIDs.
-      // For now, we check the default admin user's ID.
-      // This is a temporary, stable solution for this specific app's structure.
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid)) || request.auth.uid == "admin_user";
     }
 
-    // Global Admin Rule: Admins can read and write everything.
-    // This is the most permissive rule to prevent any permission-denied errors for admins
-    // when listing collections.
+    // Regola Globale per Admin: Accesso completo a tutto il database.
+    // Questa regola è la più permissiva possibile e previene errori di permessi per gli admin.
     match /{path=**} {
       allow read, write: if isAdmin();
     }
     
-    // User-specific rules. These still apply to non-admins.
+    // Regole per Utenti non-Admin
+    
+    // La collezione 'app-users' può essere letta da qualsiasi utente autenticato (per il login),
+    // ma ogni utente può scrivere solo nel proprio documento.
     match /app-users/{userId} {
       allow read: if request.auth != null;
       allow write: if isOwner(userId);
     }
     
+    // Gli operatori possono creare turni, ma possono leggere, aggiornare o eliminare solo i propri.
     match /shifts/{shiftId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.userId);
     }
     
+    // Gli operatori possono creare richieste di ferie, ma possono leggere, aggiornare o eliminare solo le proprie.
     match /leave-requests/{leaveRequestId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.operatorId);
     }
     
+    // Gli operatori possono creare richieste di forniture, ma possono leggere, aggiornare o eliminare solo le proprie.
     match /supply-requests/{supplyRequestId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.operatorId);
@@ -50,12 +49,13 @@ service cloud.firestore {
       allow read, update, delete: if isOwner(resource.data.userId);
     }
     
+    // Gli operatori possono creare comunicazioni e leggere solo le proprie.
     match /communications/{commId} {
-        allow create: if request.auth != null;
-        allow read: if isOwner(resource.data.userId);
+      allow create: if request.auth != null;
+      allow read: if isOwner(resource.data.userId);
     }
     
-    // Announcements are public to all authenticated users.
+    // Tutti gli utenti autenticati possono leggere gli annunci.
     match /announcements/{announcementId} {
       allow read: if request.auth != null;
     }
