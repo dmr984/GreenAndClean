@@ -1,86 +1,73 @@
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Funzione per verificare se l'utente è il proprietario del documento
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
+    // Funzione per verificare se l'utente è un amministratore
     function isAdmin() {
-      // Admins have a document in the /roles_admin collection with their UID.
+      // Gli amministratori hanno un documento nella collezione /roles_admin con il loro UID.
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
-    
-    function isUserAuthenticated() {
-      return request.auth != null;
+
+    // Regola generale: gli amministratori hanno accesso completo a tutto.
+    // Questa regola risolve i problemi di permessi per le query di list.
+    match /{path=**} {
+      allow read, write: if isAdmin();
     }
 
-    // Admins can be managed by other admins.
-    match /admins/{adminId} {
-      allow read, write: if isUserAuthenticated() && isAdmin();
-    }
-    
-    // Role collection is readable by authenticated users to check for admin status.
+    // Regole specifiche per gli operatori (si applicano quando isAdmin() è falso)
+
+    // La collezione roles_admin è leggibile da tutti gli utenti autenticati per permettere
+    // al client di verificare lo stato di amministratore se necessario.
     match /roles_admin/{adminId} {
-      allow read: if isUserAuthenticated();
+      allow get: if request.auth != null;
     }
 
-    // All app users can be read by admins, but only owners or admins can write.
+    // La collezione app-users è leggibile da tutti, ma scrivibile solo dal proprietario
     match /app-users/{userId} {
-      allow list: if isUserAuthenticated() && isAdmin();
-      allow read: if isUserAuthenticated();
-      allow write: if isUserAuthenticated() && (isOwner(userId) || isAdmin());
-    }
-
-    // Operator-specific data is owned by the operator, but readable by admins.
-    match /operators/{operatorId} {
-      allow read: if isUserAuthenticated() && (isOwner(operatorId) || isAdmin());
-      allow write: if isUserAuthenticated() && isOwner(operatorId);
-      
-      // Subcollections are owned by the operator
-      match /{subcollection}/{docId} {
-        allow read, write: if isUserAuthenticated() && isOwner(operatorId);
-      }
+      allow read: if request.auth != null;
+      allow write: if isOwner(userId);
     }
     
-    // Root level collections for admin queries
+    // Gli operatori possono creare, leggere e aggiornare solo i propri turni
     match /shifts/{shiftId} {
-      allow read, write: if isAdmin();
-      allow create: if isUserAuthenticated();
-      allow read, update: if isUserAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null;
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
-    
+
+    // Gli operatori possono creare e gestire solo le proprie richieste di ferie
     match /leave-requests/{leaveRequestId} {
-      allow read, write: if isAdmin();
-      allow create: if isUserAuthenticated();
-      allow read, update, delete: if isUserAuthenticated() && resource.data.operatorId == request.auth.uid;
+      allow create: if request.auth != null;
+      allow read, update, delete: if request.auth != null && resource.data.operatorId == request.auth.uid;
     }
-    
+
+    // Gli operatori possono creare e leggere solo le proprie richieste di forniture
     match /supply-requests/{supplyRequestId} {
-      allow read, write: if isAdmin();
-      allow create: if isUserAuthenticated();
-      allow read: if isUserAuthenticated() && resource.data.user == request.auth.token.name;
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.user == request.auth.token.name;
     }
-
+    
+    // Gli operatori possono creare e leggere solo le proprie richieste di timbratura extra
     match /extra-shift-requests/{requestId} {
-      allow read, write: if isUserAuthenticated();
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    // Le comunicazioni possono essere create e lette solo dal proprietario
+    match /communications/{commId} {
+        allow create: if request.auth != null;
+        allow read: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // Announcements can be read by anyone, but only written by admins.
+    // Gli annunci sono leggibili da tutti gli utenti autenticati
     match /announcements/{announcementId} {
-      allow read: if isUserAuthenticated();
-      allow write: if isUserAuthenticated() && isAdmin();
-    }
-    
-    // This collection is not defined in backend.json, but provide rules for it
-    match /communications/{commId} {
-      allow read, write: if isUserAuthenticated();
-    }
-    
-    // Warehouse items can only be managed by admins.
-     match /warehouse-items/{itemId} {
-      allow read, list, write: if isUserAuthenticated() && isAdmin();
+      allow read: if request.auth != null;
     }
   }
 }
