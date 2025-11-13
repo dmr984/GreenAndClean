@@ -11,8 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useFirestore, useMemoFirebase } from "@/firebase";
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
+import { useFirestore, useMemoFirebase, useCollection } from "@/firebase";
+import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
 type AppUser = {
   id: string;
@@ -26,7 +26,6 @@ type AppUser = {
 export default function UsersPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [users, setUsers] = React.useState<AppUser[]>([]);
   const [isUserDialogOpen, setIsUserDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<AppUser | null>(null);
@@ -37,22 +36,17 @@ export default function UsersPage() {
     return query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
   }, [firestore]);
 
+  const { data: users, error: usersError } = useCollection<AppUser>(usersQuery);
 
   React.useEffect(() => {
-    if (!usersQuery) return;
-    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
-        const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser));
-        setUsers(userList.sort((a,b) => a.username.localeCompare(b.username)));
-    }, (error) => {
-        console.error("Permission error fetching users:", error);
+    if (usersError) {
         toast({
             title: "Errore di Permesso",
             description: "Non hai i permessi per visualizzare gli operatori.",
             variant: "destructive"
         })
-    });
-    return () => unsubscribe();
-  }, [usersQuery, toast]);
+    }
+  }, [usersError, toast]);
 
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -137,27 +131,28 @@ export default function UsersPage() {
     setSelectedUser(user);
     setIsDeleteDialogOpen(true);
   }
+  
+  const sortedUsers = React.useMemo(() => {
+    if (!users) return [];
+    return [...users].sort((a,b) => a.username.localeCompare(b.username));
+  }, [users]);
 
   return (
     <>
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Gestione Operatori</h2>
+        <Button size="sm" className="gap-1" onClick={() => openDialog(null, false)}>
+            <PlusCircle className="h-4 w-4" />
+            Aggiungi Nuovo Operatore
+        </Button>
       </div>
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <CardTitle>Elenco Operatori</CardTitle>
-              <CardDescription>Aggiungi, modifica o elimina gli account degli operatori.</CardDescription>
-            </div>
-            <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => openDialog(null, false)}>
-              <PlusCircle className="h-4 w-4" />
-              Aggiungi Operatore
-            </Button>
-          </div>
+            <CardTitle>Elenco Operatori</CardTitle>
+            <CardDescription>Aggiungi, modifica o elimina gli account degli operatori.</CardDescription>
         </CardHeader>
         <CardContent>
-          {users.length === 0 ? (
+          {!sortedUsers || sortedUsers.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
               <p>Non ci sono operatori. Inizia aggiungendone uno.</p>
             </div>
@@ -173,7 +168,7 @@ export default function UsersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {sortedUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">{user.username}</TableCell>
                       <TableCell>{user.location}</TableCell>
@@ -213,7 +208,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>{isEditing ? 'Modifica Operatore' : 'Aggiungi Nuovo Operatore'}</DialogTitle>
             <DialogDescription>
-              {isEditing ? 'Aggiorna i dettagli dell\'operatore.' : 'Compila i campi per creare un nuovo account.'}
+              {isEditing ? 'Aggiorna i dettagli dell\\'operatore.' : 'Compila i campi per creare un nuovo account.'}
             </DialogDescription>
           </DialogHeader>
           <form id="user-form" onSubmit={handleFormSubmit} className="grid gap-4 py-4">
