@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, ClipboardCheck, Clock, User, MessageSquare, Users } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, Clock, User, MessageSquare, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -59,8 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = () => {
     localStorage.removeItem('user');
-    router.push('/');
-    setIsSidebarOpen(false);
+    window.location.href = '/';
   }
 
   const getAvatarFallback = () => {
@@ -126,9 +125,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  <nav className="grid gap-2 text-lg font-medium">
                     {isAdmin ? (
                       <>
+                        <NavButton path="/dashboard/users" icon={<Users className="h-5 w-5" />} label="Gestione Operatori" />
+                        <NavButton path="/dashboard/clockings" icon={<Clock className="h-5 w-5" />} label="Gestione Timbrature" />
+                        <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Richieste Ferie" />
+                        <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" />
+                        <Separator className="my-2" />
                         <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
                         <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
-                        <NavButton path="/dashboard/users" icon={<Users className="h-5 w-5" />} label="Gestione Operatori" />
                       </>
                     ) : (
                       <>

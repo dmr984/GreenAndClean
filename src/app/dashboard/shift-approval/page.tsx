@@ -90,56 +90,50 @@ export default function ShiftApprovalPage() {
     };
 
     return (
-        <div className="flex flex-col gap-8">
-            <div className="flex items-center justify-between space-y-2">
-                <h2 className="text-3xl font-bold tracking-tight">Approvazione Turni di Lavoro</h2>
-            </div>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Turni in Attesa di Approvazione</CardTitle>
-                    <CardDescription>
-                        Controlla e approva i turni completati dagli operatori.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {pendingShifts.length === 0 ? (
-                         <div className="text-center text-muted-foreground py-16">
-                            <CheckCircle className="mx-auto h-12 w-12 text-gray-400" />
-                            <p className="mt-4">Nessun turno da approvare. Ottimo lavoro!</p>
-                        </div>
-                    ) : (
-                        pendingShifts.map(shift => {
-                             const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
-                            return (
-                                <Card key={shift.id}>
-                                    <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3">
-                                        <div>
-                                            <CardTitle className="text-xl">{shift.userName}</CardTitle>
-                                            <CardDescription>
-                                                {shift.startTime ? new Date(shift.startTime).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'}) : 'Data non disponibile'}
-                                            </CardDescription>
-                                        </div>
-                                        <Button size="sm" onClick={() => handleApproveShift(shift.id)}>
-                                            <CheckCircle className="mr-2 h-4 w-4"/>
-                                            Approva Turno
-                                        </Button>
-                                    </CardHeader>
-                                    <CardContent className="space-y-2 text-sm">
-                                         <div className="flex items-center gap-2">
-                                            <Clock className="text-primary h-5 w-5"/>
-                                            Ingresso: <span className="font-mono">{shift.startTime ? new Date(shift.startTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span> - 
-                                            Uscita: <span className="font-mono">{shift.endTime ? new Date(shift.endTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
-                                         </div>
-                                         <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle className="h-5 w-5"/>Pause: <span className="font-mono font-semibold text-foreground">{duration.pause}</span></div>
-                                         <div className="flex items-center gap-2 font-medium"><Briefcase className="h-5 w-5"/>Ore Lavorate: <span className="font-mono font-bold">{duration.worked}</span></div>
-                                    </CardContent>
-                                </Card>
-                            )
-                        })
-                    )}
-                </CardContent>
-            </Card>
-        </div>
+        <Card>
+            <CardHeader>
+                <CardTitle>Timbrature in Attesa di Approvazione</CardTitle>
+                <CardDescription>
+                    Controlla e approva le timbrature completate dagli operatori.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {pendingShifts.length === 0 ? (
+                     <div className="text-center text-muted-foreground py-16">
+                        <CheckCircle className="mx-auto h-12 w-12 text-gray-400" />
+                        <p className="mt-4">Nessuna timbratura da approvare. Ottimo lavoro!</p>
+                    </div>
+                ) : (
+                    pendingShifts.map(shift => {
+                         const duration = calculateDuration(shift.startTime, shift.endTime, shift.pauses);
+                        return (
+                            <Card key={shift.id}>
+                                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3">
+                                    <div>
+                                        <CardTitle className="text-xl">{shift.userName}</CardTitle>
+                                        <CardDescription>
+                                            {shift.startTime ? new Date(shift.startTime).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'}) : 'Data non disponibile'}
+                                        </CardDescription>
+                                    </div>
+                                    <Button size="sm" onClick={() => handleApproveShift(shift.id)}>
+                                        <CheckCircle className="mr-2 h-4 w-4"/>
+                                        Approva Timbratura
+                                    </Button>
+                                </CardHeader>
+                                <CardContent className="space-y-2 text-sm">
+                                     <div className="flex items-center gap-2">
+                                        <Clock className="text-primary h-5 w-5"/>
+                                        Ingresso: <span className="font-mono">{shift.startTime ? new Date(shift.startTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span> - 
+                                        Uscita: <span className="font-mono">{shift.endTime ? new Date(shift.endTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'}) : '--:--'}</span>
+                                     </div>
+                                     <div className="flex items-center gap-2 text-muted-foreground"><PauseCircle className="h-5 w-5"/>Pause: <span className="font-mono font-semibold text-foreground">{duration.pause}</span></div>
+                                     <div className="flex items-center gap-2 font-medium"><Briefcase className="h-5 w-5"/>Ore Lavorate: <span className="font-mono font-bold">{duration.worked}</span></div>
+                                </CardContent>
+                            </Card>
+                        )
+                    })
+                )}
+            </CardContent>
+        </Card>
     );
 }

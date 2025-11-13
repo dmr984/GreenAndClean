@@ -104,11 +104,14 @@ const processMonthlyData = (shifts: Shift[], leaveRequests: LeaveRequest[], user
                 } else if (req.type === 'Permesso' && req.timeFrom && req.timeTo) {
                      const [fromHours, fromMinutes] = req.timeFrom.split(':').map(Number);
                      const [toHours, toMinutes] = req.timeTo.split(':').map(Number);
-                     const permitStart = new Date(0, 0, 0, fromHours, fromMinutes);
-                     const permitEnd = new Date(0, 0, 0, toHours, toMinutes);
-                     const diffMillis = permitEnd.getTime() - permitStart.getTime();
-                     if(current.toDateString() === start.toDateString()) {
-                        monthlyData[loopMonthKey].permitMinutes += (diffMillis / (1000 * 60));
+                     const permitStart = new Date(current);
+                     permitStart.setHours(fromHours, fromMinutes, 0, 0);
+                     const permitEnd = new Date(current);
+                     permitEnd.setHours(toHours, toMinutes, 0, 0);
+                     
+                     if(current.getTime() >= permitStart.getTime() && current.getTime() <= permitEnd.getTime()) {
+                        const diffMillis = permitEnd.getTime() - permitStart.getTime();
+                         monthlyData[loopMonthKey].permitMinutes += (diffMillis / (1000 * 60));
                      }
                 }
                 current.setDate(current.getDate() + 1);
