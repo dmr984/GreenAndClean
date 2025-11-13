@@ -40,11 +40,15 @@ export default function UsersPage() {
 
   React.useEffect(() => {
     if (usersError) {
-        toast({
-            title: "Errore di Permesso",
-            description: "Non hai i permessi per visualizzare gli operatori.",
-            variant: "destructive"
-        });
+        // The useCollection hook now handles emitting the contextual error.
+        // We can keep this toast as a fallback for non-permission errors.
+        if (!(usersError instanceof FirestorePermissionError)) {
+          toast({
+              title: "Errore di Caricamento",
+              description: "Impossibile caricare gli operatori.",
+              variant: "destructive"
+          });
+        }
     }
   }, [usersError, toast]);
 
@@ -108,8 +112,6 @@ export default function UsersPage() {
 
     const userRef = doc(firestore, 'app-users', selectedUser.id);
 
-    // We only attempt to delete the user doc. The related data deletion might fail,
-    // but this gives us a more specific error context.
     deleteDoc(userRef)
         .then(() => {
              toast({
@@ -117,7 +119,6 @@ export default function UsersPage() {
                 description: `"${selectedUser.username}" è stato rimosso.`,
                 variant: "destructive"
             });
-             // You might want to trigger deletion of related data via a cloud function for robustness.
         })
         .catch((serverError) => {
              const permissionError = new FirestorePermissionError({
@@ -150,7 +151,8 @@ export default function UsersPage() {
     if (usersError) {
       return (
         <div className="text-center text-red-500 py-12">
-            <p>Errore di permessi nel caricare gli operatori.</p>
+            <p>Errore di permessi. Non è possibile visualizzare gli operatori.</p>
+            <p className="text-xs text-muted-foreground mt-2">Prova a ricaricare o contatta l'assistenza.</p>
         </div>
       )
     }
@@ -281,3 +283,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    
