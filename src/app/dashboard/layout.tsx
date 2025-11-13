@@ -16,20 +16,11 @@ type UserData = {
   role: 'admin' | 'operator';
 };
 
-// Generic function to get data from localStorage, now outside the component
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
     if (typeof window === 'undefined') return defaultValue;
     const stored = localStorage.getItem(key);
     try {
         const data = stored ? JSON.parse(stored) : defaultValue;
-        // Backward compatibility for old announcements
-        if (key === 'announcements' && Array.isArray(data)) {
-            return data.map(a => ({
-                ...a,
-                readBy: a.readBy || [],
-                hiddenFor: a.hiddenFor || []
-            })) as T;
-        }
         return data;
     } catch (e) {
         return defaultValue;
