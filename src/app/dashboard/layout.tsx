@@ -45,6 +45,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setUser(storedUser);
     setIsLoading(false);
 
+    const handleStorageChange = () => {
+        const updatedUser = getFromStorage<UserData | null>('user', null);
+        if (updatedUser) {
+            setUser(updatedUser);
+        } else {
+            router.replace('/');
+        }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+        window.removeEventListener('storage', handleStorageChange);
+    }
+
   }, [router]);
 
   const handleLogout = () => {
@@ -125,8 +140,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {isAdmin ? (
                       <>
                         <NavButton path="/dashboard/users" icon={<User className="h-5 w-5" />} label="Gestione Operatori" />
-                        <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
                         <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
+                        <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
                       </>
                     ) : (
                       <>
