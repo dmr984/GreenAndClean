@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -10,9 +9,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Check for admin role in either 'admins' or 'roles_admin' collections.
-      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) || 
-             exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      // Check for admin role in 'roles_admin' collection.
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
     // Global Admin Rule: Admins can read and write everything.
@@ -24,7 +22,7 @@ service cloud.firestore {
     // Specific rules for non-admin users (operators)
 
     // The roles_admin collection is get-able by any authenticated user if needed
-    // for client-side role checks, but not listable.
+    // for client-side role checks, but not listable by non-admins.
     match /roles_admin/{adminId} {
       allow get: if request.auth != null;
     }
@@ -48,7 +46,6 @@ service cloud.firestore {
     }
 
     // Operators can only create and read their own supply requests.
-    // This rule was problematic, changed to check operatorId instead of user name.
     match /supply-requests/{supplyRequestId} {
       allow create: if request.auth != null;
       allow read, update, delete: if isOwner(resource.data.operatorId);
