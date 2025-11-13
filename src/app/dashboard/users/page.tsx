@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
 type AppUser = {
   id: string;
@@ -79,22 +79,31 @@ export default function UsersPage() {
     setIsEditing(false);
   };
   
-  const handleDeleteUser = async () => {
+ const handleDeleteUser = async () => {
     if (!selectedUser || !firestore) return;
-    
+
     try {
         const batch = writeBatch(firestore);
-        
+
         // Delete user document
         const userRef = doc(firestore, 'app-users', selectedUser.id);
         batch.delete(userRef);
 
+        // Define collections to clean up
+        const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
+        
+        for (const coll of collectionsToDelete) {
+            const q = query(collection(firestore, coll), where('operatorId', '==', selectedUser.id));
+            const snapshot = await getDocs(q);
+            snapshot.forEach(doc => batch.delete(doc.ref));
+        }
+
         await batch.commit();
 
         toast({
-          title: "Operatore Eliminato",
-          description: `"${selectedUser.username}" è stato rimosso.`,
-          variant: "destructive"
+            title: "Operatore Eliminato",
+            description: `"${selectedUser.username}" e tutti i suoi dati sono stati rimossi.`,
+            variant: "destructive"
         });
     } catch (error) {
         console.error("Error deleting user and related data: ", error);
@@ -103,7 +112,8 @@ export default function UsersPage() {
 
     setIsDeleteDialogOpen(false);
     setSelectedUser(null);
-  }
+};
+
   
   const openDialog = (user: AppUser | null, editing: boolean) => {
     setSelectedUser(user);
@@ -224,7 +234,7 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Questa azione non può essere annullata. L'operatore <strong>{selectedUser?.username}</strong> e tutti i suoi dati storici (timbrature, ferie, etc.) verranno eliminati.
+              Questa azione è irreversibile. L'operatore <strong>{selectedUser?.username}</strong> e tutti i suoi dati (timbrature, ferie, ecc.) verranno eliminati definitivamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
