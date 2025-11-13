@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFirestore } from "@/firebase";
-import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, query, where } from "firebase/firestore";
 
 
 type AppUser = {
@@ -57,8 +57,10 @@ export default function AnnouncementsPage() {
         if (!firestore) return;
 
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        setUserRole(storedUser.role || null);
-        setUserId(storedUser.id || null);
+        const localUserRole = storedUser.role || null;
+        const localUserId = storedUser.id || null;
+        setUserRole(localUserRole);
+        setUserId(localUserId);
 
         const usersUnsub = onSnapshot(collection(firestore, 'app-users'), (snapshot) => {
              const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppUser))
@@ -66,17 +68,21 @@ export default function AnnouncementsPage() {
             setOperators(userList);
         });
 
-        const announcementsUnsub = onSnapshot(collection(firestore, 'announcements'), (snapshot) => {
+        const announcementsQuery = collection(firestore, 'announcements');
+        const announcementsUnsub = onSnapshot(announcementsQuery, (snapshot) => {
             const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
             
-            if (storedUser.role === 'admin' && storedUser.id) {
-                setAnnouncements(allAnnouncements.filter(a => !a.hiddenFor.includes(storedUser.id!)));
-            } else if (storedUser.id) {
+            if (localUserRole === 'admin' && localUserId) {
+                // Admin sees all announcements not hidden by them
+                setAnnouncements(allAnnouncements.filter(a => !a.hiddenFor.includes(localUserId!)));
+            } else if (localUserId) {
+                 // Operator sees 'all' or their specific announcements, not hidden by them
                  const userAnnouncements = allAnnouncements
-                    .filter(a => (a.recipients.includes('all') || a.recipients.includes(storedUser.id!)) && !a.hiddenFor.includes(storedUser.id!));
-                setAnnouncements(userAnnouncements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                    .filter(a => (a.recipients.includes('all') || a.recipients.includes(localUserId!)) && !a.hiddenFor.includes(localUserId!));
+                setAnnouncements(userAnnouncements);
             }
         });
+
 
         return () => {
             usersUnsub();
@@ -330,7 +336,7 @@ export default function AnnouncementsPage() {
                     {sortedAnnouncements.length > 0 ? (
                         <div className="space-y-4 pr-4">
                             {sortedAnnouncements.map(ann => {
-                                const isRead = ann.readBy.includes(userId!);
+                                const isRead = userId ? ann.readBy.includes(userId) : false;
                                 return (
                                  <Card key={ann.id} onClick={() => markAsRead(ann.id)} className={`transition-colors ${isRead ? 'bg-muted/50' : 'hover:bg-muted/20 cursor-pointer'}`}>
                                     <CardHeader className="pb-3">

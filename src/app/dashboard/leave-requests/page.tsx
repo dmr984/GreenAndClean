@@ -51,12 +51,16 @@ export default function LeaveRequestsPage() {
         setUserId(storedUser.id || null);
         setUserName(storedUser.username || null);
         
-        let q = query(collection(firestore, 'leave-requests'));
-
-        // If the user is not an admin, filter requests by their operatorId
-        if (!isAdmin && storedUser.id) {
+        let q;
+        // If the user is an admin, fetch all requests. Otherwise, filter by their ID.
+        if (isAdmin) {
+            q = query(collection(firestore, 'leave-requests'));
+        } else if (storedUser.id) {
             q = query(collection(firestore, 'leave-requests'), where("operatorId", "==", storedUser.id));
+        } else {
+            return; // Don't fetch if no user ID and not admin
         }
+
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const requestList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LeaveRequest));

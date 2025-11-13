@@ -36,7 +36,7 @@ service cloud.firestore {
       allow create: if request.auth != null;
       // Only the user who created the shift can read, update, or delete it.
       // Admins can do this via the global rule.
-      allow read, update, delete: if isOwner(resource.data.userId);
+      allow read, update, delete: if isOwner(resource.data.operatorId);
     }
     
     // Rules for top-level leave-requests collection
@@ -68,6 +68,7 @@ service cloud.firestore {
       // Any authenticated user can create a communication
       allow create: if request.auth != null;
       // Only the user who created the communication can read it.
+      // Admins can read all via the global rule.
       allow read: if isOwner(resource.data.userId);
     }
     
