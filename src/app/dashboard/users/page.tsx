@@ -27,7 +27,7 @@ export default function UsersPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isUserDialogOpen, setIsUserDialogOpen] = React.useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen(false);
   const [selectedUser, setSelectedUser] = React.useState<AppUser | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
 
@@ -36,7 +36,7 @@ export default function UsersPage() {
     return query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
   }, [firestore]);
 
-  const { data: users, error: usersError } = useCollection<AppUser>(usersQuery);
+  const { data: users, error: usersError, isLoading } = useCollection<AppUser>(usersQuery);
 
   React.useEffect(() => {
     if (usersError) {
@@ -73,7 +73,8 @@ export default function UsersPage() {
             toast({ title: "Password Obbligatoria", description: "La password è obbligatoria per i nuovi operatori.", variant: "destructive" });
             return;
           }
-          await addDoc(collection(firestore, 'app-users'), userData);
+          // Note: In a real app, password should be hashed. This is a simplification.
+          await addDoc(collection(firestore, 'app-users'), { ...userData, password });
           toast({ title: "Operatore Creato", description: `"${username}" è stato aggiunto.` });
         }
     } catch (error) {
@@ -130,7 +131,67 @@ export default function UsersPage() {
     setIsDeleteDialogOpen(true);
   }
   
-  const sortedUsers = React.useMemo(() => users ? [...users].sort((a,b) => a.username.localeCompare(b.username)) : [], [users]);
+  const renderContent = () => {
+    if (isLoading) {
+      return <div className="text-center text-muted-foreground py-12">Caricamento operatori...</div>;
+    }
+
+    if (!users || users.length === 0) {
+      return (
+        <div className="text-center text-muted-foreground py-12">
+          <p>Non ci sono operatori. Inizia aggiungendone uno.</p>
+        </div>
+      );
+    }
+    
+    const sortedUsers = [...users].sort((a,b) => a.username.localeCompare(b.username));
+
+    return (
+      <div className="relative w-full overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome Utente</TableHead>
+              <TableHead>Sede di Lavoro</TableHead>
+              <TableHead>Ore Previste</TableHead>
+              <TableHead className="text-right"><span className="sr-only">Azioni</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedUsers.map((user) => (
+              <TableRow key={user.id}>
+                <TableCell className="font-medium">{user.username}</TableCell>
+                <TableCell>{user.location}</TableCell>
+                <TableCell>{user.expectedHours} ore</TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button aria-haspopup="true" size="icon" variant="ghost">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Apri menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+                      <DropdownMenuItem onSelect={() => openDialog(user, true)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Modifica
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Elimina
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
 
   return (
     <>
@@ -147,54 +208,7 @@ export default function UsersPage() {
             <CardDescription>Aggiungi, modifica o elimina gli account degli operatori.</CardDescription>
         </CardHeader>
         <CardContent>
-          {sortedUsers.length === 0 ? (
-            <div className="text-center text-muted-foreground py-12">
-              <p>Non ci sono operatori. Inizia aggiungendone uno.</p>
-            </div>
-          ) : (
-            <div className="relative w-full overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome Utente</TableHead>
-                    <TableHead>Sede di Lavoro</TableHead>
-                    <TableHead>Ore Previste</TableHead>
-                    <TableHead className="text-right"><span className="sr-only">Azioni</span></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.username}</TableCell>
-                      <TableCell>{user.location}</TableCell>
-                       <TableCell>{user.expectedHours} ore</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Apri menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => openDialog(user, true)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Modifica
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Elimina
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          {renderContent()}
         </CardContent>
       </Card>
 
@@ -203,7 +217,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>{isEditing ? 'Modifica Operatore' : 'Aggiungi Nuovo Operatore'}</DialogTitle>
             <DialogDescription>
-              {isEditing ? 'Aggiorna i dettagli dell\\'operatore.' : 'Compila i campi per creare un nuovo account.'}
+              {isEditing ? 'Aggiorna i dettagli dell\'operatore.' : 'Compila i campi per creare un nuovo account.'}
             </DialogDescription>
           </DialogHeader>
           <form id="user-form" onSubmit={handleFormSubmit} className="grid gap-4 py-4">
