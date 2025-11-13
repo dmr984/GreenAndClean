@@ -1,18 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, MoreHorizontal, Trash2, Edit } from "lucide-react";
+import { PlusCircle, Trash2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useFirestore, useMemoFirebase, useCollection, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type AppUser = {
   id: string;
@@ -38,10 +37,8 @@ export default function UsersPage() {
 
   const { data: users, error: usersError, isLoading } = useCollection<AppUser>(usersQuery);
 
-  React.useEffect(() => {
+   React.useEffect(() => {
     if (usersError) {
-        // The useCollection hook now handles emitting the contextual error.
-        // We can keep this toast as a fallback for non-permission errors.
         if (!(usersError instanceof FirestorePermissionError)) {
           toast({
               title: "Errore di Caricamento",
@@ -67,40 +64,39 @@ export default function UsersPage() {
         userData.password = password;
     }
 
-    if (isEditing && selectedUser) {
-      const docRef = doc(firestore, 'app-users', selectedUser.id);
-      updateDoc(docRef, userData)
-        .then(() => {
+    try {
+        if (isEditing && selectedUser) {
+          const docRef = doc(firestore, 'app-users', selectedUser.id);
+          await updateDoc(docRef, userData)
           toast({ title: "Operatore Modificato", description: `"${username}" è stato aggiornato.` });
-        })
-        .catch((serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: docRef.path,
-            operation: 'update',
-            requestResourceData: userData,
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
-    } else {
-      if (!password) {
-        toast({ title: "Password Obbligatoria", description: "La password è obbligatoria per i nuovi operatori.", variant: "destructive" });
-        return;
-      }
-      const finalUserData = { ...userData, password };
-      const collectionRef = collection(firestore, 'app-users');
-      addDoc(collectionRef, finalUserData)
-        .then(() => {
+        } else {
+          if (!password) {
+            toast({ title: "Password Obbligatoria", description: "La password è obbligatoria per i nuovi operatori.", variant: "destructive" });
+            return;
+          }
+          const finalUserData = { ...userData, password };
+          const collectionRef = collection(firestore, 'app-users');
+          await addDoc(collectionRef, finalUserData);
           toast({ title: "Operatore Creato", description: `"${username}" è stato aggiunto.` });
-        })
-        .catch((serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: collectionRef.path,
-            operation: 'create',
-            requestResourceData: finalUserData,
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
+        }
+    } catch (serverError) {
+        let errorToEmit;
+        if (isEditing && selectedUser) {
+             errorToEmit = new FirestorePermissionError({
+                path: doc(firestore, 'app-users', selectedUser.id).path,
+                operation: 'update',
+                requestResourceData: userData,
+              });
+        } else {
+            errorToEmit = new FirestorePermissionError({
+                path: collection(firestore, 'app-users').path,
+                operation: 'create',
+                requestResourceData: { ...userData, password }
+            });
+        }
+        errorEmitter.emit('permission-error', errorToEmit);
     }
+
 
     setIsUserDialogOpen(false);
     setSelectedUser(null);
@@ -112,21 +108,20 @@ export default function UsersPage() {
 
     const userRef = doc(firestore, 'app-users', selectedUser.id);
 
-    deleteDoc(userRef)
-        .then(() => {
-             toast({
-                title: "Operatore Eliminato",
-                description: `"${selectedUser.username}" è stato rimosso.`,
-                variant: "destructive"
-            });
-        })
-        .catch((serverError) => {
-             const permissionError = new FirestorePermissionError({
-                path: userRef.path,
-                operation: 'delete',
-            });
-            errorEmitter.emit('permission-error', permissionError);
+    try {
+        await deleteDoc(userRef)
+        toast({
+            title: "Operatore Eliminato",
+            description: `"${selectedUser.username}" è stato rimosso.`,
+            variant: "destructive"
         });
+    } catch (serverError) {
+        const permissionError = new FirestorePermissionError({
+            path: userRef.path,
+            operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+    }
 
     setIsDeleteDialogOpen(false);
     setSelectedUser(null);
@@ -145,7 +140,13 @@ export default function UsersPage() {
   
   const renderContent = () => {
     if (isLoading) {
-      return <div className="text-center text-muted-foreground py-12">Caricamento operatori...</div>;
+      return (
+         <div className="space-y-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+        </div>
+      );
     }
 
     if (usersError) {
@@ -168,51 +169,28 @@ export default function UsersPage() {
     const sortedUsers = [...users].sort((a,b) => a.username.localeCompare(b.username));
 
     return (
-      <div className="relative w-full overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nome Utente</TableHead>
-              <TableHead>Sede di Lavoro</TableHead>
-              <TableHead>Ore Previste</TableHead>
-              <TableHead className="text-right"><span className="sr-only">Azioni</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedUsers.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.username}</TableCell>
-                <TableCell>{user.location}</TableCell>
-                <TableCell>{user.expectedHours} ore</TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Apri menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-                      <DropdownMenuItem onSelect={() => openDialog(user, true)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Modifica
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onSelect={() => openDeleteDialog(user)}>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Elimina
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="space-y-4">
+        {sortedUsers.map((user) => (
+          <Card key={user.id}>
+             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4">
+                <div>
+                    <CardTitle>{user.username}</CardTitle>
+                    <CardDescription>Sede: {user.location} - Ore previste: {user.expectedHours}</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openDialog(user, true)}>
+                        <Edit className="mr-2 h-4 w-4" /> Modifica
+                    </Button>
+                     <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(user)}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Elimina
+                    </Button>
+                </div>
+            </CardHeader>
+          </Card>
+        ))}
       </div>
     );
   };
-
 
   return (
     <>
@@ -283,5 +261,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
