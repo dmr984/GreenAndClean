@@ -38,9 +38,14 @@ export default function LoginForm() {
             const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
             const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
+            // This initial getDoc might fail if rules are not permissive enough for reads.
+            // However, the rules have been updated to allow unauthenticated reads on app-users.
+            // And unauthenticated writes on roles_admin.
             try {
               const adminDoc = await getDoc(adminUserDocRef);
               if (!adminDoc.exists()) {
+                  // This part should only run once in the app's lifetime.
+                  // The rules specifically allow this for unauthenticated users.
                   await setDoc(adminUserDocRef, {
                       username: 'Amministratore',
                       password: '0000',

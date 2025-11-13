@@ -20,14 +20,19 @@ service cloud.firestore {
     // Rules for app-users collection
     match /app-users/{userId} {
       // Any authenticated user can read user profiles (e.g., for dropdowns)
-      allow read: if request.auth != null;
+      // Also allow unauthenticated reads for the login page user list
+      allow read: if request.auth != null || request.auth == null;
       // Only the owner of the profile can write (update) their own data
-      allow write: if isOwner(userId);
+      // Allow unauthenticated writes for initial admin user creation
+      allow write: if isOwner(userId) || request.auth == null;
     }
 
     // Allow admin user creation during setup
     match /roles_admin/{userId} {
-      allow read, write: if request.auth == null || isAdmin();
+      // Allow unauthenticated write for initial setup
+      allow write: if request.auth == null;
+      // Allow admins to read/write roles
+      allow read, write: if isAdmin();
     }
     
     // Rules for top-level shifts collection
