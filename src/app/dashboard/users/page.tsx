@@ -245,7 +245,7 @@ export default function UsersPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setSelectedUser(null)}>Annulla</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setSelectedUser(null)}>Annulla</Cancel>
             <AlertDialogAction onClick={handleDeleteUser}>Conferma Eliminazione</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
