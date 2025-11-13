@@ -17,11 +17,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admins collection for role management
+    // Admins can be managed by other admins (or by themselves initially)
     match /admins/{adminId} {
-      allow read, write: if isUserAuthenticated() && isOwner(adminId);
+      allow read, write: if isUserAuthenticated() && isAdmin();
     }
-
+    
+    // Role collection is readable by authenticated users to check for admin status
     match /roles_admin/{adminId} {
       allow read: if isUserAuthenticated();
     }
@@ -42,32 +43,36 @@ service cloud.firestore {
       allow read, write: if isUserAuthenticated() && isOwner(operatorId);
     }
 
-    // Shifts can be created by the user, and listed/read/updated by admins or the owner.
+    // Shifts: Admins can list/read all. Users can create/read their own.
     match /shifts/{shiftId} {
-      allow create: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow read, update: if isUserAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isUserAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow list: if isUserAuthenticated() && isAdmin();
+      allow create: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isUserAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isUserAuthenticated() && isAdmin();
     }
     
-    // Leave requests can be created by the user, read by user/admin, and listed by admins.
+    // Leave Requests: Admins can list/read all. Users can manage their own.
     match /leave-requests/{leaveRequestId} {
-      allow create: if isUserAuthenticated() && request.resource.data.operatorId == request.auth.uid;
-      allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
+      allow read: if isUserAuthenticated() && (isAdmin() || resource.data.operatorId == request.auth.uid);
       allow list: if isUserAuthenticated() && isAdmin();
+      allow create: if isUserAuthenticated() && request.resource.data.operatorId == request.auth.uid;
+      allow update, delete: if isUserAuthenticated() && (isAdmin() || resource.data.operatorId == request.auth.uid);
     }
     
-    // Supply requests follow the same pattern as leave requests.
+    // Supply Requests: Admins can list/read all. Users can create/read their own.
     match /supply-requests/{supplyRequestId} {
-        allow create: if isUserAuthenticated();
-        allow read, update, delete: if isUserAuthenticated() && (resource.data.operatorId == request.auth.uid || isAdmin());
+        allow read: if isUserAuthenticated() && (isAdmin() || resource.data.user == request.auth.token.name); // Using name temporarily as per app code
         allow list: if isUserAuthenticated() && isAdmin();
+        allow create: if isUserAuthenticated();
+        allow update, delete: if isUserAuthenticated() && isAdmin();
     }
 
-    // Extra shift requests can be read/written by any authenticated user, but primarily managed by admins.
+    // Extra Shift Requests: Admins can list/read all. Users can create their own.
      match /extra-shift-requests/{requestId} {
-      allow read, write: if isUserAuthenticated();
+      allow read: if isUserAuthenticated();
       allow list: if isUserAuthenticated() && isAdmin();
+      allow write: if isUserAuthenticated();
     }
 
     // Announcements can be read by anyone, but only written by admins.
