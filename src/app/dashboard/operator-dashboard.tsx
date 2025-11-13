@@ -3,7 +3,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { Calendar, Package, Megaphone, History } from 'lucide-react';
+import { Calendar, Package, Megaphone, MessageSquare } from 'lucide-react';
 
 export function OperatorDashboard() {
   return (
@@ -43,13 +43,13 @@ export function OperatorDashboard() {
                 </CardContent>
             </Card>
         </Link>
-        <Link href="/dashboard/history" className="h-full">
+         <Link href="/dashboard/messages" className="h-full">
             <Card className="hover:bg-muted/50 transition-colors text-center h-full flex flex-col justify-center">
                 <CardHeader>
-                    <History className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
+                    <MessageSquare className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary"/>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-                    <CardTitle className="text-xl sm:text-2xl">Storico</CardTitle>
+                    <CardTitle className="text-xl sm:text-2xl">Comunicazioni</CardTitle>
                 </CardContent>
             </Card>
         </Link>
