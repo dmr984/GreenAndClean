@@ -9,7 +9,6 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    // This check is to prevent errors during server-side rendering
     if (typeof window !== 'undefined') {
       try {
         const storedUser = localStorage.getItem('user');
@@ -17,7 +16,6 @@ export default function Dashboard() {
           const user = JSON.parse(storedUser);
           setUserRole(user.role);
         } else {
-          // If no user, maybe redirect or handle as unauthenticated
           setUserRole(null);
         }
       } catch (e) {
