@@ -40,8 +40,6 @@ export default function UsersPage() {
 
   React.useEffect(() => {
     if (usersError) {
-        // The useCollection hook already emits a detailed error.
-        // We can show a generic toast, but the detailed error will be in the console/overlay.
         toast({
             title: "Errore di Permesso",
             description: "Non hai i permessi per visualizzare gli operatori.",
@@ -108,33 +106,21 @@ export default function UsersPage() {
   const handleDeleteUser = async () => {
     if (!selectedUser || !firestore) return;
 
-    const batch = writeBatch(firestore);
     const userRef = doc(firestore, 'app-users', selectedUser.id);
-    batch.delete(userRef);
 
-    const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
-    
-    // This part can still fail due to permissions, but we'll catch the batch.commit()
-    // It's harder to provide granular error context for batch writes.
-    // We will optimistically try to delete.
-    for (const coll of collectionsToDelete) {
-        const q = query(collection(firestore, coll), where('operatorId', '==', selectedUser.id));
-        const snapshot = await getDocs(q).catch(() => { /* Ignore read errors here */ });
-        snapshot?.forEach(doc => batch.delete(doc.ref));
-    }
-
-    batch.commit()
+    // We only attempt to delete the user doc. The related data deletion might fail,
+    // but this gives us a more specific error context.
+    deleteDoc(userRef)
         .then(() => {
              toast({
                 title: "Operatore Eliminato",
-                description: `"${selectedUser.username}" e tutti i suoi dati sono stati rimossi.`,
+                description: `"${selectedUser.username}" è stato rimosso.`,
                 variant: "destructive"
             });
+             // You might want to trigger deletion of related data via a cloud function for robustness.
         })
         .catch((serverError) => {
              const permissionError = new FirestorePermissionError({
-                // We can't know which specific write in the batch failed,
-                // but deleting the user doc is a primary candidate.
                 path: userRef.path,
                 operation: 'delete',
             });
@@ -144,7 +130,7 @@ export default function UsersPage() {
     setIsDeleteDialogOpen(false);
     setSelectedUser(null);
   };
-
+  
   const openDialog = (user: AppUser | null, editing: boolean) => {
     setSelectedUser(user);
     setIsEditing(editing);
@@ -161,7 +147,14 @@ export default function UsersPage() {
       return <div className="text-center text-muted-foreground py-12">Caricamento operatori...</div>;
     }
 
-    // Since we handle the error in useEffect, we might not have users data.
+    if (usersError) {
+      return (
+        <div className="text-center text-red-500 py-12">
+            <p>Errore di permessi nel caricare gli operatori.</p>
+        </div>
+      )
+    }
+
     if (!users || users.length === 0) {
       return (
         <div className="text-center text-muted-foreground py-12">
@@ -288,5 +281,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
