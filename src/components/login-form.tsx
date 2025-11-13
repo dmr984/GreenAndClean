@@ -21,7 +21,7 @@ export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoading, setIsLoading] = React.useState(true); // Default to true to show loading initially
   const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -61,7 +61,7 @@ export default function LoginForm() {
         setIsLoading(true);
         return;
     }
-    setIsLoading(true);
+    
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
         snapshot.forEach((doc) => {
