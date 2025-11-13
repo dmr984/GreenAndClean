@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useFirestore, useMemoFirebase, useCollection } from "@/firebase";
+import { useFirestore, useMemoFirebase, useCollection, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
 type AppUser = {
@@ -40,11 +40,13 @@ export default function UsersPage() {
 
   React.useEffect(() => {
     if (usersError) {
+        // The useCollection hook already emits a detailed error.
+        // We can show a generic toast, but the detailed error will be in the console/overlay.
         toast({
             title: "Errore di Permesso",
             description: "Non hai i permessi per visualizzare gli operatori.",
             variant: "destructive"
-        })
+        });
     }
   }, [usersError, toast]);
 
@@ -63,63 +65,86 @@ export default function UsersPage() {
         userData.password = password;
     }
 
-    try {
-        if (isEditing && selectedUser) {
-          const docRef = doc(firestore, 'app-users', selectedUser.id);
-          await updateDoc(docRef, userData);
+    if (isEditing && selectedUser) {
+      const docRef = doc(firestore, 'app-users', selectedUser.id);
+      updateDoc(docRef, userData)
+        .then(() => {
           toast({ title: "Operatore Modificato", description: `"${username}" è stato aggiornato.` });
-        } else {
-          if(!password) {
-            toast({ title: "Password Obbligatoria", description: "La password è obbligatoria per i nuovi operatori.", variant: "destructive" });
-            return;
-          }
-          // Note: In a real app, password should be hashed. This is a simplification.
-          await addDoc(collection(firestore, 'app-users'), { ...userData, password });
+        })
+        .catch((serverError) => {
+          const permissionError = new FirestorePermissionError({
+            path: docRef.path,
+            operation: 'update',
+            requestResourceData: userData,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
+    } else {
+      if (!password) {
+        toast({ title: "Password Obbligatoria", description: "La password è obbligatoria per i nuovi operatori.", variant: "destructive" });
+        return;
+      }
+      const finalUserData = { ...userData, password };
+      const collectionRef = collection(firestore, 'app-users');
+      addDoc(collectionRef, finalUserData)
+        .then(() => {
           toast({ title: "Operatore Creato", description: `"${username}" è stato aggiunto.` });
-        }
-    } catch (error) {
-        toast({ title: "Errore", description: "Impossibile salvare l'operatore.", variant: "destructive"});
+        })
+        .catch((serverError) => {
+          const permissionError = new FirestorePermissionError({
+            path: collectionRef.path,
+            operation: 'create',
+            requestResourceData: finalUserData,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
     }
 
     setIsUserDialogOpen(false);
     setSelectedUser(null);
     setIsEditing(false);
   };
-  
- const handleDeleteUser = async () => {
+
+  const handleDeleteUser = async () => {
     if (!selectedUser || !firestore) return;
 
-    try {
-        const batch = writeBatch(firestore);
+    const batch = writeBatch(firestore);
+    const userRef = doc(firestore, 'app-users', selectedUser.id);
+    batch.delete(userRef);
 
-        const userRef = doc(firestore, 'app-users', selectedUser.id);
-        batch.delete(userRef);
-
-        const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
-        
-        for (const coll of collectionsToDelete) {
-            const q = query(collection(firestore, coll), where('operatorId', '==', selectedUser.id));
-            const snapshot = await getDocs(q);
-            snapshot.forEach(doc => batch.delete(doc.ref));
-        }
-
-        await batch.commit();
-
-        toast({
-            title: "Operatore Eliminato",
-            description: `"${selectedUser.username}" e tutti i suoi dati sono stati rimossi.`,
-            variant: "destructive"
-        });
-    } catch (error) {
-        console.error("Error deleting user and related data: ", error);
-        toast({ title: "Errore", description: "Impossibile eliminare l'operatore e i suoi dati.", variant: "destructive"});
+    const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
+    
+    // This part can still fail due to permissions, but we'll catch the batch.commit()
+    // It's harder to provide granular error context for batch writes.
+    // We will optimistically try to delete.
+    for (const coll of collectionsToDelete) {
+        const q = query(collection(firestore, coll), where('operatorId', '==', selectedUser.id));
+        const snapshot = await getDocs(q).catch(() => { /* Ignore read errors here */ });
+        snapshot?.forEach(doc => batch.delete(doc.ref));
     }
+
+    batch.commit()
+        .then(() => {
+             toast({
+                title: "Operatore Eliminato",
+                description: `"${selectedUser.username}" e tutti i suoi dati sono stati rimossi.`,
+                variant: "destructive"
+            });
+        })
+        .catch((serverError) => {
+             const permissionError = new FirestorePermissionError({
+                // We can't know which specific write in the batch failed,
+                // but deleting the user doc is a primary candidate.
+                path: userRef.path,
+                operation: 'delete',
+            });
+            errorEmitter.emit('permission-error', permissionError);
+        });
 
     setIsDeleteDialogOpen(false);
     setSelectedUser(null);
-};
+  };
 
-  
   const openDialog = (user: AppUser | null, editing: boolean) => {
     setSelectedUser(user);
     setIsEditing(editing);
@@ -136,6 +161,7 @@ export default function UsersPage() {
       return <div className="text-center text-muted-foreground py-12">Caricamento operatori...</div>;
     }
 
+    // Since we handle the error in useEffect, we might not have users data.
     if (!users || users.length === 0) {
       return (
         <div className="text-center text-muted-foreground py-12">
@@ -262,3 +288,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    
