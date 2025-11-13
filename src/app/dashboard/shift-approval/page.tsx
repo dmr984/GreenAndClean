@@ -5,8 +5,9 @@ import { CheckCircle, Briefcase, Clock, PauseCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
+import { FirestorePermissionError, errorEmitter } from "@/firebase/errors";
 
 type Shift = {
   id: string;
@@ -46,48 +47,63 @@ export default function ShiftApprovalPage() {
     const { toast } = useToast();
     const firestore = useFirestore();
     const [pendingShifts, setPendingShifts] = React.useState<Shift[]>([]);
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [fetchError, setFetchError] = React.useState<Error | null>(null);
+
+    const pendingShiftsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'shifts'), where('status', '==', 'In attesa'));
+    }, [firestore]);
+
+    const { data: shiftsData, isLoading: collectionLoading, error: collectionError } = useCollection<Shift>(pendingShiftsQuery);
 
     React.useEffect(() => {
-        if (!firestore) return;
-        const shiftsCollection = collection(firestore, 'shifts');
-        const q = query(shiftsCollection, where('status', '==', 'In attesa'));
-        
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const shiftsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
+        if (shiftsData) {
             const completedPendingShifts = shiftsData
                 .filter(s => !!s.endTime)
                 .sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime());
             setPendingShifts(completedPendingShifts);
-        }, (err) => {
-            console.error("Error fetching shifts:", err);
-            toast({
-                title: "Errore di Caricamento",
-                description: "Impossibile caricare i turni da approvare.",
-                variant: 'destructive'
-            });
-        });
+        }
+    }, [shiftsData]);
 
-        return () => unsubscribe();
-    }, [firestore, toast]);
-
-    const handleApproveShift = async (shiftId: string) => {
+    const handleApproveShift = async (shift: Shift) => {
         if (!firestore) return;
         
-        const shiftRef = doc(firestore, 'shifts', shiftId);
+        const shiftRef = doc(firestore, 'shifts', shift.id);
+        const updateData = { status: 'Approvato' };
         try {
-            await updateDoc(shiftRef, { status: 'Approvato' });
+            await updateDoc(shiftRef, updateData);
             toast({
                 title: "Turno Approvato",
                 description: "Il turno di lavoro è stato approvato con successo.",
             });
         } catch (error) {
-             toast({
-                title: "Errore",
-                description: "Impossibile approvare il turno.",
-                variant: 'destructive'
+             const permissionError = new FirestorePermissionError({
+                path: shiftRef.path,
+                operation: 'update',
+                requestResourceData: updateData,
             });
+            errorEmitter.emit('permission-error', permissionError);
         }
     };
+    
+    if (collectionLoading) {
+        return (
+            <div className="text-center text-muted-foreground py-16">
+                <p>Caricamento turni da approvare...</p>
+            </div>
+        )
+    }
+
+    if (collectionError) {
+        return (
+             <div className="text-center text-red-500 py-12">
+                <p>Errore di permessi. Non è possibile visualizzare i turni.</p>
+                <p className="text-xs text-muted-foreground mt-2">Prova a ricaricare o contatta l'assistenza.</p>
+            </div>
+        )
+    }
+
 
     return (
         <Card>
@@ -115,7 +131,7 @@ export default function ShiftApprovalPage() {
                                             {shift.startTime ? new Date(shift.startTime).toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long'}) : 'Data non disponibile'}
                                         </CardDescription>
                                     </div>
-                                    <Button size="sm" onClick={() => handleApproveShift(shift.id)}>
+                                    <Button size="sm" onClick={() => handleApproveShift(shift)}>
                                         <CheckCircle className="mr-2 h-4 w-4"/>
                                         Approva Timbratura
                                     </Button>
