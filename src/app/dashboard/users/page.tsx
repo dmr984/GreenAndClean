@@ -91,14 +91,12 @@ export default function UsersPage() {
     try {
         const batch = writeBatch(firestore);
 
-        // Delete user document
         const userRef = doc(firestore, 'app-users', selectedUser.id);
         batch.delete(userRef);
 
         const collectionsToDelete = ['shifts', 'leave-requests', 'supply-requests', 'extra-shift-requests', 'communications'];
         
         for (const coll of collectionsToDelete) {
-            // NOTE: operatorId is the field to check for ownership in related collections
             const q = query(collection(firestore, coll), where('operatorId', '==', selectedUser.id));
             const snapshot = await getDocs(q);
             snapshot.forEach(doc => batch.delete(doc.ref));
@@ -132,10 +130,7 @@ export default function UsersPage() {
     setIsDeleteDialogOpen(true);
   }
   
-  const sortedUsers = React.useMemo(() => {
-    if (!users) return [];
-    return [...users].sort((a,b) => a.username.localeCompare(b.username));
-  }, [users]);
+  const sortedUsers = React.useMemo(() => users ? [...users].sort((a,b) => a.username.localeCompare(b.username)) : [], [users]);
 
   return (
     <>
@@ -152,7 +147,7 @@ export default function UsersPage() {
             <CardDescription>Aggiungi, modifica o elimina gli account degli operatori.</CardDescription>
         </CardHeader>
         <CardContent>
-          {!sortedUsers || sortedUsers.length === 0 ? (
+          {sortedUsers.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
               <p>Non ci sono operatori. Inizia aggiungendone uno.</p>
             </div>
@@ -245,7 +240,7 @@ export default function UsersPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setSelectedUser(null)}>Annulla</Cancel>
+            <AlertDialogCancel onClick={() => setSelectedUser(null)}>Annulla</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteUser}>Conferma Eliminazione</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
