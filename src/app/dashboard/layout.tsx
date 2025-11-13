@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, ClipboardCheck, Clock } from 'lucide-react';
@@ -46,19 +46,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setIsLoading(false);
 
   }, [router]);
-
-  useEffect(() => {
-    if (user) {
-        const isAdminPage = pathname.startsWith('/dashboard/users') ||
-                            pathname.startsWith('/dashboard/warehouse') ||
-                            pathname.startsWith('/dashboard/shift-approval') ||
-                            pathname.startsWith('/dashboard/extra-shifts');
-
-        if (user.role === 'operator' && isAdminPage) {
-            router.replace('/dashboard');
-        }
-    }
-  }, [user, pathname, router]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
