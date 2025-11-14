@@ -5,15 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Package, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { ClockWidget } from '@/components/dashboard/clock-widget';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function OperatorDashboard() {
   const [user, setUser] = useState<{ id: string; username: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
+    setIsLoading(false);
   }, []);
 
   const operatorFeatures = [
@@ -29,7 +32,20 @@ export function OperatorDashboard() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
-          {user && <ClockWidget userId={user.id} userName={user.username} />}
+          {isLoading || !user ? (
+             <Card>
+                <CardHeader className="pb-4">
+                  <Skeleton className="h-8 w-4/5" />
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center gap-6">
+                   <Skeleton className="h-[72px] w-4/5" />
+                   <Skeleton className="h-12 w-full" />
+                   <Skeleton className="h-4 w-3/5" />
+                </CardContent>
+             </Card>
+          ) : (
+             <ClockWidget userId={user.id} userName={user.username} />
+          )}
         </div>
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
           {operatorFeatures.map((feature) => (
