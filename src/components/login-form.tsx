@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -42,13 +42,15 @@ export default function LoginForm() {
       try {
         const adminDoc = await getDoc(adminUserDocRef);
         if (!adminDoc.exists()) {
-            await setDoc(adminUserDocRef, {
+            const batch = writeBatch(firestore);
+            batch.set(adminUserDocRef, {
                 username: 'Amministratore',
                 password: '0000',
                 role: 'admin'
             });
-            await setDoc(adminRoleDocRef, { isAdmin: true });
-             console.log("Admin user created successfully.");
+            batch.set(adminRoleDocRef, { isAdmin: true });
+            await batch.commit();
+            console.log("Admin user and role created successfully.");
         }
       } catch(e) {
         console.info("Could not set up admin user, it might already exist or rules are not ready.", e);

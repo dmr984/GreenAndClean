@@ -8,8 +8,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Check if a document for the user exists in the roles_admin collection
-      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      return get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.role == 'admin';
     }
     
     function isUserUnauthenticated() {
@@ -22,7 +21,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
      match /roles_admin/{userId} {
-      allow read, write: if true;
+      allow read, write: if isAdmin();
     }
   }
 }
