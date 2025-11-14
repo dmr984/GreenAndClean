@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useMemoFirebase } from '@/firebase';
+import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -39,18 +39,23 @@ export default function LoginForm() {
       const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
       const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
-      try {
-        const batch = writeBatch(firestore);
-        batch.set(adminUserDocRef, {
-            username: 'Amministratore',
-            password: '0000',
-            role: 'admin'
-        }, { merge: true });
-        batch.set(adminRoleDocRef, { isAdmin: true }, { merge: true });
-        await batch.commit();
-      } catch(e) {
-        console.info("Could not set up admin user, rules might not be ready yet.", e);
-      }
+      const batch = writeBatch(firestore);
+      batch.set(adminUserDocRef, {
+          username: 'Amministratore',
+          password: '0000',
+          role: 'admin'
+      }, { merge: true });
+      batch.set(adminRoleDocf, { isAdmin: true }, { merge: true });
+      
+      batch.commit().catch(err => {
+          if (err.code === 'permission-denied') {
+            const contextualError = new FirestorePermissionError({
+                operation: 'write',
+                path: 'batch-write: /app-users/admin_user, /roles_admin/admin_user'
+            });
+            errorEmitter.emit('permission-error', contextualError);
+          }
+      });
     }
     setupAdmin();
   }, [firestore]);
@@ -75,19 +80,25 @@ export default function LoginForm() {
         setUsers(userList);
         setIsLoading(false);
     }, (error) => {
-        console.error("Error fetching users for login:", error);
-        // This toast might be aggressive if rules aren't ready, but good for debugging.
-        // Consider removing for production if it shows up too often on first load.
-        toast({
-            title: "Errore di Connessione",
-            description: "Impossibile caricare la lista utenti. Riprova tra poco.",
-            variant: "destructive",
-        });
+        if (error.code === 'permission-denied' && firestore) {
+            const contextualError = new FirestorePermissionError({
+                operation: 'list',
+                path: (usersQuery as any)._query.path.canonicalString(),
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        } else {
+            console.error("Error fetching users for login:", error);
+            toast({
+                title: "Errore di Connessione",
+                description: "Impossibile caricare la lista utenti. Riprova tra poco.",
+                variant: "destructive",
+            });
+        }
         setIsLoading(false);
     });
     
     return () => unsubscribe();
-  }, [usersQuery, toast]);
+  }, [usersQuery, toast, firestore]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -113,11 +124,10 @@ export default function LoginForm() {
       return;
     }
     
-    try {
-      const usersCollection = collection(firestore, 'app-users');
-      const q = query(usersCollection, where("username", "==", username), where("password", "==", password));
-      const querySnapshot = await getDocs(q);
-
+    const usersCollection = collection(firestore, 'app-users');
+    const q = query(usersCollection, where("username", "==", username), where("password", "==", password));
+    
+    getDocs(q).then((querySnapshot) => {
       if (!querySnapshot.empty) {
         const userDoc = querySnapshot.docs[0];
         const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
@@ -137,17 +147,23 @@ export default function LoginForm() {
           description: "Il nome utente o la password non sono corretti. Riprova.",
         });
       }
-
-    } catch (error: any) {
-       toast({
-          variant: "destructive",
-          title: "Errore di Accesso",
-          description: "Si è verificato un problema durante il login. Controlla la console.",
-        });
-        console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
+       setIsLoading(false);
+    }).catch((error) => {
+       if (error.code === 'permission-denied') {
+          const contextualError = new FirestorePermissionError({
+              operation: 'list', // A 'where' query is a 'list' operation
+              path: 'app-users'
+          });
+          errorEmitter.emit('permission-error', contextualError);
+       } else {
+           toast({
+              variant: "destructive",
+              title: "Errore di Accesso",
+              description: "Si è verificato un problema durante il login.",
+            });
+       }
+       setIsLoading(false);
+    });
   };
 
   return (
