@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, Play, Pause, Square, AlertCircle, MapPin } from "lucide-react";
+import { Clock, Play, Pause, Square, AlertCircle, MapPin, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore, useMemoFirebase } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, getDocs, serverTimestamp } from "firebase/firestore";
+import { useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, getDocs, serverTimestamp, writeBatch } from "firebase/firestore";
 
 type Shift = {
     id: string;
@@ -73,17 +73,32 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
              const approvedRequests = extraSnap.docs.map(d => d.data()).filter(r => r.status === 'approved');
              setCanStartNewShift(!activeShift && (!hasCompletedShift || approvedRequests.length > 0));
              setIsLoading(false);
+          }, (err) => {
+                if (err.code === 'permission-denied' && firestore) {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'list',
+                        path: (extraShiftQuery as any)._query.path.canonicalString(),
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                }
+                setIsLoading(false);
           });
           return () => unsubExtra();
       };
       
       const unsubShifts = onSnapshot(shiftsQuery, handleShiftSnap, (err) => {
-          console.error("Error fetching shifts:", err);
+          if (err.code === 'permission-denied' && firestore) {
+            const contextualError = new FirestorePermissionError({
+                operation: 'list',
+                path: (shiftsQuery as any)._query.path.canonicalString(),
+            });
+            errorEmitter.emit('permission-error', contextualError);
+          }
           setIsLoading(false);
       });
 
       return () => unsubShifts();
-  }, [shiftsQuery, extraShiftQuery]);
+  }, [shiftsQuery, extraShiftQuery, firestore]);
 
 
   // Live clock and duration effect
@@ -151,14 +166,22 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
         startLocation: location,
         endLocation: null,
     };
-    try {
-        await addDoc(collection(firestore, "shifts"), newShift);
+    
+    addDoc(collection(firestore, "shifts"), newShift)
+      .then(() => {
         toast({ title: "Turno Iniziato!", description: `Buon lavoro, ${userName}!` });
-    } catch (error) {
-        toast({ title: "Errore", description: "Impossibile iniziare il turno.", variant: "destructive" });
-    } finally {
+      })
+      .catch((error) => {
+        const contextualError = new FirestorePermissionError({
+            path: 'shifts',
+            operation: 'create',
+            requestResourceData: newShift,
+        });
+        errorEmitter.emit('permission-error', contextualError);
+      })
+      .finally(() => {
         setIsLoading(false);
-    }
+      });
   };
 
   const handleEndShift = async () => {
@@ -180,19 +203,28 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
     if (activePauseIndex !== -1) {
         updatedPauses[activePauseIndex].endTime = new Date().toISOString();
     }
+    
+    const updateData = {
+        endTime: new Date().toISOString(),
+        pauses: updatedPauses,
+        endLocation: location,
+    };
 
-    try {
-        await updateDoc(shiftRef, {
-            endTime: new Date().toISOString(),
-            pauses: updatedPauses,
-            endLocation: location,
-        });
+    updateDoc(shiftRef, updateData)
+      .then(() => {
         toast({ title: "Turno Concluso!", description: "Grazie per il tuo lavoro." });
-    } catch (error) {
-        toast({ title: "Errore", description: "Impossibile terminare il turno.", variant: "destructive" });
-    } finally {
+      })
+      .catch((error) => {
+        const contextualError = new FirestorePermissionError({
+            path: shiftRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+        });
+        errorEmitter.emit('permission-error', contextualError);
+      })
+      .finally(() => {
         setIsLoading(false);
-    }
+      });
   };
 
   const handleTogglePause = async () => {
@@ -202,21 +234,36 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
     const activePauseIndex = shift.pauses.findIndex(p => !p.endTime);
     const updatedPauses = [...shift.pauses];
 
+    let toastTitle = "";
+    let toastDescription = "";
+
     if (activePauseIndex > -1) { // Is on pause, so resume
         updatedPauses[activePauseIndex].endTime = new Date().toISOString();
-        toast({ title: "Pausa Terminata", description: "Bentornato al lavoro." });
+        toastTitle = "Pausa Terminata";
+        toastDescription = "Bentornato al lavoro.";
     } else { // Not on pause, so start pause
         updatedPauses.push({ startTime: new Date().toISOString(), endTime: null });
-        toast({ title: "In Pausa", description: "Goditi la tua pausa." });
+        toastTitle = "In Pausa";
+        toastDescription = "Goditi la tua pausa.";
     }
+    
+    const updateData = { pauses: updatedPauses };
 
-    try {
-        await updateDoc(shiftRef, { pauses: updatedPauses });
-    } catch (error) {
-        toast({ title: "Errore", description: "Impossibile aggiornare lo stato della pausa.", variant: "destructive" });
-    } finally {
+    updateDoc(shiftRef, updateData)
+      .then(() => {
+        toast({ title: toastTitle, description: toastDescription });
+      })
+      .catch((error) => {
+        const contextualError = new FirestorePermissionError({
+            path: shiftRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+        });
+        errorEmitter.emit('permission-error', contextualError);
+      })
+      .finally(() => {
         setIsLoading(false);
-    }
+      });
   };
   
   const handleRequestExtraShift = async () => {
@@ -231,17 +278,33 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
           const existingRequest = await getDocs(q);
           if (!existingRequest.empty) {
               toast({ title: "Richiesta già inviata", description: "Hai già richiesto una timbratura extra per oggi.", variant: "default" });
+              setIsRequestingExtra(false);
               return;
           }
-          await addDoc(extraShiftCollection, {
+          const requestData = {
               userId,
               userName,
               date: today,
               status: 'pending'
-          });
-          toast({ title: "Richiesta Inviata", description: "La tua richiesta per una timbratura extra è stata inviata."});
+          };
+          addDoc(extraShiftCollection, requestData)
+            .then(() => {
+                toast({ title: "Richiesta Inviata", description: "La tua richiesta per una timbratura extra è stata inviata."});
+            })
+            .catch((error) => {
+                 const contextualError = new FirestorePermissionError({
+                    path: 'extra-shift-requests',
+                    operation: 'create',
+                    requestResourceData: requestData
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            });
       } catch (error) {
-          toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+           const contextualError = new FirestorePermissionError({
+                path: 'extra-shift-requests',
+                operation: 'list'
+            });
+            errorEmitter.emit('permission-error', contextualError);
       } finally {
           setIsRequestingExtra(false);
       }
