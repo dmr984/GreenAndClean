@@ -14,44 +14,10 @@ service cloud.firestore {
     
     // Allow unauthenticated user creation and role setup for the very first time
     match /app-users/{userId} {
-      allow read, write: if request.auth == null;
-      allow read, write: if request.auth.uid == userId;
-      allow read, write: if isAdmin();
+      allow read, write: if true;
     }
      match /roles_admin/{userId} {
-      allow write: if request.auth == null;
-      allow read, write: if isAdmin();
-    }
-
-    // Authenticated users can read their own profile
-    match /app-users/{userId} {
-      allow read: if request.auth != null;
-      allow update: if request.auth.uid == userId;
-    }
-
-    // Rules for top-level shifts collection
-    match /shifts/{shiftId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Rules for top-level leave-requests collection
-    match /leave-requests/{leaveRequestId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Rules for top-level supply-requests collection
-    match /supply-requests/{supplyRequestId} {
-       allow read, write: if request.auth != null;
-    }
-    
-    // Rules for top-level extra-shift-requests collection
-    match /extra-shift-requests/{requestId} {
-       allow read, write: if request.auth != null;
-    }
-    
-    // Rules for top-level warehouse-items collection
-    match /warehouse-items/{itemId} {
-       allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
   }
 }

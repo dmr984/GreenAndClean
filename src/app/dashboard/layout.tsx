@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Clock, Users, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -77,24 +77,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsSidebarOpen(false);
       setIsChangeCodeOpen(true);
   }
-
-  const handleNavigation = (path: string) => {
-    setIsSidebarOpen(false);
-    router.push(path);
-  }
   
-  const NavButton = ({ path, icon, label }: { path: string, icon: React.ReactNode, label: string }) => (
-    <Button variant="ghost" className="justify-start gap-2" onClick={() => handleNavigation(path)}>
-        {icon}
-        <span className="flex-1 text-left">{label}</span>
-    </Button>
-  );
-
   if (isLoading || !user) {
     return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
   }
   
-  const isAdmin = user.role === 'admin';
   const isBaseDashboard = pathname === '/dashboard';
   
   return (
@@ -123,24 +110,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  </SheetHeader>
                  <Separator className="my-2"/>
                  <nav className="grid gap-2 text-lg font-medium">
-                    {isAdmin ? (
-                      <>
-                        <NavButton path="/dashboard/users" icon={<Users className="h-5 w-5" />} label="Gestione Operatori" />
-                        <NavButton path="/dashboard/clockings" icon={<Clock className="h-5 w-5" />} label="Gestione Timbrature" />
-                        <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Richieste Ferie" />
-                        <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" />
-                        <Separator className="my-2" />
-                        <NavButton path="/dashboard/history" icon={<History className="h-5 w-5" />} label="Storico Attività"/>
-                        <NavButton path="/dashboard/warehouse" icon={<Warehouse className="h-5 w-5" />} label="Gestione Magazzino" />
-                      </>
-                    ) : (
-                      <>
-                         <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Le mie Ferie" />
-                         <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" />
-                      </>
-                    )}
-                    
-                    <Separator className="my-2"/>
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
                         <Settings className="h-5 w-5" /> Impostazioni Profilo
                     </Button>
