@@ -36,7 +36,6 @@ import {
   useMemoFirebase,
   useCollection,
   errorEmitter,
-  FirestorePermissionError,
 } from '@/firebase';
 import {
   collection,
@@ -48,6 +47,7 @@ import {
   where,
 } from 'firebase/firestore';
 import {Skeleton} from '@/components/ui/skeleton';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 type AppUser = {
   id: string;
@@ -231,7 +231,7 @@ export default function UsersPage() {
               <div>
                 <CardTitle>{user.username}</CardTitle>
                 <CardDescription>
-                  Sede: {user.location} - Ore previste: {user.expectedHours}
+                  Codice: {user.id}
                 </CardDescription>
               </div>
               <div className="flex gap-2">
@@ -320,35 +320,6 @@ export default function UsersPage() {
                 required={!isEditing}
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="location" className="text-left sm:text-right">
-                Sede di Lavoro
-              </Label>
-              <Input
-                id="location"
-                name="location"
-                className="col-span-1 sm:col-span-3"
-                defaultValue={selectedUser?.location}
-                required
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label
-                htmlFor="expectedHours"
-                className="text-left sm:text-right"
-              >
-                Ore giornaliere
-              </Label>
-              <Input
-                id="expectedHours"
-                name="expectedHours"
-                type="number"
-                className="col-span-1 sm:col-span-3"
-                defaultValue={selectedUser?.expectedHours ?? 3}
-                required
-                min="1"
-              />
-            </div>
             <DialogFooter>
               <Button
                 type="button"
@@ -375,7 +346,7 @@ export default function UsersPage() {
             <AlertDialogDescription>
               Questa azione è irreversibile. L'operatore{' '}
               <strong>{selectedUser?.username}</strong> e tutti i suoi dati
-              (timbrature, ferie, ecc.) verranno eliminati definitivamente.
+              verranno eliminati definitivamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -391,3 +362,5 @@ export default function UsersPage() {
     </>
   );
 }
+
+    
