@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Clock, Users } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Clock, Users, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
