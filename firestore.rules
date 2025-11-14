@@ -9,9 +9,6 @@ service cloud.firestore {
 
     function isAdmin() {
       // Check if a document for the user exists in the roles_admin collection
-      // This rule is problematic for client-side checks because it requires a read.
-      // We will rely on server-side validation or client-side role checking after auth.
-      // For now, this is a placeholder. A robust solution uses custom claims.
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
     
@@ -19,7 +16,8 @@ service cloud.firestore {
     match /app-users/{userId} {
       allow read, write: if request.auth == null;
       allow read, write: if request.auth.uid == userId;
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
      match /roles_admin/{userId} {
       allow write: if request.auth == null;
@@ -35,36 +33,36 @@ service cloud.firestore {
     // Rules for top-level shifts collection
     match /shifts/{shiftId} {
       allow create: if request.auth != null;
+      allow list: if isAdmin();
       allow read, update, delete: if request.auth.uid == resource.data.userId || isAdmin();
     }
     
     // Rules for top-level leave-requests collection
     match /leave-requests/{leaveRequestId} {
       allow create: if request.auth != null;
+      allow list: if isAdmin();
       allow read, update, delete: if request.auth.uid == resource.data.operatorId || isAdmin();
     }
     
     // Rules for top-level supply-requests collection
     match /supply-requests/{supplyRequestId} {
       allow create: if request.auth != null;
+      allow list: if isAdmin();
       allow read, update, delete: if request.auth.uid == resource.data.operatorId || isAdmin();
     }
     
     // Rules for top-level extra-shift-requests collection
     match /extra-shift-requests/{requestId} {
       allow create: if request.auth != null;
+      allow list: if isAdmin();
       allow read, update, delete: if request.auth.uid == resource.data.userId || isAdmin();
     }
     
     // Rules for top-level warehouse-items collection
     match /warehouse-items/{itemId} {
+      allow list: if isAdmin();
       allow read: if request.auth != null;
       allow write: if isAdmin();
-    }
-
-    // Global admin read/write access
-     match /{path=**} {
-      allow read, write: if isAdmin();
     }
   }
 }
