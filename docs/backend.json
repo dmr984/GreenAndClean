@@ -152,42 +152,6 @@
         "status"
       ]
     },
-    "Announcement": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Announcement",
-      "type": "object",
-      "description": "Represents an announcement posted by the administrator.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Announcement entity."
-        },
-        "adminId": {
-          "type": "string",
-          "description": "Reference to Admin. (Relationship: Admin 1:N Announcement)"
-        },
-        "title": {
-          "type": "string",
-          "description": "The title of the announcement."
-        },
-        "content": {
-          "type": "string",
-          "description": "The content of the announcement."
-        },
-        "timestamp": {
-          "type": "string",
-          "description": "The date and time the announcement was created.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "adminId",
-        "title",
-        "content",
-        "timestamp"
-      ]
-    },
     "SupplyRequest": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "SupplyRequest",
@@ -327,22 +291,6 @@
         }
       },
       {
-        "path": "/announcements/{announcementId}",
-        "definition": {
-          "entityName": "Announcement",
-          "schema": {
-            "$ref": "#/backend/entities/Announcement"
-          },
-          "description": "Top-level collection for all announcements.",
-          "params": [
-            {
-              "name": "announcementId",
-              "description": "The unique identifier of the announcement."
-            }
-          ]
-        }
-      },
-      {
         "path": "/supply-requests/{supplyRequestId}",
         "definition": {
           "entityName": "SupplyRequest",
@@ -357,24 +305,8 @@
             }
           ]
         }
-      },
-       {
-        "path": "/communications/{commId}",
-        "definition": {
-          "entityName": "Communication",
-          "schema": {
-            "$ref": "#/backend/entities/Announcement"
-          },
-          "description": "Top-level collection for all communications. Each document contains a userId.",
-          "params": [
-            {
-              "name": "commId",
-              "description": "The unique identifier of the communication."
-            }
-          ]
-        }
       }
     ],
-    "reasoning": "The Firestore data structure has been flattened to improve query performance and simplify security rules. Collections like shifts, leave-requests, and supply-requests are now at the top level. Each document within these collections contains a userId or operatorId to associate it with a specific user. This allows administrators to easily query all documents in a collection, while operators' access can be restricted to only documents containing their own ID. This resolves the permission errors caused by attempting collection group queries on a nested structure."
+    "reasoning": "The Firestore data structure has been flattened to improve query performance and simplify security rules. Collections like shifts, leave-requests, and supply-requests are now at the top level. Each document within these collections contains a userId or operatorId to associate it with a specific user. This allows administrators to easily query all documents in a collection, while operators' access can be restricted to only documents containing their own ID. This resolves the permission errors caused by attempting collection group queries on a nested structure. The Announcement and Communication entities and collections have been removed as per the user's request."
   }
 }

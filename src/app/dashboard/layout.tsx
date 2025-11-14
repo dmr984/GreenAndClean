@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Megaphone, Clock, User, MessageSquare, Users } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Warehouse, History, Package, CalendarCheck, Clock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -137,10 +137,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <>
                          <NavButton path="/dashboard/leave-requests" icon={<CalendarCheck className="h-5 w-5" />} label="Le mie Ferie" />
                          <NavButton path="/dashboard/supply-requests" icon={<Package className="h-5 w-5" />} label="Richieste Forniture" />
-                         <NavButton path="/dashboard/messages" icon={<MessageSquare className="h-5 w-5" />} label="Comunicazioni" />
                       </>
                     )}
-                    <NavButton path="/dashboard/announcements" icon={<Megaphone className="h-5 w-5" />} label="Annunci"/>
                     
                     <Separator className="my-2"/>
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>

@@ -56,18 +56,6 @@ service cloud.firestore {
       allow read, update, delete: if request.auth.uid == resource.data.userId || isAdmin();
     }
     
-    // Rules for top-level communications collection
-    match /communications/{commId} {
-      allow create: if request.auth != null;
-      allow read, update: if request.auth.uid == resource.data.userId || isAdmin();
-    }
-    
-    // Rules for top-level announcements collection
-    match /announcements/{announcementId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
-    }
-
     // Rules for top-level warehouse-items collection
     match /warehouse-items/{itemId} {
       allow read: if request.auth != null;

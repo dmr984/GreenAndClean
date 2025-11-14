@@ -5,9 +5,9 @@ import { CheckCircle, Briefcase, Clock, PauseCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase, errorEmitter } from "@/firebase";
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
-import { FirestorePermissionError, errorEmitter } from "@/firebase/errors";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 type Shift = {
   id: string;
