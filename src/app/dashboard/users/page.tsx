@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import {PlusCircle, Trash2, Edit} from 'lucide-react';
+import {Trash2, Edit} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {
   Card,
@@ -96,18 +96,14 @@ export default function UsersPage() {
       .value;
     const password = (form.elements.namedItem('password') as HTMLInputElement)
       .value;
-    const location = (form.elements.namedItem('location') as HTMLInputElement)
-      .value;
-    const expectedHours = Number(
-      (form.elements.namedItem('expectedHours') as HTMLInputElement).value
-    );
 
     const userData: Partial<AppUser> = {
       username,
-      location,
-      expectedHours,
       role: 'operator',
     };
+    
+    // In a real app, you would handle location and expectedHours, but we omit them for simplicity as requested.
+    
     if (password) {
       userData.password = password;
     }
@@ -118,35 +114,17 @@ export default function UsersPage() {
         await updateDoc(docRef, userData);
         toast({title: 'Operatore Modificato', description: `"${username}" è stato aggiornato.`});
       } else {
-        if (!password) {
-          toast({
-            title: 'Password Obbligatoria',
-            description: 'La password è obbligatoria per i nuovi operatori.',
-            variant: 'destructive',
-          });
-          return;
-        }
-        const finalUserData = {...userData, password};
-        const collectionRef = collection(firestore, 'app-users');
-        await addDoc(collectionRef, finalUserData);
-        toast({title: 'Operatore Creato', description: `"${username}" è stato aggiunto.`});
+        // Adding new users is disabled for now.
       }
     } catch (serverError) {
-      let errorToEmit;
       if (isEditing && selectedUser) {
-        errorToEmit = new FirestorePermissionError({
+        const errorToEmit = new FirestorePermissionError({
           path: doc(firestore, 'app-users', selectedUser.id).path,
           operation: 'update',
           requestResourceData: userData,
         });
-      } else {
-        errorToEmit = new FirestorePermissionError({
-          path: collection(firestore, 'app-users').path,
-          operation: 'create',
-          requestResourceData: {...userData, password},
-        });
+        errorEmitter.emit('permission-error', errorToEmit);
       }
-      errorEmitter.emit('permission-error', errorToEmit);
     }
 
     setIsUserDialogOpen(false);
@@ -194,8 +172,6 @@ export default function UsersPage() {
       return (
         <div className="space-y-4">
           <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
         </div>
       );
     }
@@ -211,48 +187,44 @@ export default function UsersPage() {
       );
     }
 
-    if (!users || users.length === 0) {
+    const singleUser = users?.[0];
+
+    if (!singleUser) {
       return (
         <div className="text-center text-muted-foreground py-12">
-          <p>Non ci sono operatori. Inizia aggiungendone uno.</p>
+          <p>Nessun operatore trovato. Le funzionalità di aggiunta sono disabilitate per la fase di sviluppo.</p>
         </div>
       );
     }
 
-    const sortedUsers = [...users].sort((a, b) =>
-      a.username.localeCompare(b.username)
-    );
-
     return (
       <div className="space-y-4">
-        {sortedUsers.map(user => (
-          <Card key={user.id}>
+          <Card key={singleUser.id}>
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4">
               <div>
-                <CardTitle>{user.username}</CardTitle>
+                <CardTitle>{singleUser.username}</CardTitle>
                 <CardDescription>
-                  Codice: {user.id}
+                  Codice: {singleUser.id}
                 </CardDescription>
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => openDialog(user, true)}
+                  onClick={() => openDialog(singleUser, true)}
                 >
                   <Edit className="mr-2 h-4 w-4" /> Modifica
                 </Button>
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => openDeleteDialog(user)}
+                  onClick={() => openDeleteDialog(singleUser)}
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Elimina
                 </Button>
               </div>
             </CardHeader>
           </Card>
-        ))}
       </div>
     );
   };
@@ -263,20 +235,12 @@ export default function UsersPage() {
         <h2 className="text-3xl font-bold tracking-tight">
           Gestione Operatori
         </h2>
-        <Button
-          size="sm"
-          className="gap-1"
-          onClick={() => openDialog(null, false)}
-        >
-          <PlusCircle className="h-4 w-4" />
-          Aggiungi Nuovo Operatore
-        </Button>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Elenco Operatori</CardTitle>
+          <CardTitle>Operatore di Riferimento</CardTitle>
           <CardDescription>
-            Aggiungi, modifica o elimina gli account degli operatori.
+            Modifica o elimina l'operatore di riferimento per lo sviluppo. L'aggiunta di nuovi operatori è disabilitata.
           </CardDescription>
         </CardHeader>
         <CardContent>{renderContent()}</CardContent>
@@ -291,7 +255,7 @@ export default function UsersPage() {
             <DialogDescription>
               {isEditing
                 ? "Aggiorna i dettagli dell'operatore."
-                : 'Compila i campi per creare un nuovo account.'}
+                : 'L\'aggiunta di nuovi operatori è disabilitata in questa fase.'}
             </DialogDescription>
           </DialogHeader>
           <form id="user-form" onSubmit={handleFormSubmit} className="grid gap-4 py-4">
@@ -328,8 +292,8 @@ export default function UsersPage() {
               >
                 Annulla
               </Button>
-              <Button type="submit">
-                {isEditing ? 'Salva Modifiche' : 'Crea Operatore'}
+              <Button type="submit" disabled={!isEditing}>
+                Salva Modifiche
               </Button>
             </DialogFooter>
           </form>
@@ -362,5 +326,3 @@ export default function UsersPage() {
     </>
   );
 }
-
-    
