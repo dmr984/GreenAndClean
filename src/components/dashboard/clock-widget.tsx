@@ -60,7 +60,10 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
 
 
   useEffect(() => {
-      if (!shiftsQuery || !extraShiftQuery) return;
+      if (!userId || !shiftsQuery || !extraShiftQuery) {
+        setIsLoading(true);
+        return;
+      }
 
       const handleShiftSnap = (snapshot: any) => {
           const todayShifts = snapshot.docs.map((d:any) => ({ id: d.id, ...d.data() }));
@@ -98,7 +101,7 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
       });
 
       return () => unsubShifts();
-  }, [shiftsQuery, extraShiftQuery, firestore]);
+  }, [userId, shiftsQuery, extraShiftQuery, firestore]);
 
 
   // Live clock and duration effect
@@ -180,7 +183,7 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
         errorEmitter.emit('permission-error', contextualError);
       })
       .finally(() => {
-        setIsLoading(false);
+        // isLoading will be set to false by the onSnapshot listener
       });
   };
 
@@ -223,7 +226,7 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
         errorEmitter.emit('permission-error', contextualError);
       })
       .finally(() => {
-        setIsLoading(false);
+        // isLoading will be set to false by the onSnapshot listener
       });
   };
 
@@ -262,7 +265,7 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
         errorEmitter.emit('permission-error', contextualError);
       })
       .finally(() => {
-        setIsLoading(false);
+         // isLoading will be set to false by the onSnapshot listener
       });
   };
   
