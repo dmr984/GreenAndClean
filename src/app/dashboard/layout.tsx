@@ -146,11 +146,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            {children}
         </main>
     </div>
-    <ChangeCodeDialog 
+    {user && <ChangeCodeDialog 
         isOpen={isChangeCodeOpen}
         onOpenChange={setIsChangeCodeOpen}
         userId={user.id}
-      />
+      />}
     </>
   );
 }
