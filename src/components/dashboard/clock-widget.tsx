@@ -16,6 +16,8 @@ type Shift = {
   date: string;
   startTime: any;
   endTime: any | null;
+  startLocation: { latitude: number; longitude: number; } | null;
+  endLocation: { latitude: number; longitude: number; } | null;
   pauses: { startTime: any; endTime: any | null }[];
   status: 'In attesa' | 'Approvato';
 };
@@ -89,6 +91,28 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
     return () => unsubscribe();
   }, [firestore, userId, toast]);
 
+  const getLocation = (): Promise<{ latitude: number; longitude: number; } | null> => {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            toast({ title: "Geolocalizzazione non supportata", variant: "destructive" });
+            resolve(null);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                resolve({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                });
+            },
+            (error) => {
+                toast({ title: "Impossibile ottenere la posizione", description: "Assicurati di aver concesso i permessi.", variant: "destructive" });
+                resolve(null);
+            }
+        );
+    });
+  }
+
   const handleStartShift = async () => {
       if (!firestore) return;
       const todayStr = new Date().toISOString().split('T')[0];
@@ -102,12 +126,16 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
         return;
       }
       
+      const location = await getLocation();
+
       const newShift = {
           userId,
           userName,
           date: todayStr,
           startTime: serverTimestamp(),
           endTime: null,
+          startLocation: location,
+          endLocation: null,
           pauses: [],
           status: 'In attesa' as const
       };
@@ -123,12 +151,22 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
   const handleEndShift = async () => {
     if (!firestore || !currentShift) return;
     const shiftRef = doc(firestore, 'shifts', currentShift.id);
+    const location = await getLocation();
 
     // End any open pause first
     const activePauseIndex = currentShift.pauses.findIndex(p => !p.endTime);
-    const updates: any = { endTime: serverTimestamp() };
+    const updates: any = { 
+        endTime: serverTimestamp(),
+        endLocation: location
+    };
+    
+    const updatedPauses = [...currentShift.pauses];
     if (activePauseIndex !== -1) {
-        updates[`pauses.${activePauseIndex}.endTime`] = serverTimestamp();
+        updatedPauses[activePauseIndex] = {
+            ...updatedPauses[activePauseIndex],
+            endTime: serverTimestamp()
+        };
+        updates.pauses = updatedPauses;
     }
     
     try {
@@ -162,7 +200,10 @@ export function ClockWidget({ userId, userName }: { userId: string, userName: st
       if (activePauseIndex === -1) return;
 
       const updatedPauses = [...currentShift.pauses];
-      updatedPauses[activePauseIndex].endTime = serverTimestamp();
+      updatedPauses[activePauseIndex] = {
+        ...updatedPauses[activePauseIndex],
+        endTime: serverTimestamp()
+      }
 
       try {
           await updateDoc(shiftRef, { pauses: updatedPauses });

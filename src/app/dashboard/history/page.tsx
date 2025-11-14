@@ -29,6 +29,8 @@ type Shift = {
   endTime: string | null; 
   pauses: { startTime: string; endTime: string | null }[];
   status: 'In attesa' | 'Approvato';
+  startLocation: { latitude: number; longitude: number; } | null;
+  endLocation: { latitude: number; longitude: number; } | null;
 };
 
 type LeaveRequest = { 
