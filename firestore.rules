@@ -17,8 +17,8 @@ service cloud.firestore {
     }
     
     match /app-users/{userId} {
-      allow read: if isUserUnauthenticated() || isOwner(userId) || isAdmin();
-      allow write: if true;
+      allow read: if isUserUnauthenticated() || isAdmin() || isOwner(userId);
+      allow write: if isAdmin() || isOwner(userId);
     }
      match /roles_admin/{userId} {
       allow read, write: if true;
