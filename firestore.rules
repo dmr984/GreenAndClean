@@ -12,9 +12,13 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
     
-    // Allow unauthenticated user creation and role setup for the very first time
+    function isUserUnauthenticated() {
+        return request.auth == null;
+    }
+    
     match /app-users/{userId} {
-      allow read, write: if true;
+      allow read: if isUserUnauthenticated() || isOwner(userId) || isAdmin();
+      allow write: if true;
     }
      match /roles_admin/{userId} {
       allow read, write: if true;
