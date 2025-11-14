@@ -11,20 +11,15 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.role == 'admin';
     }
     
-    function isUserUnauthenticated() {
-        return request.auth == null;
-    }
-    
     match /app-users/{userId} {
       allow read, write: if isAdmin() || isOwner(userId);
+      allow create: if request.resource.data.role == 'admin'; // Allow initial admin creation
       allow delete: if isAdmin();
     }
+
      match /roles_admin/{userId} {
       allow read, write: if isAdmin();
-    }
-     match /shifts/{shiftId} {
-      allow read, write: if isOwner(request.resource.data.userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow create: if request.auth.uid == userId; // Allow user to create their own admin role during setup
     }
   }
 }

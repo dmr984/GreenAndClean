@@ -40,20 +40,16 @@ export default function LoginForm() {
       const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
       try {
-        const adminDoc = await getDoc(adminUserDocRef);
-        if (!adminDoc.exists()) {
-            const batch = writeBatch(firestore);
-            batch.set(adminUserDocRef, {
-                username: 'Amministratore',
-                password: '0000',
-                role: 'admin'
-            });
-            batch.set(adminRoleDocRef, { isAdmin: true });
-            await batch.commit();
-            console.log("Admin user and role created successfully.");
-        }
+        const batch = writeBatch(firestore);
+        batch.set(adminUserDocRef, {
+            username: 'Amministratore',
+            password: '0000',
+            role: 'admin'
+        }, { merge: true });
+        batch.set(adminRoleDocRef, { isAdmin: true }, { merge: true });
+        await batch.commit();
       } catch(e) {
-        console.info("Could not set up admin user, it might already exist or rules are not ready.", e);
+        console.info("Could not set up admin user, rules might not be ready yet.", e);
       }
     }
     setupAdmin();
@@ -80,9 +76,11 @@ export default function LoginForm() {
         setIsLoading(false);
     }, (error) => {
         console.error("Error fetching users for login:", error);
+        // This toast might be aggressive if rules aren't ready, but good for debugging.
+        // Consider removing for production if it shows up too often on first load.
         toast({
             title: "Errore di Connessione",
-            description: "Impossibile caricare la lista utenti. Controlla le regole di Firestore.",
+            description: "Impossibile caricare la lista utenti. Riprova tra poco.",
             variant: "destructive",
         });
         setIsLoading(false);

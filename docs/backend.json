@@ -22,10 +22,6 @@
           "type": "string",
           "description": "The email address of the cleaning operator.",
           "format": "email"
-        },
-        "phoneNumber": {
-          "type": "string",
-          "description": "The phone number of the cleaning operator."
         }
       },
       "required": [
@@ -57,10 +53,6 @@
           "type": "string",
           "description": "The email address of the administrator.",
           "format": "email"
-        },
-        "phoneNumber": {
-          "type": "string",
-          "description": "The phone number of the administrator."
         }
       },
       "required": [
@@ -73,8 +65,7 @@
   },
   "auth": {
     "providers": [
-      "password",
-      "anonymous"
+      "password"
     ]
   },
   "firestore": {
