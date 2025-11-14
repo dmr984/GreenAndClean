@@ -5,7 +5,7 @@ import { XCircle, Briefcase, Clock, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore } from "@/firebase";
+import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -37,12 +37,11 @@ export default function CancelClockingPage() {
                 .sort((a,b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime());
             setActiveShifts(shiftsData);
         }, (err) => {
-            console.error("Error fetching active shifts:", err);
-            toast({
-                title: "Errore di Caricamento",
-                description: "Impossibile caricare le timbrature attive.",
-                variant: 'destructive'
+            const contextualError = new FirestorePermissionError({
+                path: 'shifts',
+                operation: 'list'
             });
+            errorEmitter.emit('permission-error', contextualError);
         });
 
         return () => unsubscribe();
@@ -60,11 +59,11 @@ export default function CancelClockingPage() {
                 variant: "destructive"
             });
         } catch (error) {
-             toast({
-                title: "Errore",
-                description: "Impossibile annullare la timbratura.",
-                variant: 'destructive'
-            });
+             const contextualError = new FirestorePermissionError({
+                path: shiftRef.path,
+                operation: 'delete'
+             });
+             errorEmitter.emit('permission-error', contextualError);
         } finally {
             setIsCanceling(null);
         }
