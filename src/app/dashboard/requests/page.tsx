@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plane, PlusCircle, Loader2, List } from 'lucide-react';
@@ -72,7 +72,15 @@ export default function RequestsPage() {
             setIsLoading(false);
         }, (error) => {
             console.error("Error fetching requests:", error);
-            toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive" });
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'list',
+                    path: `app-users/${user.id}/requests`,
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive" });
+            }
             setIsLoading(false);
         });
 
@@ -98,31 +106,33 @@ export default function RequestsPage() {
             userId: user.id,
             type: requestType,
             status: 'in_attesa' as 'in_attesa',
-            startDate,
-            endDate,
+            startDate: Timestamp.fromDate(startDate),
+            endDate: Timestamp.fromDate(endDate),
             reason,
             createdAt: serverTimestamp(),
             ...( (requestType === 'permesso' || requestType === 'straordinario') && { hours: Number(hours) } )
         };
 
-        try {
-            await addDoc(collection(firestore, `app-users/${user.id}/requests`), newRequest);
+        const requestCollectionRef = collection(firestore, `app-users/${user.id}/requests`);
+        
+        addDoc(requestCollectionRef, newRequest)
+          .then(() => {
             toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
             setIsDialogOpen(false);
             resetForm();
-        } catch (error: any) {
+          }).catch((error: any) => {
             console.error("Error creating request:", error);
              if (error.code === 'permission-denied') {
                 const contextualError = new FirestorePermissionError({
                     operation: 'create',
-                    path: `app-users/${user.id}/requests`,
+                    path: requestCollectionRef.path,
                     requestResourceData: newRequest
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
                 toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
             }
-        }
+        });
     };
     
     if (isLoading || isUserLoading) {
