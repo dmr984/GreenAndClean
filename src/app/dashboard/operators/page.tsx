@@ -59,7 +59,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
     // State for the "Add" dialog
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
-    const [newCode, setNewCode] = useState("0000");
 
     // State for the "Edit" dialog
     const [editingFirstName, setEditingFirstName] = useState("");
@@ -119,7 +118,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                 visibleInLogin: true,
                 firstName: newFirstName,
                 lastName: newLastName,
-                password: newCode,
             };
             
             await addDoc(collection(firestore, 'app-users'), newOperatorDoc);
@@ -131,7 +129,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
             setIsAddDialogOpen(false);
             setNewFirstName("");
             setNewLastName("");
-            setNewCode("0000");
         } catch (error: any) {
             console.error("Error adding operator:", error);
             if (error.code === 'permission-denied') {
@@ -281,7 +278,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                                         <DialogDescription>
-                                            Inserisci i dati per creare un nuovo operatore. Il codice iniziale sarà '0000'.
+                                            Inserisci i dati per creare un nuovo operatore.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-4 py-4">
@@ -296,12 +293,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                                 Cognome
                                             </Label>
                                             <Input id="lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="col-span-3" required />
-                                        </div>
-                                        <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="newCode" className="text-right">
-                                                Codice Iniziale
-                                            </Label>
-                                            <Input id="newCode" value={newCode} onChange={(e) => setNewCode(e.target.value)} className="col-span-3" required />
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -362,7 +353,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
                             <DialogDescription>
-                                Modifica il nome e cognome dell'operatore. Per modificare il codice, usare il pannello Impostazioni Profilo.
+                                Modifica il nome e cognome dell'operatore.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">

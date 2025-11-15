@@ -8,7 +8,6 @@ import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 import { useAuth } from '@/firebase';
@@ -25,7 +24,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const auth = useAuth();
-  const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -72,11 +70,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return user.username.substring(0, 2).toUpperCase();
      }
      return "U";
-  }
-
-  const handleChangeCodeClick = () => {
-      setIsSidebarOpen(false);
-      setIsChangeCodeOpen(true);
   }
   
   const showBackButton = pathname !== '/dashboard';
@@ -166,9 +159,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                            </Button>
                         </Link>
                     )}
-                    <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
-                        <Settings className="h-5 w-5" /> Impostazioni Profilo
-                    </Button>
                  </nav>
                  <div className="mt-auto">
                     <Separator className="my-2"/>
@@ -202,11 +192,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {renderContent()}
         </main>
     </div>
-    {user && <ChangeCodeDialog 
-        isOpen={isChangeCodeOpen}
-        onOpenChange={setIsChangeCodeOpen}
-        userId={user.id}
-      />}
     </>
   );
 }

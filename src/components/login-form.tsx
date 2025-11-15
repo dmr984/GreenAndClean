@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -20,26 +19,18 @@ type User = {
 
 // This is a MOCK function to simulate calling a Cloud Function
 // In a real app, this would be a secure HTTPS call to a backend
-async function getCustomToken(userId: string, passwordAttempt: string): Promise<{token: string} | {error: string}> {
+async function getCustomToken(userId: string): Promise<{token: string} | {error: string}> {
   // This is insecure and for demonstration ONLY.
-  // A real app would verify the password server-side against a hash.
   console.log(`Requesting token for userId: ${userId}`);
 
-  // In a real scenario, you'd have a backend.json or similar config
-  // that the backend function would read to connect to Firestore.
-  // Since we are mocking, we can't do that. We will just return a dummy token.
-  // This part of the code is conceptually what a Cloud Function would do.
-  
-  // This is a placeholder. A real implementation would involve a backend.
-  if (userId && passwordAttempt) {
+  if (userId) {
     // This is a dummy token for demonstration.
-    // In a real app, this would be a securely generated JWT.
     const dummyToken = `fake-token-for-${userId}`;
     console.log("Returning mock custom token");
     return { token: dummyToken };
   }
   
-  return { error: "Invalid user ID or password." };
+  return { error: "Invalid user ID." };
 }
 
 
@@ -51,7 +42,6 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState('');
-  const [password, setPassword] = React.useState('');
 
   const usersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -64,7 +54,6 @@ export default function LoginForm() {
 
     const ensureAdminExists = async () => {
         const adminUsername = "Amministratore";
-        const adminPassword = "0000"; // Simple code-based password
 
         // Check if an admin user already exists
         const q = query(collection(firestore, 'app-users'), where("role", "==", "admin"));
@@ -84,7 +73,6 @@ export default function LoginForm() {
                     visibleInLogin: true,
                     firstName: "Admin",
                     lastName: "User",
-                    password: adminPassword 
                 });
                 await setDoc(adminRoleDocRef, {
                      firstName: "Admin",
@@ -145,8 +133,8 @@ export default function LoginForm() {
     event.preventDefault();
     setIsLoading(true);
 
-    if (!selectedUserId || !password) {
-      toast({ variant: "destructive", title: "Campi mancanti", description: "Seleziona un utente e inserisci il codice." });
+    if (!selectedUserId) {
+      toast({ variant: "destructive", title: "Campo mancante", description: "Seleziona un utente." });
       setIsLoading(false);
       return;
     }
@@ -161,11 +149,11 @@ export default function LoginForm() {
         const userDocRef = doc(firestore, 'app-users', selectedUserId);
         const userDoc = await getDoc(userDocRef);
 
-        if (!userDoc.exists() || userDoc.data().password !== password) {
+        if (!userDoc.exists()) {
              toast({
                 variant: "destructive",
-                title: "Credenziali non valide",
-                description: "Il nome utente o il codice non sono corretti. Riprova.",
+                title: "Utente non trovato",
+                description: "L'utente selezionato non esiste più.",
             });
             setIsLoading(false);
             return;
@@ -173,7 +161,7 @@ export default function LoginForm() {
         
         // This is where we simulate getting a custom token
         // In a real app, this would be a secure backend call.
-        const tokenResponse = await getCustomToken(selectedUserId, password);
+        const tokenResponse = await getCustomToken(selectedUserId);
 
         if ('error' in tokenResponse) {
              throw new Error(tokenResponse.error);
@@ -189,7 +177,7 @@ export default function LoginForm() {
             role: userData.role,
         };
         localStorage.setItem('user', JSON.stringify(userToStore));
-        // The onAuthStateChanged listener in the layout will handle the redirect
+        router.push('/dashboard');
         
     } catch (error: any) {
         console.error("Login failed:", error);
@@ -218,10 +206,6 @@ export default function LoginForm() {
             ))}
           </SelectContent>
         </Select>
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="password">Codice</Label>
-        <Input id="password" name="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
       </div>
       <Button type="submit" className="w-full font-bold" disabled={isLoading}>
         {isLoading ? 'Accesso in corso...' : 'Accedi'}

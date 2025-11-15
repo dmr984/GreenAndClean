@@ -23,10 +23,6 @@
           "type": "string",
           "description": "The last name of the cleaning operator."
         },
-        "password": {
-          "type": "string",
-          "description": "The access code for the operator."
-        },
         "visibleInLogin": {
             "type": "boolean",
             "description": "Determines if the operator is visible in the login dropdown."
@@ -37,7 +33,6 @@
         "username",
         "firstName",
         "lastName",
-        "password",
         "visibleInLogin"
       ]
     },
@@ -58,17 +53,12 @@
         "lastName": {
           "type": "string",
           "description": "The last name of the administrator."
-        },
-        "password": {
-            "type": "string",
-            "description": "The access code for the administrator."
         }
       },
       "required": [
         "id",
         "firstName",
-        "lastName",
-        "password"
+        "lastName"
       ]
     },
     "Timbratura": {
