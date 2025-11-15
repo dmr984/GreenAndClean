@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -39,23 +39,26 @@ export default function LoginForm() {
       const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
       const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
-      const batch = writeBatch(firestore);
-      batch.set(adminUserDocRef, {
-          username: 'Amministratore',
-          password: '0000',
-          role: 'admin'
-      }, { merge: true });
-      batch.set(adminRoleDocRef, { isAdmin: true }, { merge: true });
-      
-      batch.commit().catch(err => {
+      try {
+        // Step 1: Create the admin user document
+        await setDoc(adminUserDocRef, {
+            username: 'Amministratore',
+            password: '0000',
+            role: 'admin'
+        }, { merge: true });
+
+        // Step 2: Once the user is created, create the role document
+        await setDoc(adminRoleDocRef, { isAdmin: true }, { merge: true });
+
+      } catch (err: any) {
           if (err.code === 'permission-denied') {
             const contextualError = new FirestorePermissionError({
                 operation: 'write',
-                path: 'batch-write: /app-users/admin_user, /roles_admin/admin_user'
+                path: 'setup: /app-users/admin_user, /roles_admin/admin_user'
             });
             errorEmitter.emit('permission-error', contextualError);
           }
-      });
+      }
     }
     setupAdmin();
   }, [firestore]);

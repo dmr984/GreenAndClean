@@ -14,7 +14,7 @@ service cloud.firestore {
     match /app-users/{userId} {
       allow list: if request.auth == null; // Allow unauthenticated users to list users for login dropdown
       allow read, write: if isAdmin() || isOwner(userId);
-      allow create: if request.auth == null; // Allow initial admin/user creation
+      allow create: if request.auth == null; // Allow initial user creation
       allow delete: if isAdmin();
     }
 
@@ -22,7 +22,7 @@ service cloud.firestore {
       allow read, write: if isAdmin();
       // Allow role creation if the corresponding user in 'app-users' is an admin.
       // This is necessary for the initial admin setup.
-      allow create: if request.auth == null;
+      allow create: if request.auth == null && getAfter(/databases/$(database)/documents/app-users/$(userId)).data.role == 'admin';
     }
   }
 }
