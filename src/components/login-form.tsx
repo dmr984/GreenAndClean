@@ -57,30 +57,50 @@ export default function LoginForm() {
                 // Admin does not exist, let's create it in Auth and Firestore
                 try {
                     // Try to create the auth user. If it fails because it already exists, that's fine.
-                    await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+                    const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+                     // Set the UID from Auth to ensure consistency
+                    const adminAuthId = userCredential.user.uid;
+                    const consistentAdminDocRef = doc(firestore, 'app-users', adminAuthId);
+                    const consistentAdminRoleDocRef = doc(firestore, 'roles_admin', adminAuthId);
+
+                     const batch = writeBatch(firestore);
+                    batch.set(consistentAdminDocRef, {
+                        username: "Amministratore",
+                        role: "admin",
+                        visibleInLogin: true,
+                        firstName: "Admin",
+                        lastName: "User",
+                        email: adminEmail,
+                    });
+                    batch.set(consistentAdminRoleDocRef, {
+                        email: adminEmail,
+                        firstName: "Admin",
+                        lastName: "User",
+                    });
+                    await batch.commit();
+
+
                 } catch (error: any) {
                     if (error.code !== 'auth/email-already-in-use') {
                         throw error; // Re-throw other auth errors
                     }
-                    // If user already exists in Auth, we can proceed.
+                    // If user already exists in Auth, we can proceed to ensure Firestore docs are there.
+                    const batch = writeBatch(firestore);
+                    batch.set(adminDocRef, {
+                        username: "Amministratore",
+                        role: "admin",
+                        visibleInLogin: true,
+                        firstName: "Admin",
+                        lastName: "User",
+                        email: adminEmail,
+                    }, { merge: true });
+                     batch.set(adminRoleDocRef, {
+                        email: adminEmail,
+                        firstName: "Admin",
+                        lastName: "User",
+                    }, { merge: true });
+                    await batch.commit();
                 }
-
-                // Now create the Firestore documents
-                const batch = writeBatch(firestore);
-                batch.set(adminDocRef, {
-                    username: "Amministratore",
-                    role: "admin",
-                    visibleInLogin: true,
-                    firstName: "Admin",
-                    lastName: "User",
-                    email: adminEmail,
-                });
-                batch.set(adminRoleDocRef, {
-                    email: adminEmail,
-                    firstName: "Admin",
-                    lastName: "User",
-                });
-                await batch.commit();
             }
         } catch (error: any) {
             console.error("Error setting up initial admin:", error);
@@ -115,8 +135,11 @@ export default function LoginForm() {
         setIsLoading(false);
     }, (error) => {
         if (error.code === 'permission-denied' && firestore) {
-            // This error is expected for non-authed users, so we can ignore it or log it quietly.
-            console.log("Permission denied fetching users for login, this is expected for non-authed users.");
+             const contextualError = new FirestorePermissionError({
+                operation: 'list',
+                path: 'app-users'
+            });
+            errorEmitter.emit('permission-error', contextualError);
         } else {
             console.error("Error fetching users for login:", error);
             toast({
