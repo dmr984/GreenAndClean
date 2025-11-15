@@ -12,6 +12,7 @@ service cloud.firestore {
     }
     
     match /app-users/{userId} {
+      allow list: if request.auth == null; // Allow unauthenticated users to list users for login dropdown
       allow read, write: if isAdmin() || isOwner(userId);
       allow create: if request.resource.data.role == 'admin'; // Allow initial admin creation
       allow delete: if isAdmin();
