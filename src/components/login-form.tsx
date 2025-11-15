@@ -51,19 +51,20 @@ const setupInitialUsers = async (firestore: Firestore) => {
             });
         }
 
-        batch.commit()
-            .then(() => console.log("Initial users and roles created successfully."))
-            .catch(err => {
-                 if (err.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'write',
-                        path: 'batch-write: setupInitialUsers'
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                 } else {
-                    console.error("Error setting up initial users:", err);
-                 }
-            });
+        try {
+            await batch.commit();
+            console.log("Initial users and roles created successfully.");
+        } catch(err: any) {
+             if (err.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'write',
+                    path: 'batch-write: setupInitialUsers'
+                });
+                errorEmitter.emit('permission-error', contextualError);
+             } else {
+                console.error("Error setting up initial users:", err);
+             }
+        }
     }
 };
 
@@ -159,27 +160,28 @@ export default function LoginForm() {
     
     const userDocRef = doc(firestore, 'app-users', selectedUserId);
     
-    getDoc(userDocRef).then((docSnap) => {
-      if (docSnap.exists() && docSnap.data().password === password) {
-        const foundUser = { id: docSnap.id, ...docSnap.data() } as User;
+    try {
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists() && docSnap.data().password === password) {
+            const foundUser = { id: docSnap.id, ...docSnap.data() } as User;
 
-        const userToStore = {
-          id: foundUser.id,
-          username: foundUser.username,
-          role: foundUser.role
-        };
-        localStorage.setItem('user', JSON.stringify(userToStore));
-        
-        router.push('/dashboard');
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Credenziali non valide",
-          description: "Il nome utente o la password non sono corretti. Riprova.",
-        });
-      }
-       setIsLoading(false);
-    }).catch((error) => {
+            const userToStore = {
+            id: foundUser.id,
+            username: foundUser.username,
+            role: foundUser.role
+            };
+            localStorage.setItem('user', JSON.stringify(userToStore));
+            
+            router.push('/dashboard');
+        } else {
+            toast({
+            variant: "destructive",
+            title: "Credenziali non valide",
+            description: "Il nome utente o la password non sono corretti. Riprova.",
+            });
+            setIsLoading(false);
+        }
+    } catch (error: any) {
        if (error.code === 'permission-denied') {
           const contextualError = new FirestorePermissionError({
               operation: 'get',
@@ -194,7 +196,7 @@ export default function LoginForm() {
             });
        }
        setIsLoading(false);
-    });
+    }
   };
 
   return (
