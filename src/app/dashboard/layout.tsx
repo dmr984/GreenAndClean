@@ -9,6 +9,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { AdminDashboard } from './admin-dashboard';
+import { OperatorDashboard } from './operator-dashboard';
+
 
 type UserData = {
   id: string;
@@ -78,6 +81,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
   
   const showBackButton = pathname !== '/dashboard';
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p className="text-muted-foreground">Caricamento...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (pathname !== '/dashboard') {
+        // For sub-pages like /operators, pass user to children
+        return React.isValidElement(children) ? React.cloneElement(children as React.ReactElement<any>, { user }) : children;
+    }
+
+    if (user?.role === 'admin') {
+      return <AdminDashboard user={user} />;
+    }
+
+    if (user?.role === 'operator') {
+      return <OperatorDashboard user={user} />;
+    }
+    
+    return null; // or a fallback component
+  };
   
   return (
     <>
@@ -150,19 +181,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-            {isLoading ? (
-                <div className="flex flex-1 items-center justify-center">
-                    <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-8 w-8 animate-spin" />
-                        <p className="text-muted-foreground">Caricamento...</p>
-                    </div>
-                </div>
-            ) : React.isValidElement(children) ? (
-                 React.cloneElement(children, { user } as { user: UserData | null })
-             ) : (
-                children
-             )
-            }
+            {renderContent()}
         </main>
     </div>
     {user && <ChangeCodeDialog 

@@ -30,6 +30,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+type UserData = {
+  id: string;
+  username: string;
+  role: 'admin' | 'operator';
+};
 
 type Operator = {
     id: string;
@@ -41,7 +46,8 @@ type Operator = {
     visibleInLogin: boolean;
 };
 
-export default function ManageOperatorsPage() {
+// The user prop is passed from the layout
+export default function ManageOperatorsPage({ user }: { user: UserData | null }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [operators, setOperators] = useState<Operator[]>([]);
@@ -62,7 +68,7 @@ export default function ManageOperatorsPage() {
     }, [firestore]);
 
     useEffect(() => {
-        if (!operatorsQuery) {
+        if (!operatorsQuery || !user || user.role !== 'admin' ) {
             setIsLoading(false);
             return;
         }
@@ -93,7 +99,7 @@ export default function ManageOperatorsPage() {
         });
 
         return () => unsubscribe();
-    }, [operatorsQuery, toast, firestore]);
+    }, [operatorsQuery, toast, firestore, user]);
 
     const handleAddOperator = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -274,6 +280,21 @@ export default function ManageOperatorsPage() {
             setIsResetting(false);
         }
     };
+    
+    if (!user || user.role !== 'admin') {
+        return (
+             <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm mt-6">
+              <div className="flex flex-col items-center gap-1 text-center">
+                <h3 className="text-2xl font-bold tracking-tight">
+                  Accesso Negato
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Non hai i permessi per visualizzare questa pagina.
+                </p>
+              </div>
+            </div>
+        );
+    }
 
     return (
         <>
