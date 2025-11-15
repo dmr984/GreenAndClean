@@ -96,6 +96,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return child;
     });
   };
+
+  const handleLinkClick = (path: string) => {
+    setIsSidebarOpen(false);
+    router.push(path);
+  };
   
   return (
     <>
@@ -123,39 +128,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  </SheetHeader>
                  <Separator className="my-2"/>
                  <nav className="grid gap-2 text-lg font-medium">
-                    <Link href="/dashboard" passHref legacyBehavior>
-                        <a onClick={() => setIsSidebarOpen(false)} className="block">
-                            <Button variant={pathname === '/dashboard' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full">
-                                <Home className="h-5 w-5" /> Dashboard
-                            </Button>
-                        </a>
-                    </Link>
+                    <Button variant={pathname === '/dashboard' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => handleLinkClick('/dashboard')}>
+                        <Home className="h-5 w-5" /> Dashboard
+                    </Button>
                      {user?.role === 'operator' && (
                         <>
-                        <Link href="/dashboard/monthly-summary" passHref legacyBehavior>
-                           <a onClick={() => setIsSidebarOpen(false)} className="block">
-                            <Button variant={pathname === '/dashboard/monthly-summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full">
-                                <Calendar className="h-5 w-5" /> Riepilogo Mensile
-                            </Button>
-                           </a>
-                        </Link>
-                        <Link href="/dashboard/requests" passHref legacyBehavior>
-                           <a onClick={() => setIsSidebarOpen(false)} className="block">
-                            <Button variant={pathname === '/dashboard/requests' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full">
-                                <Plane className="h-5 w-5" /> Ferie e Permessi
-                            </Button>
-                           </a>
-                        </Link>
+                        <Button variant={pathname === '/dashboard/monthly-summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => handleLinkClick('/dashboard/monthly-summary')}>
+                            <Calendar className="h-5 w-5" /> Riepilogo Mensile
+                        </Button>
+                        <Button variant={pathname === '/dashboard/requests' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => handleLinkClick('/dashboard/requests')}>
+                            <Plane className="h-5 w-5" /> Ferie e Permessi
+                        </Button>
                         </>
                     )}
                     {user?.role === 'admin' && (
-                        <Link href="/dashboard/operators" passHref legacyBehavior>
-                           <a onClick={() => setIsSidebarOpen(false)} className="block">
-                               <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full">
-                                   <Users className="h-5 w-5" /> Gestione Operatori
-                               </Button>
-                           </a>
-                        </Link>
+                       <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => handleLinkClick('/dashboard/operators')}>
+                           <Users className="h-5 w-5" /> Gestione Operatori
+                       </Button>
                     )}
                  </nav>
                  <div className="mt-auto">
