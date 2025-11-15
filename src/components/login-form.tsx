@@ -5,9 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, useFirestore, useMemoFirebase } from '@/firebase';
+import { useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, onSnapshot, getDoc, doc, setDoc, getDocs } from 'firebase/firestore';
-import { signInWithCustomToken } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -17,28 +16,11 @@ type User = {
   visibleInLogin?: boolean;
 };
 
-// This is a MOCK function to simulate calling a Cloud Function
-// In a real app, this would be a secure HTTPS call to a backend
-async function getCustomToken(userId: string): Promise<{token: string} | {error: string}> {
-  // This is insecure and for demonstration ONLY.
-  console.log(`Requesting token for userId: ${userId}`);
-
-  if (userId) {
-    // This is a dummy token for demonstration.
-    const dummyToken = `fake-token-for-${userId}`;
-    console.log("Returning mock custom token");
-    return { token: dummyToken };
-  }
-  
-  return { error: "Invalid user ID." };
-}
-
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const auth = useAuth();
   const [isLoading, setIsLoading] = React.useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState('');
@@ -54,15 +36,12 @@ export default function LoginForm() {
 
     const ensureAdminExists = async () => {
         const adminUsername = "Amministratore";
-
-        // Check if an admin user already exists
         const q = query(collection(firestore, 'app-users'), where("role", "==", "admin"));
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {
             console.log("No admin user found, creating one...");
-            // If no admin user exists, create one.
-            const adminId = "admin_user"; // Use a predictable ID
+            const adminId = "admin_user"; 
             const adminDocRef = doc(firestore, 'app-users', adminId);
             const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
 
@@ -139,7 +118,7 @@ export default function LoginForm() {
       return;
     }
 
-    if (!firestore || !auth) {
+    if (!firestore) {
          toast({ variant: "destructive", title: "Errore", description: "Servizi Firebase non disponibili." });
          setIsLoading(false);
          return;
@@ -159,23 +138,13 @@ export default function LoginForm() {
             return;
         }
         
-        // This is where we simulate getting a custom token
-        // In a real app, this would be a secure backend call.
-        const tokenResponse = await getCustomToken(selectedUserId);
-
-        if ('error' in tokenResponse) {
-             throw new Error(tokenResponse.error);
-        }
-
-        // Sign in with the custom token
-        const userCredential = await signInWithCustomToken(auth, tokenResponse.token);
-        
         const userData = userDoc.data();
         const userToStore = {
-            id: userCredential.user.uid, // Use the REAL UID from Auth
+            id: userDoc.id,
             username: userData.username,
             role: userData.role,
         };
+        
         localStorage.setItem('user', JSON.stringify(userToStore));
         router.push('/dashboard');
         

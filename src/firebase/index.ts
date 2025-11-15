@@ -3,6 +3,7 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getFirestore as getFirestoreSdk, Firestore } from 'firebase/firestore';
+// Auth is not used directly in the simplified login, but we keep the SDK structure for future use.
 import { getAuth as getAuthSdk, Auth } from 'firebase/auth';
 import { useFirebase } from './provider';
 import { DependencyList, useMemo } from 'react';

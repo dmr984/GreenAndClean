@@ -10,8 +10,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
-import { useAuth } from '@/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 type UserData = {
   id: string;
@@ -23,42 +21,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const auth = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
-        if (authUser) {
-             const storedUser = localStorage.getItem('user');
-             if(storedUser) {
-                const parsedUser = JSON.parse(storedUser);
-                 if(parsedUser.id === authUser.uid) {
-                    setUser(parsedUser);
-                 } else {
-                    // Mismatch, clear and logout
-                    localStorage.removeItem('user');
-                    signOut(auth);
-                 }
-             } else {
-                 signOut(auth); // No local user info, so sign out
-             }
-        } else {
-            setUser(null);
-            localStorage.removeItem('user');
-            if(pathname.startsWith('/dashboard')) {
-                router.replace('/');
-            }
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        setUser(JSON.parse(storedUser));
+    } else {
+        if(pathname.startsWith('/dashboard')) {
+            router.replace('/');
         }
-        setIsLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [auth, router, pathname]);
+    }
+    setIsLoading(false);
+  }, [router, pathname]);
 
 
   const handleLogout = async () => {
-    await signOut(auth);
+    localStorage.removeItem('user');
+    router.replace('/');
   }
 
   const getAvatarFallback = () => {
