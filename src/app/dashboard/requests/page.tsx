@@ -25,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
+import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useUser } from '@/hooks/use-user';
 
@@ -227,7 +228,7 @@ export default function RequestsPage() {
                                                 className={cn("col-span-3 justify-start text-left font-normal", !startDate && "text-muted-foreground")}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {startDate ? format(startDate, "PPP", { locale: require('date-fns/locale/it') }) : <span>Scegli una data</span>}
+                                                {startDate ? format(startDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
@@ -245,7 +246,7 @@ export default function RequestsPage() {
                                                 className={cn("col-span-3 justify-start text-left font-normal", !endDate && "text-muted-foreground")}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {endDate ? format(endDate, "PPP", { locale: require('date-fns/locale/it') }) : <span>Scegli una data (opzionale)</span>}
+                                                {endDate ? format(endDate, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
@@ -301,7 +302,7 @@ export default function RequestsPage() {
                                             : 'default'
                                         }>
                                             {req.status.replace('_', ' ')}
-                                        </Badge>
+                                        </badge>
                                     </TableCell>
                                 </TableRow>
                             )) : (
