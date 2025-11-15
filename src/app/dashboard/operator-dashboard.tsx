@@ -54,6 +54,7 @@ export function OperatorDashboard() {
                 setUser(JSON.parse(storedUser));
             } catch (e) {
                 console.error("Failed to parse user from localStorage", e);
+                setUser(null);
             }
         }
         setIsLoadingUser(false);
@@ -61,14 +62,16 @@ export function OperatorDashboard() {
   }, []);
   
   const clockingsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.id || isLoadingUser) return null;
+    // Only create the query if the user object is available
+    if (!firestore || !user?.id) return null;
+
     return query(
       collection(firestore, `app-users/${user.id}/timbrature`),
       where('timestamp', '>=', todayTimestamp),
       where('timestamp', '<', tomorrowTimestamp),
       orderBy('timestamp', 'desc')
     );
-  }, [firestore, user?.id, todayTimestamp, tomorrowTimestamp, isLoadingUser]);
+  }, [firestore, user, todayTimestamp, tomorrowTimestamp]);
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
