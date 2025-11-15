@@ -1,11 +1,11 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, deleteDoc, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, KeyRound } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +43,7 @@ export default function ManageOperatorsPage() {
     const { toast } = useToast();
     const [operators, setOperators] = useState<Operator[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isResetting, setIsResetting] = useState(false);
     const [operatorToDelete, setOperatorToDelete] = useState<Operator | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -214,6 +215,46 @@ export default function ManageOperatorsPage() {
                 }
             });
     };
+    
+    const handleResetAllPasswords = async () => {
+        if (!firestore) return;
+
+        setIsResetting(true);
+        try {
+            const operatorsRef = collection(firestore, 'app-users');
+            const q = query(operatorsRef, where('role', '==', 'operator'));
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                toast({
+                    title: "Nessun Operatore",
+                    description: "Non ci sono operatori da aggiornare.",
+                });
+                setIsResetting(false);
+                return;
+            }
+
+            const batch = writeBatch(firestore);
+            querySnapshot.forEach((document) => {
+                batch.update(document.ref, { password: '0000' });
+            });
+
+            await batch.commit();
+
+            toast({
+                title: "Successo!",
+                description: `Password reimpostata a "0000" per ${querySnapshot.size} operatori.`,
+            });
+        } catch (error: any) {
+            toast({
+                title: "Errore",
+                description: "Impossibile reimpostare le password.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsResetting(false);
+        }
+    };
 
     return (
         <>
@@ -223,34 +264,40 @@ export default function ManageOperatorsPage() {
                         <Users className="h-6 w-6 text-primary" />
                         <CardTitle className="text-2xl">Gestione Operatori</CardTitle>
                     </div>
-                     <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button>
-                                <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Operatore
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                             <form onSubmit={handleAddOperator}>
-                                <DialogHeader>
-                                    <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
-                                    <DialogDescription>
-                                        Inserisci il nome del nuovo operatore. La password iniziale sarà '0000'.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="name" className="text-right">
-                                            Nome
-                                        </Label>
-                                        <Input id="name" value={newOperatorName} onChange={(e) => setNewOperatorName(e.target.value)} className="col-span-3" required />
+                     <div className="flex flex-col sm:flex-row gap-2">
+                        <Button onClick={handleResetAllPasswords} variant="outline" disabled={isResetting}>
+                            {isResetting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                             {isResetting ? 'Reset in corso...' : 'Resetta Tutte le Password a 0000'}
+                        </Button>
+                        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Operatore
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <form onSubmit={handleAddOperator}>
+                                    <DialogHeader>
+                                        <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
+                                        <DialogDescription>
+                                            Inserisci il nome del nuovo operatore. La password iniziale sarà '0000'.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="grid gap-4 py-4">
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="name" className="text-right">
+                                                Nome
+                                            </Label>
+                                            <Input id="name" value={newOperatorName} onChange={(e) => setNewOperatorName(e.target.value)} className="col-span-3" required />
+                                        </div>
                                     </div>
-                                </div>
-                                <DialogFooter>
-                                    <Button type="submit">Salva Operatore</Button>
-                                </DialogFooter>
-                            </form>
-                        </DialogContent>
-                    </Dialog>
+                                    <DialogFooter>
+                                        <Button type="submit">Salva Operatore</Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                     </div>
                 </CardHeader>
                 <CardContent>
                     {isLoading ? (
