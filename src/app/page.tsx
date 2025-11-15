@@ -32,7 +32,7 @@ export default function LoginPage() {
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
             Seleziona il tuo nome utente e inserisci la password per accedere. <br />
-            La password predefinita al primo accesso è <span className="font-mono font-bold">0000</span>.
+            La password predefinita al primo accesso è <span className="font-mono font-bold">000000</span>.
           </p>
         </div>
         <LoginForm />

@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, deleteDoc, addDoc, getDocs, query, where, setDoc } from 'firebase/firestore';
-import { useFirestore, useAuth, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { useFirestore, useAuth, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,7 +112,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
         const email = `${firstName.toLowerCase().replace(/\s+/g, '')}.${lastName.toLowerCase().replace(/\s+/g, '')}@serveco.it`;
-        const password = '0000';
+        const password = '000000';
 
         try {
             // Step 1: Create user in Firebase Auth
@@ -143,6 +143,12 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                  toast({
                     title: "Errore",
                     description: "Questa email è già in uso. Prova un altro nome.",
+                    variant: "destructive",
+                });
+            } else if (error.code === 'auth/weak-password') {
+                 toast({
+                    title: "Errore",
+                    description: "La password è troppo debole.",
                     variant: "destructive",
                 });
             } else {
@@ -292,7 +298,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                         {/* 
                         <Button onClick={handleResetAllPasswords} variant="outline" disabled={isResetting}>
                             {isResetting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                             {isResetting ? 'Reset in corso...' : 'Resetta Tutte le Password a 0000'}
+                             {isResetting ? 'Reset in corso...' : 'Resetta Tutte le Password a 000000'}
                         </Button>
                         */}
                         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -306,7 +312,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                                         <DialogDescription>
-                                            Inserisci il nome e cognome. La password iniziale sarà '0000'.
+                                            Inserisci il nome e cognome. La password iniziale sarà '000000'.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-4 py-4">
@@ -413,13 +419,3 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
         </>
     );
 }
-
-// Helper to useMemoize a query, to prevent re-renders
-const useMemoFirebase = <T,>(factory: () => T, deps: React.DependencyList): T => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const memoized = React.useMemo(factory, deps);
-    if (typeof memoized === 'object' && memoized !== null) {
-      (memoized as any).__memo = true;
-    }
-    return memoized;
-};

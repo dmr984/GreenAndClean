@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useAuth, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { useFirestore, useAuth, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { collection, getDocs, query, where, doc, onSnapshot, writeBatch, setDoc, getDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -45,7 +45,7 @@ export default function LoginForm() {
     // This function ensures the admin user exists in Auth and Firestore.
     const setupInitialAdmin = async () => {
         const adminEmail = 'admin@serveco.it';
-        const adminPassword = '0000';
+        const adminPassword = '000000';
 
         try {
             // First, try to create the user in Firebase Auth.
@@ -90,7 +90,7 @@ export default function LoginForm() {
                 console.error("Error setting up initial admin:", error);
                  toast({
                     title: "Errore di Configurazione Iniziale",
-                    description: "Impossibile configurare l'utente amministratore.",
+                    description: error.message || "Impossibile configurare l'utente amministratore.",
                     variant: "destructive",
                 });
             }
@@ -202,14 +202,3 @@ export default function LoginForm() {
     </form>
   );
 }
-
-
-// Helper to useMemoize a query, to prevent re-renders
-const useMemoFirebase = <T,>(factory: () => T, deps: React.DependencyList): T => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const memoized = React.useMemo(factory, deps);
-    if (typeof memoized === 'object' && memoized !== null) {
-      (memoized as any).__memo = true;
-    }
-    return memoized;
-};
