@@ -29,12 +29,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (storedUser) {
         setUser(JSON.parse(storedUser));
     } else {
-        if(pathname.startsWith('/dashboard')) {
-            router.replace('/');
-        }
+        router.replace('/');
     }
     setIsLoading(false);
-  }, [router, pathname]);
+  }, [router]);
 
 
   const handleLogout = async () => {
@@ -78,21 +76,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         );
     }
 
-    // Pass user to children for sub-pages, or render dashboards for the main page
-    if (pathname !== '/dashboard') {
-        return React.isValidElement(children) ? React.cloneElement(children as React.ReactElement<any>, { user }) : children;
-    }
-
-    if (user.role === 'admin') {
-      return <AdminDashboard user={user} />;
-    }
-
-    if (user.role === 'operator') {
-      return <OperatorDashboard user={user} />;
+    // Main dashboard page renders one of the dashboards directly
+    if (pathname === '/dashboard') {
+        if (user.role === 'admin') {
+          return <AdminDashboard user={user} />;
+        }
+        if (user.role === 'operator') {
+          return <OperatorDashboard user={user} />;
+        }
+        return <div>Ruolo utente non riconosciuto.</div>;
     }
     
-    // Fallback if role is unknown
-    return <div>Ruolo utente non riconosciuto.</div>;
+    // For sub-pages, clone the children and pass the user prop
+    // This ensures child pages don't render until user is loaded
+    return React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+            return React.cloneElement(child as React.ReactElement<any>, { user });
+        }
+        return child;
+    });
   };
   
   return (

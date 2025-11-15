@@ -59,19 +59,18 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
     const [hours, setHours] = useState<string>('');
     const [reason, setReason] = useState('');
 
-    const requestsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
-        return query(
+    useEffect(() => {
+        if (!firestore || !user) {
+            if (!user) setIsLoading(false);
+            return;
+        };
+
+        setIsLoading(true);
+        
+        const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
             orderBy('startDate', 'desc')
         );
-    }, [firestore, user]);
-
-    useEffect(() => {
-        if (!requestsQuery) {
-            setIsLoading(false);
-            return;
-        };
 
         const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
@@ -84,7 +83,7 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
         });
 
         return () => unsubscribe();
-    }, [requestsQuery, toast]);
+    }, [firestore, user, toast]);
 
     const resetForm = () => {
         setRequestType('');
@@ -133,7 +132,11 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
     };
     
     if (!user) {
-        return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
+        return (
+            <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">Attendere il caricamento dei dati utente...</p>
+            </div>
+        );
     }
     
     if (isLoading) {

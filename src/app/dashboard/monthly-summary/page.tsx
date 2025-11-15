@@ -42,7 +42,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingData, setIsLoadingData] = useState(true);
 
     const { startOfMonth, endOfMonth } = useMemo(() => {
         const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -53,40 +53,36 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
         };
     }, [currentDate]);
 
-    const requestsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
-        return query(
+    useEffect(() => {
+        if (!firestore || !user) {
+            if(!user) setIsLoadingData(false); // If user is null, stop loading
+            return;
+        }
+
+        setIsLoadingData(true);
+
+        const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
             where('startDate', '>=', startOfMonth),
             where('startDate', '<=', endOfMonth)
         );
-    }, [firestore, user, startOfMonth, endOfMonth]);
-    
-    const timbratureQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
-        return query(
+        
+        const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
             where('timestamp', '<=', endOfMonth)
         );
-    }, [firestore, user, startOfMonth, endOfMonth]);
-
-    useEffect(() => {
-        if (!requestsQuery || !timbratureQuery) {
-            setIsLoading(false);
-            return;
-        };
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
-                setIsLoading(false);
+                setIsLoadingData(false); // Stop loading after requests are fetched
             },
             (error) => {
                 console.error("Error fetching requests:", error);
                 toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive" });
-                setIsLoading(false);
+                setIsLoadingData(false);
             }
         );
         
@@ -105,7 +101,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
             unsubscribeRequests();
             unsubscribeTimbrature();
         };
-    }, [requestsQuery, timbratureQuery, toast]);
+    }, [firestore, user, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
         const workedDays = new Set(
@@ -147,10 +143,14 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
     });
 
     if (!user) {
-        return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
+        return (
+            <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">Attendere il caricamento dei dati utente...</p>
+            </div>
+        );
     }
     
-     if (isLoading) {
+     if (isLoadingData) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
