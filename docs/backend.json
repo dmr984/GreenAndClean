@@ -106,6 +106,47 @@
         }
       },
       "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
+    },
+     "Request": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Request",
+      "type": "object",
+      "description": "Represents a user request for leave, overtime, etc.",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user making the request."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ferie", "permesso", "malattia", "straordinario"],
+          "description": "The type of request."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in_attesa", "approvato", "rifiutato"],
+          "description": "The status of the request."
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The start date/time of the request."
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The end date/time of the request."
+        },
+        "hours": {
+          "type": "number",
+          "description": "The number of hours requested (for 'permesso' or 'straordinario')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "An optional reason for the request."
+        }
+      },
+      "required": ["userId", "type", "status", "startDate", "endDate"]
     }
   },
   "auth": {
@@ -156,10 +197,20 @@
                 { "name": "timbraturaId", "description": "The clocking event's unique ID." }
             ]
         }
+      },
+      {
+        "path": "/app-users/{userId}/requests/{requestId}",
+        "definition": {
+          "entityName": "Request",
+          "schema": { "$ref": "#/backend/entities/Request" },
+          "description": "Stores all leave, overtime, or other requests for a specific user.",
+          "params": [
+            { "name": "userId", "description": "The user's unique ID." },
+            { "name": "requestId", "description": "The request's unique ID." }
+          ]
+        }
       }
     ],
     "reasoning": "The data structure has been simplified to only include user and role management, as all other features have been removed per the user's request. A 'Timbratura' entity and collection have been added to support clock-in/out functionality. Firebase Auth has been removed and a 'password' field added to user entities for a simple code-based login."
   }
 }
-
-    
