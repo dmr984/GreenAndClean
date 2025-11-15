@@ -2,13 +2,18 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Users, Clock, Home } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Users, Clock, Home, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { AdminDashboard } from './admin-dashboard';
+import { OperatorDashboard } from './operator-dashboard';
+import ClockInPage from './clock-in/page';
+import ManageOperatorsPage from './operators/page';
+
 
 type UserData = {
   id: string;
@@ -77,14 +82,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsChangeCodeOpen(true);
   }
   
-  if (isLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
-  }
-  
-  if (!user) {
-    // This case should ideally not be hit if the useEffect redirect works correctly,
-    // but it's a good failsafe.
-    return <div className="flex items-center justify-center min-h-screen">Accesso non autorizzato. Reindirizzamento...</div>;
+  const renderContent = () => {
+    if (isLoading) {
+        return (
+            <div className="flex flex-1 items-center justify-center">
+                <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <p className="text-muted-foreground">Caricamento...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!user) {
+        return null; // Or a fallback UI
+    }
+
+    // Pass the user prop to the correct child component based on the route
+    const child = React.Children.only(children) as React.ReactElement;
+    if (React.isValidElement(child)) {
+        return React.cloneElement(child, { user } as { user: UserData });
+    }
+
+    return null;
   }
   
   const showBackButton = pathname !== '/dashboard';
@@ -108,8 +128,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
                       </Avatar>
                      <div>
-                        <p className="text-base font-medium leading-none">{user.username}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{user.role}</p>
+                        <p className="text-base font-medium leading-none">{user?.username}</p>
+                        <p className="text-xs leading-none text-muted-foreground">{user?.role}</p>
                      </div>
                   </SheetTitle>
                  </SheetHeader>
@@ -120,14 +140,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <Home className="h-5 w-5" /> Dashboard
                         </Button>
                     </Link>
-                    {user.role === 'operator' && (
+                    {user?.role === 'operator' && (
                        <Link href="/dashboard/clock-in" passHref>
                            <Button variant={pathname === '/dashboard/clock-in' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                <Clock className="h-5 w-5" /> Timbratura
                            </Button>
                         </Link>
                     )}
-                    {user.role === 'admin' && (
+                    {user?.role === 'admin' && (
                         <Link href="/dashboard/operators" passHref>
                            <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                <Users className="h-5 w-5" /> Gestione Operatori
@@ -167,13 +187,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-           {React.Children.map(children, child => {
-              if (React.isValidElement(child)) {
-                // @ts-ignore
-                return React.cloneElement(child, { user });
-              }
-              return child;
-            })}
+           {renderContent()}
         </main>
     </div>
     {user && <ChangeCodeDialog 
