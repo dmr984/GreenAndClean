@@ -44,31 +44,19 @@ export default function LoginForm() {
 
     const setupInitialAdmin = async () => {
         const adminEmail = 'admin@serveco.it';
-        const adminPassword = '000000'; // Must be 6 chars
-        let adminId = 'admin_user'; // Default hardcoded ID
+        const adminPassword = '000000'; 
 
         try {
-            // First, try to create the user in Firebase Auth. 
-            // This guarantees the Auth user exists.
+            // Step 1: Create the user in Firebase Auth. This is the source of truth for the UID.
             const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-            adminId = userCredential.user.uid;
+            const adminId = userCredential.user.uid;
             console.log(`Admin user created in Firebase Auth with UID: ${adminId}`);
-        } catch (error: any) {
-            if (error.code === 'auth/email-already-in-use') {
-                // This is expected on subsequent loads. We can ignore it.
-                // We don't know the UID here, but the login list query will fetch it.
-                 console.log("Admin user already exists in Firebase Auth.");
-            } else {
-                 console.error("Error during initial admin Auth creation:", error);
-            }
-        }
-        
-        // Second, ensure the Firestore documents exist, using the known ID.
-        // `setDoc` with `merge` will create or update without overwriting.
-        const adminDocRef = doc(firestore, 'app-users', adminId);
-        const roleDocRef = doc(firestore, 'roles_admin', adminId);
 
-        try {
+            // Step 2: Since creation was successful, this is the first run. 
+            // Let's create the corresponding Firestore documents using the REAL UID.
+            const adminDocRef = doc(firestore, 'app-users', adminId);
+            const roleDocRef = doc(firestore, 'roles_admin', adminId);
+
             const batch = writeBatch(firestore);
             batch.set(adminDocRef, {
                 username: "Amministratore",
@@ -77,18 +65,27 @@ export default function LoginForm() {
                 firstName: "Admin",
                 lastName: "User",
                 email: adminEmail,
-            }, { merge: true });
+            });
 
             batch.set(roleDocRef, {
                 email: adminEmail,
                 firstName: "Admin",
                 lastName: "User",
-            }, { merge: true });
+            });
 
             await batch.commit();
-            console.log("Admin documents in Firestore are created/verified.");
-        } catch (error) {
-             console.error("Error ensuring admin documents exist:", error);
+            console.log("Admin documents in Firestore created successfully.");
+
+        } catch (error: any) {
+            if (error.code === 'auth/email-already-in-use') {
+                // This is the expected behavior on subsequent loads.
+                // The user and their documents were already created correctly on the first run.
+                // We do nothing.
+                 console.log("Admin user already exists. No action needed.");
+            } else {
+                 // For any other error (e.g., weak password, network issue), log it.
+                 console.error("Error during initial admin setup:", error);
+            }
         }
     };
 
