@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, getDoc, Firestore, writeBatch, addDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, getDoc, setDoc, addDoc, writeBatch } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -44,14 +44,18 @@ export default function LoginForm() {
         const adminUsername = 'Amministratore';
         const adminPassword = '0000';
         const adminRole = 'admin';
+        const adminId = 'admin_user'; // A fixed, known ID for the admin doc
+
+        const adminDocRef = doc(firestore, 'app-users', adminId);
+        const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
 
         try {
-            const adminQuery = query(collection(firestore, 'app-users'), where("username", "==", adminUsername));
-            const adminSnapshot = await getDocs(adminQuery);
+            const adminDocSnap = await getDoc(adminDocRef);
 
-            if (adminSnapshot.empty) {
-                // Admin does not exist, create it
-                const newAdminData = {
+            if (!adminDocSnap.exists()) {
+                // Admin does not exist, create it in a batch
+                 const batch = writeBatch(firestore);
+                 const newAdminData = {
                     username: adminUsername,
                     password: adminPassword,
                     role: adminRole,
@@ -60,39 +64,26 @@ export default function LoginForm() {
                     lastName: "User",
                     email: "admin@serveco.it"
                 };
-                addDoc(collection(firestore, 'app-users'), newAdminData)
-                 .catch(error => {
-                    if (error.code === 'permission-denied') {
-                        const contextualError = new FirestorePermissionError({
-                            operation: 'create',
-                            path: 'app-users',
-                            requestResourceData: newAdminData,
-                        });
-                        errorEmitter.emit('permission-error', contextualError);
-                    } else {
-                        console.error("Error creating initial admin:", error);
-                        toast({
-                            title: "Errore di Configurazione Iniziale",
-                            description: "Impossibile creare l'utente amministratore.",
-                            variant: "destructive",
-                        });
-                    }
-                });
+                 const adminRoleData = {
+                    email: "admin@serveco.it",
+                    firstName: "Admin",
+                    lastName: "User",
+                };
+                batch.set(adminDocRef, newAdminData);
+                batch.set(adminRoleDocRef, adminRoleData);
+                await batch.commit();
 
             } else {
                 // Admin exists, check and update password if necessary
-                const adminDoc = adminSnapshot.docs[0];
-                if (adminDoc.data().password !== adminPassword) {
-                    const batch = writeBatch(firestore);
-                    batch.update(adminDoc.ref, { password: adminPassword });
-                    await batch.commit();
+                if (adminDocSnap.data().password !== adminPassword) {
+                    await setDoc(adminDocRef, { password: adminPassword }, { merge: true });
                 }
             }
         } catch (error: any) {
             if (error.code === 'permission-denied') {
                  const contextualError = new FirestorePermissionError({
-                    operation: 'list', // getDocs is a 'list' operation
-                    path: 'app-users',
+                    operation: 'get', 
+                    path: adminDocRef.path,
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
@@ -117,12 +108,9 @@ export default function LoginForm() {
         });
 
         userList.sort((a, b) => {
-            if (a.role === 'admin') return -1;
-            if (b.role === 'admin') return 1;
-            // Simplified sort assuming format is "Operatore X"
-            const aNum = parseInt(a.username.split(' ')[1] || '0');
-            const bNum = parseInt(b.username.split(' ')[1] || '0');
-            return aNum - bNum;
+            if (a.id === 'admin_user') return -1;
+            if (b.id === 'admin_user') return 1;
+            return a.username.localeCompare(b.username, undefined, { numeric: true });
         });
 
         setUsers(userList);

@@ -14,8 +14,8 @@ service cloud.firestore {
     }
     
     match /app-users/{userId} {
-      // Allow an unauthenticated user to list users for login, or an admin to list all users.
-      allow list: if request.auth == null || isAdmin();
+      // Allow an authenticated user to list visible users for login.
+      allow list: if request.auth != null;
       // Allow an unauthenticated user to get a doc for login, or an admin/owner to read.
       allow read: if request.auth == null || isAdmin() || isOwner(userId);
       // Allow write operations only for initial setup from an unauthenticated client or by an admin
