@@ -60,12 +60,10 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
     const [reason, setReason] = useState('');
 
     useEffect(() => {
-        if (!firestore || !user) {
-            if (!user) setIsLoading(false);
+        if (!firestore || !user?.id) {
+            if (user !== null) setIsLoading(false);
             return;
         };
-
-        setIsLoading(true);
         
         const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
@@ -131,6 +129,14 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
         }
     };
     
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+    
     if (!user) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -139,13 +145,6 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
         );
     }
     
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        );
-    }
 
     return (
        <>
