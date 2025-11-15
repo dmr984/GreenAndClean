@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, getDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -41,50 +41,38 @@ export default function LoginForm() {
 
     // This function ensures the admin user exists and has the correct password.
     const setupInitialAdmin = async () => {
-        const adminUsername = 'Amministratore';
-        const adminPassword = '0000';
-        const adminRole = 'admin';
-        const adminId = 'admin_user'; // A fixed, known ID for the admin doc
+        const adminId = 'admin_user';
 
         const adminDocRef = doc(firestore, 'app-users', adminId);
         const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
 
         try {
-            const adminDocSnap = await getDoc(adminDocRef);
+            const batch = writeBatch(firestore);
+            
+            // Set/update the main admin user document
+            batch.set(adminDocRef, {
+                username: "Amministratore",
+                password: "0000",
+                role: "admin",
+                visibleInLogin: true,
+                firstName: "Admin",
+                lastName: "User",
+                email: "admin@serveco.it"
+            }, { merge: true }); // Use merge to avoid overwriting if it exists
 
-            if (!adminDocSnap.exists()) {
-                // Admin does not exist, create it in a batch
-                 const batch = writeBatch(firestore);
-                 const newAdminData = {
-                    username: adminUsername,
-                    password: adminPassword,
-                    role: adminRole,
-                    visibleInLogin: true,
-                    firstName: "Admin",
-                    lastName: "User",
-                    email: "admin@serveco.it"
-                };
-                 const adminRoleData = {
-                    email: "admin@serveco.it",
-                    firstName: "Admin",
-                    lastName: "User",
-                };
-                batch.set(adminDocRef, newAdminData);
-                batch.set(adminRoleDocRef, adminRoleData);
-                await batch.commit();
+            // Set/update the admin role document
+            batch.set(adminRoleDocRef, {
+                email: "admin@serveco.it",
+                firstName: "Admin",
+                lastName: "User",
+            }, { merge: true });
 
-            } else {
-                // Admin exists, check and update password if necessary
-                if (adminDocSnap.data().password !== adminPassword) {
-                    const batch = writeBatch(firestore);
-                    batch.update(adminDocRef, { password: adminPassword });
-                    await batch.commit();
-                }
-            }
+            await batch.commit();
+
         } catch (error: any) {
             if (error.code === 'permission-denied') {
                  const contextualError = new FirestorePermissionError({
-                    operation: 'get', 
+                    operation: 'write', // set with merge can be create or update
                     path: adminDocRef.path,
                 });
                 errorEmitter.emit('permission-error', contextualError);
