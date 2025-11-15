@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Users, Home, Loader2, Calendar, Plane } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -28,6 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     localStorage.removeItem('user');
+    window.dispatchEvent(new Event('storage')); // To update useUser hook
     router.replace('/');
   }
 
@@ -164,7 +165,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              {/* Placeholder for potential future icons */}
           </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
             {renderDashboardContent()}
         </main>
     </div>
