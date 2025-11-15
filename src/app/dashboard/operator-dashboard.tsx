@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Clock, Play, Pause, Square, History, MapPin, Loader2 } from 'lucide-react';
@@ -40,14 +40,18 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
   const { toast } = useToast();
   const firestore = useFirestore();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTimestamp = Timestamp.fromDate(today);
+  const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTs = Timestamp.fromDate(today);
 
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
-  
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowTs = Timestamp.fromDate(tomorrow);
+    
+    return { todayTimestamp: todayTs, tomorrowTimestamp: tomorrowTs };
+  }, []);
+
   const clockingsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     
