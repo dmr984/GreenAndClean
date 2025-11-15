@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { useRouter } from 'next/navigation';
 
 type UserData = {
   id: string;
@@ -38,6 +39,7 @@ type Timbratura = {
 // The user prop is passed from the layout
 export default function MonthlySummaryPage({ user }: { user: UserData | null }) {
     const firestore = useFirestore();
+    const router = useRouter();
     const { toast } = useToast();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
@@ -54,8 +56,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
     }, [currentDate]);
 
     useEffect(() => {
-        if (!firestore || !user) {
-            if(!user) setIsLoadingData(false); // If user is null, stop loading
+        if (!firestore || !user?.id) {
             return;
         }
 
@@ -77,7 +78,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
-                setIsLoadingData(false); // Stop loading after requests are fetched
+                setIsLoadingData(false); // Stop loading after main data (requests) is fetched
             },
             (error) => {
                 console.error("Error fetching requests:", error);
@@ -142,21 +143,23 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
         return { value: `${d.getFullYear()}-${String(i+1).padStart(2, '0')}`, label: d.toLocaleString('it-IT', { month: 'long' }) };
     });
 
-    if (!user) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <p className="text-muted-foreground">Attendere il caricamento dei dati utente...</p>
-            </div>
-        );
-    }
-    
-     if (isLoadingData) {
+    if (isLoadingData) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         );
     }
+    
+    if (!user) {
+        // This case should ideally be handled by the layout, but as a fallback:
+        return (
+            <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">Caricamento utente...</p>
+            </div>
+        );
+    }
+    
 
     return (
         <div className="space-y-6">
@@ -174,7 +177,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
                             {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                         </SelectContent>
                     </Select>
-                     <Button>
+                     <Button onClick={() => router.push('/dashboard/requests')}>
                         <Plus className="mr-2 h-4 w-4" /> Nuova Richiesta
                     </Button>
                 </div>
