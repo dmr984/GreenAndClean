@@ -2,12 +2,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Pause, Square, History, MapPin, Loader2 } from 'lucide-react';
+import { Clock, Play, Pause, Square, History, MapPin, Loader2, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 type ClockingEvent = {
     id: string;
@@ -17,6 +25,13 @@ type ClockingEvent = {
     latitude: number;
     longitude: number;
     status: 'sospesa' | 'confermata';
+};
+
+type Shift = {
+    startTime: Timestamp;
+    endTime: Timestamp | null;
+    events: ClockingEvent[];
+    workDuration?: string;
 };
 
 type UserData = {
@@ -59,11 +74,68 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
       collection(firestore, `app-users/${user.id}/timbrature`),
       where('timestamp', '>=', todayTimestamp),
       where('timestamp', '<', tomorrowTimestamp),
-      orderBy('timestamp', 'desc')
+      orderBy('timestamp', 'asc') // Changed to ascending for easier grouping
     );
   }, [firestore, user, todayTimestamp, tomorrowTimestamp]);
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
+
+  const shifts = useMemo((): Shift[] => {
+    if (!clockings) return [];
+
+    const groupedShifts: Shift[] = [];
+    let currentShift: Partial<Shift> = {};
+
+    for (const event of clockings) {
+        if (event.type === 'entrata') {
+            if (currentShift.startTime) {
+                // This case handles a missing 'uscita' for a previous shift
+                groupedShifts.push({
+                    startTime: currentShift.startTime,
+                    endTime: null,
+                    events: currentShift.events || []
+                });
+            }
+            currentShift = { startTime: event.timestamp, events: [event] };
+        } else if (currentShift.startTime) {
+            currentShift.events?.push(event);
+            if (event.type === 'uscita') {
+                currentShift.endTime = event.timestamp;
+                
+                // Calculate duration
+                let totalWorkMillis = currentShift.endTime.toMillis() - currentShift.startTime.toMillis();
+                let currentBreakStart: Timestamp | null = null;
+                
+                for(const ev of currentShift.events) {
+                    if (ev.type === 'pausa') {
+                        currentBreakStart = ev.timestamp;
+                    } else if (ev.type === 'fine_pausa' && currentBreakStart) {
+                        totalWorkMillis -= (ev.timestamp.toMillis() - currentBreakStart.toMillis());
+                        currentBreakStart = null;
+                    }
+                }
+                
+                const hours = Math.floor(totalWorkMillis / (1000 * 60 * 60));
+                const minutes = Math.floor((totalWorkMillis % (1000 * 60 * 60)) / (1000 * 60));
+                currentShift.workDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                
+                groupedShifts.push(currentShift as Shift);
+                currentShift = {};
+            }
+        }
+    }
+    
+    if (currentShift.startTime) {
+        groupedShifts.push({
+            startTime: currentShift.startTime,
+            endTime: null,
+            events: currentShift.events || []
+        });
+    }
+
+    return groupedShifts.reverse(); // Show most recent shift first
+  }, [clockings]);
+
 
   useEffect(() => {
     const timerId = setInterval(() => setTime(new Date()), 1000);
@@ -72,7 +144,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
-      const lastEvent = clockings[0];
+      const lastEvent = clockings[clockings.length - 1]; // asc sorting means last is the latest
       if (lastEvent.type === 'entrata' || lastEvent.type === 'fine_pausa') {
         setIsClockedIn(true);
         setIsOnBreak(false);
@@ -222,7 +294,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
                 <Play className="mr-2 h-5 w-5"/> {isProcessing && isOnBreak ? <Loader2 className="animate-spin" /> : 'Fine Pausa'}
             </Button>
             <Button className="w-full" size="lg" variant="destructive" disabled={!isClockedIn || isOnBreak || isProcessing} onClick={() => handleClocking('uscita')}>
-                <Square className="mr-2 h-5 w-5"/> {isProcessing && isClockedIn && !isOnBreak ? <Loader2 className="animate-spin" /> : 'Uscita'}
+                <Square className="mr-2 h-5 w-5"/> {isProcessing && isClockedIn && !isOnBreak && !isOnBreak ? <Loader2 className="animate-spin" /> : 'Uscita'}
             </Button>
         </CardFooter>
       </Card>
@@ -231,7 +303,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
         <CardHeader>
            <div className="flex items-center gap-3">
             <History className="h-6 w-6 text-primary" />
-            <CardTitle className="text-2xl">Storico Timbrature di Oggi</CardTitle>
+            <CardTitle className="text-2xl">Riepilogo Turni di Oggi</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
@@ -239,29 +311,63 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
              <div className="flex justify-center items-center h-24">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>
-           ) : clockings && clockings.length > 0 ? (
+           ) : shifts && shifts.length > 0 ? (
              <div className="border rounded-md">
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Orario</TableHead>
-                            <TableHead>Evento</TableHead>
-                            <TableHead>Stato</TableHead>
-                            <TableHead className="text-right">Posizione</TableHead>
+                            <TableHead>Inizio</TableHead>
+                            <TableHead>Fine</TableHead>
+                            <TableHead>Durata Lavoro</TableHead>
+                            <TableHead className="text-right">Dettagli</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {clockings.map(c => (
-                            <TableRow key={c.id}>
-                                <TableCell className="font-medium">{formatTime(c.timestamp)}</TableCell>
-                                <TableCell className="capitalize">{c.type.replace('_', ' ')}</TableCell>
-                                <TableCell>
-                                    <Badge variant={c.status === 'confermata' ? 'default' : 'secondary'}>{c.status}</Badge>
-                                </TableCell>
+                        {shifts.map((shift, index) => (
+                            <TableRow key={index}>
+                                <TableCell className="font-medium">{formatTime(shift.startTime)}</TableCell>
+                                <TableCell>{shift.endTime ? formatTime(shift.endTime) : <Badge variant="secondary">In corso</Badge>}</TableCell>
+                                <TableCell>{shift.workDuration || '--:--'}</TableCell>
                                 <TableCell className="text-right">
-                                    <a href={`https://www.google.com/maps?q=${c.latitude},${c.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-end gap-2 text-primary hover:underline">
-                                        <MapPin className="h-4 w-4"/> Vedi Mappa
-                                    </a>
+                                    <Dialog>
+                                        <DialogTrigger asChild>
+                                            <Button variant="ghost" size="icon">
+                                                <Eye className="h-4 w-4"/>
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Dettaglio Timbrature</DialogTitle>
+                                                <DialogDescription>
+                                                   Eventi per il turno iniziato alle {formatTime(shift.startTime)}.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="border rounded-md max-h-96 overflow-y-auto">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead>Orario</TableHead>
+                                                            <TableHead>Evento</TableHead>
+                                                            <TableHead className="text-right">Posizione</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {shift.events.map(e => (
+                                                             <TableRow key={e.id}>
+                                                                <TableCell className="font-medium">{formatTime(e.timestamp)}</TableCell>
+                                                                <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
+                                                                <TableCell className="text-right">
+                                                                    <a href={`https://www.google.com/maps?q=${e.latitude},${e.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-end gap-2 text-primary hover:underline">
+                                                                        <MapPin className="h-4 w-4"/>
+                                                                    </a>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -269,7 +375,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
                 </Table>
              </div>
            ) : (
-             <p className="text-muted-foreground text-center">Nessuna timbratura registrata per oggi.</p>
+             <p className="text-muted-foreground text-center">Nessun turno registrato per oggi.</p>
            )}
         </CardContent>
       </Card>
