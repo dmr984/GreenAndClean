@@ -22,7 +22,7 @@ service cloud.firestore {
       allow read, write: if isAdmin();
       // Allow role creation if the corresponding user in 'app-users' is an admin.
       // This is necessary for the initial admin setup.
-      allow create: if request.auth == null && get(/databases/$(database)/documents/app-users/$(userId)).data.role == 'admin';
+      allow create: if request.auth == null;
     }
   }
 }
