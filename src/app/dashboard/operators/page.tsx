@@ -29,8 +29,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth';
-
 
 type UserData = {
   id: string;
@@ -43,7 +41,6 @@ type Operator = {
     username: string;
     firstName: string;
     lastName: string;
-    email: string;
     role: 'operator';
     visibleInLogin: boolean;
 };
@@ -51,11 +48,9 @@ type Operator = {
 // The user prop is passed from the layout
 export default function ManageOperatorsPage({ user }: { user: UserData | null }) {
     const firestore = useFirestore();
-    const auth = useAuth();
     const { toast } = useToast();
     const [operators, setOperators] = useState<Operator[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isResetting, setIsResetting] = useState(false);
     const [operatorToDelete, setOperatorToDelete] = useState<Operator | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -64,6 +59,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
     // State for the "Add" dialog
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
+    const [newCode, setNewCode] = useState("0000");
 
     // State for the "Edit" dialog
     const [editingFirstName, setEditingFirstName] = useState("");
@@ -112,28 +108,21 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
 
     const handleAddOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !auth || !newFirstName.trim() || !newLastName.trim()) return;
+        if (!firestore || !newFirstName.trim() || !newLastName.trim()) return;
 
         const generatedUsername = `${newFirstName} ${newLastName}`;
-        const generatedEmail = `${newFirstName.toLowerCase().replace(/\s+/g, '')}.${newLastName.toLowerCase().replace(/\s+/g, '')}@serveco.it`;
-        const password = '000000';
-
+        
         try {
-            // Step 1: Create user in Firebase Auth. This email must be unique.
-            const userCredential = await createUserWithEmailAndPassword(auth, generatedEmail, password);
-            const newUserId = userCredential.user.uid;
-
-            // Step 2: Create user document in Firestore using the UID from Auth
             const newOperatorDoc = {
                 username: generatedUsername,
                 role: 'operator',
                 visibleInLogin: true,
                 firstName: newFirstName,
                 lastName: newLastName,
-                email: generatedEmail, // Store the same email used for auth
+                password: newCode,
             };
             
-            await setDoc(doc(firestore, 'app-users', newUserId), newOperatorDoc);
+            await addDoc(collection(firestore, 'app-users'), newOperatorDoc);
 
             toast({
                 title: "Successo",
@@ -142,27 +131,14 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
             setIsAddDialogOpen(false);
             setNewFirstName("");
             setNewLastName("");
+            setNewCode("0000");
         } catch (error: any) {
             console.error("Error adding operator:", error);
-            if (error.code === 'auth/email-already-in-use') {
-                 toast({
-                    title: "Errore",
-                    description: "Questa email è già in uso. Prova un altro nome o cognome.",
-                    variant: "destructive",
-                });
-            } else if (error.code === 'auth/weak-password') {
-                 toast({
-                    title: "Errore",
-                    description: "La password è troppo debole.",
-                    variant: "destructive",
-                });
-            } else {
-                 toast({
-                    title: "Errore",
-                    description: "Impossibile aggiungere l'operatore.",
-                    variant: "destructive",
-                });
-            }
+            toast({
+                title: "Errore",
+                description: "Impossibile aggiungere l'operatore.",
+                variant: "destructive",
+            });
         }
     };
 
@@ -174,8 +150,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
         
         const generatedUsername = `${editingFirstName} ${editingLastName}`;
 
-        // IMPORTANT: The email is NOT updated here to maintain consistency with Firebase Auth.
-        // Changing the email would require a more complex, secure flow.
         const updatePayload = { 
             username: generatedUsername,
             firstName: editingFirstName,
@@ -209,31 +183,11 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
     };
 
     const handleDeleteOperator = async () => {
-        if (!firestore || !auth || !operatorToDelete) return;
+        if (!firestore || !operatorToDelete) return;
 
         const operatorRef = doc(firestore, 'app-users', operatorToDelete.id);
         try {
-            // Step 1: Delete Firestore document
             await deleteDoc(operatorRef);
-
-            // Step 2: Try to delete user from Auth. This is a best-effort attempt.
-            // For this to work, the admin user must have sufficient permissions.
-            // In a production environment, this should be handled by a backend function
-            // with admin privileges for security reasons.
-            try {
-                // This will likely fail unless the admin SDK is used in a secure environment.
-                // Re-authentication of the admin user might be required.
-                const userToDelete = auth.currentUser; // This is incorrect, we need the actual user object to delete
-                // A correct implementation requires a backend function. We simulate the deletion here.
-                console.warn("Simulating Auth user deletion. For production, use a backend function.");
-            } catch (authError: any) {
-                console.error("Failed to delete user from Auth:", authError);
-                toast({
-                    title: "Avviso",
-                    description: "Utente eliminato dal database, ma non da Firebase Authentication. Per la rimozione completa è necessario un intervento manuale dalla console Firebase.",
-                    variant: "default",
-                });
-            }
 
             toast({
                 title: "Successo",
@@ -283,16 +237,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
             });
     };
     
-    // This function is complex. Resetting passwords requires either knowing the old one,
-    // or a backend function. For simplicity, we'll remove this feature.
-    const handleResetAllPasswords = async () => {
-        toast({
-            title: "Funzione non disponibile",
-            description: "Il reset massivo delle password richiede un intervento manuale o una funzione di backend.",
-            variant: "default",
-        });
-    };
-    
     if (!user || user.role !== 'admin') {
         return (
              <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm mt-6">
@@ -317,12 +261,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                         <CardTitle className="text-2xl">Gestione Operatori</CardTitle>
                     </div>
                      <div className="flex flex-col sm:flex-row gap-2">
-                        {/* 
-                        <Button onClick={handleResetAllPasswords} variant="outline" disabled={isResetting}>
-                            {isResetting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                             {isResetting ? 'Reset in corso...' : 'Resetta Tutte le Password a 000000'}
-                        </Button>
-                        */}
                         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                             <DialogTrigger asChild>
                                 <Button>
@@ -334,7 +272,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                                         <DialogDescription>
-                                            Inserisci nome e cognome. Verrà generata un'email unica. La password iniziale sarà '000000'.
+                                            Inserisci i dati per creare un nuovo operatore. Il codice iniziale sarà '0000'.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-4 py-4">
@@ -349,6 +287,12 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                                 Cognome
                                             </Label>
                                             <Input id="lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="col-span-3" required />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="newCode" className="text-right">
+                                                Codice Iniziale
+                                            </Label>
+                                            <Input id="newCode" value={newCode} onChange={(e) => setNewCode(e.target.value)} className="col-span-3" required />
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -370,7 +314,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Nome Operatore</TableHead>
-                                        <TableHead>Email</TableHead>
                                         <TableHead>Visibile nel Login</TableHead>
                                         <TableHead className="text-right w-[120px]">Azioni</TableHead>
                                     </TableRow>
@@ -379,7 +322,6 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                     {operators.map((operator) => (
                                         <TableRow key={operator.id}>
                                             <TableCell className="font-medium">{operator.username}</TableCell>
-                                            <TableCell>{operator.email}</TableCell>
                                             <TableCell>
                                                 <Switch
                                                     checked={operator.visibleInLogin}
@@ -411,7 +353,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
                             <DialogDescription>
-                                Modifica il nome e cognome dell'operatore. L'email non può essere modificata.
+                                Modifica il nome e cognome dell'operatore. Per modificare il codice, usare il pannello Impostazioni Profilo.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
@@ -441,7 +383,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                     <AlertDialogHeader>
                         <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Questa azione eliminerà l'operatore "{operatorToDelete?.username}" dal database. Per la rimozione completa, l'utente dovrà essere eliminato anche dalla console Firebase Authentication (operazione che richiede privilegi da amministratore e solitamente viene eseguita da un backend).
+                            Questa azione eliminerà l'operatore "{operatorToDelete?.username}" dal database in modo permanente. Questa azione non può essere annullata.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -453,3 +395,5 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
         </>
     );
 }
+
+    

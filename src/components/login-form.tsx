@@ -6,25 +6,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useAuth, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { collection, getDocs, query, where, doc, onSnapshot, writeBatch, setDoc, getDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-
 
 type User = {
   id: string;
   username: string;
-  email: string;
   role: 'admin' | 'operator';
   visibleInLogin?: boolean;
+  password?: string;
 };
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const auth = useAuth();
   const [isLoading, setIsLoading] = React.useState(true); 
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState('');
@@ -34,10 +31,46 @@ export default function LoginForm() {
     if (!firestore) return null;
     return query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
   }, [firestore]);
+  
+  // Effect to ensure the admin user exists on first load
+  useEffect(() => {
+    if (!firestore) return;
+    
+    const ensureAdminExists = async () => {
+        const adminId = "admin_user";
+        const adminDocRef = doc(firestore, 'app-users', adminId);
+        const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
+
+        try {
+            const adminDoc = await getDoc(adminDocRef);
+            if (!adminDoc.exists()) {
+                const batch = writeBatch(firestore);
+                batch.set(adminDocRef, {
+                    username: "Amministratore",
+                    role: "admin",
+                    visibleInLogin: true,
+                    firstName: "Admin",
+                    lastName: "User",
+                    password: "0000",
+                });
+                batch.set(adminRoleDocRef, {
+                    firstName: "Admin",
+                    lastName: "User",
+                });
+                await batch.commit();
+                console.log("Admin user and role created in Firestore.");
+            }
+        } catch (error) {
+            console.error("Error ensuring admin user exists:", error);
+        }
+    };
+    
+    ensureAdminExists();
+  }, [firestore]);
 
 
   useEffect(() => {
-    if (!firestore || !auth || !usersQuery) {
+    if (!firestore || !usersQuery) {
         setIsLoading(false);
         return;
     };
@@ -75,74 +108,16 @@ export default function LoginForm() {
     });
     
     return () => unsubscribe();
-  }, [usersQuery, toast, firestore, auth]);
-
-
-  const createAdminAndLogin = async () => {
-      if (!auth || !firestore) return;
-      const adminEmail = 'admin@serveco.it';
-      const adminPassword = '000000';
-
-      try {
-           // Step 1: Create the user in Firebase Auth. This is the source of truth for the UID.
-            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-            const adminId = userCredential.user.uid;
-            
-            // Step 2: Create the corresponding Firestore documents using the REAL UID.
-            const adminDocRef = doc(firestore, 'app-users', adminId);
-            const roleDocRef = doc(firestore, 'roles_admin', adminId);
-
-            const batch = writeBatch(firestore);
-            batch.set(adminDocRef, {
-                username: "Amministratore",
-                role: "admin",
-                visibleInLogin: true,
-                firstName: "Admin",
-                lastName: "User",
-                email: adminEmail,
-            });
-
-            batch.set(roleDocRef, {
-                email: adminEmail,
-                firstName: "Admin",
-                lastName: "User",
-            });
-
-            await batch.commit();
-
-            // Step 3: Now try to log in again
-            await signInWithEmailAndPassword(auth, adminEmail, password);
-
-      } catch (creationError: any) {
-           console.error("Failed to create admin user during login flow:", creationError);
-           // If admin already exists in Auth but maybe not in DB, this will fail.
-           // The login flow will handle this.
-           if (creationError.code !== 'auth/email-already-in-use') {
-             toast({
-                variant: "destructive",
-                title: "Errore Critico",
-                description: "Impossibile creare l'utente amministratore iniziale.",
-            });
-            setIsLoading(false);
-           }
-      }
-  }
-
+  }, [usersQuery, toast, firestore]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
 
     if (!selectedUserId || !password) {
-      toast({ variant: "destructive", title: "Campi mancanti", description: "Seleziona un utente e inserisci la password." });
+      toast({ variant: "destructive", title: "Campi mancanti", description: "Seleziona un utente e inserisci il codice." });
       setIsLoading(false);
       return;
-    }
-    
-    if (!auth) {
-       toast({ variant: "destructive", title: "Errore di sistema", description: "Servizio di autenticazione non disponibile." });
-       setIsLoading(false);
-       return;
     }
     
     const selectedUser = users.find(u => u.id === selectedUserId);
@@ -152,22 +127,23 @@ export default function LoginForm() {
         return;
     }
 
-    try {
-        await signInWithEmailAndPassword(auth, selectedUser.email, password);
-        // On successful sign-in, the onAuthStateChanged listener in the layout will handle the redirect.
-    } catch (error: any) {
-        // If login fails because user doesn't exist OR credentials are bad for the admin, try creating it.
-        // This handles the very first run of the application.
-        if (selectedUser.email === 'admin@serveco.it' && (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential')) {
-            await createAdminAndLogin();
-            return; // The createAdminAndLogin function will handle the subsequent signIn.
-        }
-
-        console.error("Login failed:", error.code);
-        toast({
+    // Custom password check
+    if (selectedUser.password === password) {
+        // On successful login, save user info to localStorage and redirect
+        const userToStore = {
+            id: selectedUser.id,
+            username: selectedUser.username,
+            role: selectedUser.role
+        };
+        localStorage.setItem('user', JSON.stringify(userToStore));
+        window.dispatchEvent(new Event('storage')); // Notify other tabs/windows
+        router.push('/dashboard');
+        
+    } else {
+         toast({
             variant: "destructive",
             title: "Credenziali non valide",
-            description: "Il nome utente o la password non sono corretti. Riprova.",
+            description: "Il nome utente o il codice non sono corretti. Riprova.",
         });
         setIsLoading(false);
     }
@@ -191,7 +167,7 @@ export default function LoginForm() {
         </Select>
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">Codice</Label>
         <Input id="password" name="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
       </div>
       <Button type="submit" className="w-full font-bold" disabled={isLoading}>
@@ -200,3 +176,5 @@ export default function LoginForm() {
     </form>
   );
 }
+
+    

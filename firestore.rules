@@ -4,45 +4,49 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      // This function is no longer reliable without real auth.
+      // We will rely on more specific rules.
+      return false; // Deprecated for client-side checks
     }
 
-    function isAdmin() {
-      // Use exists() for a more secure and efficient check.
-      // This checks if a document for the user's UID exists in the roles_admin collection.
-      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    function isAdmin(userId) {
+      // Checks if a document for the user's ID exists in the roles_admin collection.
+      return exists(/databases/$(database)/documents/roles_admin/$(userId));
     }
     
+    // Allow anyone to read the user list for the login dropdown.
     match /app-users/{userId} {
-      // Allow an unauthenticated user to GET a single document for login verification.
-      // Allow an admin or the owner to GET their document.
-      allow get: if request.auth == null || isAdmin() || isOwner(userId);
-      // Allow any user (authenticated or not) to list users for the login dropdown.
-      // The query in the app (`where("visibleInLogin", "==", true)`) ensures only intended users are shown.
       allow list: if true;
-      // Allow write (create/update) for initial unauthenticated setup or by an admin/owner.
-      allow write: if request.auth == null || isAdmin() || isOwner(userId);
-      // Only admins can delete users.
-      allow delete: if isAdmin();
-
+      allow get: if true; // Allow getting a single user doc for login check.
+      
+      // Allow an admin to update/create/delete any user.
+      // A user can update their own document if they provide the correct password.
+      // This is NOT secure, as the password is sent over the wire.
+      // This is a temporary measure based on user request for simplicity.
+      allow write: if isAdmin(request.auth.uid) || request.resource.data.password == resource.data.password;
+      allow delete: if isAdmin(request.auth.uid);
+      
       // Rules for the 'timbrature' subcollection
+      // These rules are now insecure because we cannot reliably verify the owner.
+      // Anyone with a valid userId could potentially write to anyone else's subcollection.
+      // This should be addressed with a more secure authentication method.
       match /timbrature/{timbraturaId} {
-        // An operator can create their own clocking events.
-        allow create: if isOwner(userId);
-        // An operator can read their own clocking events. Admins can read anyone's.
-        allow read: if isOwner(userId) || isAdmin();
+        // Allow creating/reading if the userId in the path matches the userId in the request data.
+        allow create: if request.resource.data.userId == userId;
+        allow read: if isAdmin(userId) || request.query.auth.uid == userId; // This is a placeholder, auth is not real.
         // Admins can update the status of a clocking event (e.g., to approve it).
-        allow update: if isAdmin();
+        allow update: if isAdmin(userId);
         // No one should be able to delete clocking events through the app.
         allow delete: if false;
       }
     }
 
      match /roles_admin/{userId} {
-      // Admins can read or write roles.
-      allow read: if isAdmin();
-       // Allow write for initial unauthenticated setup or by an admin.
-      allow write: if request.auth == null || isAdmin();
+      // Only an authenticated admin can read or write roles.
+      // This is insecure without a proper auth system.
+      allow read, write: if isAdmin(userId);
     }
   }
 }
+
+    

@@ -23,10 +23,9 @@
           "type": "string",
           "description": "The last name of the cleaning operator."
         },
-        "email": {
+        "password": {
           "type": "string",
-          "description": "The email address of the cleaning operator.",
-          "format": "email"
+          "description": "The access code for the operator."
         },
         "visibleInLogin": {
             "type": "boolean",
@@ -38,7 +37,7 @@
         "username",
         "firstName",
         "lastName",
-        "email",
+        "password",
         "visibleInLogin"
       ]
     },
@@ -60,17 +59,16 @@
           "type": "string",
           "description": "The last name of the administrator."
         },
-        "email": {
-          "type": "string",
-          "description": "The email address of the administrator.",
-          "format": "email"
+        "password": {
+            "type": "string",
+            "description": "The access code for the administrator."
         }
       },
       "required": [
         "id",
         "firstName",
         "lastName",
-        "email"
+        "password"
       ]
     },
     "Timbratura": {
@@ -111,9 +109,7 @@
     }
   },
   "auth": {
-    "providers": [
-      "password"
-    ]
+    "providers": []
   },
   "firestore": {
     "structure": [
@@ -162,6 +158,8 @@
         }
       }
     ],
-    "reasoning": "The data structure has been simplified to only include user and role management, as all other features have been removed per the user's request. A 'Timbratura' entity and collection have been added to support clock-in/out functionality."
+    "reasoning": "The data structure has been simplified to only include user and role management, as all other features have been removed per the user's request. A 'Timbratura' entity and collection have been added to support clock-in/out functionality. Firebase Auth has been removed and a 'password' field added to user entities for a simple code-based login."
   }
 }
+
+    

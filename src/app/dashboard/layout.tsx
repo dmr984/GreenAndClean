@@ -1,5 +1,6 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, 'use client';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Menu, LogOut, Settings, Users, Home, Loader2 } from 'lucide-react';
@@ -11,10 +12,6 @@ import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
-import { useAuth } from '@/firebase';
-import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { useFirestore }from '@/firebase';
 
 
 type UserData = {
@@ -27,47 +24,49 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const auth = useAuth();
-  const firestore = useFirestore();
   const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth || !firestore) return;
-
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
-      if (firebaseUser) {
-        // User is signed in, get custom data from Firestore
-        const userDocRef = doc(firestore, 'app-users', firebaseUser.uid);
-        const docSnap = await getDoc(userDocRef);
-        if (docSnap.exists()) {
-          const appUser = { id: docSnap.id, ...docSnap.data() } as UserData;
-          setUser(appUser);
-        } else {
-          // User exists in Auth but not in Firestore, this is an inconsistent state.
-          // This can happen if the user was deleted from the DB but not from Auth.
-          // Force sign out to prevent access.
-          await signOut(auth);
-          setUser(null);
-          router.replace('/');
-        }
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
       } else {
-        // User is signed out
-        setUser(null);
         router.replace('/');
       }
-      setIsLoading(false);
-    });
+    } catch (e) {
+        // If parsing fails, something is wrong, redirect to login
+        router.replace('/');
+    } finally {
+        setIsLoading(false);
+    }
+    
+    const handleStorageChange = () => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            setUser(JSON.parse(storedUser));
+        } else {
+            setUser(null);
+            router.replace('/');
+        }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+        window.removeEventListener('storage', handleStorageChange);
+    };
 
-    return () => unsubscribe();
-  }, [auth, firestore, router]);
+  }, [router]);
 
 
   const handleLogout = async () => {
-    if (!auth) return;
-    await signOut(auth);
-    // The onAuthStateChanged listener will handle the redirect
+    localStorage.removeItem('user');
+    window.dispatchEvent(new Event('storage')); // Notify other tabs
+    // No need to call router.push, the effect will handle it
   }
 
   const getAvatarFallback = () => {
@@ -99,29 +98,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       );
     }
+    
+    if (!user) {
+         return (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <p className="text-muted-foreground">Verifica autenticazione...</p>
+            </div>
+          </div>
+        );
+    }
 
+    // Pass user to children for sub-pages, or render dashboards for the main page
     if (pathname !== '/dashboard') {
-        // For sub-pages like /operators, pass user to children
         return React.isValidElement(children) ? React.cloneElement(children as React.ReactElement<any>, { user }) : children;
     }
 
-    if (user?.role === 'admin') {
+    if (user.role === 'admin') {
       return <AdminDashboard user={user} />;
     }
 
-    if (user?.role === 'operator') {
+    if (user.role === 'operator') {
       return <OperatorDashboard user={user} />;
     }
     
-    // If no user, show loading or redirect. The listener should handle redirect.
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <p className="text-muted-foreground">Verifica autenticazione...</p>
-        </div>
-      </div>
-    );
+    // Fallback if role is unknown
+    return <div>Ruolo utente non riconosciuto.</div>;
   };
   
   return (
@@ -206,3 +209,5 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </>
   );
 }
+
+    
