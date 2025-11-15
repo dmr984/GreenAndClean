@@ -87,7 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return <div className="flex items-center justify-center min-h-screen">Accesso non autorizzato. Reindirizzamento...</div>;
   }
   
-  const isBaseDashboard = pathname === '/dashboard';
+  const showBackButton = pathname !== '/dashboard';
   
   return (
     <>
@@ -120,6 +120,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <Home className="h-5 w-5" /> Dashboard
                         </Button>
                     </Link>
+                    {user.role === 'operator' && (
+                       <Link href="/dashboard/clock-in" passHref>
+                           <Button variant={pathname === '/dashboard/clock-in' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                               <Clock className="h-5 w-5" /> Timbratura
+                           </Button>
+                        </Link>
+                    )}
                     {user.role === 'admin' && (
                         <Link href="/dashboard/operators" passHref>
                            <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
@@ -140,7 +147,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SheetContent>
             </Sheet>
 
-             {!isBaseDashboard && (
+             {showBackButton && (
                <Button variant="outline" size="icon" className="shrink-0" onClick={() => router.back()}>
                   <ArrowLeft className="h-4 w-4" />
                   <span className="sr-only">Torna indietro</span>

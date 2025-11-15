@@ -30,7 +30,7 @@ interface OperatorDashboardProps {
   user: UserData | null;
 }
 
-export default function OperatorDashboardPage({ user }: OperatorDashboardProps) {
+export default function ClockInPage({ user }: OperatorDashboardProps) {
   const [time, setTime] = useState(new Date());
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
