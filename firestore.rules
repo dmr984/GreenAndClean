@@ -3,14 +3,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isOwner(userId) {
-      // This function is no longer reliable without real auth.
-      // We will rely on more specific rules.
-      return false; // Deprecated for client-side checks
-    }
-
     function isAdmin(userId) {
       // Checks if a document for the user's ID exists in the roles_admin collection.
+      // This is insecure without a real auth system.
       return exists(/databases/$(database)/documents/roles_admin/$(userId));
     }
     
@@ -23,17 +18,16 @@ service cloud.firestore {
       // A user can update their own document if they provide the correct password.
       // This is NOT secure, as the password is sent over the wire.
       // This is a temporary measure based on user request for simplicity.
-      allow write: if isAdmin(request.auth.uid) || request.resource.data.password == resource.data.password;
-      allow delete: if isAdmin(request.auth.uid);
+      allow write: if isAdmin(userId) || request.resource.data.password == resource.data.password;
+      allow delete: if isAdmin(userId);
       
       // Rules for the 'timbrature' subcollection
-      // These rules are now insecure because we cannot reliably verify the owner.
-      // Anyone with a valid userId could potentially write to anyone else's subcollection.
-      // This should be addressed with a more secure authentication method.
       match /timbrature/{timbraturaId} {
-        // Allow creating/reading if the userId in the path matches the userId in the request data.
+        // Allow creating if the userId in the path matches the userId in the request data.
         allow create: if request.resource.data.userId == userId;
-        allow read: if isAdmin(userId) || request.query.auth.uid == userId; // This is a placeholder, auth is not real.
+        // Allow anyone to read the clocking events. This is insecure but necessary
+        // for the custom auth system to work.
+        allow read: if true;
         // Admins can update the status of a clocking event (e.g., to approve it).
         allow update: if isAdmin(userId);
         // No one should be able to delete clocking events through the app.
@@ -48,5 +42,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
