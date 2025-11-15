@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, getDoc, setDoc, addDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
