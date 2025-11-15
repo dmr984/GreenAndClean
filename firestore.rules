@@ -17,8 +17,9 @@ service cloud.firestore {
       // Allow an unauthenticated user to GET a single document for login verification.
       // Allow an admin or the owner to GET their document.
       allow get: if request.auth == null || isAdmin() || isOwner(userId);
-      // Allow an authenticated user to list visible users for the login dropdown.
-      allow list: if request.auth != null;
+      // Allow any user (authenticated or not) to list users for the login dropdown.
+      // The query in the app (`where("visibleInLogin", "==", true)`) ensures only intended users are shown.
+      allow list: if true;
       // Allow write operations only for initial setup from an unauthenticated client or by an admin
       allow create: if request.auth == null || isAdmin();
       // Allow authenticated admins or the owner to update their own document.

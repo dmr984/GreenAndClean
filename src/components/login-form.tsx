@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, getDoc, writeBatch } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -76,7 +76,9 @@ export default function LoginForm() {
             } else {
                 // Admin exists, check and update password if necessary
                 if (adminDocSnap.data().password !== adminPassword) {
-                    await setDoc(adminDocRef, { password: adminPassword }, { merge: true });
+                    const batch = writeBatch(firestore);
+                    batch.update(adminDocRef, { password: adminPassword });
+                    await batch.commit();
                 }
             }
         } catch (error: any) {
