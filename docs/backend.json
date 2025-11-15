@@ -67,6 +67,42 @@
         "lastName",
         "email"
       ]
+    },
+    "Timbratura": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Timbratura",
+      "type": "object",
+      "description": "Represents a single clock-in/out event.",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who made the clocking event."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The exact date and time of the clocking event."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["entrata", "pausa", "fine_pausa", "uscita"],
+          "description": "The type of clocking event."
+        },
+        "latitude": {
+          "type": "number",
+          "description": "The latitude of the location where the event occurred."
+        },
+        "longitude": {
+          "type": "number",
+          "description": "The longitude of the location where the event occurred."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["sospesa", "confermata"],
+          "description": "The approval status of the clocking event."
+        }
+      },
+      "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
     }
   },
   "auth": {
@@ -107,8 +143,20 @@
             }
           ]
         }
+      },
+      {
+        "path": "/app-users/{userId}/timbrature/{timbraturaId}",
+        "definition": {
+            "entityName": "Timbratura",
+            "schema": { "$ref": "#/backend/entities/Timbratura" },
+            "description": "Stores all clocking events for a specific user.",
+            "params": [
+                { "name": "userId", "description": "The user's unique ID." },
+                { "name": "timbraturaId", "description": "The clocking event's unique ID." }
+            ]
+        }
       }
     ],
-    "reasoning": "The data structure has been simplified to only include user and role management, as all other features have been removed per the user's request. This provides a minimal foundation for rebuilding the application."
+    "reasoning": "The data structure has been simplified to only include user and role management, as all other features have been removed per the user's request. A 'Timbratura' entity and collection have been added to support clock-in/out functionality."
   }
 }

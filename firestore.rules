@@ -23,6 +23,18 @@ service cloud.firestore {
       allow update: if isAdmin() || isOwner(userId);
       // Only admins can delete users.
       allow delete: if isAdmin();
+
+      // Rules for the 'timbrature' subcollection
+      match /timbrature/{timbraturaId} {
+        // An operator can create their own clocking events.
+        allow create: if isOwner(userId);
+        // An operator can read their own clocking events. Admins can read anyone's.
+        allow read: if isOwner(userId) || isAdmin();
+        // Admins can update the status of a clocking event (e.g., to approve it).
+        allow update: if isAdmin();
+        // No one should be able to delete clocking events through the app.
+        allow delete: if false;
+      }
     }
 
      match /roles_admin/{userId} {

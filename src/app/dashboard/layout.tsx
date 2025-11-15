@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Users } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Users, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -114,6 +114,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Link href="/dashboard/operators" passHref>
                            <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                <Users className="h-5 w-5" /> Gestione Operatori
+                           </Button>
+                        </Link>
+                    )}
+                    {user.role === 'operator' && (
+                        <Link href="/dashboard/clock-in" passHref>
+                           <Button variant={pathname === '/dashboard/clock-in' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                               <Clock className="h-5 w-5" /> Timbratura
                            </Button>
                         </Link>
                     )}
