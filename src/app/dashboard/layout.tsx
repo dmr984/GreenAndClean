@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -110,6 +110,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  </SheetHeader>
                  <Separator className="my-2"/>
                  <nav className="grid gap-2 text-lg font-medium">
+                    {user.role === 'admin' && (
+                        <Link href="/dashboard/operators" passHref>
+                           <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                               <Users className="h-5 w-5" /> Gestione Operatori
+                           </Button>
+                        </Link>
+                    )}
                     <Button variant="ghost" className="justify-start gap-2" onClick={handleChangeCodeClick}>
                         <Settings className="h-5 w-5" /> Impostazioni Profilo
                     </Button>
