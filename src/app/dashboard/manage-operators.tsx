@@ -65,7 +65,7 @@ export function ManageOperators() {
         return () => unsubscribe();
     }, [operatorsQuery, toast, firestore]);
 
-    const handleVisibilityChange = async (operatorId: string, newVisibility: boolean) => {
+    const handleVisibilityChange = (operatorId: string, newVisibility: boolean) => {
         if (!firestore) return;
         const operatorRef = doc(firestore, 'app-users', operatorId);
         const updatePayload = { visibleInLogin: newVisibility };
