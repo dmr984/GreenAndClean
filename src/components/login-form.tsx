@@ -42,42 +42,58 @@ export default function LoginForm() {
         return;
     };
 
-    // This function ensures the admin user exists in Firestore.
-    // It runs once and is simpler than trying to create the Auth user here.
-    const ensureAdminDocExists = async () => {
-        // This is a known, hardcoded UID for a pre-provisioned admin user.
-        // In a real app, this would be handled differently, but for this setup it's reliable.
-        const adminId = 'admin_user'; 
+    const setupInitialAdmin = async () => {
+        const adminEmail = 'admin@serveco.it';
+        const adminPassword = '000000'; // Must be 6 chars
+        let adminId = 'admin_user'; // Default hardcoded ID
+
+        try {
+            // First, try to create the user in Firebase Auth. 
+            // This guarantees the Auth user exists.
+            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+            adminId = userCredential.user.uid;
+            console.log(`Admin user created in Firebase Auth with UID: ${adminId}`);
+        } catch (error: any) {
+            if (error.code === 'auth/email-already-in-use') {
+                // This is expected on subsequent loads. We can ignore it.
+                // We don't know the UID here, but the login list query will fetch it.
+                 console.log("Admin user already exists in Firebase Auth.");
+            } else {
+                 console.error("Error during initial admin Auth creation:", error);
+            }
+        }
+        
+        // Second, ensure the Firestore documents exist, using the known ID.
+        // `setDoc` with `merge` will create or update without overwriting.
         const adminDocRef = doc(firestore, 'app-users', adminId);
         const roleDocRef = doc(firestore, 'roles_admin', adminId);
 
         try {
-            const adminDoc = await getDoc(adminDocRef);
-            if (!adminDoc.exists()) {
-                // If the admin documents don't exist, create them.
-                const batch = writeBatch(firestore);
-                 batch.set(adminDocRef, {
-                    username: "Amministratore",
-                    role: "admin",
-                    visibleInLogin: true,
-                    firstName: "Admin",
-                    lastName: "User",
-                    email: 'admin@serveco.it',
-                });
-                batch.set(roleDocRef, {
-                    email: 'admin@serveco.it',
-                    firstName: "Admin",
-                    lastName: "User",
-                });
-                await batch.commit();
-                console.log("Admin user documents created in Firestore.");
-            }
+            const batch = writeBatch(firestore);
+            batch.set(adminDocRef, {
+                username: "Amministratore",
+                role: "admin",
+                visibleInLogin: true,
+                firstName: "Admin",
+                lastName: "User",
+                email: adminEmail,
+            }, { merge: true });
+
+            batch.set(roleDocRef, {
+                email: adminEmail,
+                firstName: "Admin",
+                lastName: "User",
+            }, { merge: true });
+
+            await batch.commit();
+            console.log("Admin documents in Firestore are created/verified.");
         } catch (error) {
-            console.error("Error ensuring admin documents exist:", error);
+             console.error("Error ensuring admin documents exist:", error);
         }
     };
 
-    ensureAdminDocExists();
+
+    setupInitialAdmin();
 
     if (!usersQuery) return;
 
