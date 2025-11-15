@@ -16,13 +16,12 @@ type UserData = {
 export default function Dashboard({ user }: { user: UserData | null }) {
 
   if (!user) {
-    return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
+    return <div className="flex items-center justify-center h-full">Caricamento...</div>;
   }
 
   if (user.role === 'admin') {
-    return <AdminDashboard />;
+    return <AdminDashboard user={user} />;
   }
 
-  // Pass the user prop down to the OperatorDashboard
   return <OperatorDashboard user={user} />;
 }

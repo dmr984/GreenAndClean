@@ -1,7 +1,21 @@
 'use client';
 import React from 'react';
 
-export function AdminDashboard() {
+type UserData = {
+  id: string;
+  username: string;
+  role: 'admin' | 'operator';
+};
+
+interface AdminDashboardProps {
+  user: UserData | null;
+}
+
+export function AdminDashboard({ user }: AdminDashboardProps) {
+
+  if (!user) {
+      return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
+  }
 
   return (
     <>
