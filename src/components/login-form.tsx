@@ -7,15 +7,12 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDoc, doc, setDoc, getDocs } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, Auth } from "firebase/auth";
-
 
 type User = {
   id: string;
   username: string;
-  email: string;
   role: 'admin' | 'operator';
   visibleInLogin?: boolean;
 };
@@ -24,7 +21,7 @@ export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isLoading, setIsLoading] = React.useState(true); 
+  const [isLoading, setIsLoading] = React.useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -33,62 +30,54 @@ export default function LoginForm() {
     if (!firestore) return null;
     return query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
   }, [firestore]);
-  
-  
-   // Effect to ensure the admin user exists on first load
-   useEffect(() => {
+
+  // Effect to ensure the admin user exists in Firestore on first load
+  useEffect(() => {
     if (!firestore) return;
-    const auth = getAuth();
 
-    const setupInitialAdmin = async () => {
-        const adminEmail = 'admin@serveco.it';
-        const adminPassword = 'password'; // Use a secure password
+    const ensureAdminExists = async () => {
         const adminUsername = "Amministratore";
+        const adminPassword = "0000"; // Simple code-based password
 
-        try {
-            // First, try to create the user in Firebase Auth.
-            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-            const adminId = userCredential.user.uid;
-
-            // If creation was successful, this is the first run. Let's create the Firestore docs.
-            const batch = writeBatch(firestore);
+        // Check if an admin user already exists
+        const q = query(collection(firestore, 'app-users'), where("role", "==", "admin"));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+            console.log("No admin user found, creating one...");
+            // If no admin user exists, create one.
+            const adminId = "admin_user"; // Use a predictable ID
             const adminDocRef = doc(firestore, 'app-users', adminId);
             const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
 
-            batch.set(adminDocRef, {
-                username: adminUsername,
-                role: "admin",
-                visibleInLogin: true,
-                firstName: "Admin",
-                lastName: "User",
-                email: adminEmail,
-            });
-
-            batch.set(adminRoleDocRef, {
-                firstName: "Admin",
-                lastName: "User",
-            });
-
-            await batch.commit();
-            console.log("Admin user and role documents created in Firestore.");
-
-        } catch (error: any) {
-            // If the user already exists, that's fine. We just log it and move on.
-            // Any other error during setup is a problem.
-            if (error.code === 'auth/email-already-in-use') {
-                console.log('Admin user already exists in Firebase Auth. Setup is not needed.');
-            } else {
-                console.error("Critical error during initial admin setup:", error);
+            try {
+                await setDoc(adminDocRef, {
+                    username: adminUsername,
+                    role: "admin",
+                    visibleInLogin: true,
+                    firstName: "Admin",
+                    lastName: "User",
+                    password: adminPassword 
+                });
+                await setDoc(adminRoleDocRef, {
+                     firstName: "Admin",
+                     lastName: "User",
+                });
+                console.log("Admin user and role created successfully.");
+            } catch (error) {
+                console.error("Error creating admin user:", error);
                  toast({
                     variant: "destructive",
                     title: "Errore di Setup Critico",
                     description: "Impossibile configurare l'utente amministratore iniziale.",
                 });
             }
+        } else {
+             console.log("Admin user already exists.");
         }
     };
     
-    setupInitialAdmin();
+    ensureAdminExists();
   }, [firestore, toast]);
 
 
@@ -134,26 +123,49 @@ export default function LoginForm() {
       setIsLoading(false);
       return;
     }
-    
-    const selectedUser = users.find(u => u.id === selectedUserId);
-    if (!selectedUser) {
-        toast({ variant: "destructive", title: "Errore", description: "Utente selezionato non valido." });
-        setIsLoading(false);
-        return;
+
+    if (!firestore) {
+         toast({ variant: "destructive", title: "Errore", description: "Database non disponibile." });
+         setIsLoading(false);
+         return;
     }
 
     try {
-        const auth = getAuth();
-        await signInWithEmailAndPassword(auth, selectedUser.email, password);
-        // Successful login is handled by the onAuthStateChanged listener in the layout.
-        // No need to call router.push here.
+        const userDocRef = doc(firestore, 'app-users', selectedUserId);
+        const userDoc = await getDoc(userDocRef);
+
+        if (!userDoc.exists()) {
+             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
+             setIsLoading(false);
+             return;
+        }
+
+        const userData = userDoc.data();
+
+        if (userData.password === password) {
+             const userToStore = {
+                id: userDoc.id,
+                username: userData.username,
+                role: userData.role,
+             };
+             localStorage.setItem('user', JSON.stringify(userToStore));
+             window.dispatchEvent(new Event('storage')); // Notify layout to update
+             router.push('/dashboard');
+        } else {
+             toast({
+                variant: "destructive",
+                title: "Credenziali non valide",
+                description: "Il nome utente o il codice non sono corretti. Riprova.",
+            });
+        }
     } catch (error: any) {
-        console.error("Login failed:", error.code);
+        console.error("Login failed:", error);
         toast({
             variant: "destructive",
-            title: "Credenziali non valide",
-            description: "Il nome utente o il codice non sono corretti. Riprova.",
+            title: "Errore di Login",
+            description: "Si è verificato un errore durante l'accesso.",
         });
+    } finally {
         setIsLoading(false);
     }
   };

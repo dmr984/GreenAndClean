@@ -1,6 +1,5 @@
 'use client';
-import React, 'use client';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Menu, LogOut, Settings, Users, Home, Loader2 } from 'lucide-react';
@@ -12,7 +11,6 @@ import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
-
 
 type UserData = {
   id: string;
@@ -29,29 +27,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-      } else {
-        router.replace('/');
-      }
-    } catch (e) {
-        // If parsing fails, something is wrong, redirect to login
-        router.replace('/');
-    } finally {
-        setIsLoading(false);
-    }
-    
-    const handleStorageChange = () => {
+    const checkUser = () => {
+      try {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
-            setUser(JSON.parse(storedUser));
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
         } else {
-            setUser(null);
-            router.replace('/');
+          router.replace('/');
         }
+      } catch (e) {
+          router.replace('/');
+      } finally {
+          setIsLoading(false);
+      }
+    };
+    
+    checkUser();
+    
+    const handleStorageChange = () => {
+        checkUser();
     };
     
     window.addEventListener('storage', handleStorageChange);
@@ -63,10 +58,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router]);
 
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     localStorage.removeItem('user');
-    window.dispatchEvent(new Event('storage')); // Notify other tabs
-    // No need to call router.push, the effect will handle it
+    window.dispatchEvent(new Event('storage')); // Notify self and other tabs
   }
 
   const getAvatarFallback = () => {
@@ -209,5 +203,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </>
   );
 }
-
-    

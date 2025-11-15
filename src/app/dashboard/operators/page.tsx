@@ -1,11 +1,11 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, deleteDoc, addDoc, getDocs, query, where, setDoc } from 'firebase/firestore';
-import { useFirestore, useAuth, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, KeyRound } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -134,11 +134,20 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
             setNewCode("0000");
         } catch (error: any) {
             console.error("Error adding operator:", error);
-            toast({
-                title: "Errore",
-                description: "Impossibile aggiungere l'operatore.",
-                variant: "destructive",
-            });
+            if (error.code === 'permission-denied') {
+                 const contextualError = new FirestorePermissionError({
+                    operation: 'create',
+                    path: 'app-users',
+                    requestResourceData: newOperatorDoc
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                 toast({
+                    title: "Errore",
+                    description: "Impossibile aggiungere l'operatore.",
+                    variant: "destructive",
+                });
+            }
         }
     };
 
@@ -395,5 +404,3 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
         </>
     );
 }
-
-    
