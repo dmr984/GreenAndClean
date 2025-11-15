@@ -16,16 +16,6 @@ type UserData = {
   role: 'admin' | 'operator';
 };
 
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-    if (typeof window === 'undefined') return defaultValue;
-    const stored = localStorage.getItem(key);
-    try {
-        return stored ? JSON.parse(stored) : defaultValue;
-    } catch (e) {
-        return defaultValue;
-    }
-};
-
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
@@ -35,32 +25,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = getFromStorage<UserData | null>('user', null);
+    const storedUser = localStorage.getItem('user');
     if (!storedUser) {
       router.replace('/');
-      // Don't set loading to false, as the redirect will happen
       return; 
     }
     
-    setUser(storedUser);
-    setIsLoading(false); // Only set loading to false after user is confirmed
-
-    const handleStorageChange = () => {
-        const updatedUser = getFromStorage<UserData | null>('user', null);
-        if (updatedUser) {
-            setUser(updatedUser);
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+    } catch(e) {
+      router.replace('/');
+      return;
+    } finally {
+        setIsLoading(false);
+    }
+    
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'user') {
+        if (!e.newValue) {
+          router.replace('/');
         } else {
-            router.replace('/');
+          setUser(JSON.parse(e.newValue));
         }
+      }
     };
     
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
+
   }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
-    window.location.href = '/';
+    router.replace('/');
   }
 
   const getAvatarFallback = () => {
@@ -79,8 +77,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsChangeCodeOpen(true);
   }
   
-  if (isLoading || !user) {
+  if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Caricamento...</div>;
+  }
+  
+  if (!user) {
+    // This case should ideally not be hit if the useEffect redirect works correctly,
+    // but it's a good failsafe.
+    return <div className="flex items-center justify-center min-h-screen">Accesso non autorizzato. Reindirizzamento...</div>;
   }
   
   const isBaseDashboard = pathname === '/dashboard';

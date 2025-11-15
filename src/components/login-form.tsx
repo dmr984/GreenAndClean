@@ -22,17 +22,13 @@ type User = {
 const setupInitialUsers = async (firestore: Firestore) => {
     const adminUserRef = doc(firestore, 'app-users', 'admin_user');
     const adminDoc = await getDoc(adminUserRef).catch(err => {
-        // This initial read might fail if rules are very restrictive.
-        // We'll let the batch write fail and be caught below, which is more specific.
         console.warn("Could not check for admin user, proceeding with setup. Error:", err.message);
-        return null; // Return a null-like object so the code proceeds.
+        return null; 
     });
 
-    // Only run setup if admin user doesn't exist or we couldn't check
     if (!adminDoc || !adminDoc.exists()) {
         const batch = writeBatch(firestore);
-
-        // 1. Create Admin User
+        
         batch.set(adminUserRef, {
             username: 'Amministratore',
             password: '070380',
@@ -40,11 +36,9 @@ const setupInitialUsers = async (firestore: Firestore) => {
             visibleInLogin: true,
         });
 
-        // 2. Create Admin Role
         const adminRoleRef = doc(firestore, 'roles_admin', 'admin_user');
         batch.set(adminRoleRef, { isAdmin: true });
 
-        // 3. Create 10 Operator Users
         for (let i = 1; i <= 10; i++) {
             const operatorId = `operator_${i}`;
             const operatorRef = doc(firestore, 'app-users', operatorId);
@@ -167,12 +161,17 @@ export default function LoginForm() {
         if (docSnap.exists() && docSnap.data().password === password) {
             const foundUser = { id: docSnap.id, ...docSnap.data() } as User;
 
-            const userToStore = {
-            id: foundUser.id,
-            username: foundUser.username,
-            role: foundUser.role
+            // This is a mock authentication. In a real app, you'd use Firebase Auth.
+            // For now, we'll pass the user info to the dashboard.
+            const userToAuth = {
+              id: foundUser.id,
+              username: foundUser.username,
+              role: foundUser.role
             };
-            localStorage.setItem('user', JSON.stringify(userToStore));
+            
+            // Instead of localStorage, we'll pass the user object via query params
+            // This is NOT secure for real applications.
+            localStorage.setItem('user', JSON.stringify(userToAuth));
             
             router.push('/dashboard');
         } else {

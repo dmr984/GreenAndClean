@@ -46,6 +46,20 @@ export function OperatorDashboard() {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
 
+  useEffect(() => {
+     if (typeof window !== 'undefined') {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error("Failed to parse user from localStorage", e);
+            }
+        }
+        setIsLoadingUser(false);
+     }
+  }, []);
+  
   const clockingsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return query(
@@ -61,16 +75,6 @@ export function OperatorDashboard() {
   useEffect(() => {
     const timerId = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timerId);
-  }, []);
-  
-  useEffect(() => {
-     if (typeof window !== 'undefined') {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-        setIsLoadingUser(false);
-     }
   }, []);
 
   useEffect(() => {
