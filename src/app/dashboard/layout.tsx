@@ -38,11 +38,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const storedUser = getFromStorage<UserData | null>('user', null);
     if (!storedUser) {
       router.replace('/');
+      // Don't set loading to false, as the redirect will happen
       return; 
     }
     
     setUser(storedUser);
-    setIsLoading(false);
+    setIsLoading(false); // Only set loading to false after user is confirmed
 
     const handleStorageChange = () => {
         const updatedUser = getFromStorage<UserData | null>('user', null);
