@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, writeBatch, getDoc, Firestore } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -19,7 +19,7 @@ type User = {
 };
 
 // This function will run once to set up the initial users if they don't exist.
-const setupInitialUsers = async (firestore: any) => {
+const setupInitialUsers = async (firestore: Firestore) => {
     const adminUserRef = doc(firestore, 'app-users', 'admin_user');
     const adminDoc = await getDoc(adminUserRef);
 
@@ -51,20 +51,19 @@ const setupInitialUsers = async (firestore: any) => {
             });
         }
 
-        try {
-            await batch.commit();
-            console.log("Initial users and roles created successfully.");
-        } catch (err: any) {
-             if (err.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'write',
-                    path: 'setup: /app-users and /roles_admin'
-                });
-                errorEmitter.emit('permission-error', contextualError);
-             } else {
-                console.error("Error setting up initial users:", err);
-             }
-        }
+        batch.commit()
+            .then(() => console.log("Initial users and roles created successfully."))
+            .catch(err => {
+                 if (err.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'write',
+                        path: 'batch-write: setupInitialUsers'
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                 } else {
+                    console.error("Error setting up initial users:", err);
+                 }
+            });
     }
 };
 
