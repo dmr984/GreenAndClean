@@ -8,32 +8,23 @@ import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { useUser } from '@/hooks/use-user';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 
-type UserData = {
-  id: string;
-  username: string;
-  role: 'admin' | 'operator';
-};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
-  const [user, setUser] = useState<UserData | null>(null);
+  const { user, isLoading } = useUser();
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-        setUser(JSON.parse(storedUser));
-    } else {
+    // Redirect to login if not authenticated after loading is finished
+    if (!isLoading && !user) {
         router.replace('/');
     }
-    setIsLoading(false);
-  }, [router]);
-
+  }, [user, isLoading, router]);
 
   const handleLogout = async () => {
     localStorage.removeItem('user');
@@ -53,8 +44,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   
   const showBackButton = pathname !== '/dashboard';
 
-  const renderContent = () => {
-    if (isLoading) {
+  const renderDashboardContent = () => {
+     if (isLoading) {
       return (
         <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-2">
@@ -66,6 +57,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     
     if (!user) {
+        // This case is mostly handled by the redirect, but it's a good fallback
          return (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex flex-col items-center gap-2">
@@ -75,8 +67,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         );
     }
-
-    // Main dashboard page renders one of the dashboards directly
+    
+    // For the main /dashboard route, render the correct dashboard
     if (pathname === '/dashboard') {
         if (user.role === 'admin') {
           return <AdminDashboard user={user} />;
@@ -87,14 +79,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return <div>Ruolo utente non riconosciuto.</div>;
     }
     
-    // For sub-pages, clone the children and pass the user prop
-    // This ensures child pages don't render until user is loaded
-    return React.Children.map(children, child => {
-        if (React.isValidElement(child)) {
-            return React.cloneElement(child as React.ReactElement<any>, { user });
-        }
-        return child;
-    });
+    // For any other sub-page, just render the children
+    return children;
   };
   
   return (
@@ -179,7 +165,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-            {renderContent()}
+            {renderDashboardContent()}
         </main>
     </div>
     </>

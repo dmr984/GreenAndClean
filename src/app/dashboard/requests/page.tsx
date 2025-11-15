@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plane, PlusCircle, Loader2, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -26,13 +26,8 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useUser } from '@/hooks/use-user';
 
-
-type UserData = {
-  id: string;
-  username: string;
-  role: 'admin' | 'operator';
-};
 
 type Request = {
     id: string;
@@ -45,7 +40,8 @@ type Request = {
     reason?: string;
 }
 
-export default function RequestsPage({ user }: { user: UserData | null }) {
+export default function RequestsPage() {
+    const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
     const [requests, setRequests] = useState<Request[]>([]);
@@ -61,7 +57,7 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
 
     useEffect(() => {
         if (!firestore || !user?.id) {
-            if (user !== null) setIsLoading(false);
+            if(!isUserLoading) setIsLoading(false);
             return;
         };
         
@@ -81,7 +77,7 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
         });
 
         return () => unsubscribe();
-    }, [firestore, user, toast]);
+    }, [firestore, user, isUserLoading, toast]);
 
     const resetForm = () => {
         setRequestType('');
@@ -129,7 +125,7 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
         }
     };
     
-    if (isLoading) {
+    if (isLoading || isUserLoading) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -140,7 +136,7 @@ export default function RequestsPage({ user }: { user: UserData | null }) {
     if (!user) {
         return (
             <div className="flex items-center justify-center h-full">
-                <p className="text-muted-foreground">Attendere il caricamento dei dati utente...</p>
+                <p className="text-muted-foreground">Utente non trovato. Riprova il login.</p>
             </div>
         );
     }

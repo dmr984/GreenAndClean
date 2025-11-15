@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
-import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -10,12 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-
-type UserData = {
-  id: string;
-  username: string;
-  role: 'admin' | 'operator';
-};
+import { useUser } from '@/hooks/use-user';
 
 type Request = {
     id: string;
@@ -36,15 +31,15 @@ type Timbratura = {
     status: 'sospesa' | 'confermata';
 };
 
-// The user prop is passed from the layout
-export default function MonthlySummaryPage({ user }: { user: UserData | null }) {
+export default function MonthlySummaryPage() {
+    const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const router = useRouter();
     const { toast } = useToast();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
-    const [isLoadingData, setIsLoadingData] = useState(true);
+    const [isDataLoading, setIsDataLoading] = useState(true);
 
     const { startOfMonth, endOfMonth } = useMemo(() => {
         const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -57,10 +52,14 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
 
     useEffect(() => {
         if (!firestore || !user?.id) {
+            // Wait for user and firestore to be available
+            if (!isUserLoading) {
+                setIsDataLoading(false);
+            }
             return;
         }
 
-        setIsLoadingData(true);
+        setIsDataLoading(true);
 
         const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
@@ -78,12 +77,12 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
-                setIsLoadingData(false); // Stop loading after main data (requests) is fetched
+                setIsDataLoading(false); 
             },
             (error) => {
                 console.error("Error fetching requests:", error);
                 toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive" });
-                setIsLoadingData(false);
+                setIsDataLoading(false);
             }
         );
         
@@ -102,7 +101,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
             unsubscribeRequests();
             unsubscribeTimbrature();
         };
-    }, [firestore, user, startOfMonth, endOfMonth, toast]);
+    }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
         const workedDays = new Set(
@@ -143,7 +142,7 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
         return { value: `${d.getFullYear()}-${String(i+1).padStart(2, '0')}`, label: d.toLocaleString('it-IT', { month: 'long' }) };
     });
 
-    if (isLoadingData) {
+    if (isUserLoading || isDataLoading) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -152,10 +151,9 @@ export default function MonthlySummaryPage({ user }: { user: UserData | null }) 
     }
     
     if (!user) {
-        // This case should ideally be handled by the layout, but as a fallback:
         return (
             <div className="flex items-center justify-center h-full">
-                <p className="text-muted-foreground">Caricamento utente...</p>
+                <p className="text-muted-foreground">Utente non trovato. Effettua nuovamente il login.</p>
             </div>
         );
     }

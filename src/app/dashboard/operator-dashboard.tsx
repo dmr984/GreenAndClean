@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { useUser } from '@/hooks/use-user';
 
 type ClockingEvent = {
     id: string;
@@ -43,10 +44,13 @@ type UserData = {
 };
 
 interface OperatorDashboardProps {
-  user: UserData | null;
+  user: UserData | null; // This prop is now coming from the layout, but we will transition to the hook
 }
 
-export function OperatorDashboard({ user }: OperatorDashboardProps) {
+export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
+  const { user: hookUser, isLoading: isUserLoading } = useUser();
+  const user = propUser || hookUser;
+
   const [time, setTime] = useState(new Date());
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -262,7 +266,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
       handleClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
 
-  if (!user) {
+  if (isUserLoading) {
       return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
   }
 

@@ -29,12 +29,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-type UserData = {
-  id: string;
-  username: string;
-  role: 'admin' | 'operator';
-};
+import { useUser } from '@/hooks/use-user';
 
 type Operator = {
     id: string;
@@ -46,7 +41,8 @@ type Operator = {
 };
 
 // The user prop is passed from the layout
-export default function ManageOperatorsPage({ user }: { user: UserData | null }) {
+export default function ManageOperatorsPage() {
+    const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
     const [operators, setOperators] = useState<Operator[]>([]);
@@ -111,17 +107,16 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
 
         const generatedUsername = `${newFirstName} ${newLastName}`;
         
-        try {
-            const newOperatorDoc = {
-                username: generatedUsername,
-                role: 'operator',
-                visibleInLogin: true,
-                firstName: newFirstName,
-                lastName: newLastName,
-            };
-            
-            await addDoc(collection(firestore, 'app-users'), newOperatorDoc);
-
+        const newOperatorDoc = {
+            username: generatedUsername,
+            role: 'operator',
+            visibleInLogin: true,
+            firstName: newFirstName,
+            lastName: newLastName,
+        };
+        
+        addDoc(collection(firestore, 'app-users'), newOperatorDoc)
+          .then(() => {
             toast({
                 title: "Successo",
                 description: `Operatore "${generatedUsername}" aggiunto.`
@@ -129,7 +124,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
             setIsAddDialogOpen(false);
             setNewFirstName("");
             setNewLastName("");
-        } catch (error: any) {
+          }).catch((error: any) => {
             console.error("Error adding operator:", error);
             if (error.code === 'permission-denied') {
                  const contextualError = new FirestorePermissionError({
@@ -145,7 +140,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                     variant: "destructive",
                 });
             }
-        }
+        });
     };
 
     const handleEditOperator = async (e: React.FormEvent) => {
@@ -162,60 +157,59 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
             lastName: editingLastName,
         };
 
-        try {
-            await updateDoc(operatorRef, updatePayload);
-            toast({
-                title: "Successo",
-                description: "Dati operatore aggiornati."
+        updateDoc(operatorRef, updatePayload)
+            .then(() => {
+                toast({
+                    title: "Successo",
+                    description: "Dati operatore aggiornati."
+                });
+                setIsEditDialogOpen(false);
+                setSelectedOperator(null);
+            }).catch((error: any) => {
+                 if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'update',
+                        path: operatorRef.path,
+                        requestResourceData: updatePayload
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                     toast({
+                        title: "Errore",
+                        description: "Impossibile aggiornare l'operatore.",
+                        variant: "destructive",
+                    });
+                }
             });
-            setIsEditDialogOpen(false);
-            setSelectedOperator(null);
-        } catch (error: any) {
-             if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'update',
-                    path: operatorRef.path,
-                    requestResourceData: updatePayload
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                 toast({
-                    title: "Errore",
-                    description: "Impossibile aggiornare l'operatore.",
-                    variant: "destructive",
-                });
-            }
-        }
     };
 
     const handleDeleteOperator = async () => {
         if (!firestore || !operatorToDelete) return;
 
         const operatorRef = doc(firestore, 'app-users', operatorToDelete.id);
-        try {
-            await deleteDoc(operatorRef);
-
-            toast({
-                title: "Successo",
-                description: `Operatore "${operatorToDelete.username}" eliminato.`
+        deleteDoc(operatorRef)
+            .then(() => {
+                toast({
+                    title: "Successo",
+                    description: `Operatore "${operatorToDelete.username}" eliminato.`
+                });
+            }).catch((error: any) => {
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'delete',
+                        path: operatorRef.path,
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                     toast({
+                        title: "Errore",
+                        description: "Impossibile eliminare l'operatore.",
+                        variant: "destructive",
+                    });
+                }
+            }).finally(() => {
+                setOperatorToDelete(null);
             });
-        } catch (error: any) {
-            if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'delete',
-                    path: operatorRef.path,
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                 toast({
-                    title: "Errore",
-                    description: "Impossibile eliminare l'operatore.",
-                    variant: "destructive",
-                });
-            }
-        } finally {
-            setOperatorToDelete(null);
-        }
     };
 
 
@@ -242,6 +236,14 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                 }
             });
     };
+    
+    if (isUserLoading) {
+        return (
+             <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
     
     if (!user || user.role !== 'admin') {
         return (
