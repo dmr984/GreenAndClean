@@ -11,6 +11,10 @@ import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
+import { useAuth } from '@/firebase';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { useFirestore }from '@/firebase';
 
 
 type UserData = {
@@ -23,51 +27,51 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const auth = useAuth();
+  const firestore = useFirestore();
   const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
-      router.replace('/');
-      return; 
-    }
-    
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-    } catch(e) {
-      router.replace('/');
-      return;
-    } finally {
-        setIsLoading(false);
-    }
-    
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'user') {
-        if (!e.newValue) {
-          router.replace('/');
+    if (!auth || !firestore) return;
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+      if (firebaseUser) {
+        // User is signed in, get custom data from Firestore
+        const userDocRef = doc(firestore, 'app-users', firebaseUser.uid);
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists()) {
+          const appUser = { id: docSnap.id, ...docSnap.data() } as UserData;
+          setUser(appUser);
+          localStorage.setItem('user', JSON.stringify(appUser)); // For legacy access if needed, but primary auth is now state
         } else {
-          setUser(JSON.parse(e.newValue));
+          // User exists in Auth but not in Firestore, something is wrong
+          signOut(auth); // Log them out
         }
+      } else {
+        // User is signed out
+        setUser(null);
+        localStorage.removeItem('user');
+        router.replace('/');
       }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+      setIsLoading(false);
+    });
 
-  }, [router]);
+    return () => unsubscribe();
+  }, [auth, firestore, router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    router.replace('/');
+
+  const handleLogout = async () => {
+    if (!auth) return;
+    await signOut(auth);
+    // The onAuthStateChanged listener will handle the redirect
   }
 
   const getAvatarFallback = () => {
      if (user?.username) {
         const parts = user.username.split(' ');
-        if (parts.length > 1) {
+        if (parts.length > 1 && parts[0] && parts[1]) {
             return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
         }
         return user.username.substring(0, 2).toUpperCase();
@@ -107,7 +111,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return <OperatorDashboard user={user} />;
     }
     
-    return null; // or a fallback component
+    // If no user, show loading or redirect. The listener should handle redirect.
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground">Verifica autenticazione...</p>
+        </div>
+      </div>
+    );
   };
   
   return (

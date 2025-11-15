@@ -3,16 +3,26 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Briefcase } from 'lucide-react';
 import LoginForm from '@/components/login-form';
+import { useAuth } from '@/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function LoginPage() {
   const router = useRouter();
+  const auth = useAuth();
 
   useEffect(() => {
-    // Se l'utente è già loggato, reindirizza al dashboard
-    if (localStorage.getItem('user')) {
-      router.push('/dashboard');
-    }
-  }, [router]);
+    // If the user is already logged in, redirect to the dashboard
+     if (!auth) return;
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        router.push('/dashboard');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router, auth]);
+
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">

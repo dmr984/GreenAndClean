@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore, FirestorePermissionError, errorEmitter } from "@/firebase";
+import { useFirestore, useAuth, FirestorePermissionError, errorEmitter } from "@/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+
 
 interface ChangeCodeDialogProps {
     isOpen: boolean;
@@ -21,6 +23,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
     const [newPassword, setNewPassword] = React.useState("");
     const [confirmPassword, setConfirmPassword] = React.useState("");
     const firestore = useFirestore();
+    const auth = useAuth();
 
     React.useEffect(() => {
         if (isOpen && userId) {
@@ -32,62 +35,59 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
 
     const handleSettingsChange = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        const currentUser = auth?.currentUser;
+
+        if (!currentUser || !userId || !firestore) {
+             toast({ variant: "destructive", title: "Errore", description: "Utente o database non trovato." });
+             return;
+        }
         
         if (newPassword && newPassword !== confirmPassword) {
             toast({ variant: "destructive", title: "Errore", description: "Le nuove password non corrispondono." });
             return;
         }
-        
-        if (!userId || !firestore) {
-             toast({ variant: "destructive", title: "Errore", description: "Utente o database non trovato." });
-             return;
-        }
 
-        const userDocRef = doc(firestore, 'app-users', userId);
-        
-        const updates: { username?: string, password?: string } = {};
-        if (username) {
-            updates.username = username;
-        }
-        if (newPassword) {
-            updates.password = newPassword;
-        }
+        try {
+            // Update Firestore document (for username)
+            const userDocRef = doc(firestore, 'app-users', userId);
+            const updates: { username?: string } = {};
+            if (username) {
+                updates.username = username;
+            }
 
-        if (Object.keys(updates).length === 0) {
-             toast({ variant: "default", title: "Nessuna modifica", description: "Non hai apportato modifiche." });
-             resetAndClose();
-             return;
-        }
-
-        updateDoc(userDocRef, updates)
-            .then(() => {
-                // Update local storage
+            if (Object.keys(updates).length > 0) {
+                 await updateDoc(userDocRef, updates);
+                 // Update local storage for immediate UI feedback
                 const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
                 const updatedUser = { ...storedUser, username: username };
                 localStorage.setItem('user', JSON.stringify(updatedUser));
-                
                 window.dispatchEvent(new Event('storage')); // Trigger re-renders
+            }
 
-                toast({ title: "Profilo Aggiornato", description: "Le tue impostazioni sono state salvate." });
-                
-                resetAndClose();
-            })
-            .catch((error: any) => {
-                if (error.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'update',
-                        path: userDocRef.path,
-                        requestResourceData: updates
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                     toast({ 
+            // Update password in Firebase Auth
+            if (newPassword) {
+                await updatePassword(currentUser, newPassword);
+            }
+
+            toast({ title: "Profilo Aggiornato", description: "Le tue impostazioni sono state salvate." });
+            resetAndClose();
+
+        } catch (error: any) {
+             console.error("Error updating profile:", error);
+             if (error.code === 'auth/requires-recent-login') {
+                  toast({ 
                         variant: "destructive", 
-                        title: "Errore", 
-                        description: "Si è verificato un errore durante il salvataggio."
+                        title: "Sessione Scaduta", 
+                        description: "Per favore, effettua nuovamente il login per modificare la password."
                     });
-                }
-            });
+             } else {
+                 toast({ 
+                    variant: "destructive", 
+                    title: "Errore", 
+                    description: "Si è verificato un errore durante il salvataggio."
+                });
+             }
+        }
     }
     
     const resetAndClose = () => {

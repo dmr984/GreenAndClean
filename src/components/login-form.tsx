@@ -6,14 +6,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, getDoc, writeBatch, setDoc } from 'firebase/firestore';
+import { useFirestore, useAuth, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { collection, getDocs, query, where, doc, onSnapshot, writeBatch, setDoc, getDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+
 
 type User = {
   id: string;
   username: string;
-  password?: string;
+  email: string;
   role: 'admin' | 'operator';
   visibleInLogin?: boolean;
 };
@@ -22,6 +24,7 @@ export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
+  const auth = useAuth();
   const [isLoading, setIsLoading] = React.useState(true); 
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState('');
@@ -34,50 +37,55 @@ export default function LoginForm() {
 
 
   useEffect(() => {
-    if (!firestore) {
+    if (!firestore || !auth) {
         setIsLoading(false);
         return;
     };
 
-    // This function ensures the admin user exists and has the correct password.
+    // This function ensures the admin user exists in Auth and Firestore.
     const setupInitialAdmin = async () => {
-        const adminId = 'admin_user';
+        const adminId = 'admin_user'; // A fixed, known ID for the admin
+        const adminEmail = 'admin@serveco.it';
+        const adminPassword = '0000';
 
         const adminDocRef = doc(firestore, 'app-users', adminId);
         const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
 
         try {
-            const batch = writeBatch(firestore);
-            
-            // Set/update the main admin user document
-            batch.set(adminDocRef, {
-                username: "Amministratore",
-                password: "0000",
-                role: "admin",
-                visibleInLogin: true,
-                firstName: "Admin",
-                lastName: "User",
-                email: "admin@serveco.it"
-            }, { merge: true }); // Use merge to avoid overwriting if it exists
+            const adminDocSnap = await getDoc(adminDocRef);
+            if (!adminDocSnap.exists()) {
+                // Admin does not exist, let's create it in Auth and Firestore
+                try {
+                    // Try to create the auth user. If it fails because it already exists, that's fine.
+                    await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+                } catch (error: any) {
+                    if (error.code !== 'auth/email-already-in-use') {
+                        throw error; // Re-throw other auth errors
+                    }
+                    // If user already exists in Auth, we can proceed.
+                }
 
-            // Set/update the admin role document
-            batch.set(adminRoleDocRef, {
-                email: "admin@serveco.it",
-                firstName: "Admin",
-                lastName: "User",
-            }, { merge: true });
-
-            await batch.commit();
-
-        } catch (error: any) {
-            if (error.code === 'permission-denied') {
-                 const contextualError = new FirestorePermissionError({
-                    operation: 'write', // set with merge can be create or update
-                    path: adminDocRef.path,
+                // Now create the Firestore documents
+                const batch = writeBatch(firestore);
+                batch.set(adminDocRef, {
+                    username: "Amministratore",
+                    role: "admin",
+                    visibleInLogin: true,
+                    firstName: "Admin",
+                    lastName: "User",
+                    email: adminEmail,
                 });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                console.error("Error setting up initial admin:", error);
+                batch.set(adminRoleDocRef, {
+                    email: adminEmail,
+                    firstName: "Admin",
+                    lastName: "User",
+                });
+                await batch.commit();
+            }
+        } catch (error: any) {
+            console.error("Error setting up initial admin:", error);
+            // Don't show toast for permission errors during setup, as they are expected if rules are strict
+            if (error.code !== 'permission-denied') {
                  toast({
                     title: "Errore di Configurazione Iniziale",
                     description: "Impossibile configurare l'utente amministratore.",
@@ -98,8 +106,8 @@ export default function LoginForm() {
         });
 
         userList.sort((a, b) => {
-            if (a.id === 'admin_user') return -1;
-            if (b.id === 'admin_user') return 1;
+            if (a.role === 'admin') return -1;
+            if (b.role === 'admin') return 1;
             return a.username.localeCompare(b.username, undefined, { numeric: true });
         });
 
@@ -107,11 +115,8 @@ export default function LoginForm() {
         setIsLoading(false);
     }, (error) => {
         if (error.code === 'permission-denied' && firestore) {
-            const contextualError = new FirestorePermissionError({
-                operation: 'list',
-                path: 'app-users'
-            });
-            errorEmitter.emit('permission-error', contextualError);
+            // This error is expected for non-authed users, so we can ignore it or log it quietly.
+            console.log("Permission denied fetching users for login, this is expected for non-authed users.");
         } else {
             console.error("Error fetching users for login:", error);
             toast({
@@ -120,75 +125,48 @@ export default function LoginForm() {
                 variant: "destructive",
             });
         }
+        // It's important to set loading to false even on error
         setIsLoading(false);
     });
     
     return () => unsubscribe();
-  }, [usersQuery, toast, firestore]);
+  }, [usersQuery, toast, firestore, auth]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
 
     if (!selectedUserId || !password) {
-      toast({
-        variant: "destructive",
-        title: "Campi mancanti",
-        description: "Seleziona un utente e inserisci la password.",
-      });
+      toast({ variant: "destructive", title: "Campi mancanti", description: "Seleziona un utente e inserisci la password." });
       setIsLoading(false);
       return;
+    }
+    
+    if (!auth) {
+       toast({ variant: "destructive", title: "Errore di sistema", description: "Servizio di autenticazione non disponibile." });
+       setIsLoading(false);
+       return;
+    }
+    
+    const selectedUser = users.find(u => u.id === selectedUserId);
+    if (!selectedUser) {
+        toast({ variant: "destructive", title: "Errore", description: "Utente selezionato non valido." });
+        setIsLoading(false);
+        return;
     }
 
-    if (!firestore) {
-      toast({
-        variant: "destructive",
-        title: "Errore di sistema",
-        description: "Database non disponibile. Riprova più tardi.",
-      });
-      setIsLoading(false);
-      return;
-    }
-    
-    const userDocRef = doc(firestore, 'app-users', selectedUserId);
-    
     try {
-        const docSnap = await getDoc(userDocRef);
-        if (docSnap.exists() && docSnap.data().password === password) {
-            const foundUser = { id: docSnap.id, ...docSnap.data() } as User;
-
-            const userToAuth = {
-              id: foundUser.id,
-              username: foundUser.username,
-              role: foundUser.role
-            };
-            
-            localStorage.setItem('user', JSON.stringify(userToAuth));
-            
-            router.push('/dashboard');
-        } else {
-            toast({
+        await signInWithEmailAndPassword(auth, selectedUser.email, password);
+        // On successful sign-in, the onAuthStateChanged listener in the layout will handle the redirect.
+        // No need to call router.push here.
+    } catch (error: any) {
+        console.error("Login failed:", error.code);
+        toast({
             variant: "destructive",
             title: "Credenziali non valide",
             description: "Il nome utente o la password non sono corretti. Riprova.",
-            });
-            setIsLoading(false);
-        }
-    } catch (error: any) {
-       if (error.code === 'permission-denied') {
-          const contextualError = new FirestorePermissionError({
-              operation: 'get',
-              path: userDocRef.path
-          });
-          errorEmitter.emit('permission-error', contextualError);
-       } else {
-           toast({
-              variant: "destructive",
-              title: "Errore di Accesso",
-              description: "Si è verificato un problema durante il login.",
-            });
-       }
-       setIsLoading(false);
+        });
+        setIsLoading(false);
     }
   };
 
@@ -219,3 +197,14 @@ export default function LoginForm() {
     </form>
   );
 }
+
+
+// Helper to useMemoize a query, to prevent re-renders
+const useMemoFirebase = <T,>(factory: () => T, deps: React.DependencyList): T => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const memoized = React.useMemo(factory, deps);
+    if (typeof memoized === 'object' && memoized !== null) {
+      (memoized as any).__memo = true;
+    }
+    return memoized;
+};
