@@ -51,7 +51,7 @@ export default function LoginForm() {
 
             if (adminSnapshot.empty) {
                 // Admin does not exist, create it
-                await addDoc(collection(firestore, 'app-users'), {
+                const newAdminData = {
                     username: adminUsername,
                     password: adminPassword,
                     role: adminRole,
@@ -59,8 +59,26 @@ export default function LoginForm() {
                     firstName: "Admin",
                     lastName: "User",
                     email: "admin@serveco.it"
+                };
+                addDoc(collection(firestore, 'app-users'), newAdminData)
+                 .catch(error => {
+                    if (error.code === 'permission-denied') {
+                        const contextualError = new FirestorePermissionError({
+                            operation: 'create',
+                            path: 'app-users',
+                            requestResourceData: newAdminData,
+                        });
+                        errorEmitter.emit('permission-error', contextualError);
+                    } else {
+                        console.error("Error creating initial admin:", error);
+                        toast({
+                            title: "Errore di Configurazione Iniziale",
+                            description: "Impossibile creare l'utente amministratore.",
+                            variant: "destructive",
+                        });
+                    }
                 });
-                console.log(`User "${adminUsername}" created.`);
+
             } else {
                 // Admin exists, check and update password if necessary
                 const adminDoc = adminSnapshot.docs[0];
@@ -68,20 +86,29 @@ export default function LoginForm() {
                     const batch = writeBatch(firestore);
                     batch.update(adminDoc.ref, { password: adminPassword });
                     await batch.commit();
-                    console.log(`Password for "${adminUsername}" has been reset.`);
                 }
             }
-        } catch (error) {
-            console.error("Error setting up initial admin:", error);
-             toast({
-                title: "Errore di Configurazione Iniziale",
-                description: "Impossibile configurare l'utente amministratore.",
-                variant: "destructive",
-            });
+        } catch (error: any) {
+            if (error.code === 'permission-denied') {
+                 const contextualError = new FirestorePermissionError({
+                    operation: 'list', // getDocs is a 'list' operation
+                    path: 'app-users',
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                console.error("Error setting up initial admin:", error);
+                 toast({
+                    title: "Errore di Configurazione Iniziale",
+                    description: "Impossibile configurare l'utente amministratore.",
+                    variant: "destructive",
+                });
+            }
         }
     };
 
     setupInitialAdmin();
+
+    if (!usersQuery) return;
 
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
@@ -92,6 +119,7 @@ export default function LoginForm() {
         userList.sort((a, b) => {
             if (a.role === 'admin') return -1;
             if (b.role === 'admin') return 1;
+            // Simplified sort assuming format is "Operatore X"
             const aNum = parseInt(a.username.split(' ')[1] || '0');
             const bNum = parseInt(b.username.split(' ')[1] || '0');
             return aNum - bNum;
