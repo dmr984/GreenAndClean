@@ -2,17 +2,13 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Settings, Users, Clock, Home, Loader2 } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Settings, Users, Home, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { AdminDashboard } from './admin-dashboard';
-import { OperatorDashboard } from './operator-dashboard';
-import ManageOperatorsPage from './operators/page';
-
 
 type UserData = {
   id: string;
