@@ -3,7 +3,6 @@
 import React from 'react';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
-import { useRouter } from 'next/navigation';
 
 
 type UserData = {
@@ -15,13 +14,14 @@ type UserData = {
 // The user prop is passed down from DashboardLayout
 export default function Dashboard({ user }: { user: UserData | null }) {
 
-  if (!user) {
-    return <div className="flex items-center justify-center h-full">Caricamento...</div>;
-  }
-
-  if (user.role === 'admin') {
+  if (user?.role === 'admin') {
     return <AdminDashboard user={user} />;
   }
+  
+  if (user?.role === 'operator') {
+    return <OperatorDashboard user={user} />;
+  }
 
-  return <OperatorDashboard user={user} />;
+  // Fallback or loading state is handled by the layout
+  return null;
 }
