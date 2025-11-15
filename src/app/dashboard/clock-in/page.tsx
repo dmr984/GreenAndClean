@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Clock, Play, Pause, Square, History, MapPin, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useMemoFirebase, useCollection } from '@/firebase';
+import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +25,7 @@ type UserData = {
   role: 'admin' | 'operator';
 };
 
-export default function ClockInPage() {
+export function OperatorDashboard() {
   const [time, setTime] = useState(new Date());
   const [user, setUser] = useState<UserData | null>(null);
   const [isClockedIn, setIsClockedIn] = useState(false);
@@ -37,12 +37,10 @@ export default function ClockInPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
 
-  // Get today's date at midnight
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayTimestamp = Timestamp.fromDate(today);
 
-  // Get tomorrow's date at midnight
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
@@ -92,7 +90,6 @@ export default function ClockInPage() {
     }
   }, [clockings]);
   
-
   const getLocation = (): Promise<{ latitude: number, longitude: number }> => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -142,26 +139,44 @@ export default function ClockInPage() {
       const currentLoc = await getLocation();
       
       const timbraturaRef = collection(firestore, `app-users/${user.id}/timbrature`);
-      
-      await addDoc(timbraturaRef, {
+      const newTimbratura = {
         userId: user.id,
         type,
         timestamp: serverTimestamp(),
         status: 'sospesa',
         latitude: currentLoc.latitude,
         longitude: currentLoc.longitude,
-      });
-
-      toast({
-        title: "Successo!",
-        description: `Timbratura di ${type} registrata correttamente.`,
-      });
+      };
+      
+      addDoc(timbraturaRef, newTimbratura)
+        .then(() => {
+             toast({
+                title: "Successo!",
+                description: `Timbratura di ${type} registrata correttamente.`,
+              });
+        })
+        .catch(err => {
+            if (err.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'create',
+                    path: timbraturaRef.path,
+                    requestResourceData: newTimbratura
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                 toast({
+                    variant: 'destructive',
+                    title: 'Errore di Timbratura',
+                    description: "Non è stato possibile registrare la timbratura.",
+                });
+            }
+        });
 
     } catch (error: any) {
       toast({
         variant: 'destructive',
-        title: 'Errore di Timbratura',
-        description: error.message || "Non è stato possibile registrare la timbratura.",
+        title: 'Errore di Geolocalizzazione',
+        description: error.message || "Non è stato possibile ottenere la posizione.",
       });
     } finally {
         setIsProcessing(false);
@@ -193,9 +208,11 @@ export default function ClockInPage() {
             <Button className="w-full" size="lg" disabled={isClockedIn || isProcessing} onClick={() => handleClocking('entrata')}>
                 <Play className="mr-2 h-5 w-5"/> {isProcessing && !isClockedIn ? <Loader2 className="animate-spin" /> : 'Entrata'}
             </Button>
-            <Button className="w-full" size="lg" variant="outline" disabled={!isClockedIn || isProcessing} onClick={() => handleClocking(isOnBreak ? 'fine_pausa' : 'pausa')}>
-                {isOnBreak ? <Play className="mr-2 h-5 w-5"/> : <Pause className="mr-2 h-5 w-5"/>}
-                {isProcessing && isClockedIn && !isOnBreak ? <Loader2 className="animate-spin" /> : (isOnBreak ? 'Fine Pausa' : 'Pausa')}
+            <Button className="w-full" size="lg" variant="outline" disabled={!isClockedIn || isOnBreak || isProcessing} onClick={() => handleClocking('pausa')}>
+                <Pause className="mr-2 h-5 w-5"/> {isProcessing && isClockedIn && !isOnBreak ? <Loader2 className="animate-spin" /> : 'Pausa'}
+            </Button>
+            <Button className="w-full" size="lg" variant="outline" disabled={!isClockedIn || !isOnBreak || isProcessing} onClick={() => handleClocking('fine_pausa')}>
+                <Play className="mr-2 h-5 w-5"/> {isProcessing && isOnBreak ? <Loader2 className="animate-spin" /> : 'Fine Pausa'}
             </Button>
             <Button className="w-full" size="lg" variant="destructive" disabled={!isClockedIn || isOnBreak || isProcessing} onClick={() => handleClocking('uscita')}>
                 <Square className="mr-2 h-5 w-5"/> {isProcessing && isClockedIn && !isOnBreak ? <Loader2 className="animate-spin" /> : 'Uscita'}
