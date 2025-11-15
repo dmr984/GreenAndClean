@@ -33,6 +33,7 @@ export function OperatorDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [location, setLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -45,30 +46,35 @@ export function OperatorDashboard() {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
 
+  useEffect(() => {
+     if (typeof window !== 'undefined') {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error("Failed to parse user from localStorage", e);
+            }
+        }
+        setIsLoadingUser(false);
+     }
+  }, []);
+  
   const clockingsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.id) return null;
+    if (!firestore || !user?.id || isLoadingUser) return null;
     return query(
       collection(firestore, `app-users/${user.id}/timbrature`),
       where('timestamp', '>=', todayTimestamp),
       where('timestamp', '<', tomorrowTimestamp),
       orderBy('timestamp', 'desc')
     );
-  }, [firestore, user?.id, todayTimestamp, tomorrowTimestamp]);
+  }, [firestore, user?.id, todayTimestamp, tomorrowTimestamp, isLoadingUser]);
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
   useEffect(() => {
     const timerId = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timerId);
-  }, []);
-  
-  useEffect(() => {
-     if (typeof window !== 'undefined') {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-     }
   }, []);
 
   useEffect(() => {
@@ -189,6 +195,10 @@ export function OperatorDashboard() {
     return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
 
+  if (isLoadingUser) {
+      return <div className="flex items-center justify-center h-full">Caricamento...</div>;
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -228,7 +238,7 @@ export function OperatorDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-           {isLoadingClockings ? (
+           {isLoadingClockings || isLoadingUser ? (
              <div className="flex justify-center items-center h-24">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>

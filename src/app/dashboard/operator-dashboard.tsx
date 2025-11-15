@@ -61,14 +61,14 @@ export function OperatorDashboard() {
   }, []);
   
   const clockingsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.id) return null;
+    if (!firestore || !user?.id || isLoadingUser) return null;
     return query(
       collection(firestore, `app-users/${user.id}/timbrature`),
       where('timestamp', '>=', todayTimestamp),
       where('timestamp', '<', tomorrowTimestamp),
       orderBy('timestamp', 'desc')
     );
-  }, [firestore, user?.id, todayTimestamp, tomorrowTimestamp]);
+  }, [firestore, user?.id, todayTimestamp, tomorrowTimestamp, isLoadingUser]);
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
@@ -238,7 +238,7 @@ export function OperatorDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-           {isLoadingClockings ? (
+           {isLoadingClockings || isLoadingUser ? (
              <div className="flex justify-center items-center h-24">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>
