@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plane, PlusCircle, Loader2, List } from 'lucide-react';
+import { Plane, PlusCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -34,8 +34,8 @@ type Request = {
     userId: string;
     type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
     status: 'in_attesa' | 'approvato' | 'rifiutato';
-    startDate: { toDate: () => Date };
-    endDate: { toDate: () => Date };
+    startDate: Timestamp;
+    endDate: Timestamp;
     hours?: number;
     reason?: string;
 }
@@ -45,7 +45,7 @@ export default function RequestsPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [requests, setRequests] = useState<Request[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
     // Form state
@@ -54,13 +54,15 @@ export default function RequestsPage() {
     const [endDate, setEndDate] = useState<Date | undefined>();
     const [hours, setHours] = useState<string>('');
     const [reason, setReason] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (!firestore || !user?.id) {
-            if(!isUserLoading) setIsLoading(false);
+            if(!isUserLoading) setIsLoadingData(false);
             return;
         };
         
+        setIsLoadingData(true);
         const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
             orderBy('startDate', 'desc')
@@ -69,10 +71,10 @@ export default function RequestsPage() {
         const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
             setRequests(data);
-            setIsLoading(false);
+            setIsLoadingData(false);
         }, (error) => {
             console.error("Error fetching requests:", error);
-            if (error.code === 'permission-denied') {
+            if (error.code === 'permission-denied' && firestore) {
                 const contextualError = new FirestorePermissionError({
                     operation: 'list',
                     path: `app-users/${user.id}/requests`,
@@ -81,7 +83,7 @@ export default function RequestsPage() {
             } else {
                 toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive" });
             }
-            setIsLoading(false);
+            setIsLoadingData(false);
         });
 
         return () => unsubscribe();
@@ -93,21 +95,42 @@ export default function RequestsPage() {
         setEndDate(undefined);
         setHours('');
         setReason('');
+        setIsSubmitting(false);
     };
+
+    const validateForm = () => {
+        if (!requestType || !startDate) {
+            toast({ title: "Campi Mancanti", description: "Tipo di richiesta e data di inizio sono obbligatori.", variant: "destructive" });
+            return false;
+        }
+        if ((requestType === 'permesso' || requestType === 'straordinario') && (!hours || Number(hours) <= 0)) {
+            toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
+            return false;
+        }
+        return true;
+    }
 
     const handleNewRequest = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !user || !requestType || !startDate || !endDate) {
-            toast({ title: "Errore", description: "Compila tutti i campi obbligatori.", variant: "destructive" });
-            return;
+        if (!validateForm() || !firestore || !user) return;
+        
+        setIsSubmitting(true);
+
+        // If no end date is selected, use the start date
+        const finalEndDate = endDate || startDate;
+        
+        if (!startDate || !finalEndDate) {
+             toast({ title: "Errore", description: "Le date non sono valide.", variant: "destructive" });
+             setIsSubmitting(false);
+             return;
         }
 
-        const newRequest = {
+        const newRequestData = {
             userId: user.id,
-            type: requestType,
-            status: 'in_attesa' as 'in_attesa',
+            type: requestType as 'ferie' | 'permesso' | 'malattia' | 'straordinario',
+            status: 'in_attesa' as const,
             startDate: Timestamp.fromDate(startDate),
-            endDate: Timestamp.fromDate(endDate),
+            endDate: Timestamp.fromDate(finalEndDate),
             reason,
             createdAt: serverTimestamp(),
             ...( (requestType === 'permesso' || requestType === 'straordinario') && { hours: Number(hours) } )
@@ -115,27 +138,29 @@ export default function RequestsPage() {
 
         const requestCollectionRef = collection(firestore, `app-users/${user.id}/requests`);
         
-        addDoc(requestCollectionRef, newRequest)
-          .then(() => {
+        try {
+            await addDoc(requestCollectionRef, newRequestData);
             toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
             setIsDialogOpen(false);
             resetForm();
-          }).catch((error: any) => {
+        } catch (error: any) {
             console.error("Error creating request:", error);
-             if (error.code === 'permission-denied') {
+            if (error.code === 'permission-denied') {
                 const contextualError = new FirestorePermissionError({
                     operation: 'create',
                     path: requestCollectionRef.path,
-                    requestResourceData: newRequest
+                    requestResourceData: newRequestData
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
-                toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+                toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
             }
-        });
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     
-    if (isLoading || isUserLoading) {
+    if (isUserLoading || isLoadingData) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -160,9 +185,12 @@ export default function RequestsPage() {
                     <Plane className="h-8 w-8 text-primary" />
                     <CardTitle className="text-3xl font-bold tracking-tight">Gestione Richieste</CardTitle>
                 </div>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                    if (!open) resetForm();
+                    setIsDialogOpen(open);
+                }}>
                     <DialogTrigger asChild>
-                        <Button onClick={() => resetForm()}>
+                        <Button>
                             <PlusCircle className="mr-2 h-4 w-4" /> Nuova Richiesta
                         </Button>
                     </DialogTrigger>
@@ -199,7 +227,7 @@ export default function RequestsPage() {
                                                 className={cn("col-span-3 justify-start text-left font-normal", !startDate && "text-muted-foreground")}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {startDate ? format(startDate, "PPP") : <span>Scegli una data</span>}
+                                                {startDate ? format(startDate, "PPP", { locale: require('date-fns/locale/it') }) : <span>Scegli una data</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
@@ -217,18 +245,18 @@ export default function RequestsPage() {
                                                 className={cn("col-span-3 justify-start text-left font-normal", !endDate && "text-muted-foreground")}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {endDate ? format(endDate, "PPP") : <span>Scegli una data</span>}
+                                                {endDate ? format(endDate, "PPP", { locale: require('date-fns/locale/it') }) : <span>Scegli una data (opzionale)</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
-                                            <Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus />
+                                            <Calendar mode="single" selected={endDate} onSelect={setEndDate} disabled={{ before: startDate }} initialFocus />
                                         </PopoverContent>
                                      </Popover>
                                 </div>
                                  {(requestType === 'permesso' || requestType === 'straordinario') && (
                                      <div className="grid grid-cols-4 items-center gap-4">
                                         <Label htmlFor="hours" className="text-right">Ore</Label>
-                                        <Input id="hours" type="number" value={hours} onChange={(e) => setHours(e.target.value)} className="col-span-3" placeholder='Es: 2.5' />
+                                        <Input id="hours" type="number" value={hours} onChange={(e) => setHours(e.target.value)} className="col-span-3" placeholder='Es: 2.5' required min="0.5" step="0.5" />
                                     </div>
                                  )}
                                 <div className="grid grid-cols-4 items-start gap-4">
@@ -237,7 +265,11 @@ export default function RequestsPage() {
                                 </div>
                             </div>
                             <DialogFooter>
-                                <Button type="submit">Invia Richiesta</Button>
+                                <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>Annulla</Button>
+                                <Button type="submit" disabled={isSubmitting}>
+                                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                                    Invia Richiesta
+                                </Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>
