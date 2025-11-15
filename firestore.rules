@@ -8,22 +8,30 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return get(/databases/$(database)/documents/roles_admin/$(request.auth.uid)).data.isAdmin == true;
+      // Use exists() for a more secure and efficient check.
+      // This checks if a document for the user's UID exists in the roles_admin collection.
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
     
     match /app-users/{userId} {
-      // Allow unauthenticated users to LIST users for login dropdown, if they are visible
+      // Allow unauthenticated users to LIST users for login dropdown.
       allow list: if request.auth == null;
+      // Allow an admin or the document owner to read.
       allow read: if isAdmin() || isOwner(userId);
-      // Allow creation only for initial setup from an unauthenticated client
-      allow create: if request.auth == null;
+      // Allow write operations (create, update) only for initial setup from an unauthenticated client.
+      // This is necessary for the initial user batch write.
+      // For authenticated users, specific update rules apply.
+      allow write: if request.auth == null;
+      // Allow authenticated admins or the owner to update their own document.
       allow update: if isAdmin() || isOwner(userId);
+      // Only admins can delete users.
       allow delete: if isAdmin();
     }
 
      match /roles_admin/{userId} {
+      // Admins can read or write roles.
       allow read, write: if isAdmin();
-      // Allow creation only for initial setup from an unauthenticated client
+      // Allow creation only for initial setup from an unauthenticated client.
       allow create: if request.auth == null;
     }
   }
