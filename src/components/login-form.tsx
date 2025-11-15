@@ -115,12 +115,16 @@ export default function LoginForm() {
 
       } catch (creationError: any) {
            console.error("Failed to create admin user during login flow:", creationError);
-            toast({
+           // If admin already exists in Auth but maybe not in DB, this will fail.
+           // The login flow will handle this.
+           if (creationError.code !== 'auth/email-already-in-use') {
+             toast({
                 variant: "destructive",
                 title: "Errore Critico",
                 description: "Impossibile creare l'utente amministratore iniziale.",
             });
             setIsLoading(false);
+           }
       }
   }
 
@@ -152,9 +156,11 @@ export default function LoginForm() {
         await signInWithEmailAndPassword(auth, selectedUser.email, password);
         // On successful sign-in, the onAuthStateChanged listener in the layout will handle the redirect.
     } catch (error: any) {
-        if (error.code === 'auth/user-not-found' && selectedUser.email === 'admin@serveco.it') {
+        // If login fails because user doesn't exist OR credentials are bad for the admin, try creating it.
+        // This handles the very first run of the application.
+        if (selectedUser.email === 'admin@serveco.it' && (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential')) {
             await createAdminAndLogin();
-            return;
+            return; // The createAdminAndLogin function will handle the subsequent signIn.
         }
 
         console.error("Login failed:", error.code);
