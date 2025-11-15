@@ -21,10 +21,15 @@ type User = {
 // This function will run once to set up the initial users if they don't exist.
 const setupInitialUsers = async (firestore: Firestore) => {
     const adminUserRef = doc(firestore, 'app-users', 'admin_user');
-    const adminDoc = await getDoc(adminUserRef);
+    const adminDoc = await getDoc(adminUserRef).catch(err => {
+        // This initial read might fail if rules are very restrictive.
+        // We'll let the batch write fail and be caught below, which is more specific.
+        console.warn("Could not check for admin user, proceeding with setup. Error:", err.message);
+        return null; // Return a null-like object so the code proceeds.
+    });
 
-    // Only run setup if admin user doesn't exist
-    if (!adminDoc.exists()) {
+    // Only run setup if admin user doesn't exist or we couldn't check
+    if (!adminDoc || !adminDoc.exists()) {
         const batch = writeBatch(firestore);
 
         // 1. Create Admin User
@@ -51,10 +56,7 @@ const setupInitialUsers = async (firestore: Firestore) => {
             });
         }
 
-        try {
-            await batch.commit();
-            console.log("Initial users and roles created successfully.");
-        } catch(err: any) {
+        await batch.commit().catch(err => {
              if (err.code === 'permission-denied') {
                 const contextualError = new FirestorePermissionError({
                     operation: 'write',
@@ -64,7 +66,7 @@ const setupInitialUsers = async (firestore: Firestore) => {
              } else {
                 console.error("Error setting up initial users:", err);
              }
-        }
+        });
     }
 };
 
