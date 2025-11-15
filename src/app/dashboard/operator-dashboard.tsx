@@ -33,6 +33,7 @@ export function OperatorDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [location, setLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -68,6 +69,7 @@ export function OperatorDashboard() {
         if (storedUser) {
             setUser(JSON.parse(storedUser));
         }
+        setIsLoadingUser(false);
      }
   }, []);
 
@@ -187,6 +189,10 @@ export function OperatorDashboard() {
     if (!date) return "--:--";
     const d = date instanceof Timestamp ? date.toDate() : date;
     return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  }
+  
+  if (isLoadingUser) {
+      return <div className="flex items-center justify-center h-full">Caricamento...</div>;
   }
 
   return (
