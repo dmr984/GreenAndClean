@@ -182,7 +182,7 @@ export default function LoginForm() {
        if (error.code === 'permission-denied') {
           const contextualError = new FirestorePermissionError({
               operation: 'list',
-              path: 'app-users'
+              path: (q as any)._query.path.canonicalString()
           });
           errorEmitter.emit('permission-error', contextualError);
        } else {
