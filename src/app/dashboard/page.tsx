@@ -12,10 +12,12 @@ type UserData = {
 
 // The user prop is passed down from DashboardLayout
 export default function Dashboard({ user }: { user: UserData | null }) {
-  // The loading state is now handled by the layout.
+  // The loading state is handled by the layout.
   // We just need to render the correct dashboard based on the user role.
   if (!user) {
-    return null; // Or a fallback if the layout doesn't provide a user
+    // This can happen briefly while the layout is loading the user.
+    // Returning null prevents rendering anything until the user is available.
+    return null;
   }
 
   if (user.role === 'admin') {
@@ -26,5 +28,6 @@ export default function Dashboard({ user }: { user: UserData | null }) {
     return <OperatorDashboard user={user} />;
   }
 
+  // Fallback case, though it shouldn't be reached with valid user roles
   return null;
 }

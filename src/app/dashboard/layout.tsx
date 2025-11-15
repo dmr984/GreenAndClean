@@ -77,31 +77,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsChangeCodeOpen(true);
   }
   
-  const renderContent = () => {
-    if (isLoading) {
-        return (
-            <div className="flex flex-1 items-center justify-center">
-                <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <p className="text-muted-foreground">Caricamento...</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (!user) {
-        return null; // Or a fallback UI
-    }
-
-    // Pass the user prop to the correct child component based on the route
-    const child = React.Children.only(children) as React.ReactElement;
-    if (React.isValidElement(child)) {
-        return React.cloneElement(child, { user } as { user: UserData });
-    }
-
-    return null;
-  }
-  
   const showBackButton = pathname !== '/dashboard';
   
   return (
@@ -175,7 +150,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-           {renderContent()}
+            {isLoading ? (
+                <div className="flex flex-1 items-center justify-center">
+                    <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                        <p className="text-muted-foreground">Caricamento...</p>
+                    </div>
+                </div>
+            ) : React.isValidElement(children) ? (
+                 React.cloneElement(children, { user } as { user: UserData | null })
+             ) : (
+                children
+             )
+            }
         </main>
     </div>
     {user && <ChangeCodeDialog 
