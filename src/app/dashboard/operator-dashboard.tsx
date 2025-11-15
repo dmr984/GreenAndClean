@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Pause, Square, History, MapPin, Loader2, Eye } from 'lucide-react';
+import { Clock, Play, Square, History, MapPin, Loader2, Eye, PauseCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp } from 'firebase/firestore';
@@ -15,7 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 type ClockingEvent = {
     id: string;
@@ -49,7 +51,6 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [location, setLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
   const { toast } = useToast();
@@ -74,7 +75,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
       collection(firestore, `app-users/${user.id}/timbrature`),
       where('timestamp', '>=', todayTimestamp),
       where('timestamp', '<', tomorrowTimestamp),
-      orderBy('timestamp', 'asc') // Changed to ascending for easier grouping
+      orderBy('timestamp', 'asc')
     );
   }, [firestore, user, todayTimestamp, tomorrowTimestamp]);
 
@@ -89,7 +90,6 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
     for (const event of clockings) {
         if (event.type === 'entrata') {
             if (currentShift.startTime) {
-                // This case handles a missing 'uscita' for a previous shift
                 groupedShifts.push({
                     startTime: currentShift.startTime,
                     endTime: null,
@@ -102,7 +102,6 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
             if (event.type === 'uscita') {
                 currentShift.endTime = event.timestamp;
                 
-                // Calculate duration
                 let totalWorkMillis = currentShift.endTime.toMillis() - currentShift.startTime.toMillis();
                 let currentBreakStart: Timestamp | null = null;
                 
@@ -133,7 +132,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
         });
     }
 
-    return groupedShifts.reverse(); // Show most recent shift first
+    return groupedShifts.reverse();
   }, [clockings]);
 
 
@@ -144,7 +143,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
-      const lastEvent = clockings[clockings.length - 1]; // asc sorting means last is the latest
+      const lastEvent = clockings[clockings.length - 1];
       if (lastEvent.type === 'entrata' || lastEvent.type === 'fine_pausa') {
         setIsClockedIn(true);
         setIsOnBreak(false);
@@ -178,7 +177,6 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           };
-          setLocation(coords);
           resolve(coords);
         },
         (error) => {
@@ -204,7 +202,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
   };
 
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
-    if (!firestore || !user) return;
+    if (!firestore || !user || isProcessing) return;
 
     try {
       const currentLoc = await getLocation();
@@ -223,7 +221,7 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
         .then(() => {
              toast({
                 title: "Successo!",
-                description: `Timbratura di ${type} registrata correttamente.`,
+                description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente.`,
               });
         })
         .catch(err => {
@@ -259,6 +257,10 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
     const d = date instanceof Timestamp ? date.toDate() : date;
     return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
+  
+  const handleBreakToggle = (isToggled: boolean) => {
+      handleClocking(isToggled ? 'pausa' : 'fine_pausa');
+  }
 
   if (!user) {
       return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
@@ -283,19 +285,42 @@ export function OperatorDashboard({ user }: OperatorDashboardProps) {
           </div>
           {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row gap-2">
-            <Button className="w-full" size="lg" disabled={isClockedIn || isProcessing} onClick={() => handleClocking('entrata')}>
-                <Play className="mr-2 h-5 w-5"/> {isProcessing && !isClockedIn ? <Loader2 className="animate-spin" /> : 'Entrata'}
-            </Button>
-            <Button className="w-full" size="lg" variant="outline" disabled={!isClockedIn || isOnBreak || isProcessing} onClick={() => handleClocking('pausa')}>
-                <Pause className="mr-2 h-5 w-5"/> {isProcessing && isClockedIn && !isOnBreak ? <Loader2 className="animate-spin" /> : 'Pausa'}
-            </Button>
-            <Button className="w-full" size="lg" variant="outline" disabled={!isClockedIn || !isOnBreak || isProcessing} onClick={() => handleClocking('fine_pausa')}>
-                <Play className="mr-2 h-5 w-5"/> {isProcessing && isOnBreak ? <Loader2 className="animate-spin" /> : 'Fine Pausa'}
-            </Button>
-            <Button className="w-full" size="lg" variant="destructive" disabled={!isClockedIn || isOnBreak || isProcessing} onClick={() => handleClocking('uscita')}>
-                <Square className="mr-2 h-5 w-5"/> {isProcessing && isClockedIn && !isOnBreak && !isOnBreak ? <Loader2 className="animate-spin" /> : 'Uscita'}
-            </Button>
+        <CardFooter className="flex flex-col gap-4">
+             {isClockedIn ? (
+                <>
+                    <Button 
+                        className="w-full" 
+                        size="lg" 
+                        variant="destructive"
+                        disabled={isProcessing || isOnBreak} 
+                        onClick={() => handleClocking('uscita')}
+                    >
+                         {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
+                         Termina Turno
+                    </Button>
+                    <div className="flex items-center space-x-2 justify-center pt-2">
+                        <PauseCircle className="h-5 w-5 text-muted-foreground"/>
+                        <Label htmlFor="break-toggle" className={isOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
+                        <Switch 
+                            id="break-toggle" 
+                            checked={isOnBreak}
+                            onCheckedChange={handleBreakToggle}
+                            disabled={isProcessing}
+                        />
+                    </div>
+                </>
+            ) : (
+                <Button 
+                    className="w-full" 
+                    size="lg"
+                    disabled={isProcessing} 
+                    onClick={() => handleClocking('entrata')}
+                    style={{backgroundColor: '#22c55e', color: 'white'}}
+                >
+                    {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
+                    Inizia Turno
+                </Button>
+            )}
         </CardFooter>
       </Card>
       
