@@ -11,7 +11,6 @@ import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
-import ClockInPage from './clock-in/page';
 import ManageOperatorsPage from './operators/page';
 
 
@@ -140,13 +139,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <Home className="h-5 w-5" /> Dashboard
                         </Button>
                     </Link>
-                    {user?.role === 'operator' && (
-                       <Link href="/dashboard/clock-in" passHref>
-                           <Button variant={pathname === '/dashboard/clock-in' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                               <Clock className="h-5 w-5" /> Timbratura
-                           </Button>
-                        </Link>
-                    )}
                     {user?.role === 'admin' && (
                         <Link href="/dashboard/operators" passHref>
                            <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
