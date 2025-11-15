@@ -34,6 +34,9 @@ import { Label } from '@/components/ui/label';
 type Operator = {
     id: string;
     username: string;
+    firstName: string;
+    lastName: string;
+    email: string;
     role: 'operator';
     visibleInLogin: boolean;
 };
@@ -54,7 +57,8 @@ export default function ManageOperatorsPage() {
 
     const operatorsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return collection(firestore, 'app-users');
+        const q = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
+        return q;
     }, [firestore]);
 
     useEffect(() => {
@@ -65,8 +69,7 @@ export default function ManageOperatorsPage() {
 
         const unsubscribe = onSnapshot(operatorsQuery, (snapshot) => {
             const usersData = snapshot.docs
-                .map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter(user => user.role === 'operator') as Operator[];
+                .map(doc => ({ id: doc.id, ...doc.data() })) as Operator[];
             
             usersData.sort((a,b) => a.username.localeCompare(b.username, undefined, { numeric: true }));
 
@@ -96,15 +99,22 @@ export default function ManageOperatorsPage() {
         e.preventDefault();
         if (!firestore || !newOperatorName.trim()) return;
 
+        const nameParts = newOperatorName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
         const newOperator = {
             username: newOperatorName,
             password: '0000',
             role: 'operator',
             visibleInLogin: true,
+            firstName,
+            lastName,
+            email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(' ','')}@serveco.it`
         };
 
         try {
-            const docRef = await addDoc(collection(firestore, 'app-users'), newOperator);
+            await addDoc(collection(firestore, 'app-users'), newOperator);
             toast({
                 title: "Successo",
                 description: `Operatore "${newOperatorName}" aggiunto.`
@@ -134,7 +144,16 @@ export default function ManageOperatorsPage() {
         if (!firestore || !selectedOperator || !editingOperatorName.trim()) return;
         
         const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
-        const updatePayload = { username: editingOperatorName };
+        
+        const nameParts = editingOperatorName.split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
+        const updatePayload = { 
+            username: editingOperatorName,
+            firstName,
+            lastName,
+        };
 
         try {
             await updateDoc(operatorRef, updatePayload);
@@ -286,7 +305,7 @@ export default function ManageOperatorsPage() {
                                     <div className="grid gap-4 py-4">
                                         <div className="grid grid-cols-4 items-center gap-4">
                                             <Label htmlFor="name" className="text-right">
-                                                Nome
+                                                Nome e Cognome
                                             </Label>
                                             <Input id="name" value={newOperatorName} onChange={(e) => setNewOperatorName(e.target.value)} className="col-span-3" required />
                                         </div>
@@ -355,7 +374,7 @@ export default function ManageOperatorsPage() {
                         <div className="grid gap-4 py-4">
                              <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="editing-name" className="text-right">
-                                    Nome
+                                    Nome e Cognome
                                 </Label>
                                 <Input id="editing-name" value={editingOperatorName} onChange={(e) => setEditingOperatorName(e.target.value)} className="col-span-3" required />
                             </div>

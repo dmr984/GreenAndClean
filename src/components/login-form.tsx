@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, onSnapshot, getDoc, Firestore } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, getDoc, Firestore, writeBatch, addDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -34,10 +34,54 @@ export default function LoginForm() {
 
 
   useEffect(() => {
-    if (!usersQuery) {
+    if (!firestore) {
         setIsLoading(false);
         return;
-    }
+    };
+
+    // This function ensures the admin user exists and has the correct password.
+    const setupInitialAdmin = async () => {
+        const adminUsername = 'Amministratore';
+        const adminPassword = '0000';
+        const adminRole = 'admin';
+
+        try {
+            const adminQuery = query(collection(firestore, 'app-users'), where("username", "==", adminUsername));
+            const adminSnapshot = await getDocs(adminQuery);
+
+            if (adminSnapshot.empty) {
+                // Admin does not exist, create it
+                await addDoc(collection(firestore, 'app-users'), {
+                    username: adminUsername,
+                    password: adminPassword,
+                    role: adminRole,
+                    visibleInLogin: true,
+                    firstName: "Admin",
+                    lastName: "User",
+                    email: "admin@serveco.it"
+                });
+                console.log(`User "${adminUsername}" created.`);
+            } else {
+                // Admin exists, check and update password if necessary
+                const adminDoc = adminSnapshot.docs[0];
+                if (adminDoc.data().password !== adminPassword) {
+                    const batch = writeBatch(firestore);
+                    batch.update(adminDoc.ref, { password: adminPassword });
+                    await batch.commit();
+                    console.log(`Password for "${adminUsername}" has been reset.`);
+                }
+            }
+        } catch (error) {
+            console.error("Error setting up initial admin:", error);
+             toast({
+                title: "Errore di Configurazione Iniziale",
+                description: "Impossibile configurare l'utente amministratore.",
+                variant: "destructive",
+            });
+        }
+    };
+
+    setupInitialAdmin();
 
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
@@ -107,16 +151,12 @@ export default function LoginForm() {
         if (docSnap.exists() && docSnap.data().password === password) {
             const foundUser = { id: docSnap.id, ...docSnap.data() } as User;
 
-            // This is a mock authentication. In a real app, you'd use Firebase Auth.
-            // For now, we'll pass the user info to the dashboard.
             const userToAuth = {
               id: foundUser.id,
               username: foundUser.username,
               role: foundUser.role
             };
             
-            // Instead of localStorage, we'll pass the user object via query params
-            // This is NOT secure for real applications.
             localStorage.setItem('user', JSON.stringify(userToAuth));
             
             router.push('/dashboard');
