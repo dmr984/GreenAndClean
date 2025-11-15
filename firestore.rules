@@ -8,19 +8,21 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return get(/databases/$(database)/documents/app-users/$(request.auth.uid)).data.role == 'admin';
+      return get(/databases/$(database)/documents/roles_admin/$(request.auth.uid)).data.isAdmin == true;
     }
     
     match /app-users/{userId} {
       allow list: if request.auth == null; // Allow unauthenticated users to list users for login dropdown
       allow read, write: if isAdmin() || isOwner(userId);
-      allow create: if request.resource.data.role == 'admin'; // Allow initial admin creation
+      allow create: if request.auth == null; // Allow initial admin/user creation
       allow delete: if isAdmin();
     }
 
      match /roles_admin/{userId} {
       allow read, write: if isAdmin();
-      allow create: if request.auth.uid == userId; // Allow user to create their own admin role during setup
+      // Allow role creation if the corresponding user in 'app-users' is an admin.
+      // This is necessary for the initial admin setup.
+      allow create: if request.auth == null && get(/databases/$(database)/documents/app-users/$(userId)).data.role == 'admin';
     }
   }
 }
