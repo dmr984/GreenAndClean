@@ -176,10 +176,8 @@ export default function RequestsPage() {
             </div>
         );
     }
-    
 
     return (
-       <>
         <Card>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -289,23 +287,25 @@ export default function RequestsPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {requests.length > 0 ? requests.map((req) => (
-                                <TableRow key={req.id}>
-                                    <TableCell className="font-medium capitalize">{req.type.replace('_', ' ')}</TableCell>
-                                    <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                                    <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                                    <TableCell>{req.hours ? `${req.hours}` : '-'}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Badge variant={
-                                            req.status === 'approvato' ? 'secondary' 
-                                            : req.status === 'rifiutato' ? 'destructive' 
-                                            : 'default'
-                                        }>
-                                            {req.status.replace('_', ' ')}
-                                        </badge>
-                                    </TableCell>
-                                </TableRow>
-                            )) : (
+                            {requests.length > 0 ? (
+                                requests.map((req) => (
+                                    <TableRow key={req.id}>
+                                        <TableCell className="font-medium capitalize">{req.type.replace('_', ' ')}</TableCell>
+                                        <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
+                                        <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
+                                        <TableCell>{req.hours ? `${req.hours}` : '-'}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Badge variant={
+                                                req.status === 'approvato' ? 'secondary' 
+                                                : req.status === 'rifiutato' ? 'destructive' 
+                                                : 'default'
+                                            }>
+                                                {req.status.replace('_', ' ')}
+                                            </Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
                                 <TableRow>
                                     <TableCell colSpan={5} className="text-center h-24">Nessuna richiesta trovata.</TableCell>
                                 </TableRow>
@@ -315,6 +315,5 @@ export default function RequestsPage() {
                 </div>
             </CardContent>
         </Card>
-       </>
     );
 }
