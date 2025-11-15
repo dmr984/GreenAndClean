@@ -44,68 +44,50 @@ export default function LoginForm() {
 
     // This function ensures the admin user exists in Auth and Firestore.
     const setupInitialAdmin = async () => {
-        const adminId = 'admin_user'; // A fixed, known ID for the admin
         const adminEmail = 'admin@serveco.it';
         const adminPassword = '0000';
 
-        const adminDocRef = doc(firestore, 'app-users', adminId);
-        const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
-
         try {
-            const adminDocSnap = await getDoc(adminDocRef);
-            if (!adminDocSnap.exists()) {
-                // Admin does not exist, let's create it in Auth and Firestore
-                try {
-                    // Try to create the auth user. If it fails because it already exists, that's fine.
-                    const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-                     // Set the UID from Auth to ensure consistency
-                    const adminAuthId = userCredential.user.uid;
-                    const consistentAdminDocRef = doc(firestore, 'app-users', adminAuthId);
-                    const consistentAdminRoleDocRef = doc(firestore, 'roles_admin', adminAuthId);
+            // First, try to create the user in Firebase Auth.
+            // If it fails because it already exists, that's okay. We'll catch the error.
+            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+            const adminId = userCredential.user.uid;
 
-                     const batch = writeBatch(firestore);
-                    batch.set(consistentAdminDocRef, {
-                        username: "Amministratore",
-                        role: "admin",
-                        visibleInLogin: true,
-                        firstName: "Admin",
-                        lastName: "User",
-                        email: adminEmail,
-                    });
-                    batch.set(consistentAdminRoleDocRef, {
-                        email: adminEmail,
-                        firstName: "Admin",
-                        lastName: "User",
-                    });
-                    await batch.commit();
+            // If creation was successful, this is the first run. Let's create the Firestore docs.
+            const batch = writeBatch(firestore);
+            const adminDocRef = doc(firestore, 'app-users', adminId);
+            const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
 
+            batch.set(adminDocRef, {
+                username: "Amministratore",
+                role: "admin",
+                visibleInLogin: true,
+                firstName: "Admin",
+                lastName: "User",
+                email: adminEmail,
+            });
+            batch.set(adminRoleDocRef, {
+                email: adminEmail,
+                firstName: "Admin",
+                lastName: "User",
+            });
+            await batch.commit();
 
-                } catch (error: any) {
-                    if (error.code !== 'auth/email-already-in-use') {
-                        throw error; // Re-throw other auth errors
-                    }
-                    // If user already exists in Auth, we can proceed to ensure Firestore docs are there.
-                    const batch = writeBatch(firestore);
-                    batch.set(adminDocRef, {
-                        username: "Amministratore",
-                        role: "admin",
-                        visibleInLogin: true,
-                        firstName: "Admin",
-                        lastName: "User",
-                        email: adminEmail,
-                    }, { merge: true });
-                     batch.set(adminRoleDocRef, {
-                        email: adminEmail,
-                        firstName: "Admin",
-                        lastName: "User",
-                    }, { merge: true });
-                    await batch.commit();
-                }
-            }
         } catch (error: any) {
-            console.error("Error setting up initial admin:", error);
-            // Don't show toast for permission errors during setup, as they are expected if rules are strict
-            if (error.code !== 'permission-denied') {
+            if (error.code === 'auth/email-already-in-use') {
+                // This is expected on subsequent runs. The admin auth user already exists.
+                // We don't need to do anything here, the login will just work.
+                // We could verify the firestore docs exist, but it's not strictly necessary
+                // as they would have been created on the first run.
+            } else if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'write', 
+                    path: `app-users/some-admin-id or roles_admin/some-admin-id`,
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                // For other unexpected errors during setup
+                console.error("Error setting up initial admin:", error);
                  toast({
                     title: "Errore di Configurazione Iniziale",
                     description: "Impossibile configurare l'utente amministratore.",
