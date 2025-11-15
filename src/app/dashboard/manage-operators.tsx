@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
-import { useFirestore, useMemoFirebase } from '@/firebase';
+import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,7 +27,10 @@ export function ManageOperators() {
     }, [firestore]);
 
     useEffect(() => {
-        if (!operatorsQuery) return;
+        if (!operatorsQuery) {
+            setIsLoading(false);
+            return;
+        }
 
         const unsubscribe = onSnapshot(operatorsQuery, (snapshot) => {
             const usersData = snapshot.docs
@@ -43,37 +46,59 @@ export function ManageOperators() {
             setOperators(usersData);
             setIsLoading(false);
         }, (error) => {
-            console.error("Error fetching operators:", error);
-            toast({
-                title: "Errore",
-                description: "Impossibile caricare gli operatori.",
-                variant: "destructive",
-            });
+            if (error.code === 'permission-denied' && firestore) {
+                 const contextualError = new FirestorePermissionError({
+                    operation: 'list',
+                    path: (operatorsQuery as any)._query.path.canonicalString(),
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({
+                    title: "Errore",
+                    description: "Impossibile caricare gli operatori.",
+                    variant: "destructive",
+                });
+            }
             setIsLoading(false);
         });
 
         return () => unsubscribe();
-    }, [operatorsQuery, toast]);
+    }, [operatorsQuery, toast, firestore]);
 
     const handleVisibilityChange = async (operatorId: string, newVisibility: boolean) => {
         if (!firestore) return;
         const operatorRef = doc(firestore, 'app-users', operatorId);
-        try {
-            await updateDoc(operatorRef, { visibleInLogin: newVisibility });
-            toast({
-                title: "Successo",
-                description: `Visibilità di ${operators.find(op => op.id === operatorId)?.username} aggiornata.`
+        const updatePayload = { visibleInLogin: newVisibility };
+        
+        // Optimistically update UI
+        setOperators(prev => prev.map(op => op.id === operatorId ? { ...op, visibleInLogin: newVisibility } : op));
+
+        updateDoc(operatorRef, updatePayload)
+            .then(() => {
+                 toast({
+                    title: "Successo",
+                    description: `Visibilità di ${operators.find(op => op.id === operatorId)?.username} aggiornata.`
+                });
+            })
+            .catch((error) => {
+                // Revert UI change on failure
+                setOperators(prev => prev.map(op => op.id === operatorId ? { ...op, visibleInLogin: !newVisibility } : op));
+
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'update',
+                        path: operatorRef.path,
+                        requestResourceData: updatePayload
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({
+                        title: "Errore",
+                        description: "Impossibile aggiornare la visibilità.",
+                        variant: "destructive",
+                    });
+                }
             });
-        } catch (error) {
-            console.error("Error updating visibility:", error);
-            toast({
-                title: "Errore",
-                description: "Impossibile aggiornare la visibilità.",
-                variant: "destructive",
-            });
-            // Revert UI change on failure
-            setOperators(prev => prev.map(op => op.id === operatorId ? { ...op, visibleInLogin: !newVisibility } : op));
-        }
     };
 
     return (

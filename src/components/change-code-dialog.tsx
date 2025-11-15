@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore } from "@/firebase";
+import { useFirestore, FirestorePermissionError, errorEmitter } from "@/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 interface ChangeCodeDialogProps {
@@ -38,49 +38,56 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
             return;
         }
         
-        if (!userId) {
-             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
+        if (!userId || !firestore) {
+             toast({ variant: "destructive", title: "Errore", description: "Utente o database non trovato." });
              return;
         }
 
-        try {
-            const userDocRef = doc(firestore, 'app-users', userId);
-            
-            const updates: { username?: string, password?: string } = {};
-            if (username) {
-                updates.username = username;
-            }
-            if (newPassword) {
-                updates.password = newPassword;
-            }
-
-            if (Object.keys(updates).length === 0) {
-                 toast({ variant: "default", title: "Nessuna modifica", description: "Non hai apportato modifiche." });
-                 resetAndClose();
-                 return;
-            }
-
-            await updateDoc(userDocRef, updates);
-
-            // Update local storage
-            const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-            const updatedUser = { ...storedUser, username: username };
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-            
-            window.dispatchEvent(new Event('storage')); // Trigger re-renders
-
-            toast({ title: "Profilo Aggiornato", description: "Le tue impostazioni sono state salvate." });
-            
-            resetAndClose();
-
-        } catch (error: any) {
-            console.error("Error changing settings:", error);
-             toast({ 
-                variant: "destructive", 
-                title: "Errore", 
-                description: "Si è verificato un errore durante il salvataggio."
-            });
+        const userDocRef = doc(firestore, 'app-users', userId);
+        
+        const updates: { username?: string, password?: string } = {};
+        if (username) {
+            updates.username = username;
         }
+        if (newPassword) {
+            updates.password = newPassword;
+        }
+
+        if (Object.keys(updates).length === 0) {
+             toast({ variant: "default", title: "Nessuna modifica", description: "Non hai apportato modifiche." });
+             resetAndClose();
+             return;
+        }
+
+        updateDoc(userDocRef, updates)
+            .then(() => {
+                // Update local storage
+                const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+                const updatedUser = { ...storedUser, username: username };
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+                
+                window.dispatchEvent(new Event('storage')); // Trigger re-renders
+
+                toast({ title: "Profilo Aggiornato", description: "Le tue impostazioni sono state salvate." });
+                
+                resetAndClose();
+            })
+            .catch((error: any) => {
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'update',
+                        path: userDocRef.path,
+                        requestResourceData: updates
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                     toast({ 
+                        variant: "destructive", 
+                        title: "Errore", 
+                        description: "Si è verificato un errore durante il salvataggio."
+                    });
+                }
+            });
     }
     
     const resetAndClose = () => {
