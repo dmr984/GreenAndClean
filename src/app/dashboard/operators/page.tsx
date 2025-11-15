@@ -60,8 +60,14 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
-    const [newOperatorName, setNewOperatorName] = useState("");
-    const [editingOperatorName, setEditingOperatorName] = useState("");
+    
+    // State for the "Add" dialog
+    const [newFirstName, setNewFirstName] = useState("");
+    const [newLastName, setNewLastName] = useState("");
+
+    // State for the "Edit" dialog
+    const [editingFirstName, setEditingFirstName] = useState("");
+    const [editingLastName, setEditingLastName] = useState("");
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -106,43 +112,42 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
 
     const handleAddOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !auth || !newOperatorName.trim()) return;
+        if (!firestore || !auth || !newFirstName.trim() || !newLastName.trim()) return;
 
-        const nameParts = newOperatorName.split(' ');
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts.slice(1).join(' ') || '';
-        const email = `${firstName.toLowerCase().replace(/\s+/g, '')}.${lastName.toLowerCase().replace(/\s+/g, '')}@serveco.it`;
+        const generatedUsername = `${newFirstName} ${newLastName}`;
+        const generatedEmail = `${newFirstName.toLowerCase().replace(/\s+/g, '')}.${newLastName.toLowerCase().replace(/\s+/g, '')}@serveco.it`;
         const password = '000000';
 
         try {
-            // Step 1: Create user in Firebase Auth
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            // Step 1: Create user in Firebase Auth. This email must be unique.
+            const userCredential = await createUserWithEmailAndPassword(auth, generatedEmail, password);
             const newUserId = userCredential.user.uid;
 
-            // Step 2: Create user document in Firestore
+            // Step 2: Create user document in Firestore using the UID from Auth
             const newOperatorDoc = {
-                username: newOperatorName,
+                username: generatedUsername,
                 role: 'operator',
                 visibleInLogin: true,
-                firstName,
-                lastName,
-                email,
+                firstName: newFirstName,
+                lastName: newLastName,
+                email: generatedEmail, // Store the same email used for auth
             };
             
             await setDoc(doc(firestore, 'app-users', newUserId), newOperatorDoc);
 
             toast({
                 title: "Successo",
-                description: `Operatore "${newOperatorName}" aggiunto.`
+                description: `Operatore "${generatedUsername}" aggiunto.`
             });
             setIsAddDialogOpen(false);
-            setNewOperatorName("");
+            setNewFirstName("");
+            setNewLastName("");
         } catch (error: any) {
             console.error("Error adding operator:", error);
             if (error.code === 'auth/email-already-in-use') {
                  toast({
                     title: "Errore",
-                    description: "Questa email è già in uso. Prova un altro nome.",
+                    description: "Questa email è già in uso. Prova un altro nome o cognome.",
                     variant: "destructive",
                 });
             } else if (error.code === 'auth/weak-password') {
@@ -163,25 +168,25 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
 
     const handleEditOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !selectedOperator || !editingOperatorName.trim()) return;
+        if (!firestore || !selectedOperator || !editingFirstName.trim() || !editingLastName.trim()) return;
         
         const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
         
-        const nameParts = editingOperatorName.split(' ');
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts.slice(1).join(' ') || '';
+        const generatedUsername = `${editingFirstName} ${editingLastName}`;
 
+        // IMPORTANT: The email is NOT updated here to maintain consistency with Firebase Auth.
+        // Changing the email would require a more complex, secure flow.
         const updatePayload = { 
-            username: editingOperatorName,
-            firstName,
-            lastName,
+            username: generatedUsername,
+            firstName: editingFirstName,
+            lastName: editingLastName,
         };
 
         try {
             await updateDoc(operatorRef, updatePayload);
             toast({
                 title: "Successo",
-                description: "Nome operatore aggiornato."
+                description: "Dati operatore aggiornati."
             });
             setIsEditDialogOpen(false);
             setSelectedOperator(null);
@@ -329,15 +334,21 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                                         <DialogDescription>
-                                            Inserisci il nome e cognome. La password iniziale sarà '000000'.
+                                            Inserisci nome e cognome. Verrà generata un'email unica. La password iniziale sarà '000000'.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-4 py-4">
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="name" className="text-right">
-                                                Nome e Cognome
+                                            <Label htmlFor="firstName" className="text-right">
+                                                Nome
                                             </Label>
-                                            <Input id="name" value={newOperatorName} onChange={(e) => setNewOperatorName(e.target.value)} className="col-span-3" required />
+                                            <Input id="firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} className="col-span-3" required />
+                                        </div>
+                                         <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="lastName" className="text-right">
+                                                Cognome
+                                            </Label>
+                                            <Input id="lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="col-span-3" required />
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -377,7 +388,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorName(operator.username); setIsEditDialogOpen(true);}}>
+                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setIsEditDialogOpen(true);}}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -400,15 +411,21 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
                             <DialogDescription>
-                                Modifica il nome dell'operatore selezionato.
+                                Modifica il nome e cognome dell'operatore. L'email non può essere modificata.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-name" className="text-right">
-                                    Nome e Cognome
+                                <Label htmlFor="editing-firstName" className="text-right">
+                                    Nome
                                 </Label>
-                                <Input id="editing-name" value={editingOperatorName} onChange={(e) => setEditingOperatorName(e.target.value)} className="col-span-3" required />
+                                <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} className="col-span-3" required />
+                            </div>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="editing-lastName" className="text-right">
+                                    Cognome
+                                </Label>
+                                <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} className="col-span-3" required />
                             </div>
                         </div>
                         <DialogFooter>
