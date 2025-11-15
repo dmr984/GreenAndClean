@@ -49,7 +49,7 @@ export function ManageOperators() {
             if (error.code === 'permission-denied' && firestore) {
                  const contextualError = new FirestorePermissionError({
                     operation: 'list',
-                    path: (operatorsQuery as any)._query.path.canonicalString(),
+                    path: 'app-users',
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
