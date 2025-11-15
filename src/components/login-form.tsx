@@ -45,7 +45,7 @@ export default function LoginForm() {
           password: '0000',
           role: 'admin'
       }, { merge: true });
-      batch.set(adminRoleDocf, { isAdmin: true }, { merge: true });
+      batch.set(adminRoleDocRef, { isAdmin: true }, { merge: true });
       
       batch.commit().catch(err => {
           if (err.code === 'permission-denied') {
