@@ -74,7 +74,7 @@ export default function LoginForm() {
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(true); 
   const [users, setUsers] = useState<User[]>([]);
-  const [username, setUsername] = React.useState('');
+  const [selectedUserId, setSelectedUserId] = React.useState('');
   const [password, setPassword] = React.useState('');
 
   useEffect(() => {
@@ -91,7 +91,10 @@ export default function LoginForm() {
 
 
   useEffect(() => {
-    if (!usersQuery) return;
+    if (!usersQuery) {
+        setIsLoading(false);
+        return;
+    }
 
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
@@ -113,7 +116,7 @@ export default function LoginForm() {
         if (error.code === 'permission-denied' && firestore) {
             const contextualError = new FirestorePermissionError({
                 operation: 'list',
-                path: (usersQuery as any)._query.path.canonicalString(),
+                path: 'app-users'
             });
             errorEmitter.emit('permission-error', contextualError);
         } else {
@@ -134,7 +137,7 @@ export default function LoginForm() {
     event.preventDefault();
     setIsLoading(true);
 
-    if (!username || !password) {
+    if (!selectedUserId || !password) {
       toast({
         variant: "destructive",
         title: "Campi mancanti",
@@ -154,13 +157,11 @@ export default function LoginForm() {
       return;
     }
     
-    const usersCollection = collection(firestore, 'app-users');
-    const q = query(usersCollection, where("username", "==", username), where("password", "==", password));
+    const userDocRef = doc(firestore, 'app-users', selectedUserId);
     
-    getDocs(q).then((querySnapshot) => {
-      if (!querySnapshot.empty) {
-        const userDoc = querySnapshot.docs[0];
-        const foundUser = { id: userDoc.id, ...userDoc.data() } as User;
+    getDoc(userDocRef).then((docSnap) => {
+      if (docSnap.exists() && docSnap.data().password === password) {
+        const foundUser = { id: docSnap.id, ...docSnap.data() } as User;
 
         const userToStore = {
           id: foundUser.id,
@@ -181,8 +182,8 @@ export default function LoginForm() {
     }).catch((error) => {
        if (error.code === 'permission-denied') {
           const contextualError = new FirestorePermissionError({
-              operation: 'list',
-              path: (q as any)._query.path.canonicalString()
+              operation: 'get',
+              path: userDocRef.path
           });
           errorEmitter.emit('permission-error', contextualError);
        } else {
@@ -200,13 +201,13 @@ export default function LoginForm() {
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
         <Label htmlFor="username">Nome Utente</Label>
-        <Select onValueChange={setUsername} value={username} required>
+        <Select onValueChange={setSelectedUserId} value={selectedUserId} required>
           <SelectTrigger id="username" disabled={isLoading || users.length === 0}>
             <SelectValue placeholder={isLoading ? "Caricamento..." : "Seleziona un utente..."} />
           </SelectTrigger>
           <SelectContent>
             {users.map((user) => (
-              <SelectItem key={user.id} value={user.username}>
+              <SelectItem key={user.id} value={user.id}>
                 {user.username}
               </SelectItem>
             ))}
