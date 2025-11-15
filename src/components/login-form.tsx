@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -40,14 +40,12 @@ export default function LoginForm() {
       const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
 
       try {
-        // Step 1: Create the admin user document
         await setDoc(adminUserDocRef, {
             username: 'Amministratore',
             password: '0000',
             role: 'admin'
         }, { merge: true });
 
-        // Step 2: Once the user is created, create the role document
         await setDoc(adminRoleDocRef, { isAdmin: true }, { merge: true });
 
       } catch (err: any) {
