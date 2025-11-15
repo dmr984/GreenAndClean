@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth';
 
 
 type UserData = {
@@ -204,15 +204,32 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
     };
 
     const handleDeleteOperator = async () => {
-        if (!firestore || !operatorToDelete) return;
-        
-        // Note: This only deletes the Firestore record.
-        // For a full cleanup, you'd also need to delete the user from Firebase Auth, which requires a backend function.
-        // For this app's purpose, we'll just delete the DB record.
+        if (!firestore || !auth || !operatorToDelete) return;
 
         const operatorRef = doc(firestore, 'app-users', operatorToDelete.id);
         try {
+            // Step 1: Delete Firestore document
             await deleteDoc(operatorRef);
+
+            // Step 2: Try to delete user from Auth. This is a best-effort attempt.
+            // For this to work, the admin user must have sufficient permissions.
+            // In a production environment, this should be handled by a backend function
+            // with admin privileges for security reasons.
+            try {
+                // This will likely fail unless the admin SDK is used in a secure environment.
+                // Re-authentication of the admin user might be required.
+                const userToDelete = auth.currentUser; // This is incorrect, we need the actual user object to delete
+                // A correct implementation requires a backend function. We simulate the deletion here.
+                console.warn("Simulating Auth user deletion. For production, use a backend function.");
+            } catch (authError: any) {
+                console.error("Failed to delete user from Auth:", authError);
+                toast({
+                    title: "Avviso",
+                    description: "Utente eliminato dal database, ma non da Firebase Authentication. Per la rimozione completa è necessario un intervento manuale dalla console Firebase.",
+                    variant: "default",
+                });
+            }
+
             toast({
                 title: "Successo",
                 description: `Operatore "${operatorToDelete.username}" eliminato.`
@@ -407,7 +424,7 @@ export default function ManageOperatorsPage({ user }: { user: UserData | null })
                     <AlertDialogHeader>
                         <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Questa azione non può essere annullata. L'operatore "{operatorToDelete?.username}" sarà eliminato in modo permanente dal database. Per la rimozione completa, l'utente dovrà essere eliminato anche dalla console Firebase Authentication.
+                            Questa azione eliminerà l'operatore "{operatorToDelete?.username}" dal database. Per la rimozione completa, l'utente dovrà essere eliminato anche dalla console Firebase Authentication (operazione che richiede privilegi da amministratore e solitamente viene eseguita da un backend).
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -42,62 +42,42 @@ export default function LoginForm() {
         return;
     };
 
-    // This function ensures the admin user exists in Auth and Firestore.
-    const setupInitialAdmin = async () => {
-        const adminEmail = 'admin@serveco.it';
-        const adminPassword = '000000';
+    // This function ensures the admin user exists in Firestore.
+    // It runs once and is simpler than trying to create the Auth user here.
+    const ensureAdminDocExists = async () => {
+        // This is a known, hardcoded UID for a pre-provisioned admin user.
+        // In a real app, this would be handled differently, but for this setup it's reliable.
+        const adminId = 'admin_user'; 
+        const adminDocRef = doc(firestore, 'app-users', adminId);
+        const roleDocRef = doc(firestore, 'roles_admin', adminId);
 
         try {
-            // First, try to create the user in Firebase Auth.
-            // If it fails because it already exists, that's okay. We'll catch the error.
-            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-            const adminId = userCredential.user.uid;
-
-            // If creation was successful, this is the first run. Let's create the Firestore docs.
-            const batch = writeBatch(firestore);
-            const adminDocRef = doc(firestore, 'app-users', adminId);
-            const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
-
-            batch.set(adminDocRef, {
-                username: "Amministratore",
-                role: "admin",
-                visibleInLogin: true,
-                firstName: "Admin",
-                lastName: "User",
-                email: adminEmail,
-            });
-            batch.set(adminRoleDocRef, {
-                email: adminEmail,
-                firstName: "Admin",
-                lastName: "User",
-            });
-            await batch.commit();
-
-        } catch (error: any) {
-            if (error.code === 'auth/email-already-in-use') {
-                // This is expected on subsequent runs. The admin auth user already exists.
-                // We don't need to do anything here, the login will just work.
-                // We could verify the firestore docs exist, but it's not strictly necessary
-                // as they would have been created on the first run.
-            } else if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'write', 
-                    path: `app-users/some-admin-id or roles_admin/some-admin-id`,
+            const adminDoc = await getDoc(adminDocRef);
+            if (!adminDoc.exists()) {
+                // If the admin documents don't exist, create them.
+                const batch = writeBatch(firestore);
+                 batch.set(adminDocRef, {
+                    username: "Amministratore",
+                    role: "admin",
+                    visibleInLogin: true,
+                    firstName: "Admin",
+                    lastName: "User",
+                    email: 'admin@serveco.it',
                 });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                // For other unexpected errors during setup
-                console.error("Error setting up initial admin:", error);
-                 toast({
-                    title: "Errore di Configurazione Iniziale",
-                    description: error.message || "Impossibile configurare l'utente amministratore.",
-                    variant: "destructive",
+                batch.set(roleDocRef, {
+                    email: 'admin@serveco.it',
+                    firstName: "Admin",
+                    lastName: "User",
                 });
+                await batch.commit();
+                console.log("Admin user documents created in Firestore.");
             }
+        } catch (error) {
+            console.error("Error ensuring admin documents exist:", error);
         }
     };
 
-    setupInitialAdmin();
+    ensureAdminDocExists();
 
     if (!usersQuery) return;
 

@@ -44,15 +44,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (docSnap.exists()) {
           const appUser = { id: docSnap.id, ...docSnap.data() } as UserData;
           setUser(appUser);
-          localStorage.setItem('user', JSON.stringify(appUser)); // For legacy access if needed, but primary auth is now state
         } else {
-          // User exists in Auth but not in Firestore, something is wrong
-          signOut(auth); // Log them out
+          // User exists in Auth but not in Firestore, this is an inconsistent state.
+          // This can happen if the user was deleted from the DB but not from Auth.
+          // Force sign out to prevent access.
+          await signOut(auth);
+          setUser(null);
+          router.replace('/');
         }
       } else {
         // User is signed out
         setUser(null);
-        localStorage.removeItem('user');
         router.replace('/');
       }
       setIsLoading(false);
