@@ -3,41 +3,54 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAdmin(userId) {
-      // This is insecure, as it depends on a predictable document ID.
-      // It is a temporary measure for the custom auth system.
-      return exists(/databases/$(database)/documents/roles_admin/$(userId));
+    function isAdmin() {
+      // Check if the user's UID exists in the admin roles collection.
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+    
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
     }
 
     match /app-users/{userId} {
-      allow list, get: if true; // Allow reading user list for login
-      allow write: if request.auth != null && request.auth.uid == userId; // Allow users to update their own data
-      allow create, delete: if request.auth != null && isAdmin(request.auth.uid); // Admins can create/delete users
+      // Allow anyone to read the public user list for the login dropdown.
+      allow list, get: if true; 
+      
+      // Only an authenticated user can update their own document.
+      allow update: if isOwner(userId);
+      
+      // Only admins can create or delete users.
+      allow create, delete: if request.auth != null && isAdmin();
       
       match /timbrature/{timbraturaId} {
-        // A user can create their own clocking events.
-        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-        // A user can read their own clocking events.
-        // Admins can read any clocking events.
-        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
-        // Admins can update a clocking event (e.g., to confirm it).
-        allow update: if request.auth != null && isAdmin(request.auth.uid);
-        allow delete: if false; // Disallow deletion of clocking events.
+        // An authenticated user can create their own clocking events.
+        allow create: if isOwner(userId) && request.resource.data.userId == request.auth.uid;
+        
+        // An authenticated user can read their own clocking events. Admins can read any.
+        allow read: if isOwner(userId) || isAdmin();
+        
+        // Only admins can update a clocking event (e.g., to confirm it).
+        allow update: if isAdmin();
+        
+        // Disallow deletion of clocking events.
+        allow delete: if false; 
       }
 
       match /requests/{requestId} {
-        // A user can create their own requests.
-        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-         // A user can read their own requests.
-        // Admins can read any requests.
-        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
+        // An authenticated user can create their own requests.
+        allow create: if isOwner(userId) && request.resource.data.userId == request.auth.uid;
+        
+        // An authenticated user can read their own requests. Admins can read any.
+        allow read: if isOwner(userId) || isAdmin();
+        
         // Admins can update/delete requests.
-        allow update, delete: if request.auth != null && isAdmin(request.auth.uid);
+        allow update, delete: if isAdmin();
       }
     }
 
+    // Only admins can read or write to the admin roles collection.
     match /roles_admin/{adminId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
   }
 }

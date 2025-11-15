@@ -11,6 +11,8 @@ import { Separator } from '@/components/ui/separator';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
+import { useAuth } from '@/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 type UserData = {
   id: string;
@@ -22,45 +24,43 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<UserData | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const auth = useAuth();
   const [isChangeCodeOpen, setIsChangeCodeOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const checkUser = () => {
-      try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
+        if (authUser) {
+             const storedUser = localStorage.getItem('user');
+             if(storedUser) {
+                const parsedUser = JSON.parse(storedUser);
+                 if(parsedUser.id === authUser.uid) {
+                    setUser(parsedUser);
+                 } else {
+                    // Mismatch, clear and logout
+                    localStorage.removeItem('user');
+                    signOut(auth);
+                 }
+             } else {
+                 signOut(auth); // No local user info, so sign out
+             }
         } else {
-          router.replace('/');
+            setUser(null);
+            localStorage.removeItem('user');
+            if(pathname.startsWith('/dashboard')) {
+                router.replace('/');
+            }
         }
-      } catch (e) {
-          router.replace('/');
-      } finally {
-          setIsLoading(false);
-      }
-    };
-    
-    checkUser();
-    
-    const handleStorageChange = () => {
-        checkUser();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    return () => {
-        window.removeEventListener('storage', handleStorageChange);
-    };
+        setIsLoading(false);
+    });
 
-  }, [router]);
+    return () => unsubscribe();
+  }, [auth, router, pathname]);
 
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    window.dispatchEvent(new Event('storage')); // Notify self and other tabs
+  const handleLogout = async () => {
+    await signOut(auth);
   }
 
   const getAvatarFallback = () => {

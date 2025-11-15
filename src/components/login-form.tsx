@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useMemoFirebase } from '@/firebase';
+import { useAuth, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, onSnapshot, getDoc, doc, setDoc, getDocs } from 'firebase/firestore';
+import { signInWithCustomToken } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -17,10 +18,36 @@ type User = {
   visibleInLogin?: boolean;
 };
 
+// This is a MOCK function to simulate calling a Cloud Function
+// In a real app, this would be a secure HTTPS call to a backend
+async function getCustomToken(userId: string, passwordAttempt: string): Promise<{token: string} | {error: string}> {
+  // This is insecure and for demonstration ONLY.
+  // A real app would verify the password server-side against a hash.
+  console.log(`Requesting token for userId: ${userId}`);
+
+  // In a real scenario, you'd have a backend.json or similar config
+  // that the backend function would read to connect to Firestore.
+  // Since we are mocking, we can't do that. We will just return a dummy token.
+  // This part of the code is conceptually what a Cloud Function would do.
+  
+  // This is a placeholder. A real implementation would involve a backend.
+  if (userId && passwordAttempt) {
+    // This is a dummy token for demonstration.
+    // In a real app, this would be a securely generated JWT.
+    const dummyToken = `fake-token-for-${userId}`;
+    console.log("Returning mock custom token");
+    return { token: dummyToken };
+  }
+  
+  return { error: "Invalid user ID or password." };
+}
+
+
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
+  const auth = useAuth();
   const [isLoading, setIsLoading] = React.useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState('');
@@ -124,8 +151,8 @@ export default function LoginForm() {
       return;
     }
 
-    if (!firestore) {
-         toast({ variant: "destructive", title: "Errore", description: "Database non disponibile." });
+    if (!firestore || !auth) {
+         toast({ variant: "destructive", title: "Errore", description: "Servizi Firebase non disponibili." });
          setIsLoading(false);
          return;
     }
@@ -134,38 +161,43 @@ export default function LoginForm() {
         const userDocRef = doc(firestore, 'app-users', selectedUserId);
         const userDoc = await getDoc(userDocRef);
 
-        if (!userDoc.exists()) {
-             toast({ variant: "destructive", title: "Errore", description: "Utente non trovato." });
-             setIsLoading(false);
-             return;
-        }
-
-        const userData = userDoc.data();
-
-        if (userData.password === password) {
-             const userToStore = {
-                id: userDoc.id,
-                username: userData.username,
-                role: userData.role,
-             };
-             localStorage.setItem('user', JSON.stringify(userToStore));
-             window.dispatchEvent(new Event('storage')); // Notify layout to update
-             router.push('/dashboard');
-        } else {
+        if (!userDoc.exists() || userDoc.data().password !== password) {
              toast({
                 variant: "destructive",
                 title: "Credenziali non valide",
                 description: "Il nome utente o il codice non sono corretti. Riprova.",
             });
+            setIsLoading(false);
+            return;
         }
+        
+        // This is where we simulate getting a custom token
+        // In a real app, this would be a secure backend call.
+        const tokenResponse = await getCustomToken(selectedUserId, password);
+
+        if ('error' in tokenResponse) {
+             throw new Error(tokenResponse.error);
+        }
+
+        // Sign in with the custom token
+        const userCredential = await signInWithCustomToken(auth, tokenResponse.token);
+        
+        const userData = userDoc.data();
+        const userToStore = {
+            id: userCredential.user.uid, // Use the REAL UID from Auth
+            username: userData.username,
+            role: userData.role,
+        };
+        localStorage.setItem('user', JSON.stringify(userToStore));
+        // The onAuthStateChanged listener in the layout will handle the redirect
+        
     } catch (error: any) {
         console.error("Login failed:", error);
         toast({
             variant: "destructive",
             title: "Errore di Login",
-            description: "Si è verificato un errore durante l'accesso.",
+            description: `Si è verificato un errore durante l'accesso: ${error.message}`,
         });
-    } finally {
         setIsLoading(false);
     }
   };
