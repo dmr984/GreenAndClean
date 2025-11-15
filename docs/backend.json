@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Operator": {
@@ -22,13 +23,18 @@
           "type": "string",
           "description": "The email address of the cleaning operator.",
           "format": "email"
+        },
+        "visibleInLogin": {
+            "type": "boolean",
+            "description": "Determines if the operator is visible in the login dropdown."
         }
       },
       "required": [
         "id",
         "firstName",
         "lastName",
-        "email"
+        "email",
+        "visibleInLogin"
       ]
     },
     "Admin": {

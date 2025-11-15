@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, getDocs, query, where, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, onSnapshot, writeBatch, getDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
@@ -15,29 +15,85 @@ type User = {
   username: string;
   password?: string;
   role: 'admin' | 'operator';
+  visibleInLogin?: boolean;
 };
+
+// This function will run once to set up the initial users if they don't exist.
+const setupInitialUsers = async (firestore: any) => {
+    const adminUserRef = doc(firestore, 'app-users', 'admin_user');
+    const adminDoc = await getDoc(adminUserRef);
+
+    // Only run setup if admin user doesn't exist
+    if (!adminDoc.exists()) {
+        const batch = writeBatch(firestore);
+
+        // 1. Create Admin User
+        batch.set(adminUserRef, {
+            username: 'Amministratore',
+            password: '070380',
+            role: 'admin',
+            visibleInLogin: true,
+        });
+
+        // 2. Create Admin Role
+        const adminRoleRef = doc(firestore, 'roles_admin', 'admin_user');
+        batch.set(adminRoleRef, { isAdmin: true });
+
+        // 3. Create 10 Operator Users
+        for (let i = 1; i <= 10; i++) {
+            const operatorId = `operator_${i}`;
+            const operatorRef = doc(firestore, 'app-users', operatorId);
+            batch.set(operatorRef, {
+                username: `Operatore ${i}`,
+                password: '0000',
+                role: 'operator',
+                visibleInLogin: true,
+            });
+        }
+
+        try {
+            await batch.commit();
+            console.log("Initial users and roles created successfully.");
+        } catch (err: any) {
+             if (err.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'write',
+                    path: 'setup: /app-users and /roles_admin'
+                });
+                errorEmitter.emit('permission-error', contextualError);
+             } else {
+                console.error("Error setting up initial users:", err);
+             }
+        }
+    }
+};
+
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isLoading, setIsLoading] = React.useState(false); 
+  const [isLoading, setIsLoading] = React.useState(true); 
   const [users, setUsers] = useState<User[]>([]);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
 
+  useEffect(() => {
+    if (firestore) {
+      setupInitialUsers(firestore);
+    }
+  }, [firestore]);
+
+
   const usersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'app-users'));
+    return query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
   }, [firestore]);
 
 
   useEffect(() => {
-    if (!usersQuery) {
-        setIsLoading(true);
-        return;
-    }
-    setIsLoading(true);
+    if (!usersQuery) return;
+
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
         snapshot.forEach((doc) => {
@@ -47,8 +103,11 @@ export default function LoginForm() {
         userList.sort((a, b) => {
             if (a.role === 'admin') return -1;
             if (b.role === 'admin') return 1;
-            return a.username.localeCompare(b.username);
+            const aNum = parseInt(a.username.split(' ')[1] || '0');
+            const bNum = parseInt(b.username.split(' ')[1] || '0');
+            return aNum - bNum;
         });
+
         setUsers(userList);
         setIsLoading(false);
     }, (error) => {
@@ -123,7 +182,7 @@ export default function LoginForm() {
     }).catch((error) => {
        if (error.code === 'permission-denied') {
           const contextualError = new FirestorePermissionError({
-              operation: 'list', // A 'where' query is a 'list' operation
+              operation: 'list',
               path: 'app-users'
           });
           errorEmitter.emit('permission-error', contextualError);

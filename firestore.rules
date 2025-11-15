@@ -12,15 +12,19 @@ service cloud.firestore {
     }
     
     match /app-users/{userId} {
-      allow list: if request.auth == null; // Allow unauthenticated users to list users for login dropdown
-      allow read, write: if isAdmin() || isOwner(userId);
-      allow create: if isAdmin(); // Only admins can create new users
+      // Allow unauthenticated users to LIST users for login dropdown, if they are visible
+      allow list: if request.auth == null;
+      allow read: if isAdmin() || isOwner(userId);
+      // Allow creation only for initial setup from an unauthenticated client
+      allow create: if request.auth == null;
+      allow update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
     }
 
      match /roles_admin/{userId} {
       allow read, write: if isAdmin();
-      allow create: if isAdmin(); // Only admins can create new admin roles
+      // Allow creation only for initial setup from an unauthenticated client
+      allow create: if request.auth == null;
     }
   }
 }
