@@ -37,62 +37,10 @@ export default function LoginForm() {
 
 
   useEffect(() => {
-    if (!firestore || !auth) {
+    if (!firestore || !auth || !usersQuery) {
         setIsLoading(false);
         return;
     };
-
-    const setupInitialAdmin = async () => {
-        const adminEmail = 'admin@serveco.it';
-        const adminPassword = '000000'; 
-
-        try {
-            // Step 1: Create the user in Firebase Auth. This is the source of truth for the UID.
-            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-            const adminId = userCredential.user.uid;
-            console.log(`Admin user created in Firebase Auth with UID: ${adminId}`);
-
-            // Step 2: Since creation was successful, this is the first run. 
-            // Let's create the corresponding Firestore documents using the REAL UID.
-            const adminDocRef = doc(firestore, 'app-users', adminId);
-            const roleDocRef = doc(firestore, 'roles_admin', adminId);
-
-            const batch = writeBatch(firestore);
-            batch.set(adminDocRef, {
-                username: "Amministratore",
-                role: "admin",
-                visibleInLogin: true,
-                firstName: "Admin",
-                lastName: "User",
-                email: adminEmail,
-            });
-
-            batch.set(roleDocRef, {
-                email: adminEmail,
-                firstName: "Admin",
-                lastName: "User",
-            });
-
-            await batch.commit();
-            console.log("Admin documents in Firestore created successfully.");
-
-        } catch (error: any) {
-            if (error.code === 'auth/email-already-in-use') {
-                // This is the expected behavior on subsequent loads.
-                // The user and their documents were already created correctly on the first run.
-                // We do nothing.
-                 console.log("Admin user already exists. No action needed.");
-            } else {
-                 // For any other error (e.g., weak password, network issue), log it.
-                 console.error("Error during initial admin setup:", error);
-            }
-        }
-    };
-
-
-    setupInitialAdmin();
-
-    if (!usersQuery) return;
 
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
         const userList: User[] = [];
@@ -123,12 +71,59 @@ export default function LoginForm() {
                 variant: "destructive",
             });
         }
-        // It's important to set loading to false even on error
         setIsLoading(false);
     });
     
     return () => unsubscribe();
   }, [usersQuery, toast, firestore, auth]);
+
+
+  const createAdminAndLogin = async () => {
+      if (!auth || !firestore) return;
+      const adminEmail = 'admin@serveco.it';
+      const adminPassword = '000000';
+
+      try {
+           // Step 1: Create the user in Firebase Auth. This is the source of truth for the UID.
+            const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+            const adminId = userCredential.user.uid;
+            
+            // Step 2: Create the corresponding Firestore documents using the REAL UID.
+            const adminDocRef = doc(firestore, 'app-users', adminId);
+            const roleDocRef = doc(firestore, 'roles_admin', adminId);
+
+            const batch = writeBatch(firestore);
+            batch.set(adminDocRef, {
+                username: "Amministratore",
+                role: "admin",
+                visibleInLogin: true,
+                firstName: "Admin",
+                lastName: "User",
+                email: adminEmail,
+            });
+
+            batch.set(roleDocRef, {
+                email: adminEmail,
+                firstName: "Admin",
+                lastName: "User",
+            });
+
+            await batch.commit();
+
+            // Step 3: Now try to log in again
+            await signInWithEmailAndPassword(auth, adminEmail, password);
+
+      } catch (creationError: any) {
+           console.error("Failed to create admin user during login flow:", creationError);
+            toast({
+                variant: "destructive",
+                title: "Errore Critico",
+                description: "Impossibile creare l'utente amministratore iniziale.",
+            });
+            setIsLoading(false);
+      }
+  }
+
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -156,8 +151,12 @@ export default function LoginForm() {
     try {
         await signInWithEmailAndPassword(auth, selectedUser.email, password);
         // On successful sign-in, the onAuthStateChanged listener in the layout will handle the redirect.
-        // No need to call router.push here.
     } catch (error: any) {
+        if (error.code === 'auth/user-not-found' && selectedUser.email === 'admin@serveco.it') {
+            await createAdminAndLogin();
+            return;
+        }
+
         console.error("Login failed:", error.code);
         toast({
             variant: "destructive",
