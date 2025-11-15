@@ -11,6 +11,10 @@
           "type": "string",
           "description": "Unique identifier for the Operator entity."
         },
+        "username": {
+          "type": "string",
+          "description": "The username of the operator."
+        },
         "firstName": {
           "type": "string",
           "description": "The first name of the cleaning operator."
@@ -31,6 +35,7 @@
       },
       "required": [
         "id",
+        "username",
         "firstName",
         "lastName",
         "email",

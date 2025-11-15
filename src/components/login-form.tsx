@@ -31,7 +31,7 @@ const setupInitialUsers = async (firestore: Firestore) => {
         
         batch.set(adminUserRef, {
             username: 'Amministratore',
-            password: '070380',
+            password: '0000',
             role: 'admin',
             visibleInLogin: true,
         });
