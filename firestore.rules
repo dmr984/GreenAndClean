@@ -14,15 +14,13 @@ service cloud.firestore {
     match /app-users/{userId} {
       allow list: if request.auth == null; // Allow unauthenticated users to list users for login dropdown
       allow read, write: if isAdmin() || isOwner(userId);
-      allow create: if request.auth == null; // Allow initial user creation for setup
+      allow create: if isAdmin(); // Only admins can create new users
       allow delete: if isAdmin();
     }
 
      match /roles_admin/{userId} {
       allow read, write: if isAdmin();
-      // Allow role creation if the corresponding user in 'app-users' is an admin.
-      // This is necessary for the initial admin setup.
-      allow create: if request.auth == null;
+      allow create: if isAdmin(); // Only admins can create new admin roles
     }
   }
 }

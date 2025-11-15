@@ -33,35 +33,6 @@ export default function LoginForm() {
 
 
   useEffect(() => {
-    async function setupAdmin() {
-      if (!firestore) return;
-      
-      const adminUserDocRef = doc(firestore, 'app-users', 'admin_user');
-      const adminRoleDocRef = doc(firestore, 'roles_admin', 'admin_user');
-
-      try {
-        await setDoc(adminUserDocRef, {
-            username: 'Amministratore',
-            password: '0000',
-            role: 'admin'
-        }, { merge: true });
-
-        await setDoc(adminRoleDocRef, { isAdmin: true }, { merge: true });
-
-      } catch (err: any) {
-          if (err.code === 'permission-denied') {
-            const contextualError = new FirestorePermissionError({
-                operation: 'write',
-                path: 'setup: /app-users/admin_user, /roles_admin/admin_user'
-            });
-            errorEmitter.emit('permission-error', contextualError);
-          }
-      }
-    }
-    setupAdmin();
-  }, [firestore]);
-
-  useEffect(() => {
     if (!usersQuery) {
         setIsLoading(true);
         return;
