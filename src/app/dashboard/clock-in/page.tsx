@@ -25,15 +25,18 @@ type UserData = {
   role: 'admin' | 'operator';
 };
 
-export function OperatorDashboard() {
+// The user prop is passed down from the layout
+interface OperatorDashboardProps {
+  user: UserData | null;
+}
+
+export default function OperatorDashboardPage({ user }: OperatorDashboardProps) {
   const [time, setTime] = useState(new Date());
-  const [user, setUser] = useState<UserData | null>(null);
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [location, setLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [isLoadingUser, setIsLoadingUser] = useState(true);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -45,24 +48,8 @@ export function OperatorDashboard() {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
-
-  useEffect(() => {
-     if (typeof window !== 'undefined') {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            try {
-                setUser(JSON.parse(storedUser));
-            } catch (e) {
-                console.error("Failed to parse user from localStorage", e);
-                setUser(null);
-            }
-        }
-        setIsLoadingUser(false);
-     }
-  }, []);
   
   const clockingsQuery = useMemoFirebase(() => {
-    // Only create the query if the user object is available
     if (!firestore || !user?.id) return null;
     
     return query(
@@ -198,7 +185,7 @@ export function OperatorDashboard() {
     return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
 
-  if (isLoadingUser) {
+  if (!user) {
       return <div className="flex items-center justify-center h-full">Caricamento...</div>;
   }
 
@@ -241,7 +228,7 @@ export function OperatorDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-           {isLoadingClockings || isLoadingUser ? (
+           {isLoadingClockings ? (
              <div className="flex justify-center items-center h-24">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>

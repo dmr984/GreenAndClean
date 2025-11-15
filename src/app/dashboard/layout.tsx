@@ -160,7 +160,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-x-hidden">
-           {children}
+           {React.Children.map(children, child => {
+              if (React.isValidElement(child)) {
+                // @ts-ignore
+                return React.cloneElement(child, { user });
+              }
+              return child;
+            })}
         </main>
     </div>
     {user && <ChangeCodeDialog 
