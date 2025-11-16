@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, Timestamp, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar as CalendarIcon, Clock, Loader2 } from 'lucide-react';
@@ -59,13 +59,15 @@ export default function DailySummaryPage() {
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfDay),
             where('timestamp', '<=', endOfDay),
-            where('status', '==', 'confermata'),
-            orderBy('timestamp', 'asc')
+            where('status', '==', 'confermata')
+            // orderBy('timestamp', 'asc') // This was causing an index error. Sorting is now done client-side.
         );
 
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
+                // Sort client-side
+                data.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 setTimbrature(data);
                 setIsLoading(false);
             },
