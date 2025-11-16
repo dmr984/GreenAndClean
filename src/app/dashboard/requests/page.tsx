@@ -43,26 +43,6 @@ const initialFormData = {
     reason: '',
 };
 
-const validateForm = (
-    formData: typeof initialFormData,
-    toast: (props: any) => void
-): boolean => {
-    if (!formData.requestType || !formData.startDate) {
-        toast({ title: "Campi Mancanti", description: "Tipo di richiesta e data di inizio sono obbligatori.", variant: "destructive" });
-        return false;
-    }
-    if ((formData.requestType === 'permesso' || formData.requestType === 'straordinario') && (!formData.hours || Number(formData.hours) <= 0)) {
-        toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
-        return false;
-    }
-    if (formData.endDate && formData.startDate && formData.endDate < formData.startDate) {
-        toast({ title: "Date non valide", description: "La data di fine non può essere precedente a quella di inizio.", variant: "destructive" });
-        return false;
-    }
-    return true;
-};
-
-
 export default function RequestsPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -107,14 +87,30 @@ export default function RequestsPage() {
         return () => unsubscribe();
     }, [firestore, user, isUserLoading, toast]);
 
-
     const handleInputChange = (field: keyof typeof initialFormData, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
+    const validateForm = (): boolean => {
+        if (!formData.requestType || !formData.startDate) {
+            toast({ title: "Campi Mancanti", description: "Tipo di richiesta e data di inizio sono obbligatori.", variant: "destructive" });
+            return false;
+        }
+        if ((formData.requestType === 'permesso' || formData.requestType === 'straordinario') && (!formData.hours || Number(formData.hours) <= 0)) {
+            toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
+            return false;
+        }
+        if (formData.endDate && formData.startDate && formData.endDate < formData.startDate) {
+            toast({ title: "Date non valide", description: "La data di fine non può essere precedente a quella di inizio.", variant: "destructive" });
+            return false;
+        }
+        return true;
+    };
+
+
     const handleNewRequest = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validateForm(formData, toast) || !firestore || !user || !formData.startDate) return;
+        if (!validateForm() || !firestore || !user || !formData.startDate) return;
         
         setIsSubmitting(true);
 
@@ -136,27 +132,26 @@ export default function RequestsPage() {
 
         const requestCollectionRef = collection(firestore, `app-users/${user.id}/requests`);
         
-        addDoc(requestCollectionRef, newRequestData)
-            .then(() => {
-                toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
-                setIsDialogOpen(false);
-            })
-            .catch((error: any) => {
-                console.error("Error creating request:", error);
-                if (error.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'create',
-                        path: requestCollectionRef.path,
-                        requestResourceData: newRequestData
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                    toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
-                }
-            })
-            .finally(() => {
-                setIsSubmitting(false);
-            });
+        try {
+            await addDoc(requestCollectionRef, newRequestData)
+            toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
+            setIsDialogOpen(false);
+            setFormData(initialFormData);
+        } catch (error: any) {
+             console.error("Error creating request:", error);
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'create',
+                    path: requestCollectionRef.path,
+                    requestResourceData: newRequestData
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     
     if (isUserLoading || isLoadingData) {
@@ -310,7 +305,7 @@ export default function RequestsPage() {
                                                 : req.status === 'rifiutato' ? 'destructive' 
                                                 : 'default'
                                             }
-                                             className={req.status === 'in_attesa' ? 'bg-yellow-500 text-white' : ''}>
+                                             className={cn(req.status === 'in_attesa' ? 'bg-yellow-500 text-white hover:bg-yellow-600' : '')}>
                                                 {req.status.replace('_', ' ')}
                                             </Badge>
                                         </TableCell>
