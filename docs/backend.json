@@ -134,9 +134,14 @@
         "reason": {
           "type": "string",
           "description": "An optional reason for the request."
+        },
+        "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The timestamp when the request was created."
         }
       },
-      "required": ["userId", "type", "status", "startDate", "endDate"]
+      "required": ["userId", "type", "status", "startDate", "endDate", "createdAt"]
     }
   },
   "auth": {

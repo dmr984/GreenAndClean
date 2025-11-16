@@ -39,6 +39,7 @@ type Request = {
     endDate: Timestamp;
     hours?: number;
     reason?: string;
+    createdAt: Timestamp;
 }
 
 export default function RequestsPage() {
@@ -117,7 +118,6 @@ export default function RequestsPage() {
         
         setIsSubmitting(true);
 
-        // If no end date is selected, use the start date
         const finalEndDate = endDate || startDate;
         
         if (!startDate || !finalEndDate) {
