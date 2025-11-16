@@ -71,7 +71,6 @@ export default function RequestsPage() {
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     
-    // Unified form state
     const [formData, setFormData] = useState(initialFormData);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -137,25 +136,27 @@ export default function RequestsPage() {
 
         const requestCollectionRef = collection(firestore, `app-users/${user.id}/requests`);
         
-        try {
-            await addDoc(requestCollectionRef, newRequestData);
-            toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
-            setIsDialogOpen(false);
-        } catch (error: any) {
-             console.error("Error creating request:", error);
-            if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'create',
-                    path: requestCollectionRef.path,
-                    requestResourceData: newRequestData
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
+        addDoc(requestCollectionRef, newRequestData)
+            .then(() => {
+                toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
+                setIsDialogOpen(false);
+            })
+            .catch((error: any) => {
+                console.error("Error creating request:", error);
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'create',
+                        path: requestCollectionRef.path,
+                        requestResourceData: newRequestData
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
+                }
+            })
+            .finally(() => {
+                setIsSubmitting(false);
+            });
     };
     
     if (isUserLoading || isLoadingData) {
