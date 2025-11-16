@@ -3,8 +3,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope } from 'lucide-react';
+import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -75,6 +75,7 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
     const { toast } = useToast();
     const [clockings, setClockings] = useState<Timbratura[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [itemToDelete, setItemToDelete] = useState<Timbratura | null>(null);
 
     useEffect(() => {
         if (!firestore) return;
@@ -84,7 +85,6 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
         );
         const unsubscribe = onSnapshot(q, snapshot => {
             const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
-            // Filter client-side
             const pending = allClockings.filter(c => c.status === 'sospesa');
             setClockings(pending);
             setIsLoading(false);
@@ -104,11 +104,24 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
             toast({ title: 'Errore', description: 'Impossibile approvare la timbratura.', variant: 'destructive' });
         });
     };
+
+    const handleDelete = async () => {
+        if (!firestore || !itemToDelete) return;
+        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, itemToDelete.id);
+        await deleteDoc(docRef).then(() => {
+            toast({ title: 'Successo', description: 'Timbratura eliminata.' });
+        }).catch(err => {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
+        });
+        setItemToDelete(null);
+    };
     
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (clockings.length === 0) return <p className="text-sm text-muted-foreground">Nessuna timbratura in sospeso.</p>;
 
     return (
+        <>
         <Table>
             <TableHeader>
                 <TableRow>
@@ -129,14 +142,32 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
                              </a>
                         </TableCell>
                         <TableCell className="text-right">
-                            <Button variant="ghost" size="icon" onClick={() => handleApprove(t.id)}>
+                             <Button variant="ghost" size="icon" onClick={() => handleApprove(t.id)}>
                                 <CheckCircle className="h-5 w-5 text-green-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => setItemToDelete(t)}>
+                                <Trash2 className="h-5 w-5 text-destructive" />
                             </Button>
                         </TableCell>
                     </TableRow>
                 ))}
             </TableBody>
         </Table>
+         <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione eliminerà la timbratura in modo permanente. L'azione non può essere annullata.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete}>Elimina</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 };
 
@@ -145,17 +176,16 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
     const { toast } = useToast();
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
 
     useEffect(() => {
         if (!firestore) return;
-        // Simplified query: order by creation date
         const q = query(
             collection(firestore, `app-users/${operatorId}/requests`),
             orderBy('createdAt', 'desc')
         );
         const unsubscribe = onSnapshot(q, snapshot => {
             const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
-            // Filter for pending requests on the client-side
             const pendingRequests = allRequests.filter(r => r.status === 'in_attesa');
             setRequests(pendingRequests);
             setIsLoading(false);
@@ -176,13 +206,26 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
             toast({ title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive' });
         });
     };
+    
+    const handleDelete = async () => {
+        if (!firestore || !itemToDelete) return;
+        const docRef = doc(firestore, `app-users/${operatorId}/requests`, itemToDelete.id);
+        await deleteDoc(docRef).then(() => {
+            toast({ title: 'Successo', description: 'Richiesta eliminata.' });
+        }).catch(err => {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        });
+        setItemToDelete(null);
+    };
 
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (requests.length === 0) return <p className="text-sm text-muted-foreground">Nessuna richiesta in attesa.</p>;
 
     return (
+        <>
         <Table>
-            <TableHeader><TableRow><TableHead>Tipo</TableHead><TableHead>Dal</TableHead><TableHead>Al</TableHead><TableHead>Ore</TableHead><TableHead>Azioni</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Tipo</TableHead><TableHead>Dal</TableHead><TableHead>Al</TableHead><TableHead>Ore</TableHead><TableHead className='text-right'>Azioni</TableHead></TableRow></TableHeader>
             <TableBody>
                 {requests.map(req => (
                     <TableRow key={req.id}>
@@ -190,16 +233,32 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
                         <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                         <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                         <TableCell>{req.hours || '-'}</TableCell>
-                        <TableCell>
+                        <TableCell className='text-right'>
                             <div className="flex gap-2 justify-end">
                                 <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'approvato')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'rifiutato')}><XCircle className="h-5 w-5 text-red-500" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
                             </div>
                         </TableCell>
                     </TableRow>
                 ))}
             </TableBody>
         </Table>
+         <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione eliminerà la richiesta in modo permanente. L'azione non può essere annullata.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete}>Elimina</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 };
 
@@ -211,6 +270,7 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
     const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
     const [approvedQuantity, setApprovedQuantity] = useState('');
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState<SupplyRequest | null>(null);
 
      useEffect(() => {
         if (!firestore) return;
@@ -222,7 +282,6 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
             const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
             const pendingRequests = allRequests.filter(req => req.status === 'in_attesa');
             
-            // Sort client-side
             pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
             setRequests(pendingRequests);
@@ -276,6 +335,18 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
         updateDoc(requestRef, { status: 'rifiutata' as const }).catch(err => toast({ title: 'Errore', description: 'Impossibile rifiutare la richiesta.', variant: 'destructive'}));
     };
 
+    const handleDelete = async () => {
+        if (!firestore || !itemToDelete) return;
+        const docRef = doc(firestore, `supply-requests`, itemToDelete.id);
+        await deleteDoc(docRef).then(() => {
+            toast({ title: 'Successo', description: 'Richiesta di fornitura eliminata.' });
+        }).catch(err => {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        });
+        setItemToDelete(null);
+    };
+
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (requests.length === 0) return <p className="text-sm text-muted-foreground">Nessuna richiesta di fornitura in attesa.</p>;
 
@@ -293,6 +364,7 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
                                 <div className="flex gap-2 justify-end">
                                     <Button variant="ghost" size="icon" onClick={() => openApproveDialog(req)}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
                                     <Button variant="ghost" size="icon" onClick={() => handleRejectRequest(req)}><XCircle className="h-5 w-5 text-red-500" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
                                 </div>
                             </TableCell>
                         </TableRow>
@@ -304,6 +376,20 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
                     <AlertDialogHeader><AlertDialogTitle>Approva Richiesta</AlertDialogTitle></AlertDialogHeader>
                     <div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="approved-quantity" className="text-right">Quantità</Label><Input id="approved-quantity" type="number" value={approvedQuantity} onChange={(e) => setApprovedQuantity(e.target.value)} className="col-span-3"/></div></div>
                     <AlertDialogFooter><AlertDialogCancel>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleApproveRequest}>Approva</AlertDialogAction></AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione eliminerà la richiesta di fornitura in modo permanente. L'azione non può essere annullata.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDelete}>Elimina</AlertDialogAction>
+                    </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </>
