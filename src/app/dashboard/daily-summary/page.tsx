@@ -1,0 +1,225 @@
+'use client';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, query, where, Timestamp, onSnapshot, orderBy } from 'firebase/firestore';
+import { useFirestore, useMemoFirebase } from '@/firebase';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Calendar as CalendarIcon, Clock, Plus, Loader2, MapPin } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Calendar } from '@/components/ui/calendar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { useUser } from '@/hooks/use-user';
+import { format } from 'date-fns';
+import { it } from 'date-fns/locale';
+
+type Timbratura = {
+    id: string;
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+    status: 'sospesa' | 'confermata';
+    latitude: number;
+    longitude: number;
+};
+
+type Request = {
+    id: string;
+    type: 'straordinario';
+    status: 'approvato';
+    hours?: number;
+    reason?: string;
+};
+
+export default function DailySummaryPage() {
+    const { user, isLoading: isUserLoading } = useUser();
+    const firestore = useFirestore();
+    const { toast } = useToast();
+
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+    const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
+    const [overtimeRequests, setOvertimeRequests] = useState<Request[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const { startOfDay, endOfDay } = useMemo(() => {
+        if (!selectedDate) {
+            return { startOfDay: null, endOfDay: null };
+        }
+        const start = new Date(selectedDate);
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date(selectedDate);
+        end.setHours(23, 59, 59, 999);
+
+        return {
+            startOfDay: Timestamp.fromDate(start),
+            endOfDay: Timestamp.fromDate(end),
+        };
+    }, [selectedDate]);
+
+    useEffect(() => {
+        if (!firestore || !user?.id || !startOfDay || !endOfDay) {
+             if (!isUserLoading) setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+
+        // Listener for Timbrature
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${user.id}/timbrature`),
+            where('timestamp', '>=', startOfDay),
+            where('timestamp', '<=', endOfDay),
+            orderBy('timestamp', 'asc')
+        );
+
+        const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
+            (snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
+                setTimbrature(data);
+                setIsLoading(false);
+            },
+            (error) => {
+                console.error("Error fetching timbrature:", error);
+                toast({ title: "Errore", description: "Impossibile caricare le timbrature.", variant: "destructive" });
+                setIsLoading(false);
+            }
+        );
+
+        // Listener for Overtime Requests
+        const requestsQuery = query(
+            collection(firestore, `app-users/${user.id}/requests`),
+            where('startDate', '>=', startOfDay),
+            where('startDate', '<=', endOfDay),
+            where('type', '==', 'straordinario'),
+            where('status', '==', 'approvato')
+        );
+        
+        const unsubscribeRequests = onSnapshot(requestsQuery, 
+            (snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
+                setOvertimeRequests(data);
+            },
+            (error) => {
+                 console.error("Error fetching overtime requests:", error);
+                 toast({ title: "Errore", description: "Impossibile caricare gli straordinari.", variant: "destructive" });
+            }
+        );
+
+        return () => {
+            unsubscribeTimbrature();
+            unsubscribeRequests();
+        };
+    }, [firestore, user, startOfDay, endOfDay, toast, isUserLoading]);
+    
+    const totalOvertimeHours = useMemo(() => {
+        return overtimeRequests.reduce((sum, req) => sum + (req.hours || 0), 0);
+    }, [overtimeRequests]);
+
+    if (isUserLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+    
+     if (!user) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">Utente non trovato. Effettua nuovamente il login.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-[280px_1fr]">
+            <div className="flex flex-col gap-6">
+                <Card>
+                    <CardHeader>
+                        <div className='flex items-center gap-3'>
+                            <CalendarIcon className="h-6 w-6 text-primary" />
+                            <CardTitle className="text-2xl">Seleziona Giorno</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <Calendar
+                            mode="single"
+                            selected={selectedDate}
+                            onSelect={setSelectedDate}
+                            className="rounded-md border p-0"
+                            locale={it}
+                            disabled={(date) => date > new Date()}
+                        />
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Ore Straordinario</CardTitle>
+                        <Plus className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{totalOvertimeHours}</div>
+                        <p className="text-xs text-muted-foreground">
+                            Approvate per il giorno {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : ''}
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+            
+            <Card>
+                <CardHeader>
+                     <div className='flex items-center gap-3'>
+                        <Clock className="h-6 w-6 text-primary" />
+                        <CardTitle className="text-2xl">
+                            Dettaglio Timbrature del {selectedDate ? format(selectedDate, 'PPP', { locale: it }) : '...'}
+                        </CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                         <div className="flex justify-center items-center h-40">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        </div>
+                    ) : (
+                        <div className="border rounded-md">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Orario</TableHead>
+                                        <TableHead>Evento</TableHead>
+                                        <TableHead>Stato</TableHead>
+                                        <TableHead className="text-right">Posizione</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {timbrature.length > 0 ? (
+                                        timbrature.map((t) => (
+                                            <TableRow key={t.id}>
+                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>
+                                                        {t.status}
+                                                    </Badge>
+                                                </TableCell>
+                                                 <TableCell className="text-right">
+                                                      <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-end gap-1 text-primary hover:underline">
+                                                        <MapPin className="h-4 w-4"/>
+                                                        <span>Mappa</span>
+                                                     </a>
+                                                 </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="text-center h-24">Nessuna timbratura trovata per questo giorno.</TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
