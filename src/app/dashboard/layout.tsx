@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ClipboardList, ListChecks } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ClipboardList, ListChecks, Warehouse, ClipboardCheck, PackageSearch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -131,6 +131,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <Plane className="h-5 w-5" /> Ferie e Permessi
                             </Button>
                         </Link>
+                         <Link href="/dashboard/supply-request" passHref>
+                            <Button variant={pathname === '/dashboard/supply-request' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <PackageSearch className="h-5 w-5" /> Richiesta Forniture
+                            </Button>
+                        </Link>
                         </>
                     )}
                     {user?.role === 'admin' && (
@@ -143,6 +148,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                            <Link href="/dashboard/admin-requests" passHref>
                             <Button variant={pathname === '/dashboard/admin-requests' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <ClipboardList className="h-5 w-5" /> Gestione Richieste
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/admin-supplies" passHref>
+                            <Button variant={pathname === '/dashboard/admin-supplies' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <ClipboardCheck className="h-5 w-5" /> Richieste Forniture
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/warehouse" passHref>
+                            <Button variant={pathname === '/dashboard/warehouse' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Warehouse className="h-5 w-5" /> Gestione Magazzino
                             </Button>
                           </Link>
                         </>
