@@ -1,9 +1,9 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, orderBy } from 'firebase/firestore';
-import { useFirestore, useMemoFirebase } from '@/firebase';
+import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, Plus, Loader2, MapPin } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Loader2, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,14 +21,6 @@ type Timbratura = {
     longitude: number;
 };
 
-type Request = {
-    id: string;
-    type: 'straordinario';
-    status: 'approvato';
-    hours?: number;
-    reason?: string;
-};
-
 export default function DailySummaryPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -36,7 +28,6 @@ export default function DailySummaryPage() {
 
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
-    const [overtimeRequests, setOvertimeRequests] = useState<Request[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const { startOfDay, endOfDay } = useMemo(() => {
@@ -84,36 +75,11 @@ export default function DailySummaryPage() {
             }
         );
 
-        // Listener for Overtime Requests
-        const requestsQuery = query(
-            collection(firestore, `app-users/${user.id}/requests`),
-            where('startDate', '>=', startOfDay),
-            where('startDate', '<=', endOfDay),
-            where('type', '==', 'straordinario'),
-            where('status', '==', 'approvato')
-        );
-        
-        const unsubscribeRequests = onSnapshot(requestsQuery, 
-            (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
-                setOvertimeRequests(data);
-            },
-            (error) => {
-                 console.error("Error fetching overtime requests:", error);
-                 toast({ title: "Errore", description: "Impossibile caricare gli straordinari.", variant: "destructive" });
-            }
-        );
-
         return () => {
             unsubscribeTimbrature();
-            unsubscribeRequests();
         };
     }, [firestore, user, startOfDay, endOfDay, toast, isUserLoading]);
     
-    const totalOvertimeHours = useMemo(() => {
-        return overtimeRequests.reduce((sum, req) => sum + (req.hours || 0), 0);
-    }, [overtimeRequests]);
-
     if (isUserLoading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -149,18 +115,6 @@ export default function DailySummaryPage() {
                             locale={it}
                             disabled={(date) => date > new Date()}
                         />
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Ore Straordinario</CardTitle>
-                        <Plus className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalOvertimeHours}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Approvate per il giorno {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : ''}
-                        </p>
                     </CardContent>
                 </Card>
             </div>
