@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plane, PlusCircle, Loader2 } from 'lucide-react';
+import { Plane, PlusCircle, Loader2, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -34,6 +33,32 @@ type Request = {
     createdAt: Timestamp;
 }
 
+type RequestType = 'ferie' | 'permesso' | 'malattia' | 'straordinario' | '';
+
+// This function is now outside the component to prevent re-creation on every render.
+const validateForm = (
+    requestType: RequestType,
+    startDate: Date | undefined,
+    endDate: Date | undefined,
+    hours: string,
+    toast: (props: any) => void
+): boolean => {
+    if (!requestType || !startDate) {
+        toast({ title: "Campi Mancanti", description: "Tipo di richiesta e data di inizio sono obbligatori.", variant: "destructive" });
+        return false;
+    }
+    if ((requestType === 'permesso' || requestType === 'straordinario') && (!hours || Number(hours) <= 0)) {
+        toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
+        return false;
+    }
+    if (endDate && startDate && endDate < startDate) {
+        toast({ title: "Date non valide", description: "La data di fine non può essere precedente a quella di inizio.", variant: "destructive" });
+        return false;
+    }
+    return true;
+};
+
+
 export default function RequestsPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -43,7 +68,7 @@ export default function RequestsPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
     // Form state
-    const [requestType, setRequestType] = useState<'ferie' | 'permesso' | 'malattia' | 'straordinario' | ''>('');
+    const [requestType, setRequestType] = useState<RequestType>('');
     const [startDate, setStartDate] = useState<Date | undefined>();
     const [endDate, setEndDate] = useState<Date | undefined>();
     const [hours, setHours] = useState<string>('');
@@ -92,35 +117,15 @@ export default function RequestsPage() {
         setIsSubmitting(false);
     };
 
-    const validateForm = () => {
-        if (!requestType || !startDate) {
-            toast({ title: "Campi Mancanti", description: "Tipo di richiesta e data di inizio sono obbligatori.", variant: "destructive" });
-            return false;
-        }
-        if ((requestType === 'permesso' || requestType === 'straordinario') && (!hours || Number(hours) <= 0)) {
-            toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
-            return false;
-        }
-         if (endDate && startDate && endDate < startDate) {
-            toast({ title: "Date non valide", description: "La data di fine non può essere precedente a quella di inizio.", variant: "destructive" });
-            return false;
-        }
-        return true;
-    }
 
     const handleNewRequest = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validateForm() || !firestore || !user) return;
+        if (!validateForm(requestType, startDate, endDate, hours, toast) || !firestore || !user || !startDate) return;
         
         setIsSubmitting(true);
 
+        // If endDate is not provided, use startDate
         const finalEndDate = endDate || startDate;
-        
-        if (!startDate || !finalEndDate) {
-             toast({ title: "Errore", description: "Le date non sono valide.", variant: "destructive" });
-             setIsSubmitting(false);
-             return;
-        }
 
         const newRequestData = {
             userId: user.id,
