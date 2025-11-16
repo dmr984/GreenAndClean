@@ -35,22 +35,27 @@ type Request = {
 
 type RequestType = 'ferie' | 'permesso' | 'malattia' | 'straordinario' | '';
 
+const initialFormData = {
+    requestType: '' as RequestType,
+    startDate: undefined as Date | undefined,
+    endDate: undefined as Date | undefined,
+    hours: '',
+    reason: '',
+};
+
 const validateForm = (
-    requestType: RequestType,
-    startDate: Date | undefined,
-    endDate: Date | undefined,
-    hours: string,
+    formData: typeof initialFormData,
     toast: (props: any) => void
 ): boolean => {
-    if (!requestType || !startDate) {
+    if (!formData.requestType || !formData.startDate) {
         toast({ title: "Campi Mancanti", description: "Tipo di richiesta e data di inizio sono obbligatori.", variant: "destructive" });
         return false;
     }
-    if ((requestType === 'permesso' || requestType === 'straordinario') && (!hours || Number(hours) <= 0)) {
+    if ((formData.requestType === 'permesso' || formData.requestType === 'straordinario') && (!formData.hours || Number(formData.hours) <= 0)) {
         toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
         return false;
     }
-    if (endDate && startDate && endDate < startDate) {
+    if (formData.endDate && formData.startDate && formData.endDate < formData.startDate) {
         toast({ title: "Date non valide", description: "La data di fine non può essere precedente a quella di inizio.", variant: "destructive" });
         return false;
     }
@@ -65,19 +70,10 @@ export default function RequestsPage() {
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-    // Form state
-    const [requestType, setRequestType] = useState<RequestType>('');
-    const [startDate, setStartDate] = useState<Date | undefined>();
-    const [endDate, setEndDate] = useState<Date | undefined>();
-    const [hours, setHours] = useState<string>('');
-    const [reason, setReason] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Popover states for calendars
-    const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
-    const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
-
+    // Unified form state
+    const [formData, setFormData] = useState(initialFormData);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (!firestore || !user?.id) {
@@ -112,59 +108,54 @@ export default function RequestsPage() {
         return () => unsubscribe();
     }, [firestore, user, isUserLoading, toast]);
 
-    const resetForm = () => {
-        setRequestType('');
-        setStartDate(undefined);
-        setEndDate(undefined);
-        setHours('');
-        setReason('');
-        setIsSubmitting(false);
-    };
 
+    const handleInputChange = (field: keyof typeof initialFormData, value: any) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
 
     const handleNewRequest = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validateForm(requestType, startDate, endDate, hours, toast) || !firestore || !user || !startDate) return;
+        if (!validateForm(formData, toast) || !firestore || !user || !formData.startDate) return;
         
         setIsSubmitting(true);
 
-        const finalEndDate = endDate || startDate;
+        const finalEndDate = formData.endDate || formData.startDate;
 
-        const newRequestData = {
+        const newRequestData: any = {
             userId: user.id,
-            type: requestType as Exclude<RequestType, ''>,
+            type: formData.requestType,
             status: 'in_attesa' as const,
-            startDate: Timestamp.fromDate(startDate),
+            startDate: Timestamp.fromDate(formData.startDate),
             endDate: Timestamp.fromDate(finalEndDate),
-            reason,
+            reason: formData.reason,
             createdAt: serverTimestamp(),
-            ...( (requestType === 'permesso' || requestType === 'straordinario') && { hours: Number(hours) } )
         };
+
+        if (formData.requestType === 'permesso' || formData.requestType === 'straordinario') {
+            newRequestData.hours = Number(formData.hours);
+        }
 
         const requestCollectionRef = collection(firestore, `app-users/${user.id}/requests`);
         
-        addDoc(requestCollectionRef, newRequestData)
-            .then(() => {
-                toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
-                setIsDialogOpen(false);
-                resetForm();
-            })
-            .catch((error: any) => {
-                 console.error("Error creating request:", error);
-                if (error.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'create',
-                        path: requestCollectionRef.path,
-                        requestResourceData: newRequestData
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                    toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
-                }
-            })
-            .finally(() => {
-                setIsSubmitting(false);
-            });
+        try {
+            await addDoc(requestCollectionRef, newRequestData);
+            toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
+            setIsDialogOpen(false);
+        } catch (error: any) {
+             console.error("Error creating request:", error);
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'create',
+                    path: requestCollectionRef.path,
+                    requestResourceData: newRequestData
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     
     if (isUserLoading || isLoadingData) {
@@ -191,7 +182,7 @@ export default function RequestsPage() {
                     <CardTitle className="text-3xl font-bold tracking-tight">Gestione Richieste</CardTitle>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                    if (!open) resetForm();
+                    if (!open) setFormData(initialFormData);
                     setIsDialogOpen(open);
                 }}>
                     <DialogTrigger asChild>
@@ -210,7 +201,7 @@ export default function RequestsPage() {
                             <div className="grid gap-4 py-4">
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="type" className="text-right">Tipo</Label>
-                                    <Select required onValueChange={(value) => setRequestType(value as RequestType)} value={requestType}>
+                                    <Select required onValueChange={(value) => handleInputChange('requestType', value as RequestType)} value={formData.requestType}>
                                         <SelectTrigger id="type" className="col-span-3">
                                             <SelectValue placeholder="Seleziona un tipo" />
                                         </SelectTrigger>
@@ -222,27 +213,24 @@ export default function RequestsPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                 <div className="grid grid-cols-4 items-center gap-4">
+                                <div className="grid grid-cols-4 items-center gap-4">
                                      <Label htmlFor="startDate" className="text-right">Data Inizio</Label>
-                                     <Popover open={isStartCalendarOpen} onOpenChange={setIsStartCalendarOpen}>
+                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button
                                                 id="startDate"
                                                 variant={"outline"}
-                                                className={cn("col-span-3 justify-start text-left font-normal", !startDate && "text-muted-foreground")}
+                                                className={cn("col-span-3 justify-start text-left font-normal", !formData.startDate && "text-muted-foreground")}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {startDate ? format(startDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
+                                                {formData.startDate ? format(formData.startDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
                                             <Calendar 
                                                 mode="single" 
-                                                selected={startDate} 
-                                                onSelect={(date) => {
-                                                    setStartDate(date);
-                                                    setIsStartCalendarOpen(false);
-                                                }}
+                                                selected={formData.startDate} 
+                                                onSelect={(date) => handleInputChange('startDate', date)}
                                                 initialFocus 
                                             />
                                         </PopoverContent>
@@ -250,41 +238,38 @@ export default function RequestsPage() {
                                 </div>
                                 <div className="grid grid-cols-4 items-center gap-4">
                                      <Label htmlFor="endDate" className="text-right">Data Fine</Label>
-                                     <Popover open={isEndCalendarOpen} onOpenChange={setIsEndCalendarOpen}>
+                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button
                                                 id="endDate"
                                                 variant={"outline"}
-                                                className={cn("col-span-3 justify-start text-left font-normal", !endDate && "text-muted-foreground")}
-                                                disabled={!startDate}
+                                                className={cn("col-span-3 justify-start text-left font-normal", !formData.endDate && "text-muted-foreground")}
+                                                disabled={!formData.startDate}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {endDate ? format(endDate, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
+                                                {formData.endDate ? format(formData.endDate, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
                                             <Calendar 
                                                 mode="single" 
-                                                selected={endDate} 
-                                                onSelect={(date) => {
-                                                    setEndDate(date);
-                                                    setIsEndCalendarOpen(false);
-                                                }}
-                                                disabled={{ before: startDate }} 
+                                                selected={formData.endDate} 
+                                                onSelect={(date) => handleInputChange('endDate', date)}
+                                                disabled={{ before: formData.startDate }} 
                                                 initialFocus 
                                             />
                                         </PopoverContent>
                                      </Popover>
                                 </div>
-                                 {(requestType === 'permesso' || requestType === 'straordinario') && (
+                                 {(formData.requestType === 'permesso' || formData.requestType === 'straordinario') && (
                                      <div className="grid grid-cols-4 items-center gap-4">
                                         <Label htmlFor="hours" className="text-right">Ore</Label>
-                                        <Input id="hours" type="number" value={hours} onChange={(e) => setHours(e.target.value)} className="col-span-3" placeholder='Es: 2.5' required min="0.5" step="0.5" />
+                                        <Input id="hours" type="number" value={formData.hours} onChange={(e) => handleInputChange('hours', e.target.value)} className="col-span-3" placeholder='Es: 2.5' required min="0.5" step="0.5" />
                                     </div>
                                  )}
                                 <div className="grid grid-cols-4 items-start gap-4">
                                     <Label htmlFor="reason" className="text-right mt-2">Motivazione</Label>
-                                    <Textarea id="reason" value={reason} onChange={(e) => setReason(e.target.value)} className="col-span-3" placeholder="Aggiungi una nota (opzionale)" />
+                                    <Textarea id="reason" value={formData.reason} onChange={(e) => handleInputChange('reason', e.target.value)} className="col-span-3" placeholder="Aggiungi una nota (opzionale)" />
                                 </div>
                             </div>
                             <DialogFooter>
