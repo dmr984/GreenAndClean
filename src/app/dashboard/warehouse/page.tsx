@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
@@ -272,5 +271,3 @@ export default function WarehousePage() {
         </>
     );
 }
-
-    

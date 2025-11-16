@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, runTransaction } from 'firebase/firestore';
@@ -247,5 +246,3 @@ export default function AdminSuppliesPage() {
         </>
     );
 }
-
-    

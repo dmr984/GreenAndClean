@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
@@ -258,5 +257,3 @@ export default function SupplyRequestPage() {
         </div>
     );
 }
-
-    
