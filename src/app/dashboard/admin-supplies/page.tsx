@@ -108,11 +108,15 @@ export default function AdminSuppliesPage() {
             toast({ title: "Successo", description: "Richiesta approvata e magazzino aggiornato." });
         } catch (error: any) {
             console.error("Error approving request:", error);
-            if (error.code === 'permission-denied' || (error.message && error.message.includes('permission-denied'))) { // runTransaction can wrap errors
+            // runTransaction can wrap permission errors, so we check the message property as well.
+            if (error.code === 'permission-denied' || (error.message && error.message.includes('denied'))) {
                  const contextualError = new FirestorePermissionError({
-                    operation: 'update',
+                    operation: 'update', // A transaction is fundamentally a set of reads and writes
                     path: `supply-requests/${selectedRequest.id} and products/${selectedRequest.productId}`,
-                    requestResourceData: updatePayload
+                    requestResourceData: { 
+                        requestUpdate: updatePayload,
+                        productUpdate: `new quantity: (current - ${finalQuantity})`,
+                    }
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
@@ -246,3 +250,5 @@ export default function AdminSuppliesPage() {
         </>
     );
 }
+
+    
