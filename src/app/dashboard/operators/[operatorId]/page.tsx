@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2 } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -13,6 +13,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogFooter,
+    DialogClose,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,13 +84,13 @@ type SupplyRequest = {
     createdAt: any;
 };
 
-// Sub-components for each accordion item
 const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [shiftToHandle, setShiftToHandle] = useState<{ shift: Shift; action: 'approve' | 'delete' } | null>(null);
+    const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
     useEffect(() => {
         if (!firestore) return;
@@ -129,10 +139,10 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         return unsubscribe;
     }, [firestore, operatorId, toast]);
 
-    const handleApproveShift = async (shift: Shift) => {
-        if (!firestore) return;
+    const handleApproveShift = async () => {
+        if (!firestore || !selectedShift) return;
         const batch = writeBatch(firestore);
-        shift.events.forEach(event => {
+        selectedShift.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
                 batch.update(docRef, { status: 'confermata' });
@@ -144,13 +154,13 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         });
-        setShiftToHandle(null);
+        setSelectedShift(null);
     };
 
-    const handleDeleteShift = async (shift: Shift) => {
-        if (!firestore) return;
+    const handleDeleteShift = async () => {
+        if (!firestore || !selectedShift) return;
         const batch = writeBatch(firestore);
-        shift.events.forEach(event => {
+        selectedShift.events.forEach(event => {
             const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
             batch.delete(docRef);
         });
@@ -160,89 +170,115 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         });
-        setShiftToHandle(null);
-    };
-
-    const handleConfirmAction = () => {
-        if (!shiftToHandle) return;
-        if (shiftToHandle.action === 'approve') {
-            handleApproveShift(shiftToHandle.shift);
-        } else {
-            handleDeleteShift(shiftToHandle.shift);
-        }
+        setIsConfirmingDelete(false);
+        setSelectedShift(null);
     };
     
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno in sospeso.</p>;
+    
+    const formatTime = (date: Timestamp) => format(date.toDate(), 'p', { locale: it });
 
     return (
         <>
-        <div className="space-y-4">
-            {shifts.map((shift, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                         <div>
-                            <h4 className="font-semibold">Turno del {format(shift.events[0].timestamp.toDate(), 'PPP', { locale: it })}</h4>
-                            <p className="text-sm text-muted-foreground">
-                                Da {format(shift.events[0].timestamp.toDate(), 'p', { locale: it })} 
-                                {shift.events.find(e => e.type === 'uscita') ? ` a ${format(shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'p', { locale: it })}` : ' (in corso)'}
-                            </p>
-                        </div>
-                        <div className="flex gap-2">
-                             <Button variant="ghost" size="icon" onClick={() => setShiftToHandle({ shift, action: 'approve' })}>
-                                <CheckCircle className="h-5 w-5 text-green-500" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setShiftToHandle({ shift, action: 'delete' })}>
-                                <Trash2 className="h-5 w-5 text-destructive" />
-                            </Button>
-                        </div>
-                    </div>
-                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Orario</TableHead>
-                                <TableHead>Evento</TableHead>
-                                <TableHead>Stato</TableHead>
-                                <TableHead>Posizione</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {shift.events.map(t => (
-                                <TableRow key={t.id}>
-                                    <TableCell>{format(t.timestamp.toDate(), 'p', { locale: it })}</TableCell>
-                                    <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                    <TableCell><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
-                                    <TableCell>
-                                        <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                            <MapPin className="h-4 w-4"/> Mappa
-                                        </a>
+            <div className="border rounded-lg">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Data Turno</TableHead>
+                            <TableHead>Inizio</TableHead>
+                            <TableHead>Fine</TableHead>
+                            <TableHead className="text-right">Azioni</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {shifts.map((shift, index) => {
+                             const startTime = shift.events[0]?.timestamp;
+                             const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+                            return (
+                                <TableRow key={index}>
+                                    <TableCell>{startTime ? format(startTime.toDate(), 'PPP', { locale: it }) : 'N/D'}</TableCell>
+                                    <TableCell>{startTime ? formatTime(startTime) : '--:--'}</TableCell>
+                                    <TableCell>{endTime ? formatTime(endTime) : <Badge variant="secondary">In corso</Badge>}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => setSelectedShift(shift)}>
+                                            <Eye className="h-5 w-5" />
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            ))}
-        </div>
-         <AlertDialog open={!!shiftToHandle} onOpenChange={(open) => !open && setShiftToHandle(null)}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                         {shiftToHandle?.action === 'approve'
-                            ? "Approvare questo turno renderà tutte le sue timbrature confermate."
-                            : "Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata."
-                        }
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleConfirmAction}>
-                        {shiftToHandle?.action === 'approve' ? 'Approva' : 'Elimina'}
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
+                            )
+                        })}
+                    </TableBody>
+                </Table>
+            </div>
+            
+            {/* Shift Details Dialog */}
+            <Dialog open={!!selectedShift} onOpenChange={(open) => !open && setSelectedShift(null)}>
+                <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Dettaglio Turno</DialogTitle>
+                        <DialogDescription>
+                            Controlla e gestisci le timbrature per il turno selezionato.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {selectedShift && (
+                        <div className="space-y-4">
+                            <div className="border rounded-lg max-h-96 overflow-y-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Orario</TableHead>
+                                            <TableHead>Evento</TableHead>
+                                            <TableHead>Stato</TableHead>
+                                            <TableHead>Posizione</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {selectedShift.events.map(t => (
+                                            <TableRow key={t.id}>
+                                                <TableCell>{formatTime(t.timestamp)}</TableCell>
+                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                <TableCell><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
+                                                <TableCell>
+                                                    <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                        <MapPin className="h-4 w-4"/> Mappa
+                                                    </a>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsConfirmingDelete(true)}>
+                                    <Trash2 className="mr-2 h-4 w-4" /> Elimina
+                                </Button>
+                                <Button onClick={handleApproveShift}>
+                                    <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteShift}>
+                            Elimina
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 };
@@ -616,7 +652,7 @@ export default function OperatorDetailPage() {
 
             <Accordion type="multiple" className="w-full space-y-4" defaultValue={['item-1']}>
                  <Card>
-                    <AccordionItem value="item-1">
+                    <AccordionItem value="item-1" className="border-b-0">
                         <AccordionTrigger className="p-6">
                             <div className="flex items-center gap-3">
                                 <ListChecks className="h-6 w-6 text-primary"/>
@@ -629,7 +665,7 @@ export default function OperatorDetailPage() {
                     </AccordionItem>
                 </Card>
                  <Card>
-                    <AccordionItem value="item-2">
+                    <AccordionItem value="item-2" className="border-b-0">
                         <AccordionTrigger className="p-6">
                             <div className="flex items-center gap-3">
                                 <ClipboardList className="h-6 w-6 text-primary"/>
@@ -642,7 +678,7 @@ export default function OperatorDetailPage() {
                     </AccordionItem>
                 </Card>
                  <Card>
-                    <AccordionItem value="item-3">
+                    <AccordionItem value="item-3" className="border-b-0">
                         <AccordionTrigger className="p-6">
                              <div className="flex items-center gap-3">
                                 <PackageSearch className="h-6 w-6 text-primary"/>
@@ -655,7 +691,7 @@ export default function OperatorDetailPage() {
                     </AccordionItem>
                 </Card>
                  <Card>
-                    <AccordionItem value="item-4">
+                    <AccordionItem value="item-4" className="border-b-0">
                         <AccordionTrigger className="p-6">
                              <div className="flex items-center gap-3">
                                 <Calendar className="h-6 w-6 text-primary"/>
@@ -671,5 +707,3 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
-
-    
