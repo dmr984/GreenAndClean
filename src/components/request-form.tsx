@@ -37,7 +37,8 @@ const requestSchema = z.object({
 }).refine(data => {
     // Hours are required for 'permesso' or 'straordinario'
     if ((data.requestType === 'permesso' || data.requestType === 'straordinario')) {
-        return !!data.hours && parseFloat(data.hours) > 0;
+        const hours = data.hours ? parseFloat(data.hours) : 0;
+        return hours > 0;
     }
     return true;
 }, {
@@ -71,10 +72,12 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
     });
 
     const selectedType = watch('requestType');
+    const startDateValue = watch('startDate');
 
     const onSubmit = async (data: RequestFormValues) => {
         if (!firestore) return;
 
+        // Use end date if provided, otherwise default to start date
         const finalEndDate = data.endDate || data.startDate;
 
         const newRequestData: any = {
@@ -83,7 +86,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
             status: 'in_attesa' as const,
             startDate: Timestamp.fromDate(data.startDate),
             endDate: Timestamp.fromDate(finalEndDate),
-            reason: data.reason,
+            reason: data.reason || "",
             createdAt: serverTimestamp(),
         };
 
@@ -93,13 +96,12 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
         
         const requestCollectionRef = collection(firestore, `app-users/${userId}/requests`);
 
-        try {
-            await addDoc(requestCollectionRef, newRequestData);
+        addDoc(requestCollectionRef, newRequestData).then(() => {
             toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
             onFinished(); // Close the dialog
-        } catch (error: any) {
+        }).catch((error: any) => {
             console.error("Error creating request:", error);
-            if (error.code === 'permission-denied') {
+            if (error.code === 'permission-denied' && firestore) {
                 const contextualError = new FirestorePermissionError({
                     operation: 'create',
                     path: requestCollectionRef.path,
@@ -109,7 +111,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
             } else {
                 toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
             }
-        }
+        });
     };
     
     return (
@@ -191,7 +193,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                         id="endDate"
                                         variant={"outline"}
                                         className={cn("justify-start text-left font-normal", !field.value && "text-muted-foreground")}
-                                        disabled={!watch('startDate')}
+                                        disabled={!startDateValue}
                                     >
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {field.value ? format(field.value, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
@@ -205,7 +207,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                           field.onChange(date);
                                           setIsEndPickerOpen(false);
                                         }}
-                                        disabled={{ before: watch('startDate')! }} 
+                                        disabled={{ before: startDateValue! }} 
                                         initialFocus 
                                     />
                                 </PopoverContent>
