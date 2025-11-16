@@ -52,7 +52,6 @@ export default function MonthlySummaryPage() {
 
     useEffect(() => {
         if (!firestore || !user?.id) {
-            // Wait for user and firestore to be available
             if (!isUserLoading) {
                 setIsDataLoading(false);
             }
@@ -60,7 +59,6 @@ export default function MonthlySummaryPage() {
         }
 
         setIsDataLoading(true);
-
         const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
             where('startDate', '>=', startOfMonth),
@@ -77,6 +75,7 @@ export default function MonthlySummaryPage() {
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
+                // Only set loading to false after the primary data (requests) is loaded
                 setIsDataLoading(false); 
             },
             (error) => {
@@ -260,7 +259,7 @@ export default function MonthlySummaryPage() {
                             <TableBody>
                                 {requests.length > 0 ? requests.map((req) => (
                                     <TableRow key={req.id}>
-                                        <TableCell className="font-medium capitalize">{req.type}</TableCell>
+                                        <TableCell className="font-medium capitalize">{req.type.replace('_', ' ')}</TableCell>
                                         <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                                         <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                                         <TableCell>{req.hours ? `${req.hours} ore` : '-'}</TableCell>

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { useUser } from '@/hooks/use-user';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
+import { ChangeCodeDialog } from '@/components/change-code-dialog';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
@@ -18,6 +19,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated after loading is finished
@@ -58,7 +60,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     
     if (!user) {
-        // This case is mostly handled by the redirect, but it's a good fallback
          return (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex flex-col items-center gap-2">
@@ -69,7 +70,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         );
     }
     
-    // For the main /dashboard route, render the correct dashboard
     if (pathname === '/dashboard') {
         if (user.role === 'admin') {
           return <AdminDashboard user={user} />;
@@ -80,7 +80,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return <div>Ruolo utente non riconosciuto.</div>;
     }
     
-    // For any other sub-page, just render the children
     return children;
   };
   
@@ -139,6 +138,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                  </nav>
                  <div className="mt-auto">
                     <Separator className="my-2"/>
+                     <Button variant="ghost" className="justify-start gap-2 w-full" onClick={() => { setIsSettingsOpen(true); setIsSidebarOpen(false); } }>
+                      <Settings className="h-5 w-5" /> Impostazioni
+                   </Button>
                     <Button variant="ghost" className="justify-start gap-2 w-full" onClick={handleLogout}>
                       <LogOut className="h-5 w-5" /> Esci
                    </Button>
@@ -169,6 +171,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {renderDashboardContent()}
         </main>
     </div>
+    <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
     </>
   );
 }

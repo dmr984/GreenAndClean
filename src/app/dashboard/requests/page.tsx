@@ -8,15 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -107,6 +99,10 @@ export default function RequestsPage() {
         }
         if ((requestType === 'permesso' || requestType === 'straordinario') && (!hours || Number(hours) <= 0)) {
             toast({ title: "Campo Mancante", description: "Per permessi e straordinari, il numero di ore è obbligatorio.", variant: "destructive" });
+            return false;
+        }
+         if (endDate && startDate && endDate < startDate) {
+            toast({ title: "Date non valide", description: "La data di fine non può essere precedente a quella di inizio.", variant: "destructive" });
             return false;
         }
         return true;
@@ -242,6 +238,7 @@ export default function RequestsPage() {
                                                 id="endDate"
                                                 variant={"outline"}
                                                 className={cn("col-span-3 justify-start text-left font-normal", !endDate && "text-muted-foreground")}
+                                                disabled={!startDate}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                                 {endDate ? format(endDate, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
