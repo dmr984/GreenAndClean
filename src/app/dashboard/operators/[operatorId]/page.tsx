@@ -277,29 +277,29 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                     </DialogHeader>
                     {selectedShift && (
                         <div className="space-y-4">
-                            <div className="border rounded-lg max-h-96 overflow-y-auto">
+                            <div className="max-h-96 overflow-y-auto">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Orario</TableHead>
-                                            <TableHead>Evento</TableHead>
-                                            <TableHead>Stato</TableHead>
-                                            <TableHead>Posizione</TableHead>
-                                            <TableHead className="text-right">Azioni</TableHead>
+                                            <TableHead className="whitespace-nowrap">Orario</TableHead>
+                                            <TableHead className="whitespace-nowrap">Evento</TableHead>
+                                            <TableHead className="whitespace-nowrap">Stato</TableHead>
+                                            <TableHead className="whitespace-nowrap">Posizione</TableHead>
+                                            <TableHead className="text-right whitespace-nowrap w-[120px]">Azioni</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {selectedShift.events.map(t => (
                                             <TableRow key={t.id}>
-                                                <TableCell>{formatTime(t.timestamp)}</TableCell>
-                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                <TableCell><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
-                                                <TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
+                                                <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
+                                                <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
+                                                <TableCell className="whitespace-nowrap">
                                                     <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
                                                         <MapPin className="h-4 w-4"/> Mappa
                                                     </a>
                                                 </TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="text-right whitespace-nowrap">
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
                                                     <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                                 </TableCell>
