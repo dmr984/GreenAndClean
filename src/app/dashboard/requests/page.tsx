@@ -65,10 +65,6 @@ export default function RequestsPage() {
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    
-    // Popover states
-    const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
-    const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
 
     // Form state
     const [requestType, setRequestType] = useState<RequestType>('');
@@ -77,6 +73,11 @@ export default function RequestsPage() {
     const [hours, setHours] = useState<string>('');
     const [reason, setReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // Popover states for calendars
+    const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
+    const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
+
 
     useEffect(() => {
         if (!firestore || !user?.id) {
@@ -142,26 +143,28 @@ export default function RequestsPage() {
 
         const requestCollectionRef = collection(firestore, `app-users/${user.id}/requests`);
         
-        try {
-            await addDoc(requestCollectionRef, newRequestData);
-            toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
-            setIsDialogOpen(false);
-            resetForm();
-        } catch (error: any) {
-            console.error("Error creating request:", error);
-            if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'create',
-                    path: requestCollectionRef.path,
-                    requestResourceData: newRequestData
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
+        addDoc(requestCollectionRef, newRequestData)
+            .then(() => {
+                toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
+                setIsDialogOpen(false);
+                resetForm();
+            })
+            .catch((error: any) => {
+                 console.error("Error creating request:", error);
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'create',
+                        path: requestCollectionRef.path,
+                        requestResourceData: newRequestData
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile inviare la richiesta. Riprova.", variant: "destructive" });
+                }
+            })
+            .finally(() => {
+                setIsSubmitting(false);
+            });
     };
     
     if (isUserLoading || isLoadingData) {
@@ -320,7 +323,8 @@ export default function RequestsPage() {
                                                 req.status === 'approvato' ? 'secondary' 
                                                 : req.status === 'rifiutato' ? 'destructive' 
                                                 : 'default'
-                                            }>
+                                            }
+                                             className={req.status === 'in_attesa' ? 'bg-yellow-500 text-white' : ''}>
                                                 {req.status.replace('_', ' ')}
                                             </Badge>
                                         </TableCell>
