@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { useParams } from 'next/navigation';
+
 
 type Operator = {
     id: string;
@@ -385,15 +387,16 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
     );
 };
 
-export default function OperatorDetailPage({ params }: { params: { operatorId: string } }) {
-    const { operatorId } = params;
+export default function OperatorDetailPage() {
+    const params = useParams();
+    const operatorId = Array.isArray(params.operatorId) ? params.operatorId[0] : params.operatorId;
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const operatorDocRef = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !operatorId) return null;
         return doc(firestore, 'app-users', operatorId);
     }, [firestore, operatorId]);
     
