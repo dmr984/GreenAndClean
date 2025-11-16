@@ -216,12 +216,15 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
         if (!firestore) return;
         const q = query(
             collection(firestore, 'supply-requests'),
-            where('userId', '==', operatorId),
-            orderBy('createdAt', 'desc')
+            where('userId', '==', operatorId)
         );
         const unsubscribe = onSnapshot(q, snapshot => {
             const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
             const pendingRequests = allRequests.filter(req => req.status === 'in_attesa');
+            
+            // Sort client-side
+            pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+
             setRequests(pendingRequests);
             setIsLoading(false);
         }, error => {
