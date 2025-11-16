@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -73,6 +73,19 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
 
     const selectedType = watch('requestType');
     const startDateValue = watch('startDate');
+    const endDateValue = watch('endDate');
+    
+    useEffect(() => {
+        if (startDateValue) {
+            setIsStartPickerOpen(false);
+        }
+    }, [startDateValue]);
+
+    useEffect(() => {
+        if (endDateValue) {
+            setIsEndPickerOpen(false);
+        }
+    }, [endDateValue]);
 
     const onSubmit = async (data: RequestFormValues) => {
         if (!firestore) return;
@@ -165,10 +178,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                     <Calendar 
                                       mode="single" 
                                       selected={field.value} 
-                                      onSelect={(date) => {
-                                        field.onChange(date);
-                                        setIsStartPickerOpen(false);
-                                      }} 
+                                      onSelect={field.onChange}
                                       initialFocus 
                                     />
                                 </PopoverContent>
@@ -203,10 +213,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                     <Calendar 
                                         mode="single" 
                                         selected={field.value} 
-                                        onSelect={(date) => {
-                                          field.onChange(date);
-                                          setIsEndPickerOpen(false);
-                                        }}
+                                        onSelect={field.onChange}
                                         disabled={{ before: startDateValue! }} 
                                         initialFocus 
                                     />
