@@ -159,6 +159,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         });
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno approvato.' });
+            setIsDetailOpen(false);
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
@@ -174,6 +175,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         });
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno eliminato.' });
+            setIsDetailOpen(false); // Close the detail dialog as well
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
@@ -268,16 +270,6 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        {shift.status === 'in_sospeso' && (
-                                            <>
-                                            <Button variant="ghost" size="icon" onClick={() => handleApproveShift(shift)}>
-                                                <CheckCircle className="h-5 w-5 text-green-500" />
-                                            </Button>
-                                             <Button variant="ghost" size="icon" onClick={() => { setShiftToDelete(shift); setIsConfirmingDelete(true); }}>
-                                                <Trash2 className="h-5 w-5 text-destructive" />
-                                            </Button>
-                                            </>
-                                        )}
                                         <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                             <Eye className="h-5 w-5" />
                                         </Button>
@@ -347,10 +339,20 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                             </TableBody>
                         </Table>
                     </div>
-                    <ResponsiveDialogFooter>
+                    <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
                         <ResponsiveDialogClose asChild>
                            <Button variant="outline">Chiudi</Button>
                         </ResponsiveDialogClose>
+                        {detailShift?.status === 'in_sospeso' && (
+                            <>
+                                <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}>
+                                    <Trash2 className="mr-2 h-4 w-4"/> Elimina Turno
+                                </Button>
+                                <Button onClick={() => handleApproveShift(detailShift)}>
+                                    <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno
+                                </Button>
+                            </>
+                        )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
@@ -832,5 +834,3 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
-
-    
