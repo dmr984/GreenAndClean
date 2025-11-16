@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -56,6 +56,8 @@ interface RequestFormProps {
 export function RequestForm({ userId, onFinished }: RequestFormProps) {
     const firestore = useFirestore();
     const { toast } = useToast();
+    const [isStartPickerOpen, setIsStartPickerOpen] = useState(false);
+    const [isEndPickerOpen, setIsEndPickerOpen] = useState(false);
     
     const { control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<RequestFormValues>({
         resolver: zodResolver(requestSchema),
@@ -146,7 +148,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                     control={control}
                     render={({ field }) => (
                         <div className='col-span-3 flex flex-col'>
-                            <Popover>
+                            <Popover open={isStartPickerOpen} onOpenChange={setIsStartPickerOpen}>
                                 <PopoverTrigger asChild>
                                     <Button
                                         id="startDate"
@@ -158,7 +160,15 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
-                                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                                    <Calendar 
+                                      mode="single" 
+                                      selected={field.value} 
+                                      onSelect={(date) => {
+                                        field.onChange(date);
+                                        setIsStartPickerOpen(false);
+                                      }} 
+                                      initialFocus 
+                                    />
                                 </PopoverContent>
                             </Popover>
                              {errors.startDate && <p className="text-xs text-destructive mt-1">{errors.startDate.message}</p>}
@@ -175,7 +185,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                     control={control}
                     render={({ field }) => (
                         <div className='col-span-3 flex flex-col'>
-                            <Popover>
+                            <Popover open={isEndPickerOpen} onOpenChange={setIsEndPickerOpen}>
                                 <PopoverTrigger asChild>
                                      <Button
                                         id="endDate"
@@ -191,7 +201,10 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                     <Calendar 
                                         mode="single" 
                                         selected={field.value} 
-                                        onSelect={field.onChange}
+                                        onSelect={(date) => {
+                                          field.onChange(date);
+                                          setIsEndPickerOpen(false);
+                                        }}
                                         disabled={{ before: watch('startDate')! }} 
                                         initialFocus 
                                     />
