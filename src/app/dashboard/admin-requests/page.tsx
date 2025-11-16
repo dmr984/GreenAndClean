@@ -141,7 +141,7 @@ export default function AdminRequestsPage() {
                 description: `Richiesta ${newStatus === 'approvato' ? 'approvata' : 'rifiutata'}.`,
             });
           })
-          .catch((error: any) => {
+          .catch(async (error: any) => {
              if (error.code === 'permission-denied') {
                 const contextualError = new FirestorePermissionError({
                     operation: 'update',

@@ -75,8 +75,9 @@ export default function MonthlySummaryPage() {
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
-                // Only set loading to false after the primary data (requests) is loaded
-                setIsDataLoading(false); 
+                if(isDataLoading) { // Only change loading state if we haven't already finished loading timbrature
+                    setIsDataLoading(false); 
+                }
             },
             (error) => {
                 console.error("Error fetching requests:", error);
@@ -100,7 +101,7 @@ export default function MonthlySummaryPage() {
             unsubscribeRequests();
             unsubscribeTimbrature();
         };
-    }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
+    }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast, isDataLoading]);
     
     const summary = useMemo(() => {
         const workedDays = new Set(

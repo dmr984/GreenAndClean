@@ -35,7 +35,6 @@ type Request = {
 
 type RequestType = 'ferie' | 'permesso' | 'malattia' | 'straordinario' | '';
 
-// This function is now outside the component to prevent re-creation on every render.
 const validateForm = (
     requestType: RequestType,
     startDate: Date | undefined,
@@ -124,12 +123,11 @@ export default function RequestsPage() {
         
         setIsSubmitting(true);
 
-        // If endDate is not provided, use startDate
         const finalEndDate = endDate || startDate;
 
         const newRequestData = {
             userId: user.id,
-            type: requestType as 'ferie' | 'permesso' | 'malattia' | 'straordinario',
+            type: requestType as Exclude<RequestType, ''>,
             status: 'in_attesa' as const,
             startDate: Timestamp.fromDate(startDate),
             endDate: Timestamp.fromDate(finalEndDate),
@@ -205,7 +203,7 @@ export default function RequestsPage() {
                             <div className="grid gap-4 py-4">
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="type" className="text-right">Tipo</Label>
-                                    <Select required onValueChange={(value) => setRequestType(value as any)} value={requestType}>
+                                    <Select required onValueChange={(value) => setRequestType(value as RequestType)} value={requestType}>
                                         <SelectTrigger id="type" className="col-span-3">
                                             <SelectValue placeholder="Seleziona un tipo" />
                                         </SelectTrigger>
