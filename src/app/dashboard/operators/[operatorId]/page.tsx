@@ -308,7 +308,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                            Turno del {formatDate(detailShift.events[0].timestamp)}
                          </ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
-                    <div className="overflow-x-auto my-4">
+                    <div className="overflow-x-auto my-4 max-h-96 overflow-y-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -521,8 +521,10 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
             const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
             
             const pendingRequests = allRequests
-                .filter(req => req.status === 'in_attesa')
-                .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+                .filter(req => req.status === 'in_attesa');
+
+            // Sort client-side
+            pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
             setRequests(pendingRequests);
             setIsLoading(false);
