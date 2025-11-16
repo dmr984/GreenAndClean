@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     Dialog,
     DialogContent,
@@ -33,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, parse, set } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 
@@ -91,6 +92,16 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+    
+    // State for editing a single timbratura
+    const [editingTimbratura, setEditingTimbratura] = useState<Timbratura | null>(null);
+    const [newTime, setNewTime] = useState('');
+    const [newType, setNewType] = useState<'entrata' | 'pausa' | 'fine_pausa' | 'uscita'>('entrata');
+    const [isEditTimbraturaDialogOpen, setIsEditTimbraturaDialogOpen] = useState(false);
+
+    // State for deleting a single timbratura
+    const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
+    const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
 
     useEffect(() => {
         if (!firestore) return;
@@ -173,7 +184,50 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         setIsConfirmingDelete(false);
         setSelectedShift(null);
     };
+
+    const handleOpenEditDialog = (timbratura: Timbratura) => {
+        setEditingTimbratura(timbratura);
+        setNewTime(format(timbratura.timestamp.toDate(), 'HH:mm:ss'));
+        setNewType(timbratura.type);
+        setIsEditTimbraturaDialogOpen(true);
+    };
+
+    const handleEditTimbratura = async () => {
+        if (!firestore || !editingTimbratura) return;
+
+        const originalDate = editingTimbratura.timestamp.toDate();
+        const [hours, minutes, seconds] = newTime.split(':').map(Number);
+        const newDate = set(originalDate, { hours, minutes, seconds });
+
+        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, editingTimbratura.id);
+        const updatePayload = {
+            timestamp: Timestamp.fromDate(newDate),
+            type: newType,
+        };
+
+        await updateDoc(docRef, updatePayload).then(() => {
+            toast({ title: 'Successo', description: 'Timbratura aggiornata.' });
+            setIsEditTimbraturaDialogOpen(false);
+            setEditingTimbratura(null);
+            setSelectedShift(null); // Close the main dialog to force a data refresh
+        }).catch(err => {
+            toast({ title: 'Errore', description: 'Impossibile aggiornare la timbratura.', variant: 'destructive' });
+        });
+    };
     
+    const handleConfirmDeleteTimbratura = async () => {
+        if (!firestore || !deletingTimbratura) return;
+        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, deletingTimbratura.id);
+        await deleteDoc(docRef).then(() => {
+            toast({ title: 'Successo', description: 'Timbratura eliminata.' });
+            setIsDeleteTimbraturaDialogOpen(false);
+            setDeletingTimbratura(null);
+            setSelectedShift(null); // Close main dialog to refresh
+        }).catch(err => {
+            toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
+        });
+    };
+
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno in sospeso.</p>;
     
@@ -214,11 +268,11 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             
             {/* Shift Details Dialog */}
             <Dialog open={!!selectedShift} onOpenChange={(open) => !open && setSelectedShift(null)}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>Dettaglio Turno</DialogTitle>
                         <DialogDescription>
-                            Controlla e gestisci le timbrature per il turno selezionato.
+                            Controlla, modifica o elimina le singole timbrature per il turno selezionato.
                         </DialogDescription>
                     </DialogHeader>
                     {selectedShift && (
@@ -231,6 +285,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                                             <TableHead>Evento</TableHead>
                                             <TableHead>Stato</TableHead>
                                             <TableHead>Posizione</TableHead>
+                                            <TableHead className="text-right">Azioni</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -244,6 +299,10 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                                                         <MapPin className="h-4 w-4"/> Mappa
                                                     </a>
                                                 </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -251,10 +310,10 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                             </div>
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setIsConfirmingDelete(true)}>
-                                    <Trash2 className="mr-2 h-4 w-4" /> Elimina
+                                    <Trash2 className="mr-2 h-4 w-4" /> Elimina Turno Intero
                                 </Button>
                                 <Button onClick={handleApproveShift}>
-                                    <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno
+                                    <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno Intero
                                 </Button>
                             </DialogFooter>
                         </div>
@@ -262,7 +321,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                 </DialogContent>
             </Dialog>
 
-            {/* Delete Confirmation Dialog */}
+            {/* Shift Delete Confirmation Dialog */}
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -274,8 +333,57 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                     <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteShift}>
-                            Elimina
+                            Elimina Turno
                         </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            
+             {/* Edit Timbratura Dialog */}
+            <Dialog open={isEditTimbraturaDialogOpen} onOpenChange={setIsEditTimbraturaDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Modifica Timbratura</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-type" className="text-right">Tipo</Label>
+                            <Select value={newType} onValueChange={(value) => setNewType(value as any)}>
+                                <SelectTrigger id="edit-type" className="col-span-3">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="entrata">Entrata</SelectItem>
+                                    <SelectItem value="pausa">Pausa</SelectItem>
+                                    <SelectItem value="fine_pausa">Fine Pausa</SelectItem>
+                                    <SelectItem value="uscita">Uscita</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-time" className="text-right">Orario (HH:mm:ss)</Label>
+                            <Input id="edit-time" value={newTime} onChange={(e) => setNewTime(e.target.value)} className="col-span-3" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditTimbraturaDialogOpen(false)}>Annulla</Button>
+                        <Button onClick={handleEditTimbratura}>Salva Modifiche</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Single Timbratura Confirmation */}
+            <AlertDialog open={isDeleteTimbraturaDialogOpen} onOpenChange={setIsDeleteTimbraturaDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminare questa timbratura?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            L'azione è permanente e non può essere annullata.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeletingTimbratura(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmDeleteTimbratura}>Elimina</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
