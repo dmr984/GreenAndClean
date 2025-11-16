@@ -312,7 +312,7 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
     }, [currentDate]);
 
     useEffect(() => {
-        if (!firestore) return;
+        if (!firestore || !operatorId) return;
         setIsLoading(true);
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', startOfMonth), where('startDate', '<=', endOfMonth));
         const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
