@@ -65,6 +65,10 @@ export default function RequestsPage() {
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    
+    // Popover states
+    const [isStartCalendarOpen, setIsStartCalendarOpen] = useState(false);
+    const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
 
     // Form state
     const [requestType, setRequestType] = useState<RequestType>('');
@@ -217,7 +221,7 @@ export default function RequestsPage() {
                                 </div>
                                  <div className="grid grid-cols-4 items-center gap-4">
                                      <Label htmlFor="startDate" className="text-right">Data Inizio</Label>
-                                     <Popover>
+                                     <Popover open={isStartCalendarOpen} onOpenChange={setIsStartCalendarOpen}>
                                         <PopoverTrigger asChild>
                                             <Button
                                                 id="startDate"
@@ -229,13 +233,21 @@ export default function RequestsPage() {
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
-                                            <Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus />
+                                            <Calendar 
+                                                mode="single" 
+                                                selected={startDate} 
+                                                onSelect={(date) => {
+                                                    setStartDate(date);
+                                                    setIsStartCalendarOpen(false);
+                                                }}
+                                                initialFocus 
+                                            />
                                         </PopoverContent>
                                      </Popover>
                                 </div>
                                 <div className="grid grid-cols-4 items-center gap-4">
                                      <Label htmlFor="endDate" className="text-right">Data Fine</Label>
-                                     <Popover>
+                                     <Popover open={isEndCalendarOpen} onOpenChange={setIsEndCalendarOpen}>
                                         <PopoverTrigger asChild>
                                             <Button
                                                 id="endDate"
@@ -248,7 +260,16 @@ export default function RequestsPage() {
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
-                                            <Calendar mode="single" selected={endDate} onSelect={setEndDate} disabled={{ before: startDate }} initialFocus />
+                                            <Calendar 
+                                                mode="single" 
+                                                selected={endDate} 
+                                                onSelect={(date) => {
+                                                    setEndDate(date);
+                                                    setIsEndCalendarOpen(false);
+                                                }}
+                                                disabled={{ before: startDate }} 
+                                                initialFocus 
+                                            />
                                         </PopoverContent>
                                      </Popover>
                                 </div>
