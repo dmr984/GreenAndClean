@@ -14,16 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-    DialogFooter,
-    DialogClose,
-} from "@/components/ui/dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogTrigger, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -255,9 +246,60 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                                     <TableCell>{startTime ? formatTime(startTime) : '--:--'}</TableCell>
                                     <TableCell>{endTime ? formatTime(endTime) : <Badge variant="secondary">In corso</Badge>}</TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => setSelectedShift(shift)}>
-                                            <Eye className="h-5 w-5" />
-                                        </Button>
+                                        <ResponsiveDialog>
+                                            <ResponsiveDialogTrigger asChild>
+                                                <Button variant="ghost" size="icon">
+                                                    <Eye className="h-5 w-5" />
+                                                </Button>
+                                            </ResponsiveDialogTrigger>
+                                            <ResponsiveDialogContent className="sm:max-w-3xl">
+                                                <ResponsiveDialogHeader>
+                                                    <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
+                                                    <ResponsiveDialogDescription>
+                                                        Controlla, modifica o elimina le singole timbrature per il turno selezionato.
+                                                    </ResponsiveDialogDescription>
+                                                </ResponsiveDialogHeader>
+                                                <div className="overflow-x-auto">
+                                                    <Table>
+                                                        <TableHeader>
+                                                            <TableRow>
+                                                                <TableHead className="whitespace-nowrap">Orario</TableHead>
+                                                                <TableHead className="whitespace-nowrap">Evento</TableHead>
+                                                                <TableHead className="whitespace-nowrap">Stato</TableHead>
+                                                                <TableHead className="whitespace-nowrap">Posizione</TableHead>
+                                                                <TableHead className="text-right whitespace-nowrap w-[120px]">Azioni</TableHead>
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {shift.events.map(t => (
+                                                                <TableRow key={t.id}>
+                                                                    <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
+                                                                    <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
+                                                                    <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
+                                                                    <TableCell className="whitespace-nowrap">
+                                                                        <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                                            <MapPin className="h-4 w-4"/> Mappa
+                                                                        </a>
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right whitespace-nowrap">
+                                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
+                                                                        <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ))}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                                <ResponsiveDialogFooter>
+                                                    <Button variant="outline" onClick={() => setIsConfirmingDelete(true)}>
+                                                        <Trash2 className="mr-2 h-4 w-4" /> Elimina Turno Intero
+                                                    </Button>
+                                                    <Button onClick={() => handleApproveShift()}>
+                                                        <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno Intero
+                                                    </Button>
+                                                </ResponsiveDialogFooter>
+                                            </ResponsiveDialogContent>
+                                        </ResponsiveDialog>
                                     </TableCell>
                                 </TableRow>
                             )
@@ -265,61 +307,6 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                     </TableBody>
                 </Table>
             </div>
-            
-            {/* Shift Details Dialog */}
-            <Dialog open={!!selectedShift} onOpenChange={(open) => !open && setSelectedShift(null)}>
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Dettaglio Turno</DialogTitle>
-                        <DialogDescription>
-                            Controlla, modifica o elimina le singole timbrature per il turno selezionato.
-                        </DialogDescription>
-                    </DialogHeader>
-                    {selectedShift && (
-                        <div className="space-y-4">
-                            <div className="max-h-96 overflow-y-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="whitespace-nowrap">Orario</TableHead>
-                                            <TableHead className="whitespace-nowrap">Evento</TableHead>
-                                            <TableHead className="whitespace-nowrap">Stato</TableHead>
-                                            <TableHead className="whitespace-nowrap">Posizione</TableHead>
-                                            <TableHead className="text-right whitespace-nowrap w-[120px]">Azioni</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {selectedShift.events.map(t => (
-                                            <TableRow key={t.id}>
-                                                <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
-                                                <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
-                                                <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
-                                                <TableCell className="whitespace-nowrap">
-                                                    <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                                        <MapPin className="h-4 w-4"/> Mappa
-                                                    </a>
-                                                </TableCell>
-                                                <TableCell className="text-right whitespace-nowrap">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setIsConfirmingDelete(true)}>
-                                    <Trash2 className="mr-2 h-4 w-4" /> Elimina Turno Intero
-                                </Button>
-                                <Button onClick={handleApproveShift}>
-                                    <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno Intero
-                                </Button>
-                            </DialogFooter>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
 
             {/* Shift Delete Confirmation Dialog */}
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
@@ -340,11 +327,11 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             </AlertDialog>
             
              {/* Edit Timbratura Dialog */}
-            <Dialog open={isEditTimbraturaDialogOpen} onOpenChange={setIsEditTimbraturaDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Modifica Timbratura</DialogTitle>
-                    </DialogHeader>
+            <ResponsiveDialog open={isEditTimbraturaDialogOpen} onOpenChange={setIsEditTimbraturaDialogOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Modifica Timbratura</ResponsiveDialogTitle>
+                    </ResponsiveDialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-type" className="text-right">Tipo</Label>
@@ -365,12 +352,12 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                             <Input id="edit-time" value={newTime} onChange={(e) => setNewTime(e.target.value)} className="col-span-3" />
                         </div>
                     </div>
-                    <DialogFooter>
+                    <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsEditTimbraturaDialogOpen(false)}>Annulla</Button>
                         <Button onClick={handleEditTimbratura}>Salva Modifiche</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
 
             {/* Delete Single Timbratura Confirmation */}
             <AlertDialog open={isDeleteTimbraturaDialogOpen} onOpenChange={setIsDeleteTimbraturaDialogOpen}>
