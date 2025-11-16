@@ -66,7 +66,7 @@ export default function SupplyRequestPage() {
     // Fetch user's past supply requests
     useEffect(() => {
         if (!firestore || !user?.id) {
-            setIsLoadingRequests(false);
+            if (!isUserLoading) setIsLoadingRequests(false);
             return;
         }
 
@@ -95,7 +95,7 @@ export default function SupplyRequestPage() {
         });
         return () => unsubscribe();
 
-    }, [firestore, user, toast]);
+    }, [firestore, user, toast, isUserLoading]);
 
 
     const handleSubmit = async (e: React.FormEvent) => {

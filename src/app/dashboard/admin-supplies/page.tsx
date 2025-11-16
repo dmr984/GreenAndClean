@@ -109,7 +109,7 @@ export default function AdminSuppliesPage() {
             toast({ title: "Successo", description: "Richiesta approvata e magazzino aggiornato." });
         } catch (error: any) {
             console.error("Error approving request:", error);
-            if (error.code === 'permission-denied' || error.message.includes('permission-denied')) { // runTransaction can wrap errors
+            if (error.code === 'permission-denied' || (error.message && error.message.includes('permission-denied'))) { // runTransaction can wrap errors
                  const contextualError = new FirestorePermissionError({
                     operation: 'update',
                     path: `supply-requests/${selectedRequest.id} and products/${selectedRequest.productId}`,
