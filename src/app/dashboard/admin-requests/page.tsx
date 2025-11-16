@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, onSnapshot, doc, updateDoc, getDocs, collectionGroup, query, orderBy, Timestamp } from 'firebase/firestore';
-import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { collection, onSnapshot, doc, updateDoc, getDocs, collectionGroup, query, orderBy, Timestamp, where } from 'firebase/firestore';
+import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClipboardList, Loader2, CheckCircle, XCircle } from 'lucide-react';
@@ -35,62 +35,79 @@ export default function AdminRequestsPage() {
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    const requestsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(
+            collectionGroup(firestore, 'requests'),
+            orderBy('createdAt', 'desc')
+        );
+    }, [firestore]);
+
+
     useEffect(() => {
-        if (!firestore || !user || user.role !== 'admin') {
+        if (!firestore || !user || user.role !== 'admin' || !requestsQuery) {
             setIsLoading(false);
             return;
         }
 
         setIsLoading(true);
 
-        const fetchOperatorsAndRequests = async () => {
-            try {
-                // 1. Fetch all operators to map userId to username
-                const operatorsSnapshot = await getDocs(collection(firestore, 'app-users'));
-                const operatorsMap = new Map<string, string>();
-                operatorsSnapshot.forEach(doc => {
-                    operatorsMap.set(doc.id, doc.data().username);
-                });
+        const fetchOperators = async () => {
+            const operatorsSnapshot = await getDocs(collection(firestore, 'app-users'));
+            const operatorsMap = new Map<string, string>();
+            operatorsSnapshot.forEach(doc => {
+                operatorsMap.set(doc.id, doc.data().username);
+            });
+            return operatorsMap;
+        };
 
-                // 2. Set up the real-time listener for requests
-                const requestsQuery = query(
-                    collectionGroup(firestore, 'requests'),
-                    orderBy('createdAt', 'desc')
-                );
+        const setupListener = (operatorsMap: Map<string, string>) => {
+            const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+                const requestsData = snapshot.docs.map(doc => {
+                    const data = doc.data() as Omit<Request, 'id' | 'operatorUsername'>;
+                    const userId = doc.ref.parent.parent?.id; //  requests are in a subcollection
+                    
+                    if (!userId) return null;
 
-                const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-                    const requestsData = snapshot.docs.map(doc => {
-                        const data = doc.data() as Omit<Request, 'id'>;
-                        return {
-                            id: doc.id,
-                            ...data,
-                            operatorUsername: operatorsMap.get(data.userId) || 'Sconosciuto',
-                        } as Request;
+                    return {
+                        id: doc.id,
+                        userId: userId,
+                        ...data,
+                        operatorUsername: operatorsMap.get(userId) || 'Sconosciuto',
+                    } as Request;
+                }).filter((req): req is Request => req !== null);
+                
+                setRequests(requestsData);
+                setIsLoading(false);
+            }, (error) => {
+                console.error("Error fetching requests:", error);
+                if (error.code === 'permission-denied' && firestore) {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'list',
+                        path: 'requests (collection group)',
                     });
-                    setRequests(requestsData);
-                    setIsLoading(false);
-                }, (error) => {
-                    console.error("Error fetching requests:", error);
-                    if (error.code === 'permission-denied') {
-                        const contextualError = new FirestorePermissionError({
-                            operation: 'list',
-                            path: 'requests (collection group)',
-                        });
-                        errorEmitter.emit('permission-error', contextualError);
-                    } else {
-                        toast({
-                            title: "Errore",
-                            description: "Impossibile caricare le richieste.",
-                            variant: "destructive",
-                        });
-                    }
-                    setIsLoading(false);
-                });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({
+                        title: "Errore",
+                        description: "Impossibile caricare le richieste.",
+                        variant: "destructive",
+                    });
+                }
+                setIsLoading(false);
+            });
+            return unsubscribe;
+        }
 
-                return unsubscribe;
 
-            } catch (error) {
-                console.error("Error fetching operators:", error);
+        let unsubscribe: (() => void) | undefined;
+
+        const main = async () => {
+             try {
+                const operators = await fetchOperators();
+                unsubscribe = setupListener(operators);
+            } catch(error) {
+                 console.error("Error fetching operators:", error);
                 toast({
                     title: "Errore",
                     description: "Impossibile caricare i dati degli operatori.",
@@ -98,34 +115,33 @@ export default function AdminRequestsPage() {
                 });
                 setIsLoading(false);
             }
-        };
-
-        const unsubscribePromise = fetchOperatorsAndRequests();
+        }
+        
+        main();
 
         return () => {
-            unsubscribePromise.then(unsubscribe => {
-                if (unsubscribe) {
-                    unsubscribe();
-                }
-            });
+            if (unsubscribe) {
+                unsubscribe();
+            }
         };
 
-    }, [firestore, user, toast]);
+    }, [firestore, user, requestsQuery, toast]);
 
-    const handleUpdateRequestStatus = async (request: Request, newStatus: 'approvato' | 'rifiutato') => {
+    const handleUpdateRequestStatus = (request: Request, newStatus: 'approvato' | 'rifiutato') => {
         if (!firestore) return;
 
         const requestDocRef = doc(firestore, `app-users/${request.userId}/requests`, request.id);
         
         const updatePayload = { status: newStatus };
 
-        try {
-            await updateDoc(requestDocRef, updatePayload);
-            toast({
+        updateDoc(requestDocRef, updatePayload)
+          .then(() => {
+             toast({
                 title: "Successo",
                 description: `Richiesta ${newStatus === 'approvato' ? 'approvata' : 'rifiutata'}.`,
             });
-        } catch (error: any) {
+          })
+          .catch((error: any) => {
              if (error.code === 'permission-denied') {
                 const contextualError = new FirestorePermissionError({
                     operation: 'update',
@@ -140,7 +156,7 @@ export default function AdminRequestsPage() {
                     variant: "destructive",
                 });
             }
-        }
+        });
     };
     
     if (isUserLoading) {
@@ -211,7 +227,9 @@ export default function AdminRequestsPage() {
                                                     req.status === 'approvato' ? 'secondary' 
                                                     : req.status === 'rifiutato' ? 'destructive' 
                                                     : 'default'
-                                                }>
+                                                }
+                                                className={req.status === 'in_attesa' ? 'bg-yellow-500 text-white' : ''}
+                                                >
                                                     {req.status.replace('_', ' ')}
                                                 </Badge>
                                             </TableCell>
