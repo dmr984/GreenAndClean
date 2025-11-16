@@ -146,7 +146,9 @@ export default function LoginForm() {
         };
         
         localStorage.setItem('user', JSON.stringify(userToStore));
-        router.push('/dashboard');
+        // Manually dispatch a storage event to trigger updates in other components/tabs
+        window.dispatchEvent(new Event('storage'));
+        router.replace('/dashboard');
         
     } catch (error: any) {
         console.error("Login failed:", error);
