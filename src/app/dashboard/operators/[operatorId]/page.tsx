@@ -80,11 +80,12 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
         if (!firestore) return;
         const q = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
-            where('status', '==', 'sospesa'),
-            orderBy('timestamp', 'asc')
+            orderBy('timestamp', 'desc')
         );
         const unsubscribe = onSnapshot(q, snapshot => {
-            setClockings(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)));
+            const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            const pending = allClockings.filter(c => c.status === 'sospesa');
+            setClockings(pending);
             setIsLoading(false);
         }, error => {
             console.error(error);
