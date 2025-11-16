@@ -277,7 +277,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                     </DialogHeader>
                     {selectedShift && (
                         <div className="space-y-4">
-                            <div className="border rounded-lg max-h-96 overflow-y-auto">
+                            <div className="border rounded-lg max-h-96 overflow-y-auto overflow-x-auto">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
