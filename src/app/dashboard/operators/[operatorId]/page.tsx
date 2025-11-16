@@ -28,6 +28,7 @@ import {
 import { format, differenceInDays, parse, set } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 
 type Operator = {
@@ -48,7 +49,7 @@ type Timbratura = {
 
 type Shift = {
     events: Timbratura[];
-    hasPending: boolean;
+    status: 'in_sospeso' | 'in_corso' | 'confermato';
 };
 
 
@@ -81,16 +82,19 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     const { toast } = useToast();
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+    
+    // Dialog states
+    const [detailShift, setDetailShift] = useState<Shift | null>(null);
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
+    
+    const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     
-    // State for editing a single timbratura
     const [editingTimbratura, setEditingTimbratura] = useState<Timbratura | null>(null);
     const [newTime, setNewTime] = useState('');
     const [newType, setNewType] = useState<'entrata' | 'pausa' | 'fine_pausa' | 'uscita'>('entrata');
     const [isEditTimbraturaDialogOpen, setIsEditTimbraturaDialogOpen] = useState(false);
 
-    // State for deleting a single timbratura
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
 
@@ -105,17 +109,20 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
 
             for (const event of allClockings) {
                 if (event.type === 'entrata' && currentShiftEvents.length > 0) {
+                    const hasPending = currentShiftEvents.some(e => e.status === 'sospesa');
+                    const isComplete = currentShiftEvents.some(e => e.type === 'uscita');
                     groupedShifts.push({
                         events: currentShiftEvents,
-                        hasPending: currentShiftEvents.some(e => e.status === 'sospesa'),
+                        status: !isComplete ? 'in_corso' : hasPending ? 'in_sospeso' : 'confermato',
                     });
                     currentShiftEvents = [event];
                 } else {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
+                         const hasPending = currentShiftEvents.some(e => e.status === 'sospesa');
                         groupedShifts.push({
                             events: currentShiftEvents,
-                            hasPending: currentShiftEvents.some(e => e.status === 'sospesa'),
+                            status: hasPending ? 'in_sospeso' : 'confermato',
                         });
                         currentShiftEvents = [];
                     }
@@ -123,15 +130,15 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             }
 
             if (currentShiftEvents.length > 0) {
+                 const hasPending = currentShiftEvents.some(e => e.status === 'sospesa');
+                 const isComplete = currentShiftEvents.some(e => e.type === 'uscita');
                  groupedShifts.push({
                     events: currentShiftEvents,
-                    hasPending: currentShiftEvents.some(e => e.status === 'sospesa'),
+                    status: !isComplete ? 'in_corso' : hasPending ? 'in_sospeso' : 'confermato',
                 });
             }
             
-            const pendingShifts = groupedShifts.filter(s => s.hasPending).reverse();
-
-            setShifts(pendingShifts);
+            setShifts(groupedShifts.reverse());
             setIsLoading(false);
         }, error => {
             console.error(error);
@@ -141,10 +148,10 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         return unsubscribe;
     }, [firestore, operatorId, toast]);
 
-    const handleApproveShift = async () => {
-        if (!firestore || !selectedShift) return;
+    const handleApproveShift = async (shiftToApprove: Shift) => {
+        if (!firestore) return;
         const batch = writeBatch(firestore);
-        selectedShift.events.forEach(event => {
+        shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
                 batch.update(docRef, { status: 'confermata' });
@@ -156,13 +163,12 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         });
-        setSelectedShift(null);
     };
 
     const handleDeleteShift = async () => {
-        if (!firestore || !selectedShift) return;
+        if (!firestore || !shiftToDelete) return;
         const batch = writeBatch(firestore);
-        selectedShift.events.forEach(event => {
+        shiftToDelete.events.forEach(event => {
             const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
             batch.delete(docRef);
         });
@@ -173,7 +179,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         });
         setIsConfirmingDelete(false);
-        setSelectedShift(null);
+        setShiftToDelete(null);
     };
 
     const handleOpenEditDialog = (timbratura: Timbratura) => {
@@ -200,7 +206,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             toast({ title: 'Successo', description: 'Timbratura aggiornata.' });
             setIsEditTimbraturaDialogOpen(false);
             setEditingTimbratura(null);
-            setSelectedShift(null); // Close the main dialog to force a data refresh
+            setIsDetailOpen(false); // Close the main dialog to force a data refresh
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile aggiornare la timbratura.', variant: 'destructive' });
         });
@@ -213,16 +219,22 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             toast({ title: 'Successo', description: 'Timbratura eliminata.' });
             setIsDeleteTimbraturaDialogOpen(false);
             setDeletingTimbratura(null);
-            setSelectedShift(null); // Close main dialog to refresh
+            setIsDetailOpen(false); // Close main dialog to refresh
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
         });
     };
+    
+    const handleOpenDetailDialog = (shift: Shift) => {
+        setDetailShift(shift);
+        setIsDetailOpen(true);
+    }
 
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
-    if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno in sospeso.</p>;
+    if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno trovato.</p>;
     
-    const formatTime = (date: Timestamp) => format(date.toDate(), 'p', { locale: it });
+    const formatTime = (date: Timestamp | undefined) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
+    const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
 
     return (
         <>
@@ -233,6 +245,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                             <TableHead>Data Turno</TableHead>
                             <TableHead>Inizio</TableHead>
                             <TableHead>Fine</TableHead>
+                            <TableHead>Stato</TableHead>
                             <TableHead className="text-right">Azioni</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -242,64 +255,32 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                              const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
                             return (
                                 <TableRow key={index}>
-                                    <TableCell>{startTime ? format(startTime.toDate(), 'PPP', { locale: it }) : 'N/D'}</TableCell>
-                                    <TableCell>{startTime ? formatTime(startTime) : '--:--'}</TableCell>
-                                    <TableCell>{endTime ? formatTime(endTime) : <Badge variant="secondary">In corso</Badge>}</TableCell>
+                                    <TableCell>{formatDate(startTime)}</TableCell>
+                                    <TableCell>{formatTime(startTime)}</TableCell>
+                                    <TableCell>{formatTime(endTime)}</TableCell>
+                                    <TableCell>
+                                        <Badge variant={
+                                            shift.status === 'in_sospeso' ? 'default'
+                                            : shift.status === 'confermato' ? 'secondary'
+                                            : 'outline'
+                                        } className={cn(shift.status === 'in_sospeso' && 'bg-yellow-500 text-white')}>
+                                          {shift.status.replace('_', ' ')}
+                                        </Badge>
+                                    </TableCell>
                                     <TableCell className="text-right">
-                                        <ResponsiveDialog>
-                                            <ResponsiveDialogTrigger asChild>
-                                                <Button variant="ghost" size="icon">
-                                                    <Eye className="h-5 w-5" />
-                                                </Button>
-                                            </ResponsiveDialogTrigger>
-                                            <ResponsiveDialogContent className="sm:max-w-3xl">
-                                                <ResponsiveDialogHeader>
-                                                    <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
-                                                    <ResponsiveDialogDescription>
-                                                        Controlla, modifica o elimina le singole timbrature per il turno selezionato.
-                                                    </ResponsiveDialogDescription>
-                                                </ResponsiveDialogHeader>
-                                                <div className="overflow-x-auto">
-                                                    <Table>
-                                                        <TableHeader>
-                                                            <TableRow>
-                                                                <TableHead className="whitespace-nowrap">Orario</TableHead>
-                                                                <TableHead className="whitespace-nowrap">Evento</TableHead>
-                                                                <TableHead className="whitespace-nowrap">Stato</TableHead>
-                                                                <TableHead className="whitespace-nowrap">Posizione</TableHead>
-                                                                <TableHead className="text-right whitespace-nowrap w-[120px]">Azioni</TableHead>
-                                                            </TableRow>
-                                                        </TableHeader>
-                                                        <TableBody>
-                                                            {shift.events.map(t => (
-                                                                <TableRow key={t.id}>
-                                                                    <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
-                                                                    <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
-                                                                    <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
-                                                                    <TableCell className="whitespace-nowrap">
-                                                                        <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                                                            <MapPin className="h-4 w-4"/> Mappa
-                                                                        </a>
-                                                                    </TableCell>
-                                                                    <TableCell className="text-right whitespace-nowrap">
-                                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
-                                                                        <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </div>
-                                                <ResponsiveDialogFooter>
-                                                    <Button variant="outline" onClick={() => setIsConfirmingDelete(true)}>
-                                                        <Trash2 className="mr-2 h-4 w-4" /> Elimina Turno Intero
-                                                    </Button>
-                                                    <Button onClick={() => handleApproveShift()}>
-                                                        <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno Intero
-                                                    </Button>
-                                                </ResponsiveDialogFooter>
-                                            </ResponsiveDialogContent>
-                                        </ResponsiveDialog>
+                                        {shift.status === 'in_sospeso' && (
+                                            <>
+                                            <Button variant="ghost" size="icon" onClick={() => handleApproveShift(shift)}>
+                                                <CheckCircle className="h-5 w-5 text-green-500" />
+                                            </Button>
+                                             <Button variant="ghost" size="icon" onClick={() => { setShiftToDelete(shift); setIsConfirmingDelete(true); }}>
+                                                <Trash2 className="h-5 w-5 text-destructive" />
+                                            </Button>
+                                            </>
+                                        )}
+                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
+                                            <Eye className="h-5 w-5" />
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
                             )
@@ -318,7 +299,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteShift}>
                             Elimina Turno
                         </AlertDialogAction>
@@ -326,6 +307,54 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                 </AlertDialogContent>
             </AlertDialog>
             
+             {/* Edit/View Details Dialog */}
+             <ResponsiveDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+                <ResponsiveDialogContent className="sm:max-w-3xl">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
+                         {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>
+                           Turno del {formatDate(detailShift.events[0].timestamp)}
+                         </ResponsiveDialogDescription>}
+                    </ResponsiveDialogHeader>
+                    <div className="overflow-x-auto my-4">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="whitespace-nowrap">Orario</TableHead>
+                                    <TableHead className="whitespace-nowrap">Evento</TableHead>
+                                    <TableHead className="whitespace-nowrap">Stato</TableHead>
+                                    <TableHead className="whitespace-nowrap">Posizione</TableHead>
+                                    <TableHead className="text-right whitespace-nowrap w-[120px]">Azioni</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {detailShift?.events.map(t => (
+                                    <TableRow key={t.id}>
+                                        <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
+                                        <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
+                                        <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                <MapPin className="h-4 w-4"/> Mappa
+                                            </a>
+                                        </TableCell>
+                                        <TableCell className="text-right whitespace-nowrap">
+                                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <ResponsiveDialogFooter>
+                        <ResponsiveDialogClose asChild>
+                           <Button variant="outline">Chiudi</Button>
+                        </ResponsiveDialogClose>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+
              {/* Edit Timbratura Dialog */}
             <ResponsiveDialog open={isEditTimbraturaDialogOpen} onOpenChange={setIsEditTimbraturaDialogOpen}>
                 <ResponsiveDialogContent>
@@ -488,9 +517,10 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
         );
         const unsubscribe = onSnapshot(q, snapshot => {
             const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
-            const pendingRequests = allRequests.filter(req => req.status === 'in_attesa');
             
-            pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+            const pendingRequests = allRequests
+                .filter(req => req.status === 'in_attesa')
+                .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
             setRequests(pendingRequests);
             setIsLoading(false);
@@ -802,3 +832,5 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
+
+    
