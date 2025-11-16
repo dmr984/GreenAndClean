@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -162,6 +162,9 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent className="w-auto p-0">
+                                    <DialogHeader className='p-4 pb-0'>
+                                       <DialogTitle>Seleziona data di inizio</DialogTitle>
+                                    </DialogHeader>
                                     <Calendar 
                                       mode="single" 
                                       selected={field.value} 
@@ -200,6 +203,9 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent className="w-auto p-0">
+                                    <DialogHeader className='p-4 pb-0'>
+                                       <DialogTitle>Seleziona data di fine</DialogTitle>
+                                    </DialogHeader>
                                     <Calendar 
                                         mode="single" 
                                         selected={field.value} 
