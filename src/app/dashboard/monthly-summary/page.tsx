@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
+import { differenceInDays, format } from 'date-fns';
 
 type Request = {
     id: string;
@@ -51,10 +52,7 @@ export default function MonthlySummaryPage() {
     }, [currentDate]);
 
     useEffect(() => {
-        if (!firestore || !user?.id) {
-            if (!isUserLoading) {
-                setIsDataLoading(false);
-            }
+        if (!firestore || !user?.id || isUserLoading) {
             return;
         }
 
@@ -75,9 +73,7 @@ export default function MonthlySummaryPage() {
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
-                if(isDataLoading) { // Only change loading state if we haven't already finished loading timbrature
-                    setIsDataLoading(false); 
-                }
+                setIsDataLoading(false);
             },
             (error) => {
                 console.error("Error fetching requests:", error);
@@ -101,34 +97,64 @@ export default function MonthlySummaryPage() {
             unsubscribeRequests();
             unsubscribeTimbrature();
         };
-    }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast, isDataLoading]);
+    }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
-        const workedDays = new Set(
-            timbrature
-                .filter(t => t.type === 'entrata')
-                .map(t => t.timestamp.toDate().toDateString())
-        ).size;
-        
-        let workedHours = 0;
-        const entries = timbrature.filter(t => t.type === 'entrata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-        entries.forEach(entry => {
-            const correspondingExit = timbrature.find(t => t.type === 'uscita' && t.timestamp.toMillis() > entry.timestamp.toMillis());
-            if(correspondingExit) {
-                workedHours += (correspondingExit.timestamp.toMillis() - entry.timestamp.toMillis()) / (1000 * 60 * 60);
+        // Group timbrature by day
+        const dailyTimbrature = timbrature.reduce((acc, t) => {
+            const day = t.timestamp.toDate().toDateString();
+            if (!acc[day]) {
+                acc[day] = [];
+            }
+            acc[day].push(t);
+            return acc;
+        }, {} as Record<string, Timbratura[]>);
+
+        let totalWorkedMillis = 0;
+        let workedDaysCount = 0;
+
+        Object.values(dailyTimbrature).forEach(dayEvents => {
+            dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            let dayWorkedMillis = 0;
+            let shiftStart: Timestamp | null = null;
+            let breakStart: Timestamp | null = null;
+
+            dayEvents.forEach(event => {
+                if (event.type === 'entrata') {
+                    shiftStart = event.timestamp;
+                } else if (event.type === 'pausa' && shiftStart) {
+                    breakStart = event.timestamp;
+                } else if (event.type === 'fine_pausa' && shiftStart && breakStart) {
+                    dayWorkedMillis += breakStart.toMillis() - shiftStart.toMillis();
+                    shiftStart = event.timestamp;
+                    breakStart = null;
+                } else if (event.type === 'uscita' && shiftStart) {
+                    dayWorkedMillis += event.timestamp.toMillis() - shiftStart.toMillis();
+                    shiftStart = null;
+                }
+            });
+            
+            if (dayWorkedMillis > 0) {
+              workedDaysCount++;
+              totalWorkedMillis += dayWorkedMillis;
             }
         });
 
-
+        const workedHours = totalWorkedMillis / (1000 * 60 * 60);
         const approvedRequests = requests.filter(r => r.status === 'approvato');
 
+        const calculateDays = (startDate: Date, endDate: Date) => {
+            return differenceInDays(endDate, startDate) + 1;
+        }
+
         return {
-            workedDays,
+            workedDays: workedDaysCount,
             workedHours: workedHours.toFixed(2),
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
-            ferieDays: approvedRequests.filter(r => r.type === 'ferie').reduce((sum, r) => sum + ((r.endDate.toMillis() - r.startDate.toMillis()) / (1000 * 60 * 60 * 24) + 1), 0),
+            ferieDays: approvedRequests.filter(r => r.type === 'ferie').reduce((sum, r) => sum + calculateDays(r.startDate.toDate(), r.endDate.toDate()), 0),
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
-            malattiaDays: approvedRequests.filter(r => r.type === 'malattia').reduce((sum, r) => sum + ((r.endDate.toMillis() - r.startDate.toMillis()) / (1000 * 60 * 60 * 24) + 1), 0),
+            malattiaDays: approvedRequests.filter(r => r.type === 'malattia').reduce((sum, r) => sum + calculateDays(r.startDate.toDate(), r.endDate.toDate()), 0),
         };
     }, [timbrature, requests]);
 
@@ -272,7 +298,7 @@ export default function MonthlySummaryPage() {
                                     </TableRow>
                                 )) : (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center">Nessuna richiesta trovata per questo mese.</TableCell>
+                                        <TableCell colSpan={5} className="text-center h-24">Nessuna richiesta trovata per questo mese.</TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>
