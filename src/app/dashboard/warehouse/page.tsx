@@ -2,7 +2,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +52,12 @@ export default function WarehousePage() {
             setIsLoading(false);
         }, error => {
             console.error("Error fetching products:", error);
-            toast({ title: "Errore", description: "Impossibile caricare i prodotti dal magazzino.", variant: "destructive" });
+            if (error.code === 'permission-denied' && firestore) {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'products' });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile caricare i prodotti dal magazzino.", variant: "destructive" });
+            }
             setIsLoading(false);
         });
 
@@ -68,17 +73,30 @@ export default function WarehousePage() {
             toast({ title: "Quantità non valida", variant: "destructive" });
             return;
         }
+        
+        const productsCollection = collection(firestore, 'products');
+        const newProductData = { name: newProductName, quantity };
 
-        try {
-            await addDoc(collection(firestore, 'products'), { name: newProductName, quantity });
-            toast({ title: "Successo", description: "Prodotto aggiunto al magazzino." });
-            setIsAddDialogOpen(false);
-            setNewProductName('');
-            setNewProductQuantity('');
-        } catch (error) {
-            console.error("Error adding product:", error);
-            toast({ title: "Errore", description: "Impossibile aggiungere il prodotto.", variant: "destructive" });
-        }
+        addDoc(productsCollection, newProductData)
+            .then(() => {
+                 toast({ title: "Successo", description: "Prodotto aggiunto al magazzino." });
+                setIsAddDialogOpen(false);
+                setNewProductName('');
+                setNewProductQuantity('');
+            })
+            .catch((error: any) => {
+                console.error("Error adding product:", error);
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'create',
+                        path: productsCollection.path,
+                        requestResourceData: newProductData
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile aggiungere il prodotto.", variant: "destructive" });
+                }
+            });
     };
 
     const openEditDialog = (product: Product) => {
@@ -99,29 +117,52 @@ export default function WarehousePage() {
         }
         
         const productRef = doc(firestore, 'products', selectedProduct.id);
-        try {
-            await updateDoc(productRef, { name: editProductName, quantity });
-            toast({ title: "Successo", description: "Prodotto aggiornato." });
-            setIsEditDialogOpen(false);
-            setSelectedProduct(null);
-        } catch (error) {
-            console.error("Error updating product:", error);
-            toast({ title: "Errore", description: "Impossibile aggiornare il prodotto.", variant: "destructive" });
-        }
+        const updatePayload = { name: editProductName, quantity };
+
+        updateDoc(productRef, updatePayload)
+            .then(() => {
+                toast({ title: "Successo", description: "Prodotto aggiornato." });
+                setIsEditDialogOpen(false);
+                setSelectedProduct(null);
+            })
+            .catch((error: any) => {
+                console.error("Error updating product:", error);
+                if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'update',
+                        path: productRef.path,
+                        requestResourceData: updatePayload
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile aggiornare il prodotto.", variant: "destructive" });
+                }
+            });
     };
 
     const handleDeleteProduct = async () => {
         if (!firestore || !productToDelete) return;
         const productRef = doc(firestore, 'products', productToDelete.id);
-        try {
-            await deleteDoc(productRef);
-            toast({ title: "Successo", description: `Prodotto "${productToDelete.name}" eliminato.` });
-        } catch (error) {
-            console.error("Error deleting product:", error);
-            toast({ title: "Errore", description: "Impossibile eliminare il prodotto.", variant: "destructive" });
-        } finally {
-            setProductToDelete(null);
-        }
+        
+        deleteDoc(productRef)
+            .then(() => {
+                toast({ title: "Successo", description: `Prodotto "${productToDelete.name}" eliminato.` });
+            })
+            .catch((error: any) => {
+                console.error("Error deleting product:", error);
+                 if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'delete',
+                        path: productRef.path,
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile eliminare il prodotto.", variant: "destructive" });
+                }
+            })
+            .finally(() => {
+                setProductToDelete(null);
+            });
     };
 
      if (isUserLoading || isLoading) {
@@ -231,3 +272,5 @@ export default function WarehousePage() {
         </>
     );
 }
+
+    

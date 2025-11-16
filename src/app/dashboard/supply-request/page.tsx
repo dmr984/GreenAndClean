@@ -2,7 +2,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +52,12 @@ export default function SupplyRequestPage() {
             setIsLoadingProducts(false);
         }, error => {
             console.error("Error fetching products:", error);
-            toast({ title: "Errore", description: "Impossibile caricare i prodotti.", variant: "destructive" });
+            if (error.code === 'permission-denied' && firestore) {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'products' });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile caricare i prodotti.", variant: "destructive" });
+            }
             setIsLoadingProducts(false);
         });
         return () => unsubscribe();
@@ -71,7 +76,12 @@ export default function SupplyRequestPage() {
             setIsLoadingRequests(false);
         }, error => {
             console.error("Error fetching supply requests:", error);
-            toast({ title: "Errore", description: "Impossibile caricare lo storico delle richieste.", variant: "destructive" });
+             if (error.code === 'permission-denied' && firestore) {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'supply-requests' });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile caricare lo storico delle richieste.", variant: "destructive" });
+            }
             setIsLoadingRequests(false);
         });
         return () => unsubscribe();
@@ -98,26 +108,39 @@ export default function SupplyRequestPage() {
              return;
         }
 
-        try {
-            await addDoc(collection(firestore, 'supply-requests'), {
-                userId: user.id,
-                username: user.username,
-                productId: selectedProductId,
-                productName: selectedProduct.name,
-                requestedQuantity,
-                status: 'in_attesa',
-                createdAt: serverTimestamp(),
-            });
+        const supplyRequestsCollection = collection(firestore, 'supply-requests');
+        const newRequestData = {
+            userId: user.id,
+            username: user.username,
+            productId: selectedProductId,
+            productName: selectedProduct.name,
+            requestedQuantity,
+            status: 'in_attesa' as const,
+            createdAt: serverTimestamp(),
+        };
 
-            toast({ title: "Successo", description: "Richiesta di fornitura inviata." });
-            setSelectedProductId('');
-            setQuantity('');
-        } catch (error) {
-            console.error("Error creating supply request:", error);
-            toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
-        } finally {
-            setIsSubmitting(false);
-        }
+        addDoc(supplyRequestsCollection, newRequestData)
+            .then(() => {
+                toast({ title: "Successo", description: "Richiesta di fornitura inviata." });
+                setSelectedProductId('');
+                setQuantity('');
+            })
+            .catch((error: any) => {
+                console.error("Error creating supply request:", error);
+                 if (error.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'create',
+                        path: supplyRequestsCollection.path,
+                        requestResourceData: newRequestData,
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
+                }
+            })
+            .finally(() => {
+                setIsSubmitting(false);
+            });
     };
     
     if (isUserLoading) {
@@ -224,3 +247,5 @@ export default function SupplyRequestPage() {
         </div>
     );
 }
+
+    

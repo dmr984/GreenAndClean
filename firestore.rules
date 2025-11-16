@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -32,5 +33,17 @@ service cloud.firestore {
         // Allow anyone to read or write admin roles.
         allow read, write: if true;
     }
+
+    match /products/{productId} {
+        // Allow anyone to read or write products.
+        allow read, write: if true;
+    }
+
+    match /supply-requests/{supplyRequestId} {
+        // Allow anyone to read or write supply requests.
+        allow read, write: if true;
+    }
   }
 }
+
+    

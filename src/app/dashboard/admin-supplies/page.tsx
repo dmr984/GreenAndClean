@@ -2,13 +2,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { collectionGroup, query, orderBy, onSnapshot, doc, updateDoc, runTransaction } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -58,7 +59,12 @@ export default function AdminSuppliesPage() {
             setIsLoading(false);
         }, error => {
             console.error("Error fetching supply requests:", error);
-            toast({ title: "Errore", description: "Impossibile caricare le richieste di forniture.", variant: "destructive" });
+            if (error.code === 'permission-denied' && firestore) {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'supply-requests (collection group)' });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile caricare le richieste di forniture.", variant: "destructive" });
+            }
             setIsLoading(false);
         });
 
@@ -82,6 +88,7 @@ export default function AdminSuppliesPage() {
 
         const requestRef = doc(firestore, 'supply-requests', selectedRequest.id);
         const productRef = doc(firestore, 'products', selectedRequest.productId);
+        const updatePayload = { status: 'approvata' as const, approvedQuantity: finalQuantity };
 
         try {
             await runTransaction(firestore, async (transaction) => {
@@ -96,13 +103,22 @@ export default function AdminSuppliesPage() {
                 }
 
                 transaction.update(productRef, { quantity: currentStock - finalQuantity });
-                transaction.update(requestRef, { status: 'approvata', approvedQuantity: finalQuantity });
+                transaction.update(requestRef, updatePayload);
             });
 
             toast({ title: "Successo", description: "Richiesta approvata e magazzino aggiornato." });
         } catch (error: any) {
             console.error("Error approving request:", error);
-            toast({ title: "Errore", description: error.message || "Impossibile approvare la richiesta.", variant: "destructive"});
+            if (error.code === 'permission-denied') {
+                 const contextualError = new FirestorePermissionError({
+                    operation: 'update',
+                    path: `supply-requests/${selectedRequest.id} and products/${selectedRequest.productId}`,
+                    requestResourceData: updatePayload
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: error.message || "Impossibile approvare la richiesta.", variant: "destructive"});
+            }
         } finally {
             setIsApproveDialogOpen(false);
             setSelectedRequest(null);
@@ -113,12 +129,22 @@ export default function AdminSuppliesPage() {
     const handleRejectRequest = async (request: SupplyRequest) => {
         if (!firestore) return;
         const requestRef = doc(firestore, 'supply-requests', request.id);
+        const updatePayload = { status: 'rifiutata' as const };
         try {
-            await updateDoc(requestRef, { status: 'rifiutata' });
+            await updateDoc(requestRef, updatePayload);
             toast({ title: "Successo", description: "Richiesta rifiutata." });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error rejecting request:", error);
-            toast({ title: "Errore", description: "Impossibile rifiutare la richiesta.", variant: "destructive" });
+             if (error.code === 'permission-denied') {
+                 const contextualError = new FirestorePermissionError({
+                    operation: 'update',
+                    path: requestRef.path,
+                    requestResourceData: updatePayload
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile rifiutare la richiesta.", variant: "destructive" });
+            }
         }
     };
 
@@ -221,3 +247,4 @@ export default function AdminSuppliesPage() {
     );
 }
 
+    
