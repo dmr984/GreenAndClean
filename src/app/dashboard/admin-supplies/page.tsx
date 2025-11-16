@@ -109,7 +109,7 @@ export default function AdminSuppliesPage() {
             toast({ title: "Successo", description: "Richiesta approvata e magazzino aggiornato." });
         } catch (error: any) {
             console.error("Error approving request:", error);
-            if (error.code === 'permission-denied') {
+            if (error.code === 'permission-denied' || error.message.includes('permission-denied')) { // runTransaction can wrap errors
                  const contextualError = new FirestorePermissionError({
                     operation: 'update',
                     path: `supply-requests/${selectedRequest.id} and products/${selectedRequest.productId}`,
@@ -130,22 +130,23 @@ export default function AdminSuppliesPage() {
         if (!firestore) return;
         const requestRef = doc(firestore, 'supply-requests', request.id);
         const updatePayload = { status: 'rifiutata' as const };
-        try {
-            await updateDoc(requestRef, updatePayload);
-            toast({ title: "Successo", description: "Richiesta rifiutata." });
-        } catch (error: any) {
-            console.error("Error rejecting request:", error);
-             if (error.code === 'permission-denied') {
-                 const contextualError = new FirestorePermissionError({
-                    operation: 'update',
-                    path: requestRef.path,
-                    requestResourceData: updatePayload
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                toast({ title: "Errore", description: "Impossibile rifiutare la richiesta.", variant: "destructive" });
-            }
-        }
+        updateDoc(requestRef, updatePayload)
+            .then(() => {
+                toast({ title: "Successo", description: "Richiesta rifiutata." });
+            })
+            .catch((error: any) => {
+                console.error("Error rejecting request:", error);
+                 if (error.code === 'permission-denied') {
+                     const contextualError = new FirestorePermissionError({
+                        operation: 'update',
+                        path: requestRef.path,
+                        requestResourceData: updatePayload
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({ title: "Errore", description: "Impossibile rifiutare la richiesta.", variant: "destructive" });
+                }
+            });
     };
 
     if (isUserLoading || isLoading) {

@@ -63,12 +63,39 @@ export default function SupplyRequestPage() {
         return () => unsubscribe();
     }, [firestore, toast]);
 
-    // Fetch user's past supply requests - TEMPORARILY DISABLED
+    // Fetch user's past supply requests
     useEffect(() => {
-        setIsLoadingRequests(false);
-        // The query causing the index error is removed.
-        // The functionality will be restored when the issue is properly fixed.
-    }, []);
+        if (!firestore || !user?.id) {
+            setIsLoadingRequests(false);
+            return;
+        }
+
+        setIsLoadingRequests(true);
+        const requestsQuery = query(
+            collection(firestore, 'supply-requests'), 
+            where('userId', '==', user.id),
+            orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(requestsQuery, snapshot => {
+            setMyRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest)));
+            setIsLoadingRequests(false);
+        }, error => {
+            console.error("Error fetching request history:", error);
+            if (error.code === 'permission-denied' && firestore) {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'list',
+                    path: 'supply-requests', // This is a top-level collection query
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                 toast({ title: "Errore", description: "Impossibile caricare lo storico delle richieste.", variant: "destructive" });
+            }
+            setIsLoadingRequests(false);
+        });
+        return () => unsubscribe();
+
+    }, [firestore, user, toast]);
 
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -202,11 +229,26 @@ export default function SupplyRequestPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    
+                                    {myRequests.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="h-24 text-center">Lo storico delle richieste è temporaneamente disabilitato.</TableCell>
+                                            <TableCell colSpan={4} className="h-24 text-center">Nessuna richiesta trovata.</TableCell>
                                         </TableRow>
-                                    
+                                    ) : (
+                                        myRequests.map(req => (
+                                            <TableRow key={req.id}>
+                                                <TableCell>{req.productName}</TableCell>
+                                                <TableCell>{req.requestedQuantity}</TableCell>
+                                                <TableCell>{req.approvedQuantity ?? '-'}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Badge variant={
+                                                        req.status === 'approvata' ? 'secondary'
+                                                        : req.status === 'rifiutata' ? 'destructive'
+                                                        : 'default'
+                                                    }>{req.status.replace('_', ' ')}</Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -216,3 +258,5 @@ export default function SupplyRequestPage() {
         </div>
     );
 }
+
+    
