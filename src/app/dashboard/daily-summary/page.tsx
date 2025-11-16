@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, orderBy } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, Loader2, MapPin } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -54,11 +54,12 @@ export default function DailySummaryPage() {
 
         setIsLoading(true);
 
-        // Listener for Timbrature
+        // Listener for Timbrature - only show confirmed ones to the operator
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfDay),
             where('timestamp', '<=', endOfDay),
+            where('status', '==', 'confermata'),
             orderBy('timestamp', 'asc')
         );
 
@@ -70,7 +71,9 @@ export default function DailySummaryPage() {
             },
             (error) => {
                 console.error("Error fetching timbrature:", error);
-                toast({ title: "Errore", description: "Impossibile caricare le timbrature.", variant: "destructive" });
+                // Note: This might fail if the composite index for status and timestamp is not created.
+                // The error message from Firestore will guide the developer to create it.
+                toast({ title: "Errore", description: "Impossibile caricare le timbrature confermate.", variant: "destructive" });
                 setIsLoading(false);
             }
         );
@@ -140,8 +143,7 @@ export default function DailySummaryPage() {
                                     <TableRow>
                                         <TableHead>Orario</TableHead>
                                         <TableHead>Evento</TableHead>
-                                        <TableHead>Stato</TableHead>
-                                        <TableHead className="text-right">Posizione</TableHead>
+                                        <TableHead className="text-right">Stato</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -150,22 +152,16 @@ export default function DailySummaryPage() {
                                             <TableRow key={t.id}>
                                                 <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                 <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="text-right">
                                                     <Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>
                                                         {t.status}
                                                     </Badge>
                                                 </TableCell>
-                                                 <TableCell className="text-right">
-                                                      <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-end gap-1 text-primary hover:underline">
-                                                        <MapPin className="h-4 w-4"/>
-                                                        <span>Mappa</span>
-                                                     </a>
-                                                 </TableCell>
                                             </TableRow>
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="text-center h-24">Nessuna timbratura trovata per questo giorno.</TableCell>
+                                            <TableCell colSpan={3} className="text-center h-24">Nessuna timbratura confermata trovata per questo giorno.</TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>

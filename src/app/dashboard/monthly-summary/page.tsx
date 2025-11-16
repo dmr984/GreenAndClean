@@ -63,17 +63,19 @@ export default function MonthlySummaryPage() {
             where('startDate', '<=', endOfMonth)
         );
         
+        // Only fetch CONFIRMED clockings for summary calculations
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
-            where('timestamp', '<=', endOfMonth)
+            where('timestamp', '<=', endOfMonth),
+            where('status', '==', 'confermata')
         );
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
                 setRequests(data);
-                setIsDataLoading(false);
+                if(!isDataLoading) setIsDataLoading(false);
             },
             (error) => {
                 console.error("Error fetching requests:", error);
@@ -86,10 +88,12 @@ export default function MonthlySummaryPage() {
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
                 setTimbrature(data);
+                setIsDataLoading(false);
             },
             (error) => {
                  console.error("Error fetching timbrature:", error);
-                 toast({ title: "Errore", description: "Impossibile caricare le timbrature.", variant: "destructive" });
+                 toast({ title: "Errore", description: "Impossibile caricare le timbrature confermate.", variant: "destructive" });
+                 setIsDataLoading(false);
             }
         );
 

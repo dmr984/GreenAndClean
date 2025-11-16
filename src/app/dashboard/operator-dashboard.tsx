@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, MapPin, Loader2, Eye, PauseCircle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp } from 'firebase/firestore';
@@ -377,7 +377,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                                                         <TableRow>
                                                             <TableHead>Orario</TableHead>
                                                             <TableHead>Evento</TableHead>
-                                                            <TableHead className="text-right">Posizione</TableHead>
+                                                            <TableHead>Stato</TableHead>
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
@@ -385,10 +385,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                                                              <TableRow key={e.id}>
                                                                 <TableCell className="font-medium">{formatTime(e.timestamp)}</TableCell>
                                                                 <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
-                                                                <TableCell className="text-right">
-                                                                    <a href={`https://www.google.com/maps?q=${e.latitude},${e.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-end gap-2 text-primary hover:underline">
-                                                                        <MapPin className="h-4 w-4"/>
-                                                                    </a>
+                                                                <TableCell>
+                                                                    <Badge variant={e.status === 'confermata' ? 'secondary' : 'default'}>
+                                                                        {e.status}
+                                                                    </Badge>
                                                                 </TableCell>
                                                             </TableRow>
                                                         ))}
