@@ -5,7 +5,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
+import Link from 'next/link';
 
 type Operator = {
     id: string;
@@ -317,13 +318,18 @@ export default function ManageOperatorsPage() {
                                     <TableRow>
                                         <TableHead>Nome Operatore</TableHead>
                                         <TableHead>Visibile nel Login</TableHead>
-                                        <TableHead className="text-right w-[120px]">Azioni</TableHead>
+                                        <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {operators.map((operator) => (
-                                        <TableRow key={operator.id}>
-                                            <TableCell className="font-medium">{operator.username}</TableCell>
+                                        <TableRow key={operator.id} className="group">
+                                            <TableCell className="font-medium">
+                                                <Link href={`/dashboard/operators/${operator.id}`} className="hover:underline flex items-center">
+                                                    {operator.username}
+                                                    <ChevronRight className="h-4 w-4 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </Link>
+                                            </TableCell>
                                             <TableCell>
                                                 <Switch
                                                     checked={operator.visibleInLogin}
