@@ -84,6 +84,7 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
         );
         const unsubscribe = onSnapshot(q, snapshot => {
             const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            // Filter client-side
             const pending = allClockings.filter(c => c.status === 'sospesa');
             setClockings(pending);
             setIsLoading(false);
@@ -147,13 +148,16 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
 
     useEffect(() => {
         if (!firestore) return;
+        // Simplified query: order by creation date
         const q = query(
             collection(firestore, `app-users/${operatorId}/requests`),
-            where('status', '==', 'in_attesa'),
             orderBy('createdAt', 'desc')
         );
         const unsubscribe = onSnapshot(q, snapshot => {
-            setRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request)));
+            const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
+            // Filter for pending requests on the client-side
+            const pendingRequests = allRequests.filter(r => r.status === 'in_attesa');
+            setRequests(pendingRequests);
             setIsLoading(false);
         }, error => {
             console.error(error);
@@ -162,6 +166,7 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
         });
         return unsubscribe;
     }, [firestore, operatorId, toast]);
+
 
     const handleUpdateRequestStatus = (requestId: string, newStatus: 'approvato' | 'rifiutato') => {
         if (!firestore) return;
