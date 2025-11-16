@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -44,6 +44,12 @@ type Timbratura = {
     longitude: number;
 };
 
+type Shift = {
+    events: Timbratura[];
+    hasPending: boolean;
+};
+
+
 type Request = {
     id: string; // Document ID of the request
     userId: string;
@@ -69,24 +75,51 @@ type SupplyRequest = {
 };
 
 // Sub-components for each accordion item
-
-const PendingClockings = ({ operatorId }: { operatorId: string }) => {
+const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
-    const [clockings, setClockings] = useState<Timbratura[]>([]);
+    const [shifts, setShifts] = useState<Shift[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [itemToDelete, setItemToDelete] = useState<Timbratura | null>(null);
+    const [shiftToHandle, setShiftToHandle] = useState<{ shift: Shift; action: 'approve' | 'delete' } | null>(null);
 
     useEffect(() => {
         if (!firestore) return;
-        const q = query(
-            collection(firestore, `app-users/${operatorId}/timbrature`),
-            orderBy('timestamp', 'desc')
-        );
+        const q = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
         const unsubscribe = onSnapshot(q, snapshot => {
             const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
-            const pending = allClockings.filter(c => c.status === 'sospesa');
-            setClockings(pending);
+
+            const groupedShifts: Shift[] = [];
+            let currentShiftEvents: Timbratura[] = [];
+
+            for (const event of allClockings) {
+                if (event.type === 'entrata' && currentShiftEvents.length > 0) {
+                    groupedShifts.push({
+                        events: currentShiftEvents,
+                        hasPending: currentShiftEvents.some(e => e.status === 'sospesa'),
+                    });
+                    currentShiftEvents = [event];
+                } else {
+                    currentShiftEvents.push(event);
+                    if (event.type === 'uscita') {
+                        groupedShifts.push({
+                            events: currentShiftEvents,
+                            hasPending: currentShiftEvents.some(e => e.status === 'sospesa'),
+                        });
+                        currentShiftEvents = [];
+                    }
+                }
+            }
+
+            if (currentShiftEvents.length > 0) {
+                 groupedShifts.push({
+                    events: currentShiftEvents,
+                    hasPending: currentShiftEvents.some(e => e.status === 'sospesa'),
+                });
+            }
+            
+            const pendingShifts = groupedShifts.filter(s => s.hasPending).reverse();
+
+            setShifts(pendingShifts);
             setIsLoading(false);
         }, error => {
             console.error(error);
@@ -96,80 +129,124 @@ const PendingClockings = ({ operatorId }: { operatorId: string }) => {
         return unsubscribe;
     }, [firestore, operatorId, toast]);
 
-    const handleApprove = (clockingId: string) => {
+    const handleApproveShift = async (shift: Shift) => {
         if (!firestore) return;
-        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, clockingId);
-        updateDoc(docRef, { status: 'confermata' }).catch(err => {
-            console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile approvare la timbratura.', variant: 'destructive' });
+        const batch = writeBatch(firestore);
+        shift.events.forEach(event => {
+            if (event.status === 'sospesa') {
+                const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
+                batch.update(docRef, { status: 'confermata' });
+            }
         });
-    };
-
-    const handleDelete = async () => {
-        if (!firestore || !itemToDelete) return;
-        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, itemToDelete.id);
-        await deleteDoc(docRef).then(() => {
-            toast({ title: 'Successo', description: 'Timbratura eliminata.' });
+        await batch.commit().then(() => {
+            toast({ title: 'Successo', description: 'Turno approvato.' });
         }).catch(err => {
             console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         });
-        setItemToDelete(null);
+        setShiftToHandle(null);
+    };
+
+    const handleDeleteShift = async (shift: Shift) => {
+        if (!firestore) return;
+        const batch = writeBatch(firestore);
+        shift.events.forEach(event => {
+            const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
+            batch.delete(docRef);
+        });
+        await batch.commit().then(() => {
+            toast({ title: 'Successo', description: 'Turno eliminato.' });
+        }).catch(err => {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
+        });
+        setShiftToHandle(null);
+    };
+
+    const handleConfirmAction = () => {
+        if (!shiftToHandle) return;
+        if (shiftToHandle.action === 'approve') {
+            handleApproveShift(shiftToHandle.shift);
+        } else {
+            handleDeleteShift(shiftToHandle.shift);
+        }
     };
     
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
-    if (clockings.length === 0) return <p className="text-sm text-muted-foreground">Nessuna timbratura in sospeso.</p>;
+    if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno in sospeso.</p>;
 
     return (
         <>
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    <TableHead>Orario</TableHead>
-                    <TableHead>Evento</TableHead>
-                    <TableHead>Posizione</TableHead>
-                    <TableHead className="text-right">Azione</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                {clockings.map(t => (
-                    <TableRow key={t.id}>
-                        <TableCell>{format(t.timestamp.toDate(), 'Pp', { locale: it })}</TableCell>
-                        <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                        <TableCell>
-                            <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                <MapPin className="h-4 w-4"/> Mappa
-                             </a>
-                        </TableCell>
-                        <TableCell className="text-right">
-                             <Button variant="ghost" size="icon" onClick={() => handleApprove(t.id)}>
+        <div className="space-y-4">
+            {shifts.map((shift, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-2">
+                         <div>
+                            <h4 className="font-semibold">Turno del {format(shift.events[0].timestamp.toDate(), 'PPP', { locale: it })}</h4>
+                            <p className="text-sm text-muted-foreground">
+                                Da {format(shift.events[0].timestamp.toDate(), 'p', { locale: it })} 
+                                {shift.events.find(e => e.type === 'uscita') ? ` a ${format(shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'p', { locale: it })}` : ' (in corso)'}
+                            </p>
+                        </div>
+                        <div className="flex gap-2">
+                             <Button variant="ghost" size="icon" onClick={() => setShiftToHandle({ shift, action: 'approve' })}>
                                 <CheckCircle className="h-5 w-5 text-green-500" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setItemToDelete(t)}>
+                            <Button variant="ghost" size="icon" onClick={() => setShiftToHandle({ shift, action: 'delete' })}>
                                 <Trash2 className="h-5 w-5 text-destructive" />
                             </Button>
-                        </TableCell>
-                    </TableRow>
-                ))}
-            </TableBody>
-        </Table>
-         <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+                        </div>
+                    </div>
+                     <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Orario</TableHead>
+                                <TableHead>Evento</TableHead>
+                                <TableHead>Stato</TableHead>
+                                <TableHead>Posizione</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {shift.events.map(t => (
+                                <TableRow key={t.id}>
+                                    <TableCell>{format(t.timestamp.toDate(), 'p', { locale: it })}</TableCell>
+                                    <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                    <TableCell><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
+                                    <TableCell>
+                                        <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                            <MapPin className="h-4 w-4"/> Mappa
+                                        </a>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            ))}
+        </div>
+         <AlertDialog open={!!shiftToHandle} onOpenChange={(open) => !open && setShiftToHandle(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Questa azione eliminerà la timbratura in modo permanente. L'azione non può essere annullata.
+                         {shiftToHandle?.action === 'approve'
+                            ? "Approvare questo turno renderà tutte le sue timbrature confermate."
+                            : "Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata."
+                        }
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete}>Elimina</AlertDialogAction>
+                    <AlertDialogAction onClick={handleConfirmAction}>
+                        {shiftToHandle?.action === 'approve' ? 'Approva' : 'Elimina'}
+                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
         </>
     );
 };
+
 
 const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
     const firestore = useFirestore();
@@ -543,11 +620,11 @@ export default function OperatorDetailPage() {
                         <AccordionTrigger className="p-6">
                             <div className="flex items-center gap-3">
                                 <ListChecks className="h-6 w-6 text-primary"/>
-                                <h3 className="text-xl font-semibold">Gestione Timbrature Sospese</h3>
+                                <h3 className="text-xl font-semibold">Approvazione Turni</h3>
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                            <PendingClockings operatorId={operator.id} />
+                            <ShiftApproval operatorId={operator.id} />
                         </AccordionContent>
                     </AccordionItem>
                 </Card>
