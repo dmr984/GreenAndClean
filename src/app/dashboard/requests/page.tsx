@@ -67,7 +67,7 @@ export default function RequestsPage() {
         setIsLoadingData(true);
         const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
-            orderBy('startDate', 'desc')
+            orderBy('createdAt', 'desc')
         );
 
         const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
