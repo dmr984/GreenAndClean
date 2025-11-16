@@ -1,7 +1,7 @@
 
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collectionGroup, query, orderBy, onSnapshot, doc, updateDoc, runTransaction } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, runTransaction } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
@@ -53,14 +53,14 @@ export default function AdminSuppliesPage() {
             return;
         }
         
-        const requestsQuery = query(collectionGroup(firestore, 'supply-requests'), orderBy('createdAt', 'desc'));
+        const requestsQuery = query(collection(firestore, 'supply-requests'), orderBy('createdAt', 'desc'));
         const unsubscribe = onSnapshot(requestsQuery, snapshot => {
             setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest)));
             setIsLoading(false);
         }, error => {
             console.error("Error fetching supply requests:", error);
             if (error.code === 'permission-denied' && firestore) {
-                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'supply-requests (collection group)' });
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'supply-requests' });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
                 toast({ title: "Errore", description: "Impossibile caricare le richieste di forniture.", variant: "destructive" });
