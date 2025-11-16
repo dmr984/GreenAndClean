@@ -65,7 +65,12 @@ export default function SupplyRequestPage() {
 
     // Fetch user's past supply requests
     useEffect(() => {
-        if (!firestore || !user) return;
+        if (!firestore || !user?.id) {
+            if(!isUserLoading) setIsLoadingRequests(false);
+            return;
+        }
+
+        setIsLoadingRequests(true);
         const requestsQuery = query(
             collection(firestore, 'supply-requests'), 
             where('userId', '==', user.id), 
@@ -85,7 +90,7 @@ export default function SupplyRequestPage() {
             setIsLoadingRequests(false);
         });
         return () => unsubscribe();
-    }, [firestore, user, toast]);
+    }, [firestore, user, toast, isUserLoading]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
