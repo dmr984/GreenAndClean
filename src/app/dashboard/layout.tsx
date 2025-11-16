@@ -12,25 +12,62 @@ import { useUser } from '@/hooks/use-user';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { useFirestore } from '@/firebase';
+import { collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
+import { NotificationBell } from '@/components/notification-bell';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const { user, isLoading } = useUser();
+  const firestore = useFirestore();
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   useEffect(() => {
-    // Redirect to login if not authenticated after loading is finished
     if (!isLoading && !user) {
         router.replace('/');
     }
   }, [user, isLoading, router]);
 
+  useEffect(() => {
+    if (user?.role !== 'admin' || !firestore) {
+      setPendingRequestsCount(0);
+      return;
+    }
+
+    const leaveRequestsQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
+    const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
+
+    const unsubLeave = onSnapshot(leaveRequestsQuery, (snapshot) => {
+        const leaveCount = snapshot.size;
+        setPendingRequestsCount(current => leaveCount + (current - (current - supplyCount))); // Avoid race conditions
+    }, (error) => console.error("Error fetching pending leave requests: ", error));
+
+    let supplyCount = 0;
+    const unsubSupply = onSnapshot(supplyRequestsQuery, (snapshot) => {
+        supplyCount = snapshot.size;
+         setPendingRequestsCount(current => supplyCount + (current - (current - leaveRequestsQuery.get.length)));
+    }, (error) => console.error("Error fetching pending supply requests: ", error));
+    
+     const unsubCombined = onSnapshot(query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa')), (leaveSnapshot) => {
+        const leaveCount = leaveSnapshot.size;
+        onSnapshot(query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa')), (supplySnapshot) => {
+            const supplyCount = supplySnapshot.size;
+            setPendingRequestsCount(leaveCount + supplyCount);
+        });
+    });
+
+    return () => {
+      unsubCombined();
+    };
+  }, [user, firestore]);
+
   const handleLogout = async () => {
     localStorage.removeItem('user');
-    window.dispatchEvent(new Event('storage')); // To update useUser hook
+    window.dispatchEvent(new Event('storage'));
     router.replace('/');
   }
 
@@ -181,7 +218,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex justify-end items-center gap-4 w-10">
-             {/* Placeholder for potential future icons */}
+             {user?.role === 'admin' && (
+                <NotificationBell notificationCount={pendingRequestsCount} />
+             )}
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
