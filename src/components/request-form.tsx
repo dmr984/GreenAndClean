@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -73,19 +73,6 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
 
     const selectedType = watch('requestType');
     const startDateValue = watch('startDate');
-    const endDateValue = watch('endDate');
-    
-    useEffect(() => {
-        if (startDateValue) {
-            setIsStartPickerOpen(false);
-        }
-    }, [startDateValue]);
-
-    useEffect(() => {
-        if (endDateValue) {
-            setIsEndPickerOpen(false);
-        }
-    }, [endDateValue]);
 
     const onSubmit = async (data: RequestFormValues) => {
         if (!firestore) return;
@@ -163,8 +150,8 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                     control={control}
                     render={({ field }) => (
                         <div className='col-span-3 flex flex-col'>
-                            <Popover open={isStartPickerOpen} onOpenChange={setIsStartPickerOpen}>
-                                <PopoverTrigger asChild>
+                             <Dialog open={isStartPickerOpen} onOpenChange={setIsStartPickerOpen}>
+                                <DialogTrigger asChild>
                                     <Button
                                         id="startDate"
                                         variant={"outline"}
@@ -173,16 +160,19 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {field.value ? format(field.value, "PPP", { locale: it }) : <span>Scegli una data</span>}
                                     </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
+                                </DialogTrigger>
+                                <DialogContent className="w-auto p-0">
                                     <Calendar 
                                       mode="single" 
                                       selected={field.value} 
-                                      onSelect={field.onChange}
+                                      onSelect={(date) => {
+                                        field.onChange(date);
+                                        setIsStartPickerOpen(false);
+                                      }}
                                       initialFocus 
                                     />
-                                </PopoverContent>
-                            </Popover>
+                                </DialogContent>
+                            </Dialog>
                              {errors.startDate && <p className="text-xs text-destructive mt-1">{errors.startDate.message}</p>}
                         </div>
                     )}
@@ -197,8 +187,8 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                     control={control}
                     render={({ field }) => (
                         <div className='col-span-3 flex flex-col'>
-                            <Popover open={isEndPickerOpen} onOpenChange={setIsEndPickerOpen}>
-                                <PopoverTrigger asChild>
+                            <Dialog open={isEndPickerOpen} onOpenChange={setIsEndPickerOpen}>
+                                <DialogTrigger asChild>
                                      <Button
                                         id="endDate"
                                         variant={"outline"}
@@ -208,17 +198,20 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {field.value ? format(field.value, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
                                     </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
+                                </DialogTrigger>
+                                <DialogContent className="w-auto p-0">
                                     <Calendar 
                                         mode="single" 
                                         selected={field.value} 
-                                        onSelect={field.onChange}
+                                        onSelect={(date) => {
+                                          field.onChange(date);
+                                          setIsEndPickerOpen(false);
+                                        }}
                                         disabled={{ before: startDateValue! }} 
                                         initialFocus 
                                     />
-                                </PopoverContent>
-                            </Popover>
+                                </DialogContent>
+                            </Dialog>
                             {errors.endDate && <p className="text-xs text-destructive mt-1">{errors.endDate.message}</p>}
                         </div>
                     )}
