@@ -114,60 +114,48 @@ export default function ManageOperatorsPage() {
         const pendingLeaveQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
         const pendingSupplyQuery = query(collectionGroup(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
 
-        const countPending = (query: any, itemType: string) => onSnapshot(query, (snapshot) => {
+        const countPending = (q: any, itemType: string, path: string) => onSnapshot(q, (snapshot) => {
             const counts: Record<string, number> = {};
             snapshot.forEach(doc => {
                 const userId = doc.data().userId;
-                 // For shifts, we just want to know if there's *any* pending, not how many. So we count by day.
-                if (itemType === 'shifts') {
-                    const day = doc.data().timestamp.toDate().toDateString();
-                    const key = `${userId}_${day}`;
-                    counts[key] = 1; // Just mark that there is a pending item
-                } else {
-                    counts[userId] = (counts[userId] || 0) + 1;
-                }
+                counts[userId] = (counts[userId] || 0) + 1;
             });
-            
+
             setPendingCounts(prev => {
-                const newTotalCounts: Record<string, number> = {};
-                 // Recalculate totals from scratch
-                const allCounts = {...prev};
-
-                // Clear old counts for this type
-                Object.keys(allCounts).forEach(key => {
-                    if(key.startsWith(itemType)) delete allCounts[key];
-                })
-
-                // Add new raw counts
-                Object.entries(counts).forEach(([userId, count]) => {
-                    allCounts[`${itemType}_${userId}`] = count;
-                });
-                
-                // Aggregate all counts for total
+                 const newCounts = { ...prev };
+                // Reset counts for this type before updating
                 operators.forEach(op => {
-                    let total = 0;
-                    if(allCounts[`shifts_${op.id}`]) total += 1;
-                    if(allCounts[`leave_${op.id}`]) total += allCounts[`leave_${op.id}`];
-                    if(allCounts[`supply_${op.id}`] > 0) total += allCounts[`supply_${op.id}`];
-                    newTotalCounts[op.id] = total;
+                    const key = `${op.id}_${itemType}`;
+                    delete newCounts[key];
+                });
+                Object.entries(counts).forEach(([userId, count]) => {
+                    const key = `${userId}_${itemType}`;
+                    newCounts[key] = count;
                 });
 
-                Object.keys(allCounts).forEach(key => {
-                    const [type, userId] = key.split('_');
-                    const opId = operators.find(op => op.id === userId)?.id;
-                    if (opId) {
-                         if (type === 'shifts') newTotalCounts[opId] = (newTotalCounts[opId] || 0) + 1;
-                         else newTotalCounts[opId] = (newTotalCounts[opId] || 0) + (allCounts[key] || 0);
-                    }
+                const totalCounts: Record<string, number> = {};
+                 operators.forEach(op => {
+                    totalCounts[op.id] = (newCounts[`${op.id}_shifts`] || 0) + 
+                                         (newCounts[`${op.id}_leave`] || 0) + 
+                                         (newCounts[`${op.id}_supply`] || 0);
                 });
-
-                return newTotalCounts;
+                return totalCounts;
             });
-        }, (error) => console.error(`Error counting ${itemType}:`, error));
+        }, (error) => {
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'list',
+                    path: path, 
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                console.error(`Error counting ${itemType}:`, error);
+            }
+        });
 
-        const unsubShifts = countPending(pendingShiftsQuery, 'shifts');
-        const unsubLeave = countPending(pendingLeaveQuery, 'leave');
-        const unsubSupply = countPending(pendingSupplyQuery, 'supply');
+        const unsubShifts = countPending(pendingShiftsQuery, 'shifts', 'timbrature');
+        const unsubLeave = countPending(pendingLeaveQuery, 'leave', 'requests');
+        const unsubSupply = countPending(pendingSupplyQuery, 'supply', 'supply-requests');
 
 
         return () => {
