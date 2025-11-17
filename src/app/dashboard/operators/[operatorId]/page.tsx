@@ -912,12 +912,12 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                 .map(d => ({id: d.id, ...d.data()} as Request))
                 .filter(r => r.status === 'approvato' && r.endDate.toDate() >= startOfMonthValue);
             setRequests(approvedRequests);
-        }, () => setIsLoading(false)); // Add error handling if needed
+        }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             setTimbrature(s.docs.map(d => d.data() as Timbratura));
             setIsLoading(false);
-        }, () => setIsLoading(false)); // Add error handling if needed
+        }, () => setIsLoading(false));
 
         return () => { 
             unsubRequests(); 
