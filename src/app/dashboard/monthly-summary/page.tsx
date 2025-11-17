@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
 import { differenceInDays, format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 type Request = {
     id: string;
@@ -172,6 +173,12 @@ export default function MonthlySummaryPage() {
         return { value: `${d.getFullYear()}-${String(i+1).padStart(2, '0')}`, label: d.toLocaleString('it-IT', { month: 'long' }) };
     });
 
+    const handleWorkedDaysClick = () => {
+        const month = currentDate.getMonth() + 1;
+        const year = currentDate.getFullYear();
+        router.push(`/dashboard/daily-summary?month=${month}&year=${year}`);
+    };
+
     if (isUserLoading || isDataLoading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -212,7 +219,10 @@ export default function MonthlySummaryPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <Card>
+                <Card
+                    onClick={handleWorkedDaysClick}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle>
                         <Briefcase className="h-4 w-4 text-muted-foreground" />
@@ -314,3 +324,5 @@ export default function MonthlySummaryPage() {
         </div>
     );
 }
+
+    

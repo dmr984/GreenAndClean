@@ -1,6 +1,6 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { collection, query, where, Timestamp, onSnapshot, getDocs } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar as CalendarIcon, Clock, Loader2 } from 'lucide-react';
@@ -9,8 +9,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/hooks/use-user';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { useSearchParams } from 'next/navigation';
 
 type Timbratura = {
     id: string;
@@ -21,69 +22,111 @@ type Timbratura = {
     longitude: number;
 };
 
-export default function DailySummaryPage() {
+function DailySummaryContent() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
+    const searchParams = useSearchParams();
 
-    const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+    const urlMonth = searchParams.get('month');
+    const urlYear = searchParams.get('year');
+    const operatorId = searchParams.get('operatorId');
+
+    const initialDate = useMemo(() => {
+        if (urlMonth && urlYear) {
+            return new Date(parseInt(urlYear), parseInt(urlMonth) - 1, 1);
+        }
+        return new Date();
+    }, [urlMonth, urlYear]);
+
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate);
+    const [currentMonth, setCurrentMonth] = useState(initialDate);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
+    const [workedDays, setWorkedDays] = useState<Date[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const { startOfDay, endOfDay } = useMemo(() => {
-        if (!selectedDate) {
-            return { startOfDay: null, endOfDay: null };
-        }
-        const start = new Date(selectedDate);
-        start.setHours(0, 0, 0, 0);
+    const targetUserId = operatorId || user?.id;
 
-        const end = new Date(selectedDate);
-        end.setHours(23, 59, 59, 999);
-
+    const { startOfPeriod, endOfPeriod } = useMemo(() => {
+        const start = startOfMonth(currentMonth);
+        const end = endOfMonth(currentMonth);
         return {
-            startOfDay: Timestamp.fromDate(start),
-            endOfDay: Timestamp.fromDate(end),
+            startOfPeriod: Timestamp.fromDate(start),
+            endOfPeriod: Timestamp.fromDate(end),
         };
-    }, [selectedDate]);
+    }, [currentMonth]);
 
+    // Effect to fetch all worked days in the current month for calendar highlighting
     useEffect(() => {
-        if (!firestore || !user?.id || !startOfDay || !endOfDay) {
-             if (!isUserLoading) setIsLoading(false);
+        if (!firestore || !targetUserId) return;
+        
+        const monthlyTimbratureQuery = query(
+            collection(firestore, `app-users/${targetUserId}/timbrature`),
+            where('timestamp', '>=', startOfPeriod),
+            where('timestamp', '<=', endOfPeriod),
+            where('status', '==', 'confermata')
+        );
+
+        const unsubscribe = onSnapshot(monthlyTimbratureQuery, 
+            (snapshot) => {
+                const dates = snapshot.docs.map(doc => doc.data().timestamp.toDate());
+                const uniqueDays = dates.reduce((acc, date) => {
+                    if (!acc.some(d => isSameDay(d, date))) {
+                        acc.push(date);
+                    }
+                    return acc;
+                }, [] as Date[]);
+                setWorkedDays(uniqueDays);
+            },
+            (error) => {
+                 console.error("Error fetching worked days:", error);
+                 toast({ title: "Errore", description: "Impossibile caricare i giorni lavorati.", variant: "destructive" });
+            }
+        );
+        return () => unsubscribe();
+    }, [firestore, targetUserId, startOfPeriod, endOfPeriod, toast]);
+
+    // Effect to fetch details for the selected day
+    useEffect(() => {
+        if (!firestore || !targetUserId || !selectedDate) {
+            if (!isUserLoading) setIsLoading(false);
+            setTimbrature([]);
             return;
         }
 
         setIsLoading(true);
 
-        // Listener for Timbrature - only show confirmed ones to the operator
+        const start = new Date(selectedDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(selectedDate);
+        end.setHours(23, 59, 59, 999);
+
+        const startOfDay = Timestamp.fromDate(start);
+        const endOfDay = Timestamp.fromDate(end);
+        
         const timbratureQuery = query(
-            collection(firestore, `app-users/${user.id}/timbrature`),
+            collection(firestore, `app-users/${targetUserId}/timbrature`),
             where('timestamp', '>=', startOfDay),
             where('timestamp', '<=', endOfDay),
             where('status', '==', 'confermata')
-            // orderBy('timestamp', 'asc') // This was causing an index error. Sorting is now done client-side.
         );
 
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                // Sort client-side
                 data.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 setTimbrature(data);
                 setIsLoading(false);
             },
             (error) => {
-                console.error("Error fetching timbrature:", error);
-                // Note: This might fail if the composite index for status and timestamp is not created.
-                // The error message from Firestore will guide the developer to create it.
-                toast({ title: "Errore", description: "Impossibile caricare le timbrature confermate.", variant: "destructive" });
+                console.error("Error fetching daily timbrature:", error);
+                toast({ title: "Errore", description: "Impossibile caricare le timbrature del giorno.", variant: "destructive" });
                 setIsLoading(false);
             }
         );
 
-        return () => {
-            unsubscribeTimbrature();
-        };
-    }, [firestore, user, startOfDay, endOfDay, toast, isUserLoading]);
+        return () => unsubscribeTimbrature();
+    }, [firestore, targetUserId, selectedDate, toast, isUserLoading]);
     
     if (isUserLoading) {
         return (
@@ -93,7 +136,7 @@ export default function DailySummaryPage() {
         );
     }
     
-     if (!user) {
+     if (!targetUserId) {
         return (
             <div className="flex items-center justify-center h-full">
                 <p className="text-muted-foreground">Utente non trovato. Effettua nuovamente il login.</p>
@@ -102,7 +145,7 @@ export default function DailySummaryPage() {
     }
 
     return (
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-[280px_1fr]">
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-[auto_1fr]">
             <div className="flex flex-col gap-6">
                 <Card>
                     <CardHeader>
@@ -116,9 +159,13 @@ export default function DailySummaryPage() {
                             mode="single"
                             selected={selectedDate}
                             onSelect={setSelectedDate}
+                            month={currentMonth}
+                            onMonthChange={setCurrentMonth}
                             className="rounded-md border p-0"
                             locale={it}
                             disabled={(date) => date > new Date()}
+                            modifiers={{ worked: workedDays }}
+                            modifiersClassNames={{ worked: 'bg-primary/20 rounded-full' }}
                         />
                     </CardContent>
                 </Card>
@@ -175,3 +222,13 @@ export default function DailySummaryPage() {
         </div>
     );
 }
+
+export default function DailySummaryPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <DailySummaryContent />
+        </Suspense>
+    );
+}
+
+    

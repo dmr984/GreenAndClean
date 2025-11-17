@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format, differenceInDays, parse, set } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 
@@ -640,6 +640,7 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
 
 const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
     const firestore = useFirestore();
+    const router = useRouter();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
@@ -704,6 +705,12 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
         setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
+    const handleWorkedDaysClick = () => {
+        const month = currentDate.getMonth() + 1;
+        const year = currentDate.getFullYear();
+        router.push(`/dashboard/daily-summary?month=${month}&year=${year}&operatorId=${operatorId}`);
+    };
+
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     
     return (
@@ -714,7 +721,12 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle><Briefcase className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedDays}</div></CardContent></Card>
+                <Card
+                  onClick={handleWorkedDaysClick}
+                  className="cursor-pointer transition-all hover:bg-muted/50"
+                >
+                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle><Briefcase className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedDays}</div></CardContent>
+                </Card>
                 <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ore Lavorate</CardTitle><Hash className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedHours}</div></CardContent></Card>
                 <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Straordinari (ore)</CardTitle><Plus className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent></Card>
                 <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ferie (giorni)</CardTitle><Plane className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.ferieDays}</div></CardContent></Card>
@@ -836,3 +848,5 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
+
+    
