@@ -813,11 +813,12 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         if (!firestore || !operatorId) return;
         setIsLoading(true);
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', startOfMonth), where('startDate', '<=', endOfMonth));
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth), where('status', '==', 'confermata'));
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
         
         const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
-            setTimbrature(s.docs.map(d => d.data() as Timbratura));
+            const confirmedTimbrature = s.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
+            setTimbrature(confirmedTimbrature);
             setIsLoading(false);
         });
 
