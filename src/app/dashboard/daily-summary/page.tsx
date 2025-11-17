@@ -99,7 +99,7 @@ function DailySummaryContent() {
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-    const [shiftToDelete, setShiftToDelete]_ = useState<Shift | null>(null);
+    const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
 
