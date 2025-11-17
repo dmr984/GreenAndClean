@@ -923,7 +923,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         });
 
         return () => { unsubRequests(); unsubTimbrature(); };
-    }, [firestore, operatorId, dateRange]);
+    }, [firestore, operatorId, currentDate]);
 
     const summary = useMemo(() => {
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
