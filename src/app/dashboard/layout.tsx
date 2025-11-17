@@ -84,8 +84,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     localStorage.removeItem('user');
-    window.dispatchEvent(new Event('storage'));
-    router.replace('/');
+    // Force a full page reload to clear all state and go to the login page.
+    // This is more robust than router.replace for logout.
+    window.location.href = '/';
   }
 
   const getAvatarFallback = () => {
