@@ -168,11 +168,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </Link>
                      {user?.role === 'operator' && (
                         <>
-                        <Link href="/dashboard/daily-summary" passHref>
-                            <Button variant={pathname === '/dashboard/daily-summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <ListChecks className="h-5 w-5" /> Riepilogo Giornaliero
-                            </Button>
-                        </Link>
                         <Link href="/dashboard/monthly-summary" passHref>
                             <Button variant={pathname === '/dashboard/monthly-summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Calendar className="h-5 w-5" /> Riepilogo Mensile
