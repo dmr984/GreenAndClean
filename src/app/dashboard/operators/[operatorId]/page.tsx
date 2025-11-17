@@ -30,6 +30,8 @@ import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { Calendar as CalendarPop } from '@/components/ui/calendar';
+import { Textarea } from '@/components/ui/textarea';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -51,8 +53,8 @@ type Timbratura = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata';
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
 };
 
 type Shift = {
@@ -421,9 +423,13 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                                         <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
                                         <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
                                         <TableCell className="whitespace-nowrap">
-                                            <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                                <MapPin className="h-4 w-4"/> Mappa
-                                            </a>
+                                           {t.latitude && t.longitude ? (
+                                                <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                    <MapPin className="h-4 w-4"/> Mappa
+                                                </a>
+                                            ) : (
+                                                <span>Manuale</span>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-right whitespace-nowrap">
                                             <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
@@ -497,6 +503,7 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
+    const [editingRequest, setEditingRequest] = useState<Request | null>(null);
 
     useEffect(() => {
         if (!firestore) return;
@@ -516,7 +523,6 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
         });
         return unsubscribe;
     }, [firestore, operatorId, toast]);
-
 
     const handleUpdateRequestStatus = (requestId: string, newStatus: 'approvato' | 'rifiutato') => {
         if (!firestore) return;
@@ -539,6 +545,22 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
         setItemToDelete(null);
     };
 
+    const handleEditRequest = (request: Request) => {
+        setEditingRequest(request);
+    };
+    
+    const handleSaveEdit = async (editedData: Partial<Request>) => {
+        if(!firestore || !editingRequest) return;
+        
+        const docRef = doc(firestore, `app-users/${operatorId}/requests`, editingRequest.id);
+        await updateDoc(docRef, editedData).then(() => {
+            toast({title: 'Successo', description: 'Richiesta aggiornata'});
+            setEditingRequest(null);
+        }).catch(err => {
+            toast({title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive'});
+        });
+    };
+
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (requests.length === 0) return <p className="text-sm text-muted-foreground">Nessuna richiesta in attesa.</p>;
 
@@ -557,6 +579,7 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
                             <div className="flex gap-2 justify-end">
                                 <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'approvato')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'rifiutato')}><XCircle className="h-5 w-5 text-red-500" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleEditRequest(req)}><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
                             </div>
                         </TableCell>
@@ -578,9 +601,57 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        {editingRequest && (
+            <EditRequestDialog 
+                request={editingRequest} 
+                onSave={handleSaveEdit}
+                onClose={() => setEditingRequest(null)}
+            />
+        )}
         </>
     );
 };
+
+const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onSave: (data: Partial<Request>) => void; onClose: () => void; }) => {
+    const [type, setType] = useState(request.type);
+    const [startDate, setStartDate] = useState(request.startDate.toDate());
+    const [endDate, setEndDate] = useState(request.endDate.toDate());
+    const [hours, setHours] = useState(request.hours?.toString() || '');
+    const [reason, setReason] = useState(request.reason || '');
+
+    const handleSave = () => {
+        const editedData: Partial<Request> = {
+            type,
+            startDate: Timestamp.fromDate(startDate),
+            endDate: Timestamp.fromDate(endDate),
+            reason
+        };
+        if(type === 'permesso' || type === 'straordinario') {
+            editedData.hours = parseFloat(hours) || 0;
+        } else {
+            editedData.hours = 0;
+        }
+        onSave(editedData);
+    };
+
+    return (
+        <ResponsiveDialog open={true} onOpenChange={onClose}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Richiesta</ResponsiveDialogTitle></ResponsiveDialogHeader>
+                <div className="space-y-4 py-4">
+                     <div><Label>Tipo</Label><Select value={type} onValueChange={(v) => setType(v as any)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="ferie">Ferie</SelectItem><SelectItem value="permesso">Permesso</SelectItem><SelectItem value="malattia">Malattia</SelectItem><SelectItem value="straordinario">Straordinario</SelectItem></SelectContent></Select></div>
+                     <div><Label>Data Inizio</Label><CalendarPop mode="single" selected={startDate} onSelect={(d) => d && setStartDate(d)} className="rounded-md border"/></div>
+                     <div><Label>Data Fine</Label><CalendarPop mode="single" selected={endDate} onSelect={(d) => d && setEndDate(d)} fromDate={startDate} className="rounded-md border"/></div>
+                    {(type === 'permesso' || type === 'straordinario') && <div><Label>Ore</Label><Input type="number" value={hours} onChange={(e) => setHours(e.target.value)} /></div>}
+                    <div><Label>Motivazione</Label><Textarea value={reason} onChange={(e) => setReason(e.target.value)} /></div>
+                </div>
+                <ResponsiveDialogFooter><Button variant="outline" onClick={onClose}>Annulla</Button><Button onClick={handleSave}>Salva Modifiche</Button></ResponsiveDialogFooter>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+    );
+};
+
 
 const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, operatorUsername: string }) => {
     const firestore = useFirestore();
@@ -739,7 +810,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         if (!firestore || !operatorId) return;
         setIsLoading(true);
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', startOfMonth), where('startDate', '<=', endOfMonth));
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth), where('status', '==', 'confermata'));
         
         const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
@@ -751,8 +822,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     }, [firestore, operatorId, startOfMonth, endOfMonth]);
 
     const summary = useMemo(() => {
-        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
-        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
+        const dailyTimbrature = timbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) acc[day] = [];
             acc[day].push(t);
@@ -993,5 +1063,3 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
-
-    

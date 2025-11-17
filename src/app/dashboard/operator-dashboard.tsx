@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -19,6 +19,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
+import { isSameDay, startOfDay, endOfDay } from 'date-fns';
 
 type ClockingEvent = {
     id: string;
@@ -47,6 +48,11 @@ interface OperatorDashboardProps {
   user: UserData | null; // This prop is now coming from the layout, but we will transition to the hook
 }
 
+type LeaveStatus = {
+    onLeave: boolean;
+    type: 'ferie' | 'malattia' | null;
+}
+
 export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const { user: hookUser, isLoading: isUserLoading } = useUser();
   const user = propUser || hookUser;
@@ -56,6 +62,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [leaveStatus, setLeaveStatus] = useState<LeaveStatus>({ onLeave: false, type: null });
+
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -82,6 +90,40 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       orderBy('timestamp', 'asc')
     );
   }, [firestore, user, todayTimestamp, tomorrowTimestamp]);
+  
+  // Check for leave
+    useEffect(() => {
+        if (!firestore || !user?.id) return;
+
+        const checkLeaveStatus = async () => {
+            const today = new Date();
+            const requestsQuery = query(
+                collection(firestore, `app-users/${user.id}/requests`),
+                where('status', '==', 'approvato'),
+                where('startDate', '<=', Timestamp.fromDate(endOfDay(today))),
+            );
+            
+            const snapshot = await getDocs(requestsQuery);
+            let onLeaveToday = false;
+            let leaveType: LeaveStatus['type'] = null;
+
+            snapshot.forEach(doc => {
+                const request = doc.data();
+                const startDate = request.startDate.toDate();
+                const endDate = request.endDate.toDate();
+
+                if (isSameDay(today, startDate) || isSameDay(today, endDate) || (today > startDate && today < endDate)) {
+                    if(request.type === 'ferie' || request.type === 'malattia') {
+                      onLeaveToday = true;
+                      leaveType = request.type;
+                    }
+                }
+            });
+            setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
+        };
+        checkLeaveStatus();
+    }, [firestore, user]);
+
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
@@ -206,7 +248,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
 
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
-    if (!firestore || !user || isProcessing) return;
+    if (!firestore || !user || isProcessing || leaveStatus.onLeave) return;
 
     try {
       const currentLoc = await getLocation();
@@ -216,7 +258,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         userId: user.id,
         type,
         timestamp: serverTimestamp(),
-        status: 'sospesa',
+        status: 'sospesa' as const,
         latitude: currentLoc.latitude,
         longitude: currentLoc.longitude,
       };
@@ -265,6 +307,25 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const handleBreakToggle = (isToggled: boolean) => {
       handleClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
+  
+  const renderLeaveCard = () => {
+    const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
+    return (
+        <Card className="border-yellow-500 bg-yellow-500/10">
+            <CardHeader className="pb-4">
+                <div className="flex items-center gap-3">
+                    <Icon className="h-6 w-6 text-yellow-600" />
+                    <CardTitle className="text-2xl text-yellow-700 capitalize">In {leaveStatus.type}</CardTitle>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <p className="text-yellow-600 text-center">
+                    Oggi sei in {leaveStatus.type}. Non è possibile timbrare.
+                </p>
+            </CardContent>
+        </Card>
+    );
+  }
 
   if (isUserLoading) {
       return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
@@ -276,6 +337,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>
 
+       { leaveStatus.onLeave ? renderLeaveCard() : (
        <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -327,6 +389,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             )}
         </CardFooter>
       </Card>
+      )}
       
       <Card>
         <CardHeader>
@@ -411,5 +474,3 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     </div>
   );
 }
-
-    
