@@ -13,7 +13,7 @@ import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { useFirestore } from '@/firebase';
-import { collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
 import { NotificationBell } from '@/components/notification-bell';
 
 
@@ -41,27 +41,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const leaveRequestsQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
     const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
 
+    let leaveCount = 0;
+    let supplyCount = 0;
+
+    const updateCounts = () => {
+        setPendingRequestsCount(leaveCount + supplyCount);
+    }
+
     const unsubLeave = onSnapshot(leaveRequestsQuery, (snapshot) => {
-        const leaveCount = snapshot.size;
-        setPendingRequestsCount(current => leaveCount + (current - (current - supplyCount))); // Avoid race conditions
+        leaveCount = snapshot.size;
+        updateCounts();
     }, (error) => console.error("Error fetching pending leave requests: ", error));
 
-    let supplyCount = 0;
     const unsubSupply = onSnapshot(supplyRequestsQuery, (snapshot) => {
         supplyCount = snapshot.size;
-         setPendingRequestsCount(current => supplyCount + (current - (current - leaveRequestsQuery.get.length)));
+        updateCounts();
     }, (error) => console.error("Error fetching pending supply requests: ", error));
-    
-     const unsubCombined = onSnapshot(query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa')), (leaveSnapshot) => {
-        const leaveCount = leaveSnapshot.size;
-        onSnapshot(query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa')), (supplySnapshot) => {
-            const supplyCount = supplySnapshot.size;
-            setPendingRequestsCount(leaveCount + supplyCount);
-        });
-    });
 
     return () => {
-      unsubCombined();
+      unsubLeave();
+      unsubSupply();
     };
   }, [user, firestore]);
 
