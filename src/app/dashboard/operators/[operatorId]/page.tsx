@@ -901,22 +901,30 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
             where('startDate', '<=', Timestamp.fromDate(endOfMonthValue))
         );
         
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)), where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue)));
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${operatorId}/timbrature`),
+            where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)),
+            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue))
+        );
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
             const approvedRequests = s.docs
                 .map(d => ({id: d.id, ...d.data()} as Request))
                 .filter(r => r.status === 'approvato' && r.endDate.toDate() >= startOfMonthValue);
             setRequests(approvedRequests);
-        });
+        }, () => setIsLoading(false)); // Add error handling if needed
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             setTimbrature(s.docs.map(d => d.data() as Timbratura));
             setIsLoading(false);
-        });
+        }, () => setIsLoading(false)); // Add error handling if needed
 
-        return () => { unsubRequests(); unsubTimbrature(); };
+        return () => { 
+            unsubRequests(); 
+            unsubTimbrature(); 
+        };
     }, [firestore, operatorId, currentDate]);
+
 
     const summary = useMemo(() => {
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
