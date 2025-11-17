@@ -121,9 +121,12 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
 
     useEffect(() => {
         if (!firestore) return;
-        const q = query(collection(firestore, `app-users/${operator.id}/timbrature`), orderBy('timestamp', 'asc'));
+        const q = query(collection(firestore, `app-users/${operator.id}/timbrature`));
         const unsubscribe = onSnapshot(q, snapshot => {
             const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+
+            // Sort clockings by timestamp client-side
+            allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const groupedShifts: Shift[] = [];
             let currentShiftEvents: Timbratura[] = [];
