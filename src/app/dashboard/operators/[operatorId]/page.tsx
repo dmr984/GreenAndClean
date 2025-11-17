@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays, parse, set, getDay } from 'date-fns';
+import { format, differenceInDays, parse, set, getDay, startOfMonth as startOfMonthFn, endOfMonth as endOfMonthFn } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
@@ -889,22 +889,32 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
 
-
-    const { startOfMonth, endOfMonth } = useMemo(() => {
-        const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59);
-        return { startOfMonth: Timestamp.fromDate(start), endOfMonth: Timestamp.fromDate(end) };
+    const dateRange = useMemo(() => {
+        const start = startOfMonthFn(currentDate);
+        const end = endOfMonthFn(currentDate);
+        return {
+            startOfPeriod: Timestamp.fromDate(start),
+            endOfPeriod: Timestamp.fromDate(end),
+        };
     }, [currentDate]);
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
         setIsLoading(true);
-        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', startOfMonth), where('startDate', '<=', endOfMonth));
+
+        const { startOfPeriod: startOfMonth, endOfPeriod: endOfMonth } = dateRange;
+
+        const requestsQuery = query(
+            collection(firestore, `app-users/${operatorId}/requests`),
+            where('startDate', '<=', endOfMonth)
+        );
         const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
-            const data = s.docs.map(d => ({id: d.id, ...d.data()} as Request));
-            setRequests(data);
+            const approvedRequests = s.docs
+                .map(d => ({id: d.id, ...d.data()} as Request))
+                .filter(r => r.status === 'approvato');
+            setRequests(approvedRequests);
         });
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
@@ -913,7 +923,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         });
 
         return () => { unsubRequests(); unsubTimbrature(); };
-    }, [firestore, operatorId, startOfMonth, endOfMonth]);
+    }, [firestore, operatorId, dateRange]);
 
     const summary = useMemo(() => {
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
@@ -934,7 +944,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
             }
         });
 
-        const approvedRequests = requests.filter(r => r.status === 'approvato');
+        const approvedRequests = requests; // Already filtered in useEffect
         return {
             workedDays: workedDaysCount,
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -956,7 +966,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
         if (!type) return;
-        const approvedRequests = requests.filter(r => r.status === 'approvato' && r.type === type);
+        const approvedRequests = requests.filter(r => r.type === type);
         setDetailView({ type, title, items: approvedRequests });
     };
 
