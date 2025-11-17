@@ -70,20 +70,22 @@ export default function SupplyRequestPage() {
         }
 
         setIsLoadingRequests(true);
-        // !! IMPORTANT !!
-        // We filter by userId on the client side after fetching to avoid needing a composite index.
-        // We removed the orderBy clause to prevent index-related crashes.
-        // The sorting is now handled client-side.
         const requestsQuery = query(
             collection(firestore, 'supply-requests'), 
             where('userId', '==', user.id)
-            // orderBy('createdAt', 'desc') // This was causing index errors.
         );
 
         const unsubscribe = onSnapshot(requestsQuery, snapshot => {
             const allRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest));
-            // Sort client-side
-            allRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+            // Sort client-side safely, handling potential null timestamps
+            allRequests.sort((a, b) => {
+                if (a.createdAt && b.createdAt) {
+                    return b.createdAt.toMillis() - a.createdAt.toMillis();
+                }
+                if (a.createdAt) return -1; // b is null, so a comes first
+                if (b.createdAt) return 1;  // a is null, so b comes first
+                return 0; // both are null
+            });
             
             setMyRequests(allRequests);
             setIsLoadingRequests(false);
