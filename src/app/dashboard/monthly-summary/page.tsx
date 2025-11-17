@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
 import { differenceInDays, format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 
 type Request = {
     id: string;
@@ -33,6 +33,13 @@ type Timbratura = {
     status: 'sospesa' | 'confermata';
 };
 
+type DetailView = {
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    title: string;
+    items: Request[];
+} | null;
+
+
 export default function MonthlySummaryPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -42,6 +49,8 @@ export default function MonthlySummaryPage() {
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isDataLoading, setIsDataLoading] = useState(true);
+    const [detailView, setDetailView] = useState<DetailView>(null);
+
 
     const { startOfMonth, endOfMonth } = useMemo(() => {
         const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -64,7 +73,6 @@ export default function MonthlySummaryPage() {
             where('startDate', '<=', endOfMonth)
         );
         
-        // Remove the 'status' filter to avoid complex index. We will filter client-side.
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
@@ -87,7 +95,9 @@ export default function MonthlySummaryPage() {
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                setTimbrature(data);
+                // We filter for confirmed timbrature on the client side
+                const confirmedTimbrature = data.filter(t => t.status === 'confermata');
+                setTimbrature(confirmedTimbrature);
                 setIsDataLoading(false);
             },
             (error) => {
@@ -104,10 +114,7 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
-        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
-        
-        // Group timbrature by day
-        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
+        const dailyTimbrature = timbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) {
                 acc[day] = [];
@@ -147,16 +154,11 @@ export default function MonthlySummaryPage() {
             }
         });
 
-        const workedHours = totalWorkedMillis / (1000 * 60 * 60);
         const approvedRequests = requests.filter(r => r.status === 'approvato');
-
-        const calculateDays = (startDate: Date, endDate: Date) => {
-            return differenceInDays(endDate, startDate) + 1;
-        }
+        const calculateDays = (startDate: Date, endDate: Date) => differenceInDays(endDate, startDate) + 1;
 
         return {
             workedDays: workedDaysCount,
-            workedHours: workedHours.toFixed(2),
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
             ferieDays: approvedRequests.filter(r => r.type === 'ferie').reduce((sum, r) => sum + calculateDays(r.startDate.toDate(), r.endDate.toDate()), 0),
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -180,6 +182,11 @@ export default function MonthlySummaryPage() {
         router.push(`/dashboard/daily-summary?month=${month}&year=${year}`);
     };
 
+    const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
+        const approvedRequests = requests.filter(r => r.status === 'approvato' && r.type === type);
+        setDetailView({ type, title, items: approvedRequests });
+    };
+
     if (isUserLoading || isDataLoading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -195,9 +202,37 @@ export default function MonthlySummaryPage() {
             </div>
         );
     }
+
+    const renderDetailTable = () => {
+        if (!detailView || detailView.items.length === 0) {
+            return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
+        }
+
+        return (
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Dal</TableHead>
+                        <TableHead>Al</TableHead>
+                        { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead> }
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {detailView.items.map(item => (
+                         <TableRow key={item.id}>
+                            <TableCell>{format(item.startDate.toDate(), 'PPP')}</TableCell>
+                            <TableCell>{format(item.endDate.toDate(), 'PPP')}</TableCell>
+                            { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell> }
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        );
+    };
     
 
     return (
+        <>
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className='flex items-center gap-3'>
@@ -232,16 +267,10 @@ export default function MonthlySummaryPage() {
                         <div className="text-2xl font-bold">{summary.workedDays}</div>
                     </CardContent>
                 </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Ore Lavorate</CardTitle>
-                        <Hash className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{summary.workedHours}</div>
-                    </CardContent>
-                </Card>
-                <Card>
+                <Card
+                    onClick={() => handleSummaryCardClick('straordinario', 'Dettaglio Straordinari')}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Straordinari (ore)</CardTitle>
                         <Plus className="h-4 w-4 text-muted-foreground" />
@@ -250,7 +279,10 @@ export default function MonthlySummaryPage() {
                         <div className="text-2xl font-bold">{summary.overtimeHours}</div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card
+                    onClick={() => handleSummaryCardClick('ferie', 'Dettaglio Ferie')}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Ferie (giorni)</CardTitle>
                         <Plane className="h-4 w-4 text-muted-foreground" />
@@ -259,7 +291,10 @@ export default function MonthlySummaryPage() {
                         <div className="text-2xl font-bold">{summary.ferieDays}</div>
                     </CardContent>
                 </Card>
-                 <Card>
+                 <Card
+                    onClick={() => handleSummaryCardClick('permesso', 'Dettaglio Permessi')}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Permessi (ore)</CardTitle>
                         <UserCheck className="h-4 w-4 text-muted-foreground" />
@@ -268,7 +303,10 @@ export default function MonthlySummaryPage() {
                         <div className="text-2xl font-bold">{summary.permessoHours}</div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card
+                    onClick={() => handleSummaryCardClick('malattia', 'Dettaglio Malattia')}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Malattia (giorni)</CardTitle>
                         <Stethoscope className="h-4 w-4 text-muted-foreground" />
@@ -323,6 +361,20 @@ export default function MonthlySummaryPage() {
             </Card>
 
         </div>
+        <ResponsiveDialog open={!!detailView} onOpenChange={() => setDetailView(null)}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>{detailView?.title}</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Riepilogo delle richieste approvate per il mese di {format(currentDate, 'MMMM yyyy')}.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                <div className="py-4">
+                    {renderDetailTable()}
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+        </>
     );
 }
 

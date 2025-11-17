@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogTrigger, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,6 +76,12 @@ type SupplyRequest = {
     status: 'in_attesa' | 'approvata' | 'rifiutata';
     createdAt: any;
 };
+
+type DetailView = {
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    title: string;
+    items: Request[];
+} | null;
 
 const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     const firestore = useFirestore();
@@ -645,6 +651,8 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [detailView, setDetailView] = useState<DetailView>(null);
+
 
     const { startOfMonth, endOfMonth } = useMemo(() => {
         const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -658,7 +666,7 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', startOfMonth), where('startDate', '<=', endOfMonth));
         const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
         
-        const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => d.data() as Request)));
+        const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             setTimbrature(s.docs.map(d => d.data() as Timbratura));
             setIsLoading(false);
@@ -675,25 +683,14 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
             return acc;
         }, {} as Record<string, Timbratura[]>);
 
-        let totalWorkedMillis = 0;
         let workedDaysCount = 0;
         Object.values(dailyTimbrature).forEach(dayEvents => {
-            dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            let dayWorkedMillis = 0, shiftStart: Timestamp | null = null, breakStart: Timestamp | null = null;
-            dayEvents.forEach(event => {
-                if (event.type === 'entrata') shiftStart = event.timestamp;
-                else if (event.type === 'pausa' && shiftStart) breakStart = event.timestamp;
-                else if (event.type === 'fine_pausa' && shiftStart && breakStart) { dayWorkedMillis += breakStart.toMillis() - shiftStart.toMillis(); shiftStart = event.timestamp; breakStart = null; }
-                else if (event.type === 'uscita' && shiftStart) { dayWorkedMillis += event.timestamp.toMillis() - shiftStart.toMillis(); shiftStart = null; }
-            });
-            if (dayWorkedMillis > 0) { workedDaysCount++; totalWorkedMillis += dayWorkedMillis; }
+            if (dayEvents.length > 0) workedDaysCount++;
         });
 
-        const workedHours = totalWorkedMillis / (1000 * 60 * 60);
         const approvedRequests = requests.filter(r => r.status === 'approvato');
         return {
             workedDays: workedDaysCount,
-            workedHours: workedHours.toFixed(2),
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
             ferieDays: approvedRequests.filter(r => r.type === 'ferie').reduce((sum, r) => sum + differenceInDays(r.endDate.toDate(), r.startDate.toDate()) + 1, 0),
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -710,10 +707,45 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
         const year = currentDate.getFullYear();
         router.push(`/dashboard/daily-summary?month=${month}&year=${year}&operatorId=${operatorId}`);
     };
+    
+    const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
+        if (!type) return;
+        const approvedRequests = requests.filter(r => r.status === 'approvato' && r.type === type);
+        setDetailView({ type, title, items: approvedRequests });
+    };
+
+    const renderDetailTable = () => {
+        if (!detailView || detailView.items.length === 0) {
+            return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
+        }
+
+        return (
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Dal</TableHead>
+                        <TableHead>Al</TableHead>
+                        {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead>}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {detailView.items.map(item => (
+                         <TableRow key={item.id}>
+                            <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                            <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                            {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell>}
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        );
+    };
+
 
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     
     return (
+        <>
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
@@ -727,13 +759,38 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
                 >
                     <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle><Briefcase className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedDays}</div></CardContent>
                 </Card>
-                <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ore Lavorate</CardTitle><Hash className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedHours}</div></CardContent></Card>
-                <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Straordinari (ore)</CardTitle><Plus className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent></Card>
-                <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ferie (giorni)</CardTitle><Plane className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.ferieDays}</div></CardContent></Card>
-                <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Permessi (ore)</CardTitle><UserCheck className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.permessoHours}</div></CardContent></Card>
-                <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Malattia (giorni)</CardTitle><Stethoscope className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.malattiaDays}</div></CardContent></Card>
+                <Card
+                  onClick={() => handleSummaryCardClick('straordinario', 'Dettaglio Straordinari')}
+                  className="cursor-pointer transition-all hover:bg-muted/50"
+                ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Straordinari (ore)</CardTitle><Plus className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent></Card>
+                <Card
+                  onClick={() => handleSummaryCardClick('ferie', 'Dettaglio Ferie')}
+                  className="cursor-pointer transition-all hover:bg-muted/50"
+                ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ferie (giorni)</CardTitle><Plane className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.ferieDays}</div></CardContent></Card>
+                <Card
+                    onClick={() => handleSummaryCardClick('permesso', 'Dettaglio Permessi')}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Permessi (ore)</CardTitle><UserCheck className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.permessoHours}</div></CardContent></Card>
+                <Card
+                    onClick={() => handleSummaryCardClick('malattia', 'Dettaglio Malattia')}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Malattia (giorni)</CardTitle><Stethoscope className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.malattiaDays}</div></CardContent></Card>
             </div>
         </div>
+        <ResponsiveDialog open={!!detailView} onOpenChange={() => setDetailView(null)}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>{detailView?.title}</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Riepilogo delle richieste approvate per {format(currentDate, 'MMMM yyyy', { locale: it })}.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                 <div className="py-4">
+                    {renderDetailTable()}
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+        </>
     );
 };
 
