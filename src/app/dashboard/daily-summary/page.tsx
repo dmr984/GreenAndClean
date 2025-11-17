@@ -1,9 +1,9 @@
 'use client';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { collection, query, where, Timestamp, onSnapshot, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, addDoc, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, Loader2, Plus, GripHorizontal } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Loader2, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 type Timbratura = {
@@ -58,12 +57,15 @@ function DailySummaryContent() {
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
     const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
-    const [requests, setRequests] = useState<Request[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-    const [newTime, setNewTime] = useState('');
-    const [newType, setNewType] = useState<'entrata' | 'uscita' | 'pausa' | 'fine_pausa'>('entrata');
+    const [newShift, setNewShift] = useState({
+        entrata: '',
+        uscita: '',
+        pausa: '',
+        fine_pausa: '',
+    });
 
 
     const targetUserId = operatorId || user?.id;
@@ -112,7 +114,6 @@ function DailySummaryContent() {
         const requestsQuery = query(
             collection(firestore, `app-users/${targetUserId}/requests`),
             where('startDate', '<=', endOfPeriod)
-            // Removed: where('status', '==', 'approvato')
         );
 
         const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
@@ -194,36 +195,54 @@ function DailySummaryContent() {
         return () => unsubscribeTimbrature();
     }, [firestore, targetUserId, selectedDate, toast, isUserLoading]);
 
-    const handleAddManualTimbratura = async () => {
-        if (!firestore || !targetUserId || !selectedDate || !newTime || !newType) {
-            toast({ title: 'Dati mancanti', description: 'Seleziona tipo e orario.', variant: 'destructive'});
+    const handleAddManualShift = async () => {
+        if (!firestore || !targetUserId || !selectedDate || !newShift.entrata || !newShift.uscita) {
+            toast({ title: 'Dati mancanti', description: 'Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
             return;
         }
 
-        const [hours, minutes] = newTime.split(':').map(Number);
-        if(isNaN(hours) || isNaN(minutes)) {
-            toast({ title: 'Orario non valido', variant: 'destructive'});
-            return;
-        }
-
-        const newTimestamp = set(selectedDate, { hours, minutes, seconds: 0 });
-
-        const timbraturaRef = collection(firestore, `app-users/${targetUserId}/timbrature`);
-        const newTimbratura = {
-            userId: targetUserId,
-            type: newType,
-            timestamp: Timestamp.fromDate(newTimestamp),
-            status: 'confermata' as const,
+        const createTimestamp = (time: string): Timestamp | null => {
+            if (!time) return null;
+            const [hours, minutes] = time.split(':').map(Number);
+            if(isNaN(hours) || isNaN(minutes)) return null;
+            return Timestamp.fromDate(set(selectedDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
 
+        const batch = writeBatch(firestore);
+        const timbratureCollectionRef = collection(firestore, `app-users/${targetUserId}/timbrature`);
+
+        const events: { type: Timbratura['type'], time: string }[] = [
+            { type: 'entrata', time: newShift.entrata },
+            { type: 'uscita', time: newShift.uscita },
+            { type: 'pausa', time: newShift.pausa },
+            { type: 'fine_pausa', time: newShift.fine_pausa },
+        ];
+
+        for (const event of events) {
+            if (event.time) {
+                const timestamp = createTimestamp(event.time);
+                if (!timestamp) {
+                    toast({ title: `Orario non valido per ${event.type}`, variant: 'destructive'});
+                    return; // Stop the whole process if one time is invalid
+                }
+                const newDocRef = doc(timbratureCollectionRef);
+                batch.set(newDocRef, {
+                    userId: targetUserId,
+                    type: event.type,
+                    timestamp: timestamp,
+                    status: 'confermata' as const,
+                });
+            }
+        }
+        
         try {
-            await addDoc(timbraturaRef, newTimbratura);
-            toast({ title: 'Successo', description: 'Timbratura manuale aggiunta.' });
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Turno manuale aggiunto con successo.' });
             setIsAddDialogOpen(false);
-            setNewTime('');
+            setNewShift({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
         } catch (error) {
-            console.error("Error adding manual clocking:", error);
-            toast({ title: 'Errore', description: 'Impossibile aggiungere la timbratura.', variant: 'destructive'});
+            console.error("Error adding manual shift:", error);
+            toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
         }
     };
     
@@ -234,6 +253,10 @@ function DailySummaryContent() {
      if (!targetUserId) {
         return <div className="flex items-center justify-center h-full"><p className="text-muted-foreground">Utente non trovato.</p></div>;
     }
+
+    const handleInputChange = (field: keyof typeof newShift, value: string) => {
+        setNewShift(prev => ({ ...prev, [field]: value }));
+    };
 
     return (
         <>
@@ -278,7 +301,7 @@ function DailySummaryContent() {
                     </CardContent>
                      {isAdminView && selectedDate && (
                         <CardFooter>
-                           <Button className="w-full" onClick={() => setIsAddDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Aggiungi Timbratura</Button>
+                           <Button className="w-full" onClick={() => setIsAddDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
                         </CardFooter>
                     )}
                 </Card>
@@ -335,33 +358,36 @@ function DailySummaryContent() {
         <ResponsiveDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <ResponsiveDialogContent>
                 <ResponsiveDialogHeader>
-                    <ResponsiveDialogTitle>Aggiungi Timbratura Manuale</ResponsiveDialogTitle>
+                    <ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle>
                 </ResponsiveDialogHeader>
                 <div className="grid gap-4 py-4">
-                     <div className="space-y-2">
-                        <Label htmlFor="timbratura-type">Tipo</Label>
-                         <Select value={newType} onValueChange={(v) => setNewType(v as any)}>
-                            <SelectTrigger id="timbratura-type"><SelectValue/></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="entrata">Entrata</SelectItem>
-                                <SelectItem value="pausa">Pausa</SelectItem>
-                                <SelectItem value="fine_pausa">Fine Pausa</SelectItem>
-                                <SelectItem value="uscita">Uscita</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="timbratura-time">Orario (HH:mm)</Label>
-                        <Input id="timbratura-time" type="time" value={newTime} onChange={e => setNewTime(e.target.value)} />
-                    </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <Label htmlFor="manual-entrata">Entrata*</Label>
+                           <Input id="manual-entrata" type="time" value={newShift.entrata} onChange={e => handleInputChange('entrata', e.target.value)} required />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="manual-uscita">Uscita*</Label>
+                            <Input id="manual-uscita" type="time" value={newShift.uscita} onChange={e => handleInputChange('uscita', e.target.value)} required />
+                        </div>
+                     </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <Label htmlFor="manual-pausa">Inizio Pausa (Opz.)</Label>
+                           <Input id="manual-pausa" type="time" value={newShift.pausa} onChange={e => handleInputChange('pausa', e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="manual-fine-pausa">Fine Pausa (Opz.)</Label>
+                            <Input id="manual-fine-pausa" type="time" value={newShift.fine_pausa} onChange={e => handleInputChange('fine_pausa', e.target.value)} />
+                        </div>
+                     </div>
                 </div>
                 <ResponsiveDialogFooter>
                     <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Annulla</Button>
-                    <Button onClick={handleAddManualTimbratura}>Salva Timbratura</Button>
+                    <Button onClick={handleAddManualShift}>Salva Turno</Button>
                 </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
-
         </>
     );
 }

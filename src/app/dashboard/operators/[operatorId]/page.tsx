@@ -107,11 +107,10 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     
-    const [editingTimbratura, setEditingTimbratura] = useState<Timbratura | null>(null);
-    const [newTime, setNewTime] = useState('');
-    const [newType, setNewType] = useState<'entrata' | 'pausa' | 'fine_pausa' | 'uscita'>('entrata');
-    const [isEditTimbraturaDialogOpen, setIsEditTimbraturaDialogOpen] = useState(false);
-
+    const [editingShift, setEditingShift] = useState<Shift | null>(null);
+    const [isEditShiftOpen, setIsEditShiftOpen] = useState(false);
+    const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+    
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
 
@@ -124,8 +123,6 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
         const q = query(collection(firestore, `app-users/${operator.id}/timbrature`));
         const unsubscribe = onSnapshot(q, snapshot => {
             const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
-
-            // Sort clockings by timestamp client-side
             allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const groupedShifts: Shift[] = [];
@@ -189,7 +186,6 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
         if (!firestore) return;
         const batch = writeBatch(firestore);
         
-        // 1. Approve all pending clockings in the shift
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
@@ -197,7 +193,6 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
             }
         });
 
-        // 2. Create overtime request if applicable
         if (approvedOvertimeHours > 0) {
             const shiftDate = shiftToApprove.events[0].timestamp.toDate();
             const overtimeRequest = {
@@ -242,33 +237,75 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
         setShiftToDelete(null);
     };
 
-    const handleOpenEditDialog = (timbratura: Timbratura) => {
-        setEditingTimbratura(timbratura);
-        setNewTime(format(timbratura.timestamp.toDate(), 'HH:mm:ss'));
-        setNewType(timbratura.type);
-        setIsEditTimbraturaDialogOpen(true);
+    const handleOpenEditDialog = (shift: Shift) => {
+        setEditingShift(shift);
+        const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
+        shift.events.forEach(e => {
+            times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
+        });
+        setEditShiftTimes(times);
+        setIsEditShiftOpen(true);
     };
 
-    const handleEditTimbratura = async () => {
-        if (!firestore || !editingTimbratura) return;
+    const handleEditShift = async () => {
+        if (!firestore || !editingShift || !editShiftTimes.entrata || !editShiftTimes.uscita) {
+            toast({ title: 'Dati mancanti', description: 'Entrata e Uscita sono obbligatorie.', variant: 'destructive' });
+            return;
+        }
 
-        const originalDate = editingTimbratura.timestamp.toDate();
-        const [hours, minutes, seconds] = newTime.split(':').map(Number);
-        const newDate = set(originalDate, { hours, minutes, seconds });
+        const batch = writeBatch(firestore);
+        const shiftDate = editingShift.events[0].timestamp.toDate();
 
-        const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, editingTimbratura.id);
-        const updatePayload = {
-            timestamp: Timestamp.fromDate(newDate),
-            type: newType,
+        const createTimestamp = (time: string): Timestamp | null => {
+            if (!time) return null;
+            const [hours, minutes] = time.split(':').map(Number);
+            if (isNaN(hours) || isNaN(minutes)) return null;
+            return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
+        
+        const newEventsMap: Partial<Record<Timbratura['type'], { timestamp: Timestamp }>> = {};
+        for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
+            const time = editShiftTimes[type];
+            if (time) {
+                const timestamp = createTimestamp(time);
+                if (!timestamp) {
+                    toast({ title: 'Orario non valido', description: `L'orario per '${type}' non è valido.`, variant: 'destructive' });
+                    return;
+                }
+                newEventsMap[type] = { timestamp };
+            }
+        }
+        
+        // Update or delete existing events
+        for (const event of editingShift.events) {
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            if (newEventsMap[event.type]) {
+                batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp });
+                delete newEventsMap[event.type];
+            } else {
+                batch.delete(docRef);
+            }
+        }
 
-        await updateDoc(docRef, updatePayload).then(() => {
-            toast({ title: 'Successo', description: 'Timbratura aggiornata.' });
-            setIsEditTimbraturaDialogOpen(false);
-            setEditingTimbratura(null);
-            setIsDetailOpen(false);
+        // Add new events (e.g. adding a break to a shift that didn't have one)
+        for (const type in newEventsMap) {
+            const eventType = type as Timbratura['type'];
+            const newDocRef = doc(collection(firestore, `app-users/${operator.id}/timbrature`));
+            batch.set(newDocRef, {
+                userId: operator.id,
+                type: eventType,
+                timestamp: newEventsMap[eventType]!.timestamp,
+                status: 'confermata',
+            });
+        }
+        
+        await batch.commit().then(() => {
+            toast({ title: 'Successo', description: 'Turno aggiornato con successo.' });
+            setIsEditShiftOpen(false);
+            setEditingShift(null);
         }).catch(err => {
-            toast({ title: 'Errore', description: 'Impossibile aggiornare la timbratura.', variant: 'destructive' });
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
         });
     };
     
@@ -303,8 +340,7 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
         const totalMinutes = shift.workDuration;
         
         if (contractualMinutes === 0) {
-            // If it's not a contractual work day, all duration is overtime
-             return { regular: 0, overtime: totalMinutes };
+            return { regular: 0, overtime: totalMinutes };
         }
 
         if (totalMinutes > contractualMinutes) {
@@ -370,6 +406,9 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}>
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
                                         <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                             <Eye className="h-5 w-5" />
                                         </Button>
@@ -435,7 +474,6 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right whitespace-nowrap">
-                                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(t)}><Pencil className="h-4 w-4" /></Button>
                                             <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                         </TableCell>
                                     </TableRow>
@@ -451,6 +489,38 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                                 <Button onClick={() => handleOpenOvertimeDialog(detailShift)}><CheckCircle className="mr-2 h-4 w-4" /> Approva Turno</Button>
                             </>
                         )}
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+
+            <ResponsiveDialog open={isEditShiftOpen} onOpenChange={setIsEditShiftOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Turno</ResponsiveDialogTitle></ResponsiveDialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-entrata">Entrata*</Label>
+                                <Input id="edit-entrata" type="time" value={editShiftTimes.entrata} onChange={e => setEditShiftTimes(p => ({...p, entrata: e.target.value}))} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-uscita">Uscita*</Label>
+                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} required />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-pausa">Inizio Pausa (Opz.)</Label>
+                                <Input id="edit-pausa" type="time" value={editShiftTimes.pausa} onChange={e => setEditShiftTimes(p => ({...p, pausa: e.target.value}))} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-fine-pausa">Fine Pausa (Opz.)</Label>
+                                <Input id="edit-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => setEditShiftTimes(p => ({...p, fine_pausa: e.target.value}))} />
+                            </div>
+                        </div>
+                    </div>
+                    <ResponsiveDialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditShiftOpen(false)}>Annulla</Button>
+                        <Button onClick={handleEditShift}>Salva Modifiche</Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
@@ -472,22 +542,6 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-
-            <ResponsiveDialog open={isEditTimbraturaDialogOpen} onOpenChange={setIsEditTimbraturaDialogOpen}>
-                <ResponsiveDialogContent>
-                    <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Timbratura</ResponsiveDialogTitle></ResponsiveDialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-type" className="text-right">Tipo</Label>
-                            <Select value={newType} onValueChange={(value) => setNewType(value as any)}>
-                                <SelectTrigger id="edit-type" className="col-span-3"><SelectValue /></SelectTrigger>
-                                <SelectContent><SelectItem value="entrata">Entrata</SelectItem><SelectItem value="pausa">Pausa</SelectItem><SelectItem value="fine_pausa">Fine Pausa</SelectItem><SelectItem value="uscita">Uscita</SelectItem></SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-time" className="text-right">Orario (HH:mm:ss)</Label><Input id="edit-time" value={newTime} onChange={(e) => setNewTime(e.target.value)} className="col-span-3" /></div>
-                    </div>
-                    <ResponsiveDialogFooter><Button variant="outline" onClick={() => setIsEditTimbraturaDialogOpen(false)}>Annulla</Button><Button onClick={handleEditTimbratura}>Salva Modifiche</Button></ResponsiveDialogFooter>
-                </ResponsiveDialogContent>
-            </ResponsiveDialog>
 
             <AlertDialog open={isDeleteTimbraturaDialogOpen} onOpenChange={setIsDeleteTimbraturaDialogOpen}>
                 <AlertDialogContent>
@@ -678,7 +732,6 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
             const pendingRequests = allRequests
                 .filter(req => req.status === 'in_attesa');
 
-            // Sort client-side
             pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 
             setRequests(pendingRequests);
