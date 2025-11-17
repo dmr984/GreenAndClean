@@ -64,12 +64,11 @@ export default function MonthlySummaryPage() {
             where('startDate', '<=', endOfMonth)
         );
         
-        // Only fetch CONFIRMED clockings for summary calculations
+        // Remove the 'status' filter to avoid complex index. We will filter client-side.
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
-            where('timestamp', '<=', endOfMonth),
-            where('status', '==', 'confermata')
+            where('timestamp', '<=', endOfMonth)
         );
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
@@ -105,8 +104,10 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
+        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
+        
         // Group timbrature by day
-        const dailyTimbrature = timbrature.reduce((acc, t) => {
+        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) {
                 acc[day] = [];
@@ -325,4 +326,5 @@ export default function MonthlySummaryPage() {
     );
 }
 
+    
     
