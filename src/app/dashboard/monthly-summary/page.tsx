@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
-import { collection, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List } from 'lucide-react';
@@ -10,9 +10,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
-import { differenceInDays, format } from 'date-fns';
+import { format, getDay, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
+
+type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+type WorkSchedule = {
+    [key in DayOfWeek]?: number;
+};
+
+type Operator = {
+    id: string;
+    workSchedule: WorkSchedule;
+}
 
 type Request = {
     id: string;
@@ -50,14 +62,30 @@ export default function MonthlySummaryPage() {
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
+    const [operatorData, setOperatorData] = useState<Operator | null>(null);
+
+    useEffect(() => {
+        if (!firestore || !user?.id) return;
+
+        const fetchOperatorData = async () => {
+            const operatorDocRef = doc(firestore, `app-users/${user.id}`);
+            const docSnap = await getDoc(operatorDocRef);
+            if (docSnap.exists()) {
+                setOperatorData({ id: docSnap.id, ...docSnap.data() } as Operator);
+            } else {
+                toast({ title: "Errore", description: "Impossibile trovare i dati dell'operatore.", variant: "destructive" });
+            }
+        };
+        fetchOperatorData();
+    }, [firestore, user, toast]);
 
 
-    const { startOfMonth, endOfMonth } = useMemo(() => {
-        const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59);
+    const { monthStart, monthEnd } = useMemo(() => {
+        const start = startOfMonth(currentDate);
+        const end = endOfMonth(currentDate);
         return {
-            startOfMonth: Timestamp.fromDate(start),
-            endOfMonth: Timestamp.fromDate(end),
+            monthStart: Timestamp.fromDate(start),
+            monthEnd: Timestamp.fromDate(end),
         };
     }, [currentDate]);
 
@@ -69,14 +97,12 @@ export default function MonthlySummaryPage() {
         setIsDataLoading(true);
         const requestsQuery = query(
             collection(firestore, `app-users/${user.id}/requests`),
-            where('startDate', '>=', startOfMonth),
-            where('startDate', '<=', endOfMonth)
         );
         
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
-            where('timestamp', '>=', startOfMonth),
-            where('timestamp', '<=', endOfMonth)
+            where('timestamp', '>=', monthStart),
+            where('timestamp', '<=', monthEnd)
         );
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
@@ -109,7 +135,7 @@ export default function MonthlySummaryPage() {
             unsubscribeRequests();
             unsubscribeTimbrature();
         };
-    }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
+    }, [firestore, user, isUserLoading, monthStart, monthEnd, toast]);
     
     const summary = useMemo(() => {
         const dailyTimbrature = timbrature.reduce((acc, t) => {
@@ -132,16 +158,36 @@ export default function MonthlySummaryPage() {
         });
 
         const approvedRequests = requests.filter(r => r.status === 'approvato');
-        const calculateDays = (startDate: Date, endDate: Date) => differenceInDays(endDate, startDate) + 1;
+        
+        let ferieDaysCount = 0;
+        let malattiaDaysCount = 0;
+
+        const periodStart = startOfMonth(currentDate);
+        const periodEnd = endOfMonth(currentDate);
+
+        approvedRequests.forEach(req => {
+            if (req.type === 'ferie' || req.type === 'malattia') {
+                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+                    if (isWithinInterval(day, { start: periodStart, end: periodEnd })) {
+                        const dayName = dayIndexToName[getDay(day)];
+                        const contractualHours = operatorData?.workSchedule[dayName] || 0;
+                        if (contractualHours > 0) {
+                            if (req.type === 'ferie') ferieDaysCount++;
+                            if (req.type === 'malattia') malattiaDaysCount++;
+                        }
+                    }
+                }
+            }
+        });
 
         return {
             workedDays: workedDaysCount,
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
-            ferieDays: approvedRequests.filter(r => r.type === 'ferie').reduce((sum, r) => sum + calculateDays(r.startDate.toDate(), r.endDate.toDate()), 0),
+            ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
-            malattiaDays: approvedRequests.filter(r => r.type === 'malattia').reduce((sum, r) => sum + calculateDays(r.startDate.toDate(), r.endDate.toDate()), 0),
+            malattiaDays: malattiaDaysCount,
         };
-    }, [timbrature, requests]);
+    }, [timbrature, requests, operatorData, currentDate]);
 
     const handleMonthChange = (offset: number) => {
         setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
@@ -159,7 +205,7 @@ export default function MonthlySummaryPage() {
         setDetailView({ type, title, items: approvedRequests });
     };
 
-    if (isUserLoading || isDataLoading) {
+    if (isUserLoading || isDataLoading || !operatorData) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -179,6 +225,17 @@ export default function MonthlySummaryPage() {
         if (!detailView || detailView.items.length === 0) {
             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
         }
+        
+        const filteredItems = detailView.items.filter(item => {
+             const start = item.startDate.toDate();
+             const end = item.endDate.toDate();
+             const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
+             return isWithinInterval(start, monthInterval) || isWithinInterval(end, monthInterval) || (start < monthInterval.start && end > monthInterval.end);
+        });
+
+        if (filteredItems.length === 0) {
+             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
+        }
 
         return (
             <Table>
@@ -190,7 +247,7 @@ export default function MonthlySummaryPage() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {detailView.items.map(item => (
+                    {filteredItems.map(item => (
                          <TableRow key={item.id}>
                             <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                             <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
@@ -346,5 +403,3 @@ export default function MonthlySummaryPage() {
         </>
     );
 }
-
-    

@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays, parse, set, getDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parse, set, getDay, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
@@ -898,7 +898,6 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
 
         const requestsQuery = query(
             collection(firestore, `app-users/${operatorId}/requests`),
-            where('startDate', '<=', Timestamp.fromDate(endOfMonthValue))
         );
         
         const timbratureQuery = query(
@@ -908,10 +907,8 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         );
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
-            const approvedRequests = s.docs
-                .map(d => ({id: d.id, ...d.data()} as Request))
-                .filter(r => r.status === 'approvato' && r.endDate.toDate() >= startOfMonthValue);
-            setRequests(approvedRequests);
+            const allRequests = s.docs.map(d => ({id: d.id, ...d.data()} as Request));
+            setRequests(allRequests);
         }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
@@ -945,15 +942,37 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
             }
         });
 
-        const approvedRequests = requests; // Already filtered
+        const approvedRequests = requests.filter(r => r.status === 'approvato');
+        let ferieDaysCount = 0;
+        let malattiaDaysCount = 0;
+
+        const periodStart = startOfMonth(currentDate);
+        const periodEnd = endOfMonth(currentDate);
+
+        approvedRequests.forEach(req => {
+            if (req.type === 'ferie' || req.type === 'malattia') {
+                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+                    if (isWithinInterval(day, { start: periodStart, end: periodEnd })) {
+                        const dayName = dayIndexToName[getDay(day)];
+                        const contractualHours = operator.workSchedule[dayName] || 0;
+                        if (contractualHours > 0) {
+                            if (req.type === 'ferie') ferieDaysCount++;
+                            if (req.type === 'malattia') malattiaDaysCount++;
+                        }
+                    }
+                }
+            }
+        });
+
+
         return {
             workedDays: workedDaysCount,
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
-            ferieDays: approvedRequests.filter(r => r.type === 'ferie').reduce((sum, r) => sum + differenceInDays(r.endDate.toDate(), r.startDate.toDate()) + 1, 0),
+            ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
-            malattiaDays: approvedRequests.filter(r => r.type === 'malattia').reduce((sum, r) => sum + differenceInDays(r.endDate.toDate(), r.startDate.toDate()) + 1, 0),
+            malattiaDays: malattiaDaysCount,
         };
-    }, [timbrature, requests]);
+    }, [timbrature, requests, operator, currentDate]);
 
     const handleMonthChange = (offset: number) => {
         setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
@@ -967,12 +986,23 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
         if (!type) return;
-        const approvedRequests = requests.filter(r => r.type === type);
+        const approvedRequests = requests.filter(r => r.type === type && r.status === 'approvato');
         setDetailView({ type, title, items: approvedRequests });
     };
 
     const renderDetailTable = () => {
         if (!detailView || detailView.items.length === 0) {
+            return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
+        }
+
+        const filteredItems = detailView.items.filter(item => {
+             const start = item.startDate.toDate();
+             const end = item.endDate.toDate();
+             const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
+             return isWithinInterval(start, monthInterval) || isWithinInterval(end, monthInterval) || (start < monthInterval.start && end > monthInterval.end);
+        });
+        
+        if (filteredItems.length === 0) {
             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
         }
 
@@ -986,7 +1016,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {detailView.items.map(item => (
+                    {filteredItems.map(item => (
                          <TableRow key={item.id}>
                             <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                             <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
