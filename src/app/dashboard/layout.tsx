@@ -12,7 +12,7 @@ import { useUser } from '@/hooks/use-user';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { useFirestore } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
 import { NotificationBell } from '@/components/notification-bell';
 
@@ -51,12 +51,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const unsubLeave = onSnapshot(leaveRequestsQuery, (snapshot) => {
         leaveCount = snapshot.size;
         updateCounts();
-    }, (error) => console.error("Error fetching pending leave requests: ", error));
+    }, (error) => {
+        if (error.code === 'permission-denied') {
+            const contextualError = new FirestorePermissionError({
+                operation: 'list',
+                path: 'requests',
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        }
+    });
 
     const unsubSupply = onSnapshot(supplyRequestsQuery, (snapshot) => {
         supplyCount = snapshot.size;
         updateCounts();
-    }, (error) => console.error("Error fetching pending supply requests: ", error));
+    }, (error) => {
+         if (error.code === 'permission-denied') {
+            const contextualError = new FirestorePermissionError({
+                operation: 'list',
+                path: 'supply-requests',
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        }
+    });
 
     return () => {
       unsubLeave();
