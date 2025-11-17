@@ -454,7 +454,14 @@ function DailySummaryContent() {
                             onMonthChange={setCurrentMonth}
                             className="rounded-md border p-0"
                             locale={it}
-                            disabled={(date) => date > new Date()}
+                            disabled={(date) => {
+                                const isFuture = date > new Date() && !isSameDay(date, new Date());
+                                const isLeaveDay = 
+                                    leaveDays.ferie.some(d => isSameDay(d, date)) ||
+                                    leaveDays.malattia.some(d => isSameDay(d, date)) ||
+                                    leaveDays.permesso.some(d => isSameDay(d, date));
+                                return isFuture && !isLeaveDay;
+                            }}
                             modifiers={{ 
                                 worked: workedDays,
                                 ferie: leaveDays.ferie,
@@ -641,5 +648,3 @@ export default function DailySummaryPage() {
         </Suspense>
     );
 }
-
-    
