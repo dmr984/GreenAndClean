@@ -34,6 +34,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
+type WorkSchedule = {
+    [key in DayOfWeek]?: number;
+};
+
 const dayLabels: Record<DayOfWeek, string> = {
     monday: 'Lunedì',
     tuesday: 'Martedì',
@@ -43,6 +47,7 @@ const dayLabels: Record<DayOfWeek, string> = {
     saturday: 'Sabato',
     sunday: 'Domenica',
 };
+
 const weekDays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 
@@ -53,8 +58,7 @@ type Operator = {
     lastName: string;
     role: 'operator';
     visibleInLogin: boolean;
-    workHours: number;
-    workDays: DayOfWeek[];
+    workSchedule: WorkSchedule;
 };
 
 export default function ManageOperatorsPage() {
@@ -68,17 +72,14 @@ export default function ManageOperatorsPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
     
-    // Add form state
+    // Form state
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
-    const [newWorkHours, setNewWorkHours] = useState("");
-    const [newWorkDays, setNewWorkDays] = useState<DayOfWeek[]>([]);
+    const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
 
-    // Edit form state
     const [editingFirstName, setEditingFirstName] = useState("");
     const [editingLastName, setEditingLastName] = useState("");
-    const [editingWorkHours, setEditingWorkHours] = useState("");
-    const [editingWorkDays, setEditingWorkDays] = useState<DayOfWeek[]>([]);
+    const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -120,108 +121,95 @@ export default function ManageOperatorsPage() {
 
         return () => unsubscribe();
     }, [operatorsQuery, toast, firestore, user]);
-
-    const handleAddOperator = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!firestore || !newFirstName.trim() || !newLastName.trim() || !newWorkHours || newWorkDays.length === 0) {
-            toast({
-                title: "Campi Mancanti",
-                description: "Per favore, compila tutti i campi obbligatori, inclusi i giorni lavorativi.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        const generatedUsername = `${newFirstName} ${newLastName}`;
-        
-        const newOperatorDoc = {
-            username: generatedUsername,
-            role: 'operator',
-            visibleInLogin: true,
-            firstName: newFirstName,
-            lastName: newLastName,
-            workHours: Number(newWorkHours),
-            workDays: newWorkDays,
-        };
-        
-        addDoc(collection(firestore, 'app-users'), newOperatorDoc)
-          .then(() => {
-            toast({
-                title: "Successo",
-                description: `Operatore "${generatedUsername}" aggiunto.`
-            });
-            setIsAddDialogOpen(false);
-            setNewFirstName("");
-            setNewLastName("");
-            setNewWorkHours("");
-            setNewWorkDays([]);
-          }).catch((error: any) => {
-            console.error("Error adding operator:", error);
-            if (error.code === 'permission-denied') {
-                 const contextualError = new FirestorePermissionError({
-                    operation: 'create',
-                    path: 'app-users',
-                    requestResourceData: newOperatorDoc
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                 toast({
-                    title: "Errore",
-                    description: "Impossibile aggiungere l'operatore.",
-                    variant: "destructive",
-                });
-            }
-        });
+    
+    const handleWorkScheduleChange = (
+      setter: React.Dispatch<React.SetStateAction<WorkSchedule>>,
+      day: DayOfWeek,
+      value: string
+    ) => {
+        const hours = value ? parseFloat(value) : 0;
+        setter(prev => ({
+            ...prev,
+            [day]: hours >= 0 ? hours : 0
+        }));
     };
 
-    const handleEditOperator = async (e: React.FormEvent) => {
+    const handleFormSubmit = async (
+        e: React.FormEvent,
+        action: 'add' | 'edit'
+    ) => {
         e.preventDefault();
-        if (!firestore || !selectedOperator || !editingFirstName.trim() || !editingLastName.trim() || !editingWorkHours || editingWorkDays.length === 0) {
+
+        const firstName = action === 'add' ? newFirstName : editingFirstName;
+        const lastName = action === 'add' ? newLastName : editingLastName;
+        const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
+
+        if (!firestore || !firstName.trim() || !lastName.trim()) {
             toast({
                 title: "Campi Mancanti",
-                description: "Per favore, compila tutti i campi obbligatori, inclusi i giorni lavorativi.",
+                description: "Nome e cognome sono obbligatori.",
                 variant: "destructive",
             });
             return;
         }
         
-        const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
-        
-        const generatedUsername = `${editingFirstName} ${editingLastName}`;
+        // Ensure all days are present in the schedule, defaulting to 0 if not entered
+        const finalWorkSchedule: WorkSchedule = {};
+        weekDays.forEach(day => {
+            finalWorkSchedule[day] = workSchedule[day] || 0;
+        });
 
-        const updatePayload = { 
+        const generatedUsername = `${firstName} ${lastName}`;
+        
+        const operatorData = {
             username: generatedUsername,
-            firstName: editingFirstName,
-            lastName: editingLastName,
-            workHours: Number(editingWorkHours),
-            workDays: editingWorkDays,
+            role: 'operator' as const,
+            visibleInLogin: true,
+            firstName,
+            lastName,
+            workSchedule: finalWorkSchedule,
         };
 
-        updateDoc(operatorRef, updatePayload)
+        if (action === 'add') {
+             addDoc(collection(firestore, 'app-users'), operatorData)
+              .then(() => {
+                toast({ title: "Successo", description: `Operatore "${generatedUsername}" aggiunto.` });
+                setIsAddDialogOpen(false);
+                setNewFirstName("");
+                setNewLastName("");
+                setNewWorkSchedule({});
+              }).catch((error: any) => {
+                if (error.code === 'permission-denied') {
+                     errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'create', path: 'app-users', requestResourceData: operatorData }));
+                } else {
+                     toast({ title: "Errore", description: "Impossibile aggiungere l'operatore.", variant: "destructive" });
+                }
+            });
+        } else if (action === 'edit' && selectedOperator) {
+            const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
+            // We only update the fields that can be edited, role and visibility are managed separately.
+            const updatePayload = {
+                 username: generatedUsername,
+                 firstName,
+                 lastName,
+                 workSchedule: finalWorkSchedule
+            };
+
+            updateDoc(operatorRef, updatePayload)
             .then(() => {
-                toast({
-                    title: "Successo",
-                    description: "Dati operatore aggiornati."
-                });
+                toast({ title: "Successo", description: "Dati operatore aggiornati." });
                 setIsEditDialogOpen(false);
                 setSelectedOperator(null);
             }).catch((error: any) => {
                  if (error.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'update',
-                        path: operatorRef.path,
-                        requestResourceData: updatePayload
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
+                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'update', path: operatorRef.path, requestResourceData: updatePayload }));
                 } else {
-                     toast({
-                        title: "Errore",
-                        description: "Impossibile aggiornare l'operatore.",
-                        variant: "destructive",
-                    });
+                     toast({ title: "Errore", description: "Impossibile aggiornare l'operatore.", variant: "destructive" });
                 }
             });
+        }
     };
+
 
     const handleDeleteOperator = async () => {
         if (!firestore || !operatorToDelete) return;
@@ -277,26 +265,42 @@ export default function ManageOperatorsPage() {
             });
     };
 
-    const formatWorkDays = (days: DayOfWeek[]) => {
-        if (!days || days.length === 0) return 'N/D';
-        // Map to short Italian day names and join
-        const dayMapping: Record<DayOfWeek, string> = {
-            monday: 'Lun',
-            tuesday: 'Mar',
-            wednesday: 'Mer',
-            thursday: 'Gio',
-            friday: 'Ven',
-            saturday: 'Sab',
-            sunday: 'Dom'
-        };
-        // Sort according to weekDays order
-        const sortedDays = days.slice().sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
-        return sortedDays.map(day => dayMapping[day]).join(', ');
+    const formatWorkSchedule = (schedule: WorkSchedule) => {
+        if (!schedule || Object.keys(schedule).length === 0) return 'N/D';
+        const dayMapping: Record<DayOfWeek, string> = { monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom' };
+        
+        return weekDays
+            .filter(day => schedule[day] && schedule[day]! > 0)
+            .map(day => `${dayMapping[day]}: ${schedule[day]}h`)
+            .join(', ');
     };
     
     if (!user) {
         return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
     }
+
+    const renderWorkScheduleFields = (
+        schedule: WorkSchedule,
+        handler: (day: DayOfWeek, value: string) => void,
+        prefix: string
+    ) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+            {weekDays.map(day => (
+                <div key={`${prefix}-${day}`} className="grid grid-cols-2 items-center gap-2">
+                    <Label htmlFor={`${prefix}-${day}`}>{dayLabels[day]}</Label>
+                    <Input 
+                        id={`${prefix}-${day}`}
+                        type="number"
+                        placeholder="Ore"
+                        value={schedule[day] || ''}
+                        onChange={(e) => handler(day, e.target.value)}
+                        min="0"
+                        step="0.5"
+                    />
+                </div>
+            ))}
+        </div>
+    );
 
     return (
         <>
@@ -313,48 +317,28 @@ export default function ManageOperatorsPage() {
                                     <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Operatore
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                                <form onSubmit={handleAddOperator}>
+                            <DialogContent className="sm:max-w-2xl">
+                                <form onSubmit={(e) => handleFormSubmit(e, 'add')}>
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
                                         <DialogDescription>
-                                            Inserisci i dati per creare un nuovo operatore.
+                                            Inserisci i dati e il programma lavorativo settimanale.
                                         </DialogDescription>
                                     </DialogHeader>
-                                    <div className="grid gap-4 py-4">
-                                        <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="firstName" className="text-right">Nome</Label>
-                                            <Input id="firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} className="col-span-3" required />
-                                        </div>
-                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="lastName" className="text-right">Cognome</Label>
-                                            <Input id="lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="col-span-3" required />
-                                        </div>
-                                        <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="workHours" className="text-right">Ore/Giorno</Label>
-                                            <Input id="workHours" type="number" value={newWorkHours} onChange={(e) => setNewWorkHours(e.target.value)} className="col-span-3" required min="1" />
-                                        </div>
-                                        <div className="grid grid-cols-4 items-start gap-4">
-                                            <Label className="text-right pt-2">Giorni Lavorativi</Label>
-                                            <div className="col-span-3 grid grid-cols-3 gap-2">
-                                                {weekDays.map(day => (
-                                                    <div key={day} className="flex items-center space-x-2">
-                                                        <Checkbox 
-                                                            id={`new-${day}`}
-                                                            checked={newWorkDays.includes(day)}
-                                                            onCheckedChange={(checked) => {
-                                                                const updatedDays = checked
-                                                                    ? [...newWorkDays, day]
-                                                                    : newWorkDays.filter(d => d !== day);
-                                                                setNewWorkDays(updatedDays);
-                                                            }}
-                                                        />
-                                                        <Label htmlFor={`new-${day}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                                            {dayLabels[day]}
-                                                        </Label>
-                                                    </div>
-                                                ))}
+                                    <div className="grid gap-6 py-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <Label htmlFor="new-firstName">Nome</Label>
+                                                <Input id="new-firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} required />
                                             </div>
+                                             <div>
+                                                <Label htmlFor="new-lastName">Cognome</Label>
+                                                <Input id="new-lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} required />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <Label className="mb-2 block">Programma Lavorativo (ore per giorno)</Label>
+                                            {renderWorkScheduleFields(newWorkSchedule, (day, value) => handleWorkScheduleChange(setNewWorkSchedule, day, value), 'new')}
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -376,8 +360,7 @@ export default function ManageOperatorsPage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Nome Operatore</TableHead>
-                                        <TableHead>Ore Contratto</TableHead>
-                                        <TableHead>Giorni Lavorativi</TableHead>
+                                        <TableHead>Programma Lavorativo</TableHead>
                                         <TableHead>Visibile nel Login</TableHead>
                                         <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
@@ -386,8 +369,7 @@ export default function ManageOperatorsPage() {
                                     {operators.map((operator) => (
                                         <TableRow key={operator.id}>
                                             <TableCell className="font-medium">{operator.username}</TableCell>
-                                            <TableCell>{operator.workHours}</TableCell>
-                                            <TableCell>{formatWorkDays(operator.workDays)}</TableCell>
+                                            <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                             <TableCell>
                                                 <Switch
                                                     checked={operator.visibleInLogin}
@@ -396,7 +378,7 @@ export default function ManageOperatorsPage() {
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkHours(String(operator.workHours)); setEditingWorkDays(operator.workDays || []); setIsEditDialogOpen(true);}}>
+                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setIsEditDialogOpen(true);}}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -413,48 +395,28 @@ export default function ManageOperatorsPage() {
             </Card>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-w-md">
-                    <form onSubmit={handleEditOperator}>
+                <DialogContent className="sm:max-w-2xl">
+                    <form onSubmit={(e) => handleFormSubmit(e, 'edit')}>
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
                             <DialogDescription>
-                                Modifica i dati dell'operatore.
+                                Modifica i dati e il programma lavorativo dell'operatore.
                             </DialogDescription>
                         </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-firstName" className="text-right">Nome</Label>
-                                <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} className="col-span-3" required />
-                            </div>
-                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-lastName" className="text-right">Cognome</Label>
-                                <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} className="col-span-3" required />
-                            </div>
-                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-workHours" className="text-right">Ore/Giorno</Label>
-                                <Input id="editing-workHours" type="number" value={editingWorkHours} onChange={(e) => setEditingWorkHours(e.target.value)} className="col-span-3" required min="1"/>
-                            </div>
-                            <div className="grid grid-cols-4 items-start gap-4">
-                                <Label className="text-right pt-2">Giorni Lavorativi</Label>
-                                <div className="col-span-3 grid grid-cols-3 gap-2">
-                                    {weekDays.map(day => (
-                                        <div key={day} className="flex items-center space-x-2">
-                                            <Checkbox 
-                                                id={`edit-${day}`}
-                                                checked={editingWorkDays.includes(day)}
-                                                onCheckedChange={(checked) => {
-                                                    const updatedDays = checked
-                                                        ? [...editingWorkDays, day]
-                                                        : editingWorkDays.filter(d => d !== day);
-                                                    setEditingWorkDays(updatedDays);
-                                                }}
-                                            />
-                                            <Label htmlFor={`edit-${day}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                                {dayLabels[day]}
-                                            </Label>
-                                        </div>
-                                    ))}
+                         <div className="grid gap-6 py-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="editing-firstName">Nome</Label>
+                                    <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} required />
                                 </div>
+                                    <div>
+                                    <Label htmlFor="editing-lastName">Cognome</Label>
+                                    <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} required />
+                                </div>
+                            </div>
+                            <div>
+                                <Label className="mb-2 block">Programma Lavorativo (ore per giorno)</Label>
+                                {renderWorkScheduleFields(editingWorkSchedule, (day, value) => handleWorkScheduleChange(setEditingWorkSchedule, day, value), 'edit')}
                             </div>
                         </div>
                         <DialogFooter>
@@ -481,3 +443,5 @@ export default function ManageOperatorsPage() {
         </>
     );
 }
+
+    

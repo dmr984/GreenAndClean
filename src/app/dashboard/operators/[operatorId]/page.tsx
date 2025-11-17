@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays, parse, set } from 'date-fns';
+import { format, differenceInDays, parse, set, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
@@ -34,14 +34,16 @@ import { cn } from '@/lib/utils';
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type WorkSchedule = {
+    [key in DayOfWeek]?: number;
+};
 
 type Operator = {
     id: string;
     username: string;
     firstName: string;
     lastName: string;
-    workHours: number;
-    workDays: DayOfWeek[];
+    workSchedule: WorkSchedule;
 };
 
 type Timbratura = {
@@ -284,23 +286,22 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
     }
 
     const calculateOvertime = (shift: Shift | null): { regular: number, overtime: number } => {
-        if (!shift || !operator.workHours || !operator.workDays) return { regular: 0, overtime: 0 };
+        if (!shift || !operator.workSchedule) return { regular: 0, overtime: 0 };
         const shiftDate = shift.events[0]?.timestamp.toDate();
         if (!shiftDate) return { regular: 0, overtime: 0 };
 
-        const dayOfWeekFns = getDayFns(shiftDate); // date-fns: Sunday = 0, Saturday = 6
+        const dayOfWeekFns = getDay(shiftDate); // date-fns: Sunday = 0, Saturday = 6
         const dayName = dayIndexToName[dayOfWeekFns];
 
-        const isWorkDay = operator.workDays.includes(dayName);
+        const contractualHours = operator.workSchedule[dayName] || 0;
+        const contractualMinutes = contractualHours * 60;
         const totalMinutes = shift.workDuration;
-
-        if (!isWorkDay) {
+        
+        if (contractualMinutes === 0) {
             // If it's not a contractual work day, all duration is overtime
-            return { regular: 0, overtime: totalMinutes };
+             return { regular: 0, overtime: totalMinutes };
         }
 
-        // It is a work day, calculate overtime based on workHours
-        const contractualMinutes = operator.workHours * 60;
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
             return { regular: contractualMinutes, overtime: overtimeMinutes };
@@ -910,17 +911,18 @@ export default function OperatorDetailPage() {
         if (parts.length > 1 && parts[0] && parts[1]) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
         return username.substring(0, 2).toUpperCase();
     };
+    
+    const formatWorkSchedule = (schedule?: WorkSchedule) => {
+        if (!schedule) return 'Nessun programma impostato.';
+        const dayMapping: Record<DayOfWeek, string> = { monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom' };
+        
+        const scheduleString = dayIndexToName
+            .filter(day => schedule[day] && schedule[day]! > 0)
+            .map(day => `${dayMapping[day]}: ${schedule[day]}h`)
+            .join(' | ');
 
-    const formatWorkInfo = () => {
-        if (!operator) return '';
-        const days = operator.workDays || [];
-        const sortedDays = days.slice().sort((a,b) => dayIndexToName.indexOf(a) - dayIndexToName.indexOf(b));
-        const dayMapping: Record<DayOfWeek, string> = {
-            monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom'
-        };
-        const dayStr = sortedDays.map(d => dayMapping[d]).join(', ');
-        return `Ore: ${operator.workHours}/g | Giorni: ${dayStr || 'N/D'} | ID: ${operator.id}`;
-    }
+        return scheduleString || 'Nessun giorno lavorativo impostato.';
+    };
 
     return (
         <div className="space-y-6">
@@ -930,7 +932,7 @@ export default function OperatorDetailPage() {
                 </Avatar>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">{operator.username}</h1>
-                    <p className="text-muted-foreground">{formatWorkInfo()}</p>
+                    <p className="text-muted-foreground">{formatWorkSchedule(operator.workSchedule)}</p>
                 </div>
             </div>
 
@@ -991,3 +993,5 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
+
+    
