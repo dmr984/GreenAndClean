@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
-import { format, getDay, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
+import { format, getDay, isWithinInterval, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 
@@ -165,20 +165,22 @@ export default function MonthlySummaryPage() {
         const periodStart = startOfMonth(currentDate);
         const periodEnd = endOfMonth(currentDate);
 
-        approvedRequests.forEach(req => {
-            if (req.type === 'ferie' || req.type === 'malattia') {
-                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                    if (isWithinInterval(day, { start: periodStart, end: periodEnd })) {
-                        const dayName = dayIndexToName[getDay(day)];
-                        const contractualHours = operatorData?.workSchedule[dayName] || 0;
-                        if (contractualHours > 0) {
-                            if (req.type === 'ferie') ferieDaysCount++;
-                            if (req.type === 'malattia') malattiaDaysCount++;
+        if (operatorData) {
+            approvedRequests.forEach(req => {
+                if (req.type === 'ferie' || req.type === 'malattia') {
+                    for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+                        if (isWithinInterval(day, { start: periodStart, end: periodEnd })) {
+                            const dayName = dayIndexToName[getDay(day)];
+                            const contractualHours = operatorData.workSchedule[dayName] || 0;
+                            if (contractualHours > 0) {
+                                if (req.type === 'ferie') ferieDaysCount++;
+                                if (req.type === 'malattia') malattiaDaysCount++;
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
 
         return {
             workedDays: workedDaysCount,
@@ -226,10 +228,50 @@ export default function MonthlySummaryPage() {
             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
         }
         
+        const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
+
+        if (detailView.type === 'ferie' || detailView.type === 'malattia') {
+            const allDays: Date[] = [];
+            detailView.items.forEach(item => {
+                const interval = { start: item.startDate.toDate(), end: item.endDate.toDate() };
+                const daysInInterval = eachDayOfInterval(interval);
+
+                daysInInterval.forEach(day => {
+                    if (isWithinInterval(day, monthInterval)) {
+                        const dayName = dayIndexToName[getDay(day)];
+                        const contractualHours = operatorData?.workSchedule[dayName] || 0;
+                        if (contractualHours > 0) {
+                            allDays.push(day);
+                        }
+                    }
+                });
+            });
+
+            if (allDays.length === 0) {
+                return <p className="text-center text-muted-foreground py-4">Nessun giorno di {detailView.type} per questo mese.</p>;
+            }
+
+            return (
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Giorno</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {allDays.map((day, index) => (
+                            <TableRow key={index}>
+                                <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            );
+        }
+
         const filteredItems = detailView.items.filter(item => {
              const start = item.startDate.toDate();
              const end = item.endDate.toDate();
-             const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
              return isWithinInterval(start, monthInterval) || isWithinInterval(end, monthInterval) || (start < monthInterval.start && end > monthInterval.end);
         });
 
