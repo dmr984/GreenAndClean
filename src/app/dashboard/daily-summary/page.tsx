@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, doc, writeBatch, getDocs, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, Loader2, Plus, Trash2, Pencil } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Loader2, Plus, Trash2, Pencil, Plane, Stethoscope, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -63,6 +63,11 @@ type Request = {
     endDate: Timestamp;
 }
 
+type SelectedDayInfo = {
+    type: 'ferie' | 'malattia' | 'permesso';
+} | null;
+
+
 function DailySummaryContent() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -86,6 +91,8 @@ function DailySummaryContent() {
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
     const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
     const [isLoading, setIsLoading] = useState(true);
+    const [selectedDayInfo, setSelectedDayInfo] = useState<SelectedDayInfo>(null);
+
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [newShift, setNewShift] = useState({
@@ -220,10 +227,30 @@ function DailySummaryContent() {
         if (!firestore || !targetUserId || !selectedDate) {
             if (!isUserLoading) setIsLoading(false);
             setDailyShifts([]);
+            setSelectedDayInfo(null);
             return;
         }
 
         setIsLoading(true);
+
+        // Check if the selected day is a leave day
+        let dayInfo: SelectedDayInfo = null;
+        if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) {
+            dayInfo = { type: 'ferie' };
+        } else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) {
+            dayInfo = { type: 'malattia' };
+        } else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) {
+            dayInfo = { type: 'permesso' };
+        }
+        setSelectedDayInfo(dayInfo);
+
+        // If it's a leave day, we don't need to fetch shifts
+        if (dayInfo) {
+            setDailyShifts([]);
+            setIsLoading(false);
+            return;
+        }
+
 
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
@@ -277,7 +304,7 @@ function DailySummaryContent() {
         );
 
         return () => unsubscribeTimbrature();
-    }, [firestore, targetUserId, selectedDate, toast, isUserLoading]);
+    }, [firestore, targetUserId, selectedDate, toast, isUserLoading, leaveDays]);
 
     const handleAddManualShift = async () => {
         if (!firestore || !targetUserId || !selectedDate || !newShift.entrata || !newShift.uscita) {
@@ -433,6 +460,22 @@ function DailySummaryContent() {
     const handleEditInputChange = (field: keyof typeof editShiftTimes, value: string) => {
         setEditShiftTimes(prev => ({ ...prev, [field]: value }));
     };
+    
+    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
+        const details = {
+            ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
+            malattia: { Icon: Stethoscope, text: 'Giorno di Malattia', color: 'text-red-600' },
+            permesso: { Icon: UserCheck, text: 'Giorno di Permesso', color: 'text-yellow-600' },
+        };
+        const { Icon, text, color } = details[type];
+        return (
+            <div className="text-center h-40 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+                <Icon className={cn("h-12 w-12", color)} />
+                <p className="text-lg font-medium">{text}</p>
+                <p>Nessun turno di lavoro registrato.</p>
+            </div>
+        )
+    };
 
     return (
         <>
@@ -454,8 +497,9 @@ function DailySummaryContent() {
                             onMonthChange={setCurrentMonth}
                             className="rounded-md border p-0"
                             locale={it}
-                            disabled={(date) => {
+                             disabled={(date) => {
                                 const isFuture = date > new Date() && !isSameDay(date, new Date());
+                                // Allow clicking on future leave days
                                 const isLeaveDay = 
                                     leaveDays.ferie.some(d => isSameDay(d, date)) ||
                                     leaveDays.malattia.some(d => isSameDay(d, date)) ||
@@ -502,6 +546,8 @@ function DailySummaryContent() {
                 <CardContent>
                     {isLoading ? (
                          <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                    ) : selectedDayInfo ? (
+                        <LeaveDayCard type={selectedDayInfo.type} />
                     ) : (
                         <div className="border rounded-md">
                             {dailyShifts.length > 0 ? (
@@ -611,8 +657,7 @@ function DailySummaryContent() {
                            <Input id="edit-pausa" type="time" value={editShiftTimes.pausa} onChange={e => handleEditInputChange('pausa', e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="edit-fine-pausa">Fine Pausa (Opz.)</Label>
-                            <Input id="edit-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => handleEditInputChange('fine_pausa', e.target.value)} />
+                            <Label htmlFor="edit-fine-pausa">Fine Pausa (Opz.)</Label>                            <Input id="edit-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => handleEditInputChange('fine_pausa', e.target.value)} />
                         </div>
                      </div>
                 </div>
