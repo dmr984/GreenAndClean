@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { collection, query, where, Timestamp, onSnapshot, doc, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Calendar as CalendarIcon, Clock, Loader2, Plus } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/hooks/use-user';
-import { format, startOfMonth, endOfMonth, isSameDay, set, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isSameDay, set, isWithinInterval, startOfDay, endOfDay, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,18 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, Resp
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+
+type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+type WorkSchedule = {
+    [key in DayOfWeek]?: number;
+};
+
+type Operator = {
+    id: string;
+    workSchedule: WorkSchedule;
+}
 
 type Timbratura = {
     id: string;
@@ -67,9 +79,27 @@ function DailySummaryContent() {
         fine_pausa: '',
     });
 
+    const [operatorData, setOperatorData] = useState<Operator | null>(null);
 
     const targetUserId = operatorId || user?.id;
     const isAdminView = !!operatorId && user?.role === 'admin';
+
+    // Effect to fetch operator's data for work schedule
+    useEffect(() => {
+        if (!firestore || !targetUserId) return;
+
+        const fetchOperatorData = async () => {
+            const operatorDocRef = doc(firestore, `app-users/${targetUserId}`);
+            const docSnap = await getDoc(operatorDocRef);
+            if (docSnap.exists()) {
+                setOperatorData({ id: docSnap.id, ...docSnap.data() } as Operator);
+            } else {
+                toast({ title: "Errore", description: "Impossibile trovare i dati dell'operatore.", variant: "destructive" });
+            }
+        };
+        fetchOperatorData();
+    }, [firestore, targetUserId, toast]);
+
 
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
         const start = startOfMonth(currentMonth);
@@ -82,7 +112,7 @@ function DailySummaryContent() {
     
     // Effect for fetching all month data (timbrature and requests)
     useEffect(() => {
-        if (!firestore || !targetUserId) return;
+        if (!firestore || !targetUserId || !operatorData) return;
 
         // Fetch timbrature
         const monthlyTimbratureQuery = query(
@@ -140,10 +170,20 @@ function DailySummaryContent() {
                 const endReq = req.endDate.toDate();
 
                 for (let day = new Date(startReq); day <= endReq; day.setDate(day.getDate() + 1)) {
-                    if (isWithinInterval(day, { start: monthStart, end: monthEnd })) {
-                        if (req.type === 'ferie') ferie.push(new Date(day));
-                        if (req.type === 'malattia') malattia.push(new Date(day));
-                        if (req.type === 'permesso') permesso.push(new Date(day));
+                     if (isWithinInterval(day, { start: monthStart, end: monthEnd })) {
+                        // Check if this day is a contractual workday
+                        const dayOfWeekIndex = getDay(day); // 0 for Sunday, 1 for Monday, etc.
+                        const dayName = dayIndexToName[dayOfWeekIndex];
+                        const contractualHours = operatorData.workSchedule[dayName] || 0;
+
+                        if (contractualHours > 0) {
+                            if (req.type === 'ferie') ferie.push(new Date(day));
+                            if (req.type === 'malattia') malattia.push(new Date(day));
+                        }
+                         // Permesso is hour-based, so we highlight the day regardless of work schedule for simplicity
+                         if (req.type === 'permesso') {
+                             permesso.push(new Date(day));
+                         }
                     }
                 }
             });
@@ -158,7 +198,7 @@ function DailySummaryContent() {
             unsubTimbrature();
             unsubRequests();
         };
-    }, [firestore, targetUserId, startOfPeriod, endOfPeriod, toast, currentMonth]);
+    }, [firestore, targetUserId, startOfPeriod, endOfPeriod, toast, currentMonth, operatorData]);
 
 
     // Effect to fetch details for the selected day
@@ -252,7 +292,7 @@ function DailySummaryContent() {
         }
     };
     
-    if (isUserLoading) {
+    if (isUserLoading || !operatorData) {
         return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
     
