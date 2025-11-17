@@ -76,8 +76,8 @@ export default function MonthlySummaryPage() {
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
-            where('timestamp', '<=', endOfMonth),
-            where('status', '==', 'confermata')
+            where('timestamp', '<=', endOfMonth)
+            // RIMOSSO: where('status', '==', 'confermata') - causa errore indice
         );
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
@@ -113,7 +113,8 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
-        const dailyTimbrature = timbrature.reduce((acc, t) => {
+        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
+        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) {
                 acc[day] = [];
@@ -153,6 +154,7 @@ export default function MonthlySummaryPage() {
     };
 
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
+        if (!type) return;
         const approvedRequests = requests.filter(r => r.status === 'approvato' && r.type === type);
         setDetailView({ type, title, items: approvedRequests });
     };
