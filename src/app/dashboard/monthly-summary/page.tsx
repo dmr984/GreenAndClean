@@ -6,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
 import { differenceInDays, format } from 'date-fns';
+import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 
 type Request = {
@@ -76,7 +76,8 @@ export default function MonthlySummaryPage() {
         const timbratureQuery = query(
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
-            where('timestamp', '<=', endOfMonth)
+            where('timestamp', '<=', endOfMonth),
+            where('status', '==', 'confermata')
         );
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
@@ -95,9 +96,7 @@ export default function MonthlySummaryPage() {
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                // We filter for confirmed timbrature on the client side
-                const confirmedTimbrature = data.filter(t => t.status === 'confermata');
-                setTimbrature(confirmedTimbrature);
+                setTimbrature(data);
                 setIsDataLoading(false);
             },
             (error) => {
@@ -123,34 +122,11 @@ export default function MonthlySummaryPage() {
             return acc;
         }, {} as Record<string, Timbratura[]>);
 
-        let totalWorkedMillis = 0;
         let workedDaysCount = 0;
 
         Object.values(dailyTimbrature).forEach(dayEvents => {
-            dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            
-            let dayWorkedMillis = 0;
-            let shiftStart: Timestamp | null = null;
-            let breakStart: Timestamp | null = null;
-
-            dayEvents.forEach(event => {
-                if (event.type === 'entrata') {
-                    shiftStart = event.timestamp;
-                } else if (event.type === 'pausa' && shiftStart) {
-                    breakStart = event.timestamp;
-                } else if (event.type === 'fine_pausa' && shiftStart && breakStart) {
-                    dayWorkedMillis += breakStart.toMillis() - shiftStart.toMillis();
-                    shiftStart = event.timestamp;
-                    breakStart = null;
-                } else if (event.type === 'uscita' && shiftStart) {
-                    dayWorkedMillis += event.timestamp.toMillis() - shiftStart.toMillis();
-                    shiftStart = null;
-                }
-            });
-            
-            if (dayWorkedMillis > 0) {
+            if (dayEvents.length > 0) {
               workedDaysCount++;
-              totalWorkedMillis += dayWorkedMillis;
             }
         });
 
@@ -166,16 +142,10 @@ export default function MonthlySummaryPage() {
         };
     }, [timbrature, requests]);
 
-    const handleMonthChange = (value: string) => {
-        const [year, month] = value.split('-').map(Number);
-        setCurrentDate(new Date(year, month - 1, 1));
-    }
+    const handleMonthChange = (offset: number) => {
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+    };
     
-    const monthOptions = Array.from({ length: 12 }, (_, i) => {
-        const d = new Date(currentDate.getFullYear(), i);
-        return { value: `${d.getFullYear()}-${String(i+1).padStart(2, '0')}`, label: d.toLocaleString('it-IT', { month: 'long' }) };
-    });
-
     const handleWorkedDaysClick = () => {
         const month = currentDate.getMonth() + 1;
         const year = currentDate.getFullYear();
@@ -220,8 +190,8 @@ export default function MonthlySummaryPage() {
                 <TableBody>
                     {detailView.items.map(item => (
                          <TableRow key={item.id}>
-                            <TableCell>{format(item.startDate.toDate(), 'PPP')}</TableCell>
-                            <TableCell>{format(item.endDate.toDate(), 'PPP')}</TableCell>
+                            <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                            <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
                             { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell> }
                         </TableRow>
                     ))}
@@ -239,18 +209,10 @@ export default function MonthlySummaryPage() {
                     <Calendar className="h-8 w-8 text-primary" />
                     <h2 className="text-3xl font-bold tracking-tight">Riepilogo Mensile</h2>
                 </div>
-                <div className="flex gap-2">
-                    <Select onValueChange={handleMonthChange} defaultValue={`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Seleziona Mese" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                     <Button onClick={() => router.push('/dashboard/requests')}>
-                        <Plus className="mr-2 h-4 w-4" /> Nuova Richiesta
-                    </Button>
+                <div className="flex gap-2 items-center">
+                    <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
+                    <h3 className="text-lg font-semibold w-36 text-center capitalize">{format(currentDate, 'MMMM yyyy', { locale: it })}</h3>
+                    <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
                 </div>
             </div>
 
@@ -315,6 +277,11 @@ export default function MonthlySummaryPage() {
                         <div className="text-2xl font-bold">{summary.malattiaDays}</div>
                     </CardContent>
                 </Card>
+                 <Card className="flex flex-col justify-center items-center">
+                   <Button onClick={() => router.push('/dashboard/requests')}>
+                        <Plus className="mr-2 h-4 w-4" /> Nuova Richiesta
+                    </Button>
+                </Card>
             </div>
             
             <Card>
@@ -366,7 +333,7 @@ export default function MonthlySummaryPage() {
                 <ResponsiveDialogHeader>
                     <ResponsiveDialogTitle>{detailView?.title}</ResponsiveDialogTitle>
                     <ResponsiveDialogDescription>
-                        Riepilogo delle richieste approvate per il mese di {format(currentDate, 'MMMM yyyy')}.
+                        Riepilogo delle richieste approvate per il mese di {format(currentDate, 'MMMM yyyy', { locale: it })}.
                     </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
                 <div className="py-4">
@@ -377,6 +344,3 @@ export default function MonthlySummaryPage() {
         </>
     );
 }
-
-    
-    
