@@ -218,6 +218,21 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         });
     };
+    
+     const handleRejectShift = async (shiftToReject: Shift) => {
+        if (!firestore) return;
+        const batch = writeBatch(firestore);
+        shiftToReject.events.forEach(event => {
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            batch.delete(docRef);
+        });
+        await batch.commit().then(() => {
+            toast({ title: 'Successo', description: 'Turno rifiutato ed eliminato.' });
+        }).catch(err => {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile rifiutare il turno.', variant: 'destructive' });
+        });
+    };
 
     const handleDeleteShift = async () => {
         if (!firestore || !shiftToDelete) return;
@@ -303,6 +318,8 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
             toast({ title: 'Successo', description: 'Turno aggiornato con successo.' });
             setIsEditShiftOpen(false);
             setEditingShift(null);
+            // Close detail view as well, as data is now stale.
+            setIsDetailOpen(false);
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
@@ -316,7 +333,9 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
             toast({ title: 'Successo', description: 'Timbratura eliminata.' });
             setIsDeleteTimbraturaDialogOpen(false);
             setDeletingTimbratura(null);
-            setIsDetailOpen(false);
+            // After deleting a part of the shift, we close the detail dialog
+            // because the parent component will re-calculate the shift groups.
+            setIsDetailOpen(false); 
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
         });
@@ -406,12 +425,21 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}>
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
-                                            <Eye className="h-5 w-5" />
-                                        </Button>
+                                       <div className="flex justify-end items-center">
+                                            {shift.status === 'in_sospeso' && (
+                                                <>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenOvertimeDialog(shift)}>
+                                                        <CheckCircle className="h-5 w-5 text-green-500" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleRejectShift(shift)}>
+                                                        <XCircle className="h-5 w-5 text-red-500" />
+                                                    </Button>
+                                                </>
+                                            )}
+                                            <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
+                                                <Eye className="h-5 w-5" />
+                                            </Button>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             )
@@ -483,11 +511,14 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                     </div>
                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
                         <ResponsiveDialogClose asChild><Button variant="outline">Chiudi</Button></ResponsiveDialogClose>
-                        {detailShift?.status === 'in_sospeso' && (
-                            <>
-                                <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
-                                <Button onClick={() => handleOpenOvertimeDialog(detailShift)}><CheckCircle className="mr-2 h-4 w-4" /> Approva Turno</Button>
-                            </>
+                        {detailShift && (
+                          <>
+                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
+                            <Button onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica Turno</Button>
+                            {detailShift.status === 'in_sospeso' && (
+                                <Button onClick={() => handleOpenOvertimeDialog(detailShift)}><CheckCircle className="mr-2 h-4 w-4" /> Approva</Button>
+                            )}
+                          </>
                         )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
@@ -871,7 +902,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             const allTimbrature = s.docs.map(d => d.data() as Timbratura);
-            setTimbrature(allTimbrature);
+            setTimbrature(allTimbrature.filter(t => t.status === 'confermata'));
             setIsLoading(false);
         });
 

@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -16,10 +16,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay } from 'date-fns';
 
 type ClockingEvent = {
     id: string;
@@ -38,6 +48,20 @@ type Shift = {
     workDuration?: string;
 };
 
+type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+type WorkSchedule = {
+    [key in DayOfWeek]?: number;
+};
+
+type Operator = {
+    id: string;
+    username: string;
+    role: 'admin' | 'operator';
+    workSchedule?: WorkSchedule;
+};
+
 type UserData = {
   id: string;
   username: string;
@@ -48,6 +72,7 @@ interface OperatorDashboardProps {
   user: UserData | null; // This prop is now coming from the layout, but we will transition to the hook
 }
 
+
 type LeaveStatus = {
     onLeave: boolean;
     type: 'ferie' | 'malattia' | null;
@@ -55,18 +80,38 @@ type LeaveStatus = {
 
 export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const { user: hookUser, isLoading: isUserLoading } = useUser();
-  const user = propUser || hookUser;
+  const authUser = propUser || hookUser;
 
+  const [operator, setOperator] = useState<Operator | null>(null);
   const [time, setTime] = useState(new Date());
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [leaveStatus, setLeaveStatus] = useState<LeaveStatus>({ onLeave: false, type: null });
-
+  const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
 
   const { toast } = useToast();
   const firestore = useFirestore();
+  
+  // Fetch full operator data including workSchedule
+    useEffect(() => {
+        if (!firestore || !authUser?.id) {
+            setOperator(null);
+            return;
+        }
+
+        const operatorDocRef = doc(firestore, 'app-users', authUser.id);
+        const unsubscribe = onSnapshot(operatorDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
+            } else {
+                setOperator(null);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [firestore, authUser]);
 
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
     const today = new Date();
@@ -81,24 +126,24 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }, []);
 
   const clockingsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.id) return null;
+    if (!firestore || !operator?.id) return null;
     
     return query(
-      collection(firestore, `app-users/${user.id}/timbrature`),
+      collection(firestore, `app-users/${operator.id}/timbrature`),
       where('timestamp', '>=', todayTimestamp),
       where('timestamp', '<', tomorrowTimestamp),
       orderBy('timestamp', 'asc')
     );
-  }, [firestore, user, todayTimestamp, tomorrowTimestamp]);
+  }, [firestore, operator, todayTimestamp, tomorrowTimestamp]);
   
   // Check for leave
     useEffect(() => {
-        if (!firestore || !user?.id) return;
+        if (!firestore || !operator?.id) return;
 
         const checkLeaveStatus = async () => {
             const today = new Date();
             const requestsQuery = query(
-                collection(firestore, `app-users/${user.id}/requests`),
+                collection(firestore, `app-users/${operator.id}/requests`),
                 where('status', '==', 'approvato'),
                 where('startDate', '<=', Timestamp.fromDate(endOfDay(today))),
             );
@@ -122,7 +167,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
         };
         checkLeaveStatus();
-    }, [firestore, user]);
+    }, [firestore, operator]);
 
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
@@ -248,55 +293,77 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
 
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
-    if (!firestore || !user || isProcessing || leaveStatus.onLeave) return;
+    if (!firestore || !operator || isProcessing || leaveStatus.onLeave) return;
+    
+    if (type === 'entrata') {
+        const today = new Date();
+        const dayName = dayIndexToName[getDay(today)];
+        const contractualHours = operator.workSchedule?.[dayName] || 0;
+        if (contractualHours <= 0) {
+            // Check if user has already confirmed through the dialog
+            // We use a state flag to avoid showing the dialog again if they confirm
+            setIsNonWorkDayConfirmOpen(true);
+            return;
+        }
+    }
 
-    try {
-      const currentLoc = await getLocation();
-      
-      const timbraturaRef = collection(firestore, `app-users/${user.id}/timbrature`);
-      const newTimbratura = {
-        userId: user.id,
-        type,
-        timestamp: serverTimestamp(),
-        status: 'sospesa' as const,
-        latitude: currentLoc.latitude,
-        longitude: currentLoc.longitude,
-      };
-      
-      addDoc(timbraturaRef, newTimbratura)
-        .then(() => {
-             toast({
-                title: "Successo!",
-                description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente.`,
-              });
-        })
-        .catch(err => {
-            if (err.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'create',
-                    path: timbraturaRef.path,
-                    requestResourceData: newTimbratura
+    // This part of the code will now only run if it's a workday,
+    // or if the user confirms the dialog for a non-workday
+    await proceedWithClocking(type);
+  };
+  
+  const proceedWithClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
+      if (!firestore || !operator) return;
+
+      setIsNonWorkDayConfirmOpen(false); // Close dialog if it was open
+
+      try {
+        const currentLoc = await getLocation();
+        
+        const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+        const newTimbratura = {
+            userId: operator.id,
+            type,
+            timestamp: serverTimestamp(),
+            status: 'sospesa' as const,
+            latitude: currentLoc.latitude,
+            longitude: currentLoc.longitude,
+        };
+        
+        addDoc(timbraturaRef, newTimbratura)
+            .then(() => {
+                toast({
+                    title: "Successo!",
+                    description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente.`,
                 });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                 toast({
-                    variant: 'destructive',
-                    title: 'Errore di Timbratura',
-                    description: "Non è stato possibile registrare la timbratura.",
-                });
-            }
-        });
+            })
+            .catch(err => {
+                if (err.code === 'permission-denied') {
+                    const contextualError = new FirestorePermissionError({
+                        operation: 'create',
+                        path: timbraturaRef.path,
+                        requestResourceData: newTimbratura
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                    toast({
+                        variant: 'destructive',
+                        title: 'Errore di Timbratura',
+                        description: "Non è stato possibile registrare la timbratura.",
+                    });
+                }
+            });
 
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Errore di Geolocalizzazione',
-        description: error.message || "Non è stato possibile ottenere la posizione.",
-      });
+        toast({
+            variant: 'destructive',
+            title: 'Errore di Geolocalizzazione',
+            description: error.message || "Non è stato possibile ottenere la posizione.",
+        });
     } finally {
         setIsProcessing(false);
     }
-  };
+  }
   
   const formatTime = (date: Date | Timestamp | null) => {
     if (!date) return "--:--";
@@ -305,7 +372,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
   
   const handleBreakToggle = (isToggled: boolean) => {
-      handleClocking(isToggled ? 'pausa' : 'fine_pausa');
+      proceedWithClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
   
   const renderLeaveCard = () => {
@@ -327,11 +394,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }
 
-  if (isUserLoading) {
+  if (isUserLoading || !operator) {
       return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
   }
 
   return (
+    <>
     <div className="space-y-6">
        <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
@@ -359,7 +427,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         size="lg" 
                         variant="destructive"
                         disabled={isProcessing || isOnBreak} 
-                        onClick={() => handleClocking('uscita')}
+                        onClick={() => proceedWithClocking('uscita')}
                     >
                          {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
                          Termina Turno
@@ -472,5 +540,23 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         </CardContent>
       </Card>
     </div>
+    <AlertDialog open={isNonWorkDayConfirmOpen} onOpenChange={setIsNonWorkDayConfirmOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <div className='flex items-center gap-2'>
+                    <AlertCircle className="h-6 w-6 text-yellow-500" />
+                    <AlertDialogTitle>Giorno non lavorativo</AlertDialogTitle>
+                </div>
+                <AlertDialogDescription>
+                    Questo non è un giorno lavorativo assegnato. Vuoi davvero timbrare?
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setIsProcessing(false)}>Annulla</AlertDialogCancel>
+                <AlertDialogAction onClick={() => proceedWithClocking('entrata')}>Conferma</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
