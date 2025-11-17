@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays, parse, set, getDay, startOfMonth as startOfMonthFn, endOfMonth as endOfMonthFn } from 'date-fns';
+import { format, differenceInDays, parse, set, getDay, startOfMonth, endOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
@@ -893,20 +893,20 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         if (!firestore || !operatorId) return;
         setIsLoading(true);
 
-        const startOfMonth = startOfMonthFn(currentDate);
-        const endOfMonth = endOfMonthFn(currentDate);
+        const startOfMonthValue = startOfMonth(currentDate);
+        const endOfMonthValue = endOfMonth(currentDate);
 
         const requestsQuery = query(
             collection(firestore, `app-users/${operatorId}/requests`),
-            where('startDate', '<=', Timestamp.fromDate(endOfMonth))
+            where('startDate', '<=', Timestamp.fromDate(endOfMonthValue))
         );
         
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', Timestamp.fromDate(startOfMonth)), where('timestamp', '<=', Timestamp.fromDate(endOfMonth)));
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)), where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue)));
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
             const approvedRequests = s.docs
                 .map(d => ({id: d.id, ...d.data()} as Request))
-                .filter(r => r.status === 'approvato' && r.endDate.toDate() >= startOfMonth);
+                .filter(r => r.status === 'approvato' && r.endDate.toDate() >= startOfMonthValue);
             setRequests(approvedRequests);
         });
 
