@@ -170,8 +170,7 @@ function DailySummaryContent() {
         );
 
         const requestsQuery = query(
-            collection(firestore, `app-users/${targetUserId}/requests`),
-            where('startDate', '<=', endOfPeriod),
+            collection(firestore, `app-users/${targetUserId}/requests`)
         );
 
         const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
