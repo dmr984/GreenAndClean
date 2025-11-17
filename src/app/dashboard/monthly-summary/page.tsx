@@ -124,7 +124,9 @@ export default function MonthlySummaryPage() {
         let workedDaysCount = 0;
 
         Object.values(dailyTimbrature).forEach(dayEvents => {
-            if (dayEvents.length > 0) {
+            const hasEntrata = dayEvents.some(e => e.type === 'entrata');
+            const hasUscita = dayEvents.some(e => e.type === 'uscita');
+            if (hasEntrata && hasUscita) {
               workedDaysCount++;
             }
         });

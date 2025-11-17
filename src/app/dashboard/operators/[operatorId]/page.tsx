@@ -687,7 +687,7 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
         if(type === 'permesso' || type === 'straordinario') {
             editedData.hours = parseFloat(hours) || 0;
         } else {
-            editedData.hours = 0;
+            delete editedData.hours;
         }
         onSave(editedData);
     };
@@ -870,8 +870,8 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         
         const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
-            const confirmedTimbrature = s.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
-            setTimbrature(confirmedTimbrature);
+            const allTimbrature = s.docs.map(d => d.data() as Timbratura);
+            setTimbrature(allTimbrature);
             setIsLoading(false);
         });
 
@@ -879,7 +879,9 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     }, [firestore, operatorId, startOfMonth, endOfMonth]);
 
     const summary = useMemo(() => {
-        const dailyTimbrature = timbrature.reduce((acc, t) => {
+        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
+
+        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) acc[day] = [];
             acc[day].push(t);
@@ -888,7 +890,11 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
 
         let workedDaysCount = 0;
         Object.values(dailyTimbrature).forEach(dayEvents => {
-            if (dayEvents.length > 0) workedDaysCount++;
+            const hasEntrata = dayEvents.some(e => e.type === 'entrata');
+            const hasUscita = dayEvents.some(e => e.type === 'uscita');
+            if (hasEntrata && hasUscita) {
+                workedDaysCount++;
+            }
         });
 
         const approvedRequests = requests.filter(r => r.status === 'approvato');

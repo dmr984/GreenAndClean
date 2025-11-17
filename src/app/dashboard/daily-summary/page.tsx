@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { collection, query, where, Timestamp, onSnapshot, addDoc, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, doc, writeBatch, getDocs } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Calendar as CalendarIcon, Clock, Loader2, Plus } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/hooks/use-user';
-import { format, startOfMonth, endOfMonth, isSameDay, set, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isSameDay, set, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -93,16 +93,24 @@ function DailySummaryContent() {
 
         const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, 
             (snapshot) => {
-                const dates = snapshot.docs
-                    .map(doc => doc.data())
-                    .filter(data => data.status === 'confermata')
-                    .map(data => data.timestamp.toDate());
-                    
-                const uniqueDays = dates.reduce((acc, date) => {
-                    if (!acc.some(d => isSameDay(d, date))) acc.push(date);
+                const allTimbrature = snapshot.docs.map(doc => doc.data() as Timbratura);
+                const confirmedTimbrature = allTimbrature.filter(data => data.status === 'confermata');
+                
+                const dailyEvents = confirmedTimbrature.reduce((acc, t) => {
+                    const day = format(t.timestamp.toDate(), 'yyyy-MM-dd');
+                    if (!acc[day]) acc[day] = [];
+                    acc[day].push(t.type);
                     return acc;
-                }, [] as Date[]);
-                setWorkedDays(uniqueDays);
+                }, {} as Record<string, ('entrata' | 'uscita')[]>);
+
+                const validWorkedDays: Date[] = [];
+                for (const dayStr in dailyEvents) {
+                    const events = dailyEvents[dayStr];
+                    if (events.includes('entrata') && events.includes('uscita')) {
+                         validWorkedDays.push(new Date(dayStr + 'T12:00:00')); // Use noon to avoid timezone issues
+                    }
+                }
+                setWorkedDays(validWorkedDays);
             },
             (error) => {
                  console.error("Error fetching worked days:", error);
@@ -163,18 +171,16 @@ function DailySummaryContent() {
 
         setIsLoading(true);
 
-        const start = new Date(selectedDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(selectedDate);
-        end.setHours(23, 59, 59, 999);
+        const start = startOfDay(selectedDate);
+        const end = endOfDay(selectedDate);
 
-        const startOfDay = Timestamp.fromDate(start);
-        const endOfDay = Timestamp.fromDate(end);
+        const startOfDayTs = Timestamp.fromDate(start);
+        const endOfDayTs = Timestamp.fromDate(end);
         
         const timbratureQuery = query(
             collection(firestore, `app-users/${targetUserId}/timbrature`),
-            where('timestamp', '>=', startOfDay),
-            where('timestamp', '<=', endOfDay)
+            where('timestamp', '>=', startOfDayTs),
+            where('timestamp', '<=', endOfDayTs)
         );
 
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
