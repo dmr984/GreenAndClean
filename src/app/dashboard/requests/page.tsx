@@ -1,9 +1,9 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, Timestamp, writeBatch, doc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plane, PlusCircle, Loader2 } from 'lucide-react';
+import { Plane, PlusCircle, Loader2, Circle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,6 +24,7 @@ type Request = {
     hours?: number;
     reason?: string;
     createdAt: Timestamp;
+    viewedByOperator?: boolean;
 }
 
 
@@ -51,6 +52,18 @@ export default function RequestsPage() {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
             setRequests(data);
             setIsLoadingData(false);
+
+            // Mark unread requests as read
+            const unreadRequests = data.filter(r => r.viewedByOperator === false);
+            if (unreadRequests.length > 0 && firestore && user) {
+                 const batch = writeBatch(firestore);
+                 unreadRequests.forEach(req => {
+                    const reqRef = doc(firestore, `app-users/${user.id}/requests`, req.id);
+                    batch.update(reqRef, { viewedByOperator: true });
+                 });
+                 batch.commit().catch(console.error);
+            }
+
         }, (error) => {
             console.error("Error fetching requests:", error);
             if (error.code === 'permission-denied' && firestore) {
@@ -113,6 +126,7 @@ export default function RequestsPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                <TableHead></TableHead>
                                 <TableHead>Tipo</TableHead>
                                 <TableHead>Dal</TableHead>
                                 <TableHead>Al</TableHead>
@@ -124,6 +138,9 @@ export default function RequestsPage() {
                             {requests.length > 0 ? (
                                 requests.map((req) => (
                                     <TableRow key={req.id}>
+                                        <TableCell>
+                                            {req.viewedByOperator === false && <Circle fill="red" className="h-2 w-2 text-red-500" />}
+                                        </TableCell>
                                         <TableCell className="font-medium capitalize">{req.type.replace('_', ' ')}</TableCell>
                                         <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                                         <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
@@ -142,7 +159,7 @@ export default function RequestsPage() {
                                 ))
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center h-24">Nessuna richiesta trovata.</TableCell>
+                                    <TableCell colSpan={6} className="text-center h-24">Nessuna richiesta trovata.</TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

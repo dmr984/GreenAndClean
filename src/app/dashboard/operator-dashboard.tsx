@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -39,6 +39,7 @@ type ClockingEvent = {
     latitude: number;
     longitude: number;
     status: 'sospesa' | 'confermata';
+    viewedByOperator?: boolean;
 };
 
 type Shift = {
@@ -46,6 +47,7 @@ type Shift = {
     endTime: Timestamp | null;
     events: ClockingEvent[];
     workDuration?: string;
+    hasUnread?: boolean;
 };
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
@@ -90,6 +92,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [leaveStatus, setLeaveStatus] = useState<LeaveStatus>({ onLeave: false, type: null });
   const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
+  const [hasUnreadShifts, setHasUnreadShifts] = useState(false);
+  const [isShiftDetailsOpen, setIsShiftDetailsOpen] = useState(false);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -175,8 +179,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const shifts = useMemo((): Shift[] => {
     if (!clockings) return [];
 
+    let unread = false;
     const groupedShifts: Shift[] = [];
-    let currentShift: Partial<Shift> = {};
+    let currentShift: Partial<Shift> & { hasUnread?: boolean } = {};
 
     for (const event of clockings) {
         if (event.type === 'entrata') {
@@ -184,12 +189,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 groupedShifts.push({
                     startTime: currentShift.startTime,
                     endTime: null,
-                    events: currentShift.events || []
+                    events: currentShift.events || [],
+                    hasUnread: currentShift.hasUnread || false,
                 });
             }
-            currentShift = { startTime: event.timestamp, events: [event] };
+            currentShift = { startTime: event.timestamp, events: [event], hasUnread: event.viewedByOperator === false };
         } else if (currentShift.startTime) {
             currentShift.events?.push(event);
+            if (event.viewedByOperator === false) {
+                currentShift.hasUnread = true;
+            }
             if (event.type === 'uscita') {
                 currentShift.endTime = event.timestamp;
                 
@@ -219,10 +228,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         groupedShifts.push({
             startTime: currentShift.startTime,
             endTime: null,
-            events: currentShift.events || []
+            events: currentShift.events || [],
+            hasUnread: currentShift.hasUnread || false,
         });
     }
 
+    setHasUnreadShifts(groupedShifts.some(s => s.hasUnread));
     return groupedShifts.reverse();
   }, [clockings]);
 
@@ -328,6 +339,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             status: 'sospesa' as const,
             latitude: currentLoc.latitude,
             longitude: currentLoc.longitude,
+            viewedByOperator: true,
         };
         
         addDoc(timbraturaRef, newTimbratura)
@@ -374,6 +386,31 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const handleBreakToggle = (isToggled: boolean) => {
       proceedWithClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
+
+  const markShiftsAsRead = async () => {
+    if (!firestore || !operator?.id || !hasUnreadShifts) return;
+
+    const unreadEvents = shifts.flatMap(s => s.events).filter(e => e.viewedByOperator === false);
+    if (unreadEvents.length === 0) return;
+
+    const batch = writeBatch(firestore);
+    unreadEvents.forEach(event => {
+      const eventRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+      batch.update(eventRef, { viewedByOperator: true });
+    });
+
+    try {
+      await batch.commit();
+    } catch (error) {
+      console.error("Error marking shifts as read:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (isShiftDetailsOpen) {
+      markShiftsAsRead();
+    }
+  }, [isShiftDetailsOpen]);
   
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
@@ -464,6 +501,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
            <div className="flex items-center gap-3">
             <History className="h-6 w-6 text-primary" />
             <CardTitle className="text-2xl">Riepilogo Turni di Oggi</CardTitle>
+             {hasUnreadShifts && <Circle fill="red" className="h-3 w-3 text-red-500" />}
           </div>
         </CardHeader>
         <CardContent>
@@ -472,68 +510,69 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
              </div>
            ) : shifts && shifts.length > 0 ? (
-             <div className="border rounded-md">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Inizio</TableHead>
-                            <TableHead>Fine</TableHead>
-                            <TableHead>Durata Lavoro</TableHead>
-                            <TableHead className="text-right">Dettagli</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {shifts.map((shift, index) => (
-                            <TableRow key={index}>
-                                <TableCell className="font-medium">{formatTime(shift.startTime)}</TableCell>
-                                <TableCell>{shift.endTime ? formatTime(shift.endTime) : <Badge variant="secondary">In corso</Badge>}</TableCell>
-                                <TableCell>{shift.workDuration || '--:--'}</TableCell>
-                                <TableCell className="text-right">
-                                    <Dialog>
+             <Dialog open={isShiftDetailsOpen} onOpenChange={setIsShiftDetailsOpen}>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Inizio</TableHead>
+                                <TableHead>Fine</TableHead>
+                                <TableHead>Durata Lavoro</TableHead>
+                                <TableHead className="text-right">Dettagli</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {shifts.map((shift, index) => (
+                                <TableRow key={index}>
+                                    <TableCell className="font-medium">{formatTime(shift.startTime)}</TableCell>
+                                    <TableCell>{shift.endTime ? formatTime(shift.endTime) : <Badge variant="secondary">In corso</Badge>}</TableCell>
+                                    <TableCell>{shift.workDuration || '--:--'}</TableCell>
+                                    <TableCell className="text-right relative">
+                                        {shift.hasUnread && <div className="absolute right-9 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-red-500"></div>}
                                         <DialogTrigger asChild>
                                             <Button variant="ghost" size="icon">
                                                 <Eye className="h-4 w-4"/>
                                             </Button>
                                         </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle>Dettaglio Timbrature</DialogTitle>
-                                                <DialogDescription>
-                                                   Eventi per il turno iniziato alle {formatTime(shift.startTime)}.
-                                                </DialogDescription>
-                                            </DialogHeader>
-                                            <div className="border rounded-md max-h-96 overflow-y-auto">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>Orario</TableHead>
-                                                            <TableHead>Evento</TableHead>
-                                                            <TableHead>Stato</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {shift.events.map(e => (
-                                                             <TableRow key={e.id}>
-                                                                <TableCell className="font-medium">{formatTime(e.timestamp)}</TableCell>
-                                                                <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
-                                                                <TableCell>
-                                                                    <Badge variant={e.status === 'confermata' ? 'secondary' : 'default'}>
-                                                                        {e.status}
-                                                                    </Badge>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </DialogContent>
-                                    </Dialog>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-             </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+                 <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Dettaglio Timbrature</DialogTitle>
+                        <DialogDescription>
+                            Eventi per i turni di oggi.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="border rounded-md max-h-96 overflow-y-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Orario</TableHead>
+                                    <TableHead>Evento</TableHead>
+                                    <TableHead>Stato</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {shifts.flatMap(s => s.events).map(e => (
+                                        <TableRow key={e.id}>
+                                        <TableCell className="font-medium">{formatTime(e.timestamp)}</TableCell>
+                                        <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={e.status === 'confermata' ? 'secondary' : 'default'}>
+                                                {e.status}
+                                            </Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
            ) : (
              <p className="text-muted-foreground text-center">Nessun turno registrato per oggi.</p>
            )}

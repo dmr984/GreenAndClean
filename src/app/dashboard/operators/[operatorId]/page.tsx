@@ -86,6 +86,7 @@ type SupplyRequest = {
     approvedQuantity?: number;
     status: 'in_attesa' | 'approvata' | 'rifiutata';
     createdAt: any;
+    viewedByOperator?: boolean;
 };
 
 type DetailView = {
@@ -214,7 +215,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-                batch.update(docRef, { status: 'confermata' });
+                batch.update(docRef, { status: 'confermata', viewedByOperator: false });
             }
         });
 
@@ -229,6 +230,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                 hours: approvedOvertimeHours,
                 reason: 'Straordinario approvato da turno',
                 createdAt: serverTimestamp(),
+                viewedByOperator: false,
             };
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
@@ -320,7 +322,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
         for (const event of editingShift.events) {
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             if (newEventsMap[event.type]) {
-                batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp });
+                batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp, viewedByOperator: false });
                 delete newEventsMap[event.type];
             } else {
                 batch.delete(docRef);
@@ -336,6 +338,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                 type: eventType,
                 timestamp: newEventsMap[eventType]!.timestamp,
                 status: 'confermata',
+                viewedByOperator: false,
             });
         }
         
@@ -642,7 +645,7 @@ const LeaveRequests = ({ operatorId, setPendingCount }: { operatorId: string, se
     const handleUpdateRequestStatus = (requestId: string, newStatus: 'approvato' | 'rifiutato') => {
         if (!firestore) return;
         const docRef = doc(firestore, `app-users/${operatorId}/requests`, requestId);
-        updateDoc(docRef, { status: newStatus }).catch(err => {
+        updateDoc(docRef, { status: newStatus, viewedByOperator: false }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive' });
         });
@@ -668,7 +671,7 @@ const LeaveRequests = ({ operatorId, setPendingCount }: { operatorId: string, se
         if(!firestore || !editingRequest) return;
         
         const docRef = doc(firestore, `app-users/${operatorId}/requests`, editingRequest.id);
-        await updateDoc(docRef, editedData).then(() => {
+        await updateDoc(docRef, {...editedData, viewedByOperator: false}).then(() => {
             toast({title: 'Successo', description: 'Richiesta aggiornata'});
             setEditingRequest(null);
         }).catch(err => {
@@ -816,7 +819,7 @@ const SupplyRequests = ({ operatorId, setPendingCount }: { operatorId: string, s
 
         const requestRef = doc(firestore, 'supply-requests', selectedRequest.id);
         const productRef = doc(firestore, 'products', selectedRequest.productId);
-        const updatePayload = { status: 'approvata' as const, approvedQuantity: finalQuantity };
+        const updatePayload = { status: 'approvata' as const, approvedQuantity: finalQuantity, viewedByOperator: false };
 
         try {
             await runTransaction(firestore, async (transaction) => {
@@ -838,7 +841,7 @@ const SupplyRequests = ({ operatorId, setPendingCount }: { operatorId: string, s
     const handleRejectRequest = async (request: SupplyRequest) => {
         if (!firestore) return;
         const requestRef = doc(firestore, 'supply-requests', request.id);
-        updateDoc(requestRef, { status: 'rifiutata' as const }).catch(err => toast({ title: 'Errore', description: 'Impossibile rifiutare la richiesta.', variant: 'destructive'}));
+        updateDoc(requestRef, { status: 'rifiutata' as const, viewedByOperator: false }).catch(err => toast({ title: 'Errore', description: 'Impossibile rifiutare la richiesta.', variant: 'destructive'}));
     };
 
     const handleDelete = async () => {

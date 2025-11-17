@@ -107,6 +107,10 @@
           "type": "string",
           "enum": ["sospesa", "confermata"],
           "description": "The approval status of the clocking event."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
         }
       },
       "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
@@ -153,6 +157,10 @@
             "type": "string",
             "format": "date-time",
             "description": "The timestamp when the request was created."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
         }
       },
       "required": ["userId", "type", "status", "startDate", "endDate", "createdAt"]
@@ -213,6 +221,10 @@
           "type": "string",
           "format": "date-time",
           "description": "The timestamp when the request was created."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
         }
       },
       "required": ["userId", "username", "productId", "productName", "requestedQuantity", "status", "createdAt"]
@@ -305,5 +317,3 @@
     "reasoning": "Updated the Operator entity to use a flexible workSchedule object, allowing different hours to be assigned to each day of the week. This replaces the previous workHours and workDays fields."
   }
 }
-
-    

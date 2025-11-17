@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, where, writeBatch, doc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PackageSearch, Loader2, Send } from 'lucide-react';
+import { PackageSearch, Loader2, Send, Circle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type Product = {
     id: string;
@@ -26,6 +27,7 @@ type SupplyRequest = {
     approvedQuantity?: number;
     status: 'in_attesa' | 'approvata' | 'rifiutata';
     createdAt: any;
+    viewedByOperator?: boolean;
 };
 
 export default function SupplyRequestPage() {
@@ -89,6 +91,18 @@ export default function SupplyRequestPage() {
             
             setMyRequests(allRequests);
             setIsLoadingRequests(false);
+
+            // Mark unread requests as read
+            const unread = allRequests.filter(r => r.viewedByOperator === false);
+            if(unread.length > 0 && firestore && user) {
+                const batch = writeBatch(firestore);
+                unread.forEach(req => {
+                    const reqRef = doc(firestore, 'supply-requests', req.id);
+                    batch.update(reqRef, { viewedByOperator: true });
+                });
+                batch.commit().catch(console.error);
+            }
+
         }, error => {
             console.error("Error fetching request history:", error);
             if (error.code === 'permission-denied' && firestore) {
@@ -137,6 +151,7 @@ export default function SupplyRequestPage() {
             requestedQuantity,
             status: 'in_attesa' as const,
             createdAt: serverTimestamp(),
+            viewedByOperator: true,
         };
 
         addDoc(supplyRequestsCollection, newRequestData)
@@ -231,6 +246,7 @@ export default function SupplyRequestPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead></TableHead>
                                         <TableHead>Prodotto</TableHead>
                                         <TableHead>Qtà Rich.</TableHead>
                                         <TableHead>Qtà Appr.</TableHead>
@@ -240,11 +256,14 @@ export default function SupplyRequestPage() {
                                 <TableBody>
                                     {myRequests.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="h-24 text-center">Nessuna richiesta trovata.</TableCell>
+                                            <TableCell colSpan={5} className="h-24 text-center">Nessuna richiesta trovata.</TableCell>
                                         </TableRow>
                                     ) : (
                                         myRequests.map(req => (
                                             <TableRow key={req.id}>
+                                                 <TableCell>
+                                                    {req.viewedByOperator === false && <Circle fill="red" className="h-2 w-2 text-red-500" />}
+                                                </TableCell>
                                                 <TableCell>{req.productName}</TableCell>
                                                 <TableCell>{req.requestedQuantity}</TableCell>
                                                 <TableCell>{req.approvedQuantity ?? '-'}</TableCell>
