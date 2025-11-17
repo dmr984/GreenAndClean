@@ -889,31 +889,24 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
 
-    const dateRange = useMemo(() => {
-        const start = startOfMonthFn(currentDate);
-        const end = endOfMonthFn(currentDate);
-        return {
-            startOfPeriod: Timestamp.fromDate(start),
-            endOfPeriod: Timestamp.fromDate(end),
-        };
-    }, [currentDate]);
-
     useEffect(() => {
         if (!firestore || !operatorId) return;
         setIsLoading(true);
 
-        const { startOfPeriod: startOfMonth, endOfPeriod: endOfMonth } = dateRange;
+        const startOfMonth = startOfMonthFn(currentDate);
+        const endOfMonth = endOfMonthFn(currentDate);
 
         const requestsQuery = query(
             collection(firestore, `app-users/${operatorId}/requests`),
-            where('startDate', '<=', endOfMonth)
+            where('startDate', '<=', Timestamp.fromDate(endOfMonth))
         );
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
+        
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', Timestamp.fromDate(startOfMonth)), where('timestamp', '<=', Timestamp.fromDate(endOfMonth)));
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
             const approvedRequests = s.docs
                 .map(d => ({id: d.id, ...d.data()} as Request))
-                .filter(r => r.status === 'approvato');
+                .filter(r => r.status === 'approvato' && r.endDate.toDate() >= startOfMonth);
             setRequests(approvedRequests);
         });
 
@@ -944,7 +937,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
             }
         });
 
-        const approvedRequests = requests; // Already filtered in useEffect
+        const approvedRequests = requests; // Already filtered
         return {
             workedDays: workedDaysCount,
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
