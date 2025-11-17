@@ -171,7 +171,7 @@ function DailySummaryContent() {
 
         const requestsQuery = query(
             collection(firestore, `app-users/${targetUserId}/requests`),
-            where('startDate', '<=', endOfPeriod)
+            where('startDate', '<=', endOfPeriod),
         );
 
         const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
@@ -234,13 +234,15 @@ function DailySummaryContent() {
         const timbratureQuery = query(
             collection(firestore, `app-users/${targetUserId}/timbrature`),
             where('timestamp', '>=', startOfDayTs),
-            where('timestamp', '<=', endOfDayTs),
-            orderBy('timestamp', 'asc')
+            where('timestamp', '<=', endOfDayTs)
         );
 
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const timbratureDelGiorno = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
+                // Sort client-side to avoid complex index
+                timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                
                 const shifts: Shift[] = [];
                 let currentShiftEvents: Timbratura[] = [];
 
