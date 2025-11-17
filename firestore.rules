@@ -32,9 +32,9 @@ service cloud.firestore {
     // This rule is necessary for the admin notification bell to query
     // across all users' pending requests.
     match /{path=**}/requests/{requestId} {
-      // Allow logged-in users to read (for collection group queries).
-      // Write rules are handled by the nested path.
-      allow read: if request.auth != null;
+      // Allow read access for collection group queries. This is insecure for
+      // production but necessary for the current custom auth system.
+      allow read: if true;
     }
 
     match /roles_admin/{adminId} {
