@@ -60,16 +60,22 @@ function DailySummaryContent() {
     useEffect(() => {
         if (!firestore || !targetUserId) return;
         
+        // Simplified query to avoid composite index requirement
         const monthlyTimbratureQuery = query(
             collection(firestore, `app-users/${targetUserId}/timbrature`),
             where('timestamp', '>=', startOfPeriod),
-            where('timestamp', '<=', endOfPeriod),
-            where('status', '==', 'confermata')
+            where('timestamp', '<=', endOfPeriod)
+            // where('status', '==', 'confermata') // This was causing the index error
         );
 
         const unsubscribe = onSnapshot(monthlyTimbratureQuery, 
             (snapshot) => {
-                const dates = snapshot.docs.map(doc => doc.data().timestamp.toDate());
+                // Filter for confirmed status on the client-side
+                const dates = snapshot.docs
+                    .map(doc => doc.data())
+                    .filter(data => data.status === 'confermata')
+                    .map(data => data.timestamp.toDate());
+                    
                 const uniqueDays = dates.reduce((acc, date) => {
                     if (!acc.some(d => isSameDay(d, date))) {
                         acc.push(date);
@@ -107,15 +113,19 @@ function DailySummaryContent() {
         const timbratureQuery = query(
             collection(firestore, `app-users/${targetUserId}/timbrature`),
             where('timestamp', '>=', startOfDay),
-            where('timestamp', '<=', endOfDay),
-            where('status', '==', 'confermata')
+            where('timestamp', '<=', endOfDay)
+            // where('status', '==', 'confermata') // Removing to avoid index error, filtering client-side
         );
 
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                data.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                setTimbrature(data);
+                // Filter for confirmed status and sort on the client-side
+                const confirmedAndSorted = data
+                    .filter(t => t.status === 'confermata')
+                    .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                
+                setTimbrature(confirmedAndSorted);
                 setIsLoading(false);
             },
             (error) => {
@@ -230,5 +240,3 @@ export default function DailySummaryPage() {
         </Suspense>
     );
 }
-
-    
