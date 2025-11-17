@@ -143,9 +143,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         const checkLeaveStatus = async () => {
             const today = new Date();
             const requestsQuery = query(
-                collection(firestore, `app-users/${operator.id}/requests`),
-                where('status', '==', 'approvato'),
-                where('startDate', '<=', Timestamp.fromDate(endOfDay(today))),
+                collection(firestore, `app-users/${operator.id}/requests`)
             );
             
             const snapshot = await getDocs(requestsQuery);
@@ -154,6 +152,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
             snapshot.forEach(doc => {
                 const request = doc.data();
+                 if (request.status !== 'approvato') return;
+
                 const startDate = request.startDate.toDate();
                 const endDate = request.endDate.toDate();
 

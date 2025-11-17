@@ -902,7 +902,11 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', startOfMonth), where('startDate', '<=', endOfMonth));
         const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', startOfMonth), where('timestamp', '<=', endOfMonth));
         
-        const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
+        const unsubRequests = onSnapshot(requestsQuery, s => {
+            const data = s.docs.map(d => ({id: d.id, ...d.data()} as Request));
+            setRequests(data);
+        });
+
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             setTimbrature(s.docs.map(d => d.data() as Timbratura));
             setIsLoading(false);

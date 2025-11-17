@@ -3,16 +3,18 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Briefcase } from 'lucide-react';
 import LoginForm from '@/components/login-form';
+import { useUser } from '@/hooks/use-user';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { user, isLoading } = useUser();
 
   useEffect(() => {
-    // If the user is already logged in (checked via localStorage), redirect to the dashboard
-    if (localStorage.getItem('user')) {
+    // If the user is already logged in (checked via provider), redirect to the dashboard
+    if (!isLoading && user) {
       router.push('/dashboard');
     }
-  }, [router]);
+  }, [user, isLoading, router]);
 
 
   return (
