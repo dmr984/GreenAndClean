@@ -27,6 +27,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   useEffect(() => {
+    // This is the single "gatekeeper" for the dashboard.
+    // If the state is done loading and there's no user, redirect to login.
     if (!isLoading && !user) {
         router.replace('/');
     }
@@ -100,7 +102,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const showBackButton = pathname !== '/dashboard';
 
   const renderDashboardContent = () => {
-     if (isLoading) {
+     if (isLoading || !user) { // Show loader while loading or if user is null (before redirect)
       return (
         <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-2">
@@ -109,17 +111,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       );
-    }
-    
-    if (!user) {
-         return (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <p className="text-muted-foreground">Verifica autenticazione...</p>
-            </div>
-          </div>
-        );
     }
     
     if (pathname === '/dashboard') {

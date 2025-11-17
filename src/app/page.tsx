@@ -1,21 +1,28 @@
 'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Briefcase } from 'lucide-react';
 import LoginForm from '@/components/login-form';
 import { useUser } from '@/hooks/use-user';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, isLoading } = useUser();
 
+  // This is the single source of truth for redirecting a logged-in user.
   useEffect(() => {
-    // If the user is already logged in (checked via provider), redirect to the dashboard
     if (!isLoading && user) {
       router.push('/dashboard');
     }
   }, [user, isLoading, router]);
 
+  // While loading, this page will be blank, which is fine.
+  // If not loading and no user, the form will be shown.
+  // If not loading and there IS a user, the effect will trigger the redirect.
+  if (isLoading || user) {
+    return null; // Or a loading spinner if you prefer
+  }
+  
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
