@@ -7,23 +7,26 @@ import { useEffect } from 'react';
 
 export default function LoginPage() {
   const { user, isLoading } = useUser();
+  const router = useRouter();
 
   // This page should only render the login form.
-  // The logic to protect the dashboard is now centralized in the DashboardLayout.
-  // If a user is already logged in, the DashboardLayout's check won't run here,
-  // and the login form will be shown. But any attempt to navigate to /dashboard
-  // will be correctly handled by the layout. When a user logs out, they are
-  // redirected here.
+  // The logic to protect the dashboard is centralized in the DashboardLayout.
+  useEffect(() => {
+    // If a user is already logged in, redirect them to the dashboard.
+    // This handles cases where a logged-in user manually navigates to the login page.
+    if (!isLoading && user) {
+      router.replace('/dashboard');
+    }
+  }, [user, isLoading, router]);
+
 
   if (isLoading) {
     return null; // Or a loading spinner
   }
 
-  // A logged-in user trying to access the login page will be redirected
-  // by the effect in the DashboardLayout, so we prevent rendering the form
-  // to avoid a flash of content.
-  if(user) {
-    // This will be handled by the redirect in the layout, but good to have a guard
+  // Prevent rendering the form if a user is found, to avoid a flash of content
+  // while the redirection is in progress.
+  if (user) {
     return null;
   }
 

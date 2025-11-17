@@ -52,6 +52,7 @@ export default function LoginForm() {
                     visibleInLogin: true,
                     firstName: "Admin",
                     lastName: "User",
+                    workSchedule: {},
                 });
                 await setDoc(adminRoleDocRef, {
                      firstName: "Admin",
@@ -146,9 +147,9 @@ export default function LoginForm() {
         };
         
         localStorage.setItem('user', JSON.stringify(userToStore));
-        // Manually dispatch a storage event to trigger updates in other components/tabs
-        window.dispatchEvent(new Event('storage'));
-        router.replace('/dashboard');
+        // Force a full page reload to clear all state and ensure the new
+        // user's context is loaded fresh, preventing state conflicts.
+        window.location.href = '/dashboard';
         
     } catch (error: any) {
         console.error("Login failed:", error);
