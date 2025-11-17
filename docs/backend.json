@@ -26,6 +26,10 @@
         "visibleInLogin": {
             "type": "boolean",
             "description": "Determines if the operator is visible in the login dropdown."
+        },
+        "workHours": {
+          "type": "number",
+          "description": "The contractual daily work hours for the operator."
         }
       },
       "required": [
@@ -33,7 +37,8 @@
         "username",
         "firstName",
         "lastName",
-        "visibleInLogin"
+        "visibleInLogin",
+        "workHours"
       ]
     },
     "Admin": {
@@ -291,3 +296,5 @@
     "reasoning": "Added 'Product' and 'SupplyRequest' entities and corresponding Firestore collections to support the new supply management feature."
   }
 }
+
+    

@@ -38,6 +38,7 @@ type Operator = {
     lastName: string;
     role: 'operator';
     visibleInLogin: boolean;
+    workHours: number;
 };
 
 export default function ManageOperatorsPage() {
@@ -53,8 +54,11 @@ export default function ManageOperatorsPage() {
     
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
+    const [newWorkHours, setNewWorkHours] = useState("");
+
     const [editingFirstName, setEditingFirstName] = useState("");
     const [editingLastName, setEditingLastName] = useState("");
+    const [editingWorkHours, setEditingWorkHours] = useState("");
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -99,7 +103,7 @@ export default function ManageOperatorsPage() {
 
     const handleAddOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !newFirstName.trim() || !newLastName.trim()) return;
+        if (!firestore || !newFirstName.trim() || !newLastName.trim() || !newWorkHours) return;
 
         const generatedUsername = `${newFirstName} ${newLastName}`;
         
@@ -109,6 +113,7 @@ export default function ManageOperatorsPage() {
             visibleInLogin: true,
             firstName: newFirstName,
             lastName: newLastName,
+            workHours: Number(newWorkHours),
         };
         
         addDoc(collection(firestore, 'app-users'), newOperatorDoc)
@@ -120,6 +125,7 @@ export default function ManageOperatorsPage() {
             setIsAddDialogOpen(false);
             setNewFirstName("");
             setNewLastName("");
+            setNewWorkHours("");
           }).catch((error: any) => {
             console.error("Error adding operator:", error);
             if (error.code === 'permission-denied') {
@@ -141,7 +147,7 @@ export default function ManageOperatorsPage() {
 
     const handleEditOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !selectedOperator || !editingFirstName.trim() || !editingLastName.trim()) return;
+        if (!firestore || !selectedOperator || !editingFirstName.trim() || !editingLastName.trim() || !editingWorkHours) return;
         
         const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
         
@@ -151,6 +157,7 @@ export default function ManageOperatorsPage() {
             username: generatedUsername,
             firstName: editingFirstName,
             lastName: editingLastName,
+            workHours: Number(editingWorkHours),
         };
 
         updateDoc(operatorRef, updatePayload)
@@ -273,6 +280,12 @@ export default function ManageOperatorsPage() {
                                             </Label>
                                             <Input id="lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="col-span-3" required />
                                         </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="workHours" className="text-right">
+                                                Ore Contrattuali
+                                            </Label>
+                                            <Input id="workHours" type="number" value={newWorkHours} onChange={(e) => setNewWorkHours(e.target.value)} className="col-span-3" required min="1" />
+                                        </div>
                                     </div>
                                     <DialogFooter>
                                         <Button type="submit">Salva Operatore</Button>
@@ -293,6 +306,7 @@ export default function ManageOperatorsPage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Nome Operatore</TableHead>
+                                        <TableHead>Ore Contratto</TableHead>
                                         <TableHead>Visibile nel Login</TableHead>
                                         <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
@@ -304,6 +318,9 @@ export default function ManageOperatorsPage() {
                                                 {operator.username}
                                             </TableCell>
                                             <TableCell>
+                                                {operator.workHours}
+                                            </TableCell>
+                                            <TableCell>
                                                 <Switch
                                                     checked={operator.visibleInLogin}
                                                     onCheckedChange={(checked) => handleVisibilityChange(operator.id, checked)}
@@ -311,7 +328,7 @@ export default function ManageOperatorsPage() {
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setIsEditDialogOpen(true);}}>
+                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkHours(String(operator.workHours)); setIsEditDialogOpen(true);}}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -333,7 +350,7 @@ export default function ManageOperatorsPage() {
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
                             <DialogDescription>
-                                Modifica il nome e cognome dell'operatore.
+                                Modifica i dati dell'operatore.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
@@ -348,6 +365,12 @@ export default function ManageOperatorsPage() {
                                     Cognome
                                 </Label>
                                 <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} className="col-span-3" required />
+                            </div>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="editing-workHours" className="text-right">
+                                    Ore Contrattuali
+                                </Label>
+                                <Input id="editing-workHours" type="number" value={editingWorkHours} onChange={(e) => setEditingWorkHours(e.target.value)} className="col-span-3" required min="1"/>
                             </div>
                         </div>
                         <DialogFooter>
@@ -374,3 +397,5 @@ export default function ManageOperatorsPage() {
         </>
     );
 }
+
+    

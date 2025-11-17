@@ -3,9 +3,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays, parse, set } from 'date-fns';
+import { format, differenceInDays, parse, set, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,7 @@ type Operator = {
     username: string;
     firstName: string;
     lastName: string;
+    workHours: number;
 };
 
 type Timbratura = {
@@ -50,6 +51,7 @@ type Timbratura = {
 type Shift = {
     events: Timbratura[];
     status: 'in_sospeso' | 'in_corso' | 'confermato';
+    workDuration: number; // total work minutes
 };
 
 
@@ -83,7 +85,7 @@ type DetailView = {
     items: Request[];
 } | null;
 
-const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
+const ShiftApproval = ({ operator }: { operator: Operator }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [shifts, setShifts] = useState<Shift[]>([]);
@@ -104,9 +106,13 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
 
+    const [overtimeHours, setOvertimeHours] = useState<string>("0");
+    const [isApproveOvertimeOpen, setIsApproveOvertimeOpen] = useState(false);
+
+
     useEffect(() => {
         if (!firestore) return;
-        const q = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
+        const q = query(collection(firestore, `app-users/${operator.id}/timbrature`), orderBy('timestamp', 'asc'));
         const unsubscribe = onSnapshot(q, snapshot => {
             const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
 
@@ -115,33 +121,22 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
 
             for (const event of allClockings) {
                 if (event.type === 'entrata' && currentShiftEvents.length > 0) {
-                    const hasPending = currentShiftEvents.some(e => e.status === 'sospesa');
-                    const isComplete = currentShiftEvents.some(e => e.type === 'uscita');
-                    groupedShifts.push({
-                        events: currentShiftEvents,
-                        status: !isComplete ? 'in_corso' : hasPending ? 'in_sospeso' : 'confermato',
-                    });
+                    const { status, workDuration } = processShift(currentShiftEvents);
+                    groupedShifts.push({ events: currentShiftEvents, status, workDuration });
                     currentShiftEvents = [event];
                 } else {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
-                         const hasPending = currentShiftEvents.some(e => e.status === 'sospesa');
-                        groupedShifts.push({
-                            events: currentShiftEvents,
-                            status: hasPending ? 'in_sospeso' : 'confermato',
-                        });
+                        const { status, workDuration } = processShift(currentShiftEvents);
+                        groupedShifts.push({ events: currentShiftEvents, status, workDuration });
                         currentShiftEvents = [];
                     }
                 }
             }
 
             if (currentShiftEvents.length > 0) {
-                 const hasPending = currentShiftEvents.some(e => e.status === 'sospesa');
-                 const isComplete = currentShiftEvents.some(e => e.type === 'uscita');
-                 groupedShifts.push({
-                    events: currentShiftEvents,
-                    status: !isComplete ? 'in_corso' : hasPending ? 'in_sospeso' : 'confermato',
-                });
+                 const { status, workDuration } = processShift(currentShiftEvents);
+                 groupedShifts.push({ events: currentShiftEvents, status, workDuration });
             }
             
             setShifts(groupedShifts.reverse());
@@ -152,20 +147,65 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             setIsLoading(false);
         });
         return unsubscribe;
-    }, [firestore, operatorId, toast]);
+    }, [firestore, operator.id, toast]);
 
-    const handleApproveShift = async (shiftToApprove: Shift) => {
+    const processShift = (events: Timbratura[]): { status: Shift['status'], workDuration: number } => {
+        const hasPending = events.some(e => e.status === 'sospesa');
+        const isComplete = events.some(e => e.type === 'uscita');
+        const status: Shift['status'] = !isComplete ? 'in_corso' : hasPending ? 'in_sospeso' : 'confermato';
+
+        let workDuration = 0;
+        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+        const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+
+        if (startTime && endTime) {
+            let totalMillis = endTime.toMillis() - startTime.toMillis();
+            let breakStart: Timestamp | null = null;
+            events.forEach(e => {
+                if (e.type === 'pausa') breakStart = e.timestamp;
+                if (e.type === 'fine_pausa' && breakStart) {
+                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                    breakStart = null;
+                }
+            });
+            workDuration = totalMillis / (1000 * 60); // duration in minutes
+        }
+        return { status, workDuration };
+    };
+
+    const handleApproveShift = async (shiftToApprove: Shift, approvedOvertimeHours: number) => {
         if (!firestore) return;
         const batch = writeBatch(firestore);
+        
+        // 1. Approve all pending clockings in the shift
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
-                const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
+                const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
                 batch.update(docRef, { status: 'confermata' });
             }
         });
+
+        // 2. Create overtime request if applicable
+        if (approvedOvertimeHours > 0) {
+            const shiftDate = shiftToApprove.events[0].timestamp.toDate();
+            const overtimeRequest = {
+                userId: operator.id,
+                type: 'straordinario' as const,
+                status: 'approvato' as const,
+                startDate: Timestamp.fromDate(shiftDate),
+                endDate: Timestamp.fromDate(shiftDate),
+                hours: approvedOvertimeHours,
+                reason: 'Straordinario approvato da turno',
+                createdAt: serverTimestamp(),
+            };
+            const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
+            batch.set(newRequestRef, overtimeRequest);
+        }
+
         await batch.commit().then(() => {
-            toast({ title: 'Successo', description: 'Turno approvato.' });
+            toast({ title: 'Successo', description: 'Turno e straordinari approvati.' });
             setIsDetailOpen(false);
+            setIsApproveOvertimeOpen(false);
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
@@ -176,12 +216,12 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         if (!firestore || !shiftToDelete) return;
         const batch = writeBatch(firestore);
         shiftToDelete.events.forEach(event => {
-            const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             batch.delete(docRef);
         });
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno eliminato.' });
-            setIsDetailOpen(false); // Close the detail dialog as well
+            setIsDetailOpen(false);
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
@@ -204,7 +244,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         const [hours, minutes, seconds] = newTime.split(':').map(Number);
         const newDate = set(originalDate, { hours, minutes, seconds });
 
-        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, editingTimbratura.id);
+        const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, editingTimbratura.id);
         const updatePayload = {
             timestamp: Timestamp.fromDate(newDate),
             type: newType,
@@ -214,7 +254,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
             toast({ title: 'Successo', description: 'Timbratura aggiornata.' });
             setIsEditTimbraturaDialogOpen(false);
             setEditingTimbratura(null);
-            setIsDetailOpen(false); // Close the main dialog to force a data refresh
+            setIsDetailOpen(false);
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile aggiornare la timbratura.', variant: 'destructive' });
         });
@@ -222,12 +262,12 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
     
     const handleConfirmDeleteTimbratura = async () => {
         if (!firestore || !deletingTimbratura) return;
-        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, deletingTimbratura.id);
+        const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, deletingTimbratura.id);
         await deleteDoc(docRef).then(() => {
             toast({ title: 'Successo', description: 'Timbratura eliminata.' });
             setIsDeleteTimbraturaDialogOpen(false);
             setDeletingTimbratura(null);
-            setIsDetailOpen(false); // Close main dialog to refresh
+            setIsDetailOpen(false);
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
         });
@@ -237,6 +277,44 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
         setDetailShift(shift);
         setIsDetailOpen(true);
     }
+
+    const calculateOvertime = (shift: Shift | null): { regular: number, overtime: number } => {
+        if (!shift || !operator.workHours) return { regular: 0, overtime: 0 };
+        const shiftDate = shift.events[0]?.timestamp.toDate();
+        if (!shiftDate) return { regular: 0, overtime: 0 };
+
+        const dayOfWeek = getDay(shiftDate); // Sunday = 0, Saturday = 6
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+        const totalMinutes = shift.workDuration;
+
+        if (isWeekend) {
+            return { regular: 0, overtime: totalMinutes };
+        }
+
+        const contractualMinutes = operator.workHours * 60;
+        if (totalMinutes > contractualMinutes) {
+            const overtimeMinutes = totalMinutes - contractualMinutes;
+            return { regular: contractualMinutes, overtime: overtimeMinutes };
+        }
+
+        return { regular: totalMinutes, overtime: 0 };
+    };
+
+    const formatMinutes = (minutes: number) => {
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    const handleOpenOvertimeDialog = (shift: Shift) => {
+        const { overtime } = calculateOvertime(shift);
+        const overtimeInHours = (overtime / 60).toFixed(2);
+        setOvertimeHours(overtimeInHours);
+        setDetailShift(shift);
+        setIsApproveOvertimeOpen(true);
+    }
+    
 
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
     if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno trovato.</p>;
@@ -253,6 +331,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                             <TableHead>Data Turno</TableHead>
                             <TableHead>Inizio</TableHead>
                             <TableHead>Fine</TableHead>
+                            <TableHead>Durata</TableHead>
                             <TableHead>Stato</TableHead>
                             <TableHead className="text-right">Azioni</TableHead>
                         </TableRow>
@@ -266,6 +345,7 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                                     <TableCell>{formatDate(startTime)}</TableCell>
                                     <TableCell>{formatTime(startTime)}</TableCell>
                                     <TableCell>{formatTime(endTime)}</TableCell>
+                                    <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
                                     <TableCell>
                                         <Badge variant={
                                             shift.status === 'in_sospeso' ? 'default'
@@ -287,33 +367,33 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                 </Table>
             </div>
 
-            {/* Shift Delete Confirmation Dialog */}
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteShift}>
-                            Elimina Turno
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
+                    <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleDeleteShift}>Elimina Turno</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
             
-             {/* Edit/View Details Dialog */}
              <ResponsiveDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
                 <ResponsiveDialogContent className="sm:max-w-3xl">
                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
-                         {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>
-                           Turno del {formatDate(detailShift.events[0].timestamp)}
-                         </ResponsiveDialogDescription>}
+                         {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
+
+                     {detailShift && detailShift.status !== 'in_corso' && (
+                        <Card className="my-4">
+                            <CardHeader className="pb-2"><CardTitle className="text-lg">Riepilogo Ore</CardTitle></CardHeader>
+                            <CardContent className="text-sm">
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div><p className="font-semibold">Durata Turno</p><p>{formatMinutes(detailShift.workDuration)}</p></div>
+                                    <div><p className="font-semibold">Ore Ordinarie</p><p>{formatMinutes(calculateOvertime(detailShift).regular)}</p></div>
+                                    <div className={cn(calculateOvertime(detailShift).overtime > 0 && "text-amber-600 font-bold")}><p className="font-semibold">Straordinario</p><p>{formatMinutes(calculateOvertime(detailShift).overtime)}</p></div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                     )}
+
                     <div className="overflow-x-auto my-4 max-h-96 overflow-y-auto">
                         <Table>
                             <TableHeader>
@@ -346,69 +426,55 @@ const ShiftApproval = ({ operatorId }: { operatorId: string }) => {
                         </Table>
                     </div>
                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
-                        <ResponsiveDialogClose asChild>
-                           <Button variant="outline">Chiudi</Button>
-                        </ResponsiveDialogClose>
+                        <ResponsiveDialogClose asChild><Button variant="outline">Chiudi</Button></ResponsiveDialogClose>
                         {detailShift?.status === 'in_sospeso' && (
                             <>
-                                <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}>
-                                    <Trash2 className="mr-2 h-4 w-4"/> Elimina Turno
-                                </Button>
-                                <Button onClick={() => handleApproveShift(detailShift)}>
-                                    <CheckCircle className="mr-2 h-4 w-4" /> Approva Turno
-                                </Button>
+                                <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
+                                <Button onClick={() => handleOpenOvertimeDialog(detailShift)}><CheckCircle className="mr-2 h-4 w-4" /> Approva Turno</Button>
                             </>
                         )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
 
-             {/* Edit Timbratura Dialog */}
+            <AlertDialog open={isApproveOvertimeOpen} onOpenChange={setIsApproveOvertimeOpen}>
+                <AlertDialogContent>
+                     <AlertDialogHeader>
+                        <AlertDialogTitle>Approva Turno e Straordinari</AlertDialogTitle>
+                        <AlertDialogDescription>Conferma le ore di straordinario da assegnare per questo turno. Puoi modificare il valore calcolato.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="py-4">
+                        <Label htmlFor="overtime-hours" className="text-sm font-medium">Ore di Straordinario</Label>
+                        <Input id="overtime-hours" type="number" value={overtimeHours} onChange={(e) => setOvertimeHours(e.target.value)} step="0.01" min="0" />
+                        <p className="text-xs text-muted-foreground mt-2">Usa il punto (.) per i decimali. Es: 1.5 per un'ora e mezza.</p>
+                    </div>
+                     <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => detailShift && handleApproveShift(detailShift, parseFloat(overtimeHours) || 0)}>Approva</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             <ResponsiveDialog open={isEditTimbraturaDialogOpen} onOpenChange={setIsEditTimbraturaDialogOpen}>
                 <ResponsiveDialogContent>
-                    <ResponsiveDialogHeader>
-                        <ResponsiveDialogTitle>Modifica Timbratura</ResponsiveDialogTitle>
-                    </ResponsiveDialogHeader>
+                    <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Timbratura</ResponsiveDialogTitle></ResponsiveDialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-type" className="text-right">Tipo</Label>
+                        <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-type" className="text-right">Tipo</Label>
                             <Select value={newType} onValueChange={(value) => setNewType(value as any)}>
-                                <SelectTrigger id="edit-type" className="col-span-3">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="entrata">Entrata</SelectItem>
-                                    <SelectItem value="pausa">Pausa</SelectItem>
-                                    <SelectItem value="fine_pausa">Fine Pausa</SelectItem>
-                                    <SelectItem value="uscita">Uscita</SelectItem>
-                                </SelectContent>
+                                <SelectTrigger id="edit-type" className="col-span-3"><SelectValue /></SelectTrigger>
+                                <SelectContent><SelectItem value="entrata">Entrata</SelectItem><SelectItem value="pausa">Pausa</SelectItem><SelectItem value="fine_pausa">Fine Pausa</SelectItem><SelectItem value="uscita">Uscita</SelectItem></SelectContent>
                             </Select>
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-time" className="text-right">Orario (HH:mm:ss)</Label>
-                            <Input id="edit-time" value={newTime} onChange={(e) => setNewTime(e.target.value)} className="col-span-3" />
-                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-time" className="text-right">Orario (HH:mm:ss)</Label><Input id="edit-time" value={newTime} onChange={(e) => setNewTime(e.target.value)} className="col-span-3" /></div>
                     </div>
-                    <ResponsiveDialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditTimbraturaDialogOpen(false)}>Annulla</Button>
-                        <Button onClick={handleEditTimbratura}>Salva Modifiche</Button>
-                    </ResponsiveDialogFooter>
+                    <ResponsiveDialogFooter><Button variant="outline" onClick={() => setIsEditTimbraturaDialogOpen(false)}>Annulla</Button><Button onClick={handleEditTimbratura}>Salva Modifiche</Button></ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
 
-            {/* Delete Single Timbratura Confirmation */}
             <AlertDialog open={isDeleteTimbraturaDialogOpen} onOpenChange={setIsDeleteTimbraturaDialogOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Eliminare questa timbratura?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            L'azione è permanente e non può essere annullata.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setDeletingTimbratura(null)}>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmDeleteTimbratura}>Elimina</AlertDialogAction>
-                    </AlertDialogFooter>
+                    <AlertDialogHeader><AlertDialogTitle>Eliminare questa timbratura?</AlertDialogTitle><AlertDialogDescription>L'azione è permanente e non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel onClick={() => setDeletingTimbratura(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleConfirmDeleteTimbratura}>Elimina</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </>
@@ -644,7 +710,7 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
     );
 };
 
-const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
+const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator: Operator }) => {
     const firestore = useFirestore();
     const router = useRouter();
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -676,7 +742,8 @@ const MonthlySummary = ({ operatorId }: { operatorId: string }) => {
     }, [firestore, operatorId, startOfMonth, endOfMonth]);
 
     const summary = useMemo(() => {
-        const dailyTimbrature = timbrature.reduce((acc, t) => {
+        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
+        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) acc[day] = [];
             acc[day].push(t);
@@ -844,7 +911,7 @@ export default function OperatorDetailPage() {
                 </Avatar>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">{operator.username}</h1>
-                    <p className="text-muted-foreground">ID Operatore: {operator.id}</p>
+                    <p className="text-muted-foreground">Ore giornaliere: {operator.workHours} | ID: {operator.id}</p>
                 </div>
             </div>
 
@@ -854,11 +921,11 @@ export default function OperatorDetailPage() {
                         <AccordionTrigger className="p-6">
                             <div className="flex items-center gap-3">
                                 <ListChecks className="h-6 w-6 text-primary"/>
-                                <h3 className="text-xl font-semibold">Approvazione Turni</h3>
+                                <h3 className="text-xl font-semibold">Approvazione Turni e Straordinari</h3>
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                            <ShiftApproval operatorId={operator.id} />
+                            <ShiftApproval operator={operator} />
                         </AccordionContent>
                     </AccordionItem>
                 </Card>
@@ -897,7 +964,7 @@ export default function OperatorDetailPage() {
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                           <MonthlySummary operatorId={operator.id}/>
+                           <MonthlySummary operatorId={operator.id} operator={operator}/>
                         </AccordionContent>
                     </AccordionItem>
                 </Card>

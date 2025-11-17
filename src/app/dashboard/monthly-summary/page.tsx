@@ -77,7 +77,6 @@ export default function MonthlySummaryPage() {
             collection(firestore, `app-users/${user.id}/timbrature`),
             where('timestamp', '>=', startOfMonth),
             where('timestamp', '<=', endOfMonth)
-            // RIMOSSO: where('status', '==', 'confermata') - causa errore indice
         );
 
         const unsubscribeRequests = onSnapshot(requestsQuery, 
@@ -96,7 +95,7 @@ export default function MonthlySummaryPage() {
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                setTimbrature(data);
+                setTimbrature(data.filter(t => t.status === 'confermata'));
                 setIsDataLoading(false);
             },
             (error) => {
@@ -113,8 +112,7 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, startOfMonth, endOfMonth, toast]);
     
     const summary = useMemo(() => {
-        const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
-        const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
+        const dailyTimbrature = timbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) {
                 acc[day] = [];
@@ -346,3 +344,5 @@ export default function MonthlySummaryPage() {
         </>
     );
 }
+
+    
