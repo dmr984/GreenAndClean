@@ -1,12 +1,13 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, collectionGroup } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Loader2, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
+import { Badge } from '@/components/ui/badge';
 
 type Operator = {
     id: string;
@@ -31,49 +32,79 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     const { toast } = useToast();
     const [operators, setOperators] = useState<Operator[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
 
     const operatorsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        const q = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
-        return q;
+        return query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
     }, [firestore]);
 
     useEffect(() => {
-        if (!operatorsQuery || !user || user.role !== 'admin' ) {
+        if (!operatorsQuery || user?.role !== 'admin') {
             setIsLoading(false);
             return;
         }
 
-        const unsubscribe = onSnapshot(operatorsQuery, (snapshot) => {
-            const usersData = snapshot.docs
-                .map(doc => ({ id: doc.id, ...doc.data() })) as Operator[];
-            
+        const unsubscribeOperators = onSnapshot(operatorsQuery, (snapshot) => {
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Operator[];
             usersData.sort((a,b) => a.username.localeCompare(b.username, undefined, { numeric: true }));
-
             setOperators(usersData);
             setIsLoading(false);
         }, (error) => {
-            if (error.code === 'permission-denied' && firestore) {
-                 const contextualError = new FirestorePermissionError({
-                    operation: 'list',
-                    path: 'app-users',
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                toast({
-                    title: "Errore",
-                    description: "Impossibile caricare gli operatori.",
-                    variant: "destructive",
-                });
-            }
+            console.error("Error fetching operators:", error);
+            toast({ title: "Errore", description: "Impossibile caricare gli operatori.", variant: "destructive" });
             setIsLoading(false);
         });
+        
+        const pendingShiftsQuery = query(collectionGroup(firestore, 'timbrature'), where('status', '==', 'sospesa'));
+        const pendingLeaveQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
+        const pendingSupplyQuery = query(collectionGroup(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
 
-        return () => unsubscribe();
-    }, [operatorsQuery, toast, firestore, user]);
+        const countPending = (query: any, itemType: string) => onSnapshot(query, (snapshot) => {
+            const counts: Record<string, number> = {};
+            snapshot.forEach(doc => {
+                const userId = doc.data().userId;
+                counts[userId] = (counts[userId] || 0) + 1;
+            });
+
+            setPendingCounts(prev => {
+                const newCounts = { ...prev };
+                // Reset counts for this type
+                Object.keys(newCounts).forEach(key => {
+                    if (key.startsWith(itemType)) delete newCounts[key];
+                });
+                // Add new counts
+                Object.entries(counts).forEach(([userId, count]) => {
+                    newCounts[`${itemType}_${userId}`] = count;
+                });
+                return newCounts;
+            });
+
+        }, (error) => console.error(`Error counting ${itemType}:`, error));
+
+        const unsubShifts = countPending(pendingShiftsQuery, 'shifts');
+        const unsubLeave = countPending(pendingLeaveQuery, 'leave');
+        const unsubSupply = countPending(pendingSupplyQuery, 'supply');
+
+        return () => {
+            unsubscribeOperators();
+            unsubShifts();
+            unsubLeave();
+            unsubSupply();
+        };
+
+    }, [operatorsQuery, user, firestore, toast]);
 
     if (!user) {
         return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
+    }
+
+    const getTotalPendingForOperator = (operatorId: string) => {
+        let total = 0;
+        if(pendingCounts[`shifts_${operatorId}`]) total += 1; // Treat all pending shifts for a day as one notification item
+        if(pendingCounts[`leave_${operatorId}`]) total += pendingCounts[`leave_${operatorId}`];
+        if(pendingCounts[`supply_${operatorId}`]) total += pendingCounts[`supply_${operatorId}`];
+        return total;
     }
     
     const navigateToOperator = (operatorId: string) => {
@@ -96,17 +127,25 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                         </div>
                     ) : operators.length > 0 ? (
                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {operators.map((operator) => (
-                                <Button
-                                    key={operator.id}
-                                    variant="outline"
-                                    className="h-20 flex flex-col gap-2 items-center justify-center"
-                                    onClick={() => navigateToOperator(operator.id)}
-                                >
-                                    <User className="h-5 w-5" />
-                                    <span className="text-center">{operator.username}</span>
-                                </Button>
-                            ))}
+                            {operators.map((operator) => {
+                                const pendingCount = getTotalPendingForOperator(operator.id);
+                                return (
+                                    <Button
+                                        key={operator.id}
+                                        variant="outline"
+                                        className="h-24 flex flex-col gap-2 items-center justify-center relative"
+                                        onClick={() => navigateToOperator(operator.id)}
+                                    >
+                                        {pendingCount > 0 && (
+                                            <Badge variant="destructive" className="absolute -top-2 -right-2 h-6 w-6 flex items-center justify-center rounded-full p-0">
+                                                {pendingCount}
+                                            </Badge>
+                                        )}
+                                        <User className="h-6 w-6" />
+                                        <span className="text-center text-sm">{operator.username}</span>
+                                    </Button>
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="text-center text-muted-foreground py-10">

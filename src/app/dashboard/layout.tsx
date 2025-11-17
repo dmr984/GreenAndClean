@@ -12,19 +12,14 @@ import { useUser } from '@/hooks/use-user';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
-import { NotificationBell } from '@/components/notification-bell';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const { user, isLoading } = useUser();
-  const firestore = useFirestore();
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   useEffect(() => {
     // This is the single "gatekeeper" for the dashboard.
@@ -33,54 +28,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.replace('/');
     }
   }, [user, isLoading, router]);
-
-  useEffect(() => {
-    if (user?.role !== 'admin' || !firestore) {
-      setPendingRequestsCount(0);
-      return;
-    }
-
-    const leaveRequestsQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
-    const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
-
-    let leaveCount = 0;
-    let supplyCount = 0;
-
-    const updateCounts = () => {
-        setPendingRequestsCount(leaveCount + supplyCount);
-    }
-
-    const unsubLeave = onSnapshot(leaveRequestsQuery, (snapshot) => {
-        leaveCount = snapshot.size;
-        updateCounts();
-    }, (error) => {
-        if (error.code === 'permission-denied') {
-            const contextualError = new FirestorePermissionError({
-                operation: 'list',
-                path: 'requests',
-            });
-            errorEmitter.emit('permission-error', contextualError);
-        }
-    });
-
-    const unsubSupply = onSnapshot(supplyRequestsQuery, (snapshot) => {
-        supplyCount = snapshot.size;
-        updateCounts();
-    }, (error) => {
-         if (error.code === 'permission-denied') {
-            const contextualError = new FirestorePermissionError({
-                operation: 'list',
-                path: 'supply-requests',
-            });
-            errorEmitter.emit('permission-error', contextualError);
-        }
-    });
-
-    return () => {
-      unsubLeave();
-      unsubSupply();
-    };
-  }, [user, firestore]);
 
   const handleLogout = async () => {
     localStorage.removeItem('user');
@@ -220,9 +167,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex justify-end items-center gap-4 w-10">
-             {user?.role === 'admin' && (
-                <NotificationBell notificationCount={pendingRequestsCount} />
-             )}
+             {/* Notification Bell removed */}
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">

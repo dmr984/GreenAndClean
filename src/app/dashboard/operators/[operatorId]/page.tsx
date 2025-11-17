@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -94,13 +94,12 @@ type DetailView = {
     items: Request[];
 } | null;
 
-const ShiftApproval = ({ operator }: { operator: Operator }) => {
+const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setPendingCount: (count: number) => void }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     
-    // Dialog states
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     
@@ -120,46 +119,69 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
 
     useEffect(() => {
         if (!firestore) return;
-        const q = query(collection(firestore, `app-users/${operator.id}/timbrature`));
+        const q = query(collection(firestore, `app-users/${operator.id}/timbrature`), where('status', '==', 'sospesa'));
+        
         const unsubscribe = onSnapshot(q, snapshot => {
-            const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
-            allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const pendingClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            
+            // This is a simplified view for notification. We group all pending by day.
+            const pendingDays = new Set(pendingClockings.map(c => c.timestamp.toDate().toDateString()));
+            setPendingCount(pendingDays.size > 0 ? 1 : 0); // Simplified: 1 if ANY shifts are pending
 
-            const groupedShifts: Shift[] = [];
-            let currentShiftEvents: Timbratura[] = [];
+            const fetchAllClockingsForPendingDays = async () => {
+                if (pendingClockings.length === 0) {
+                    setShifts([]);
+                    setIsLoading(false);
+                    return;
+                }
+                
+                const allClockingsQuery = query(collection(firestore, `app-users/${operator.id}/timbrature`), orderBy('timestamp', 'asc'));
+                const allClockingsSnapshot = await getDocs(allClockingsQuery);
+                const allClockings = allClockingsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
 
-            for (const event of allClockings) {
-                if (event.type === 'entrata' && currentShiftEvents.length > 0) {
-                    const { status, workDuration } = processShift(currentShiftEvents);
-                    groupedShifts.push({ events: currentShiftEvents, status, workDuration });
-                    currentShiftEvents = [event];
-                } else {
-                    currentShiftEvents.push(event);
-                    if (event.type === 'uscita') {
+                const groupedShifts: Shift[] = [];
+                let currentShiftEvents: Timbratura[] = [];
+
+                for (const event of allClockings) {
+                    if (event.type === 'entrata' && currentShiftEvents.length > 0) {
                         const { status, workDuration } = processShift(currentShiftEvents);
-                        groupedShifts.push({ events: currentShiftEvents, status, workDuration });
-                        currentShiftEvents = [];
+                        if (status !== 'confermato') {
+                           groupedShifts.push({ events: currentShiftEvents, status, workDuration });
+                        }
+                        currentShiftEvents = [event];
+                    } else {
+                        currentShiftEvents.push(event);
+                        if (event.type === 'uscita') {
+                            const { status, workDuration } = processShift(currentShiftEvents);
+                             if (status !== 'confermato') {
+                                groupedShifts.push({ events: currentShiftEvents, status, workDuration });
+                            }
+                            currentShiftEvents = [];
+                        }
                     }
                 }
-            }
 
-            if (currentShiftEvents.length > 0) {
-                 const { status, workDuration } = processShift(currentShiftEvents);
-                 groupedShifts.push({ events: currentShiftEvents, status, workDuration });
-            }
-            
-            // Filter to show only shifts requiring action
-            const actionRequiredShifts = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
-            
-            setShifts(actionRequiredShifts.reverse());
-            setIsLoading(false);
+                if (currentShiftEvents.length > 0) {
+                     const { status, workDuration } = processShift(currentShiftEvents);
+                     if (status !== 'confermato') {
+                        groupedShifts.push({ events: currentShiftEvents, status, workDuration });
+                     }
+                }
+
+                setShifts(groupedShifts.reverse());
+                setIsLoading(false);
+            };
+
+            fetchAllClockingsForPendingDays();
+
         }, error => {
             console.error(error);
             toast({ title: 'Errore', description: 'Impossibile caricare le timbrature.', variant: 'destructive' });
             setIsLoading(false);
+            setPendingCount(0);
         });
         return unsubscribe;
-    }, [firestore, operator.id, toast]);
+    }, [firestore, operator.id, toast, setPendingCount]);
 
     const processShift = (events: Timbratura[]): { status: Shift['status'], workDuration: number } => {
         const hasPending = events.some(e => e.status === 'sospesa');
@@ -588,7 +610,7 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
 };
 
 
-const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
+const LeaveRequests = ({ operatorId, setPendingCount }: { operatorId: string, setPendingCount: (count: number) => void }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [requests, setRequests] = useState<Request[]>([]);
@@ -600,20 +622,22 @@ const LeaveRequests = ({ operatorId }: { operatorId: string }) => {
         if (!firestore) return;
         const q = query(
             collection(firestore, `app-users/${operatorId}/requests`),
+            where('status', '==', 'in_attesa'),
             orderBy('createdAt', 'desc')
         );
         const unsubscribe = onSnapshot(q, snapshot => {
-            const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
-            const pendingRequests = allRequests.filter(r => r.status === 'in_attesa');
+            const pendingRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
             setRequests(pendingRequests);
+            setPendingCount(snapshot.size);
             setIsLoading(false);
         }, error => {
             console.error(error);
             toast({ title: 'Errore', description: 'Impossibile caricare le richieste.', variant: 'destructive' });
             setIsLoading(false);
+            setPendingCount(0);
         });
         return unsubscribe;
-    }, [firestore, operatorId, toast]);
+    }, [firestore, operatorId, toast, setPendingCount]);
 
     const handleUpdateRequestStatus = (requestId: string, newStatus: 'approvato' | 'rifiutato') => {
         if (!firestore) return;
@@ -744,7 +768,7 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
 };
 
 
-const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, operatorUsername: string }) => {
+const SupplyRequests = ({ operatorId, setPendingCount }: { operatorId: string, setPendingCount: (count: number) => void }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [requests, setRequests] = useState<SupplyRequest[]>([]);
@@ -758,25 +782,23 @@ const SupplyRequests = ({ operatorId, operatorUsername }: { operatorId: string, 
         if (!firestore) return;
         const q = query(
             collection(firestore, 'supply-requests'),
-            where('userId', '==', operatorId)
+            where('userId', '==', operatorId),
+            where('status', '==', 'in_attesa')
         );
         const unsubscribe = onSnapshot(q, snapshot => {
-            const allRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
-            
-            const pendingRequests = allRequests
-                .filter(req => req.status === 'in_attesa');
-
+            const pendingRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
             pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-
             setRequests(pendingRequests);
+            setPendingCount(snapshot.size);
             setIsLoading(false);
         }, error => {
             console.error(error);
             toast({ title: 'Errore', description: 'Impossibile caricare le richieste di fornitura.', variant: 'destructive' });
             setIsLoading(false);
+            setPendingCount(0);
         });
         return unsubscribe;
-    }, [firestore, operatorId, toast]);
+    }, [firestore, operatorId, toast, setPendingCount]);
     
     const openApproveDialog = (request: SupplyRequest) => {
         setSelectedRequest(request);
@@ -1130,6 +1152,11 @@ export default function OperatorDetailPage() {
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [accordionState, setAccordionState] = useState<string[]>([]);
+
+    const [pendingShiftsCount, setPendingShiftsCount] = useState(0);
+    const [pendingLeaveCount, setPendingLeaveCount] = useState(0);
+    const [pendingSupplyCount, setPendingSupplyCount] = useState(0);
 
     const operatorDocRef = useMemoFirebase(() => {
         if (!firestore || !operatorId) return null;
@@ -1177,6 +1204,13 @@ export default function OperatorDetailPage() {
         return scheduleString || 'Nessun giorno lavorativo impostato.';
     };
 
+    const AccordionTriggerWithBadge = ({ children, count }: { children: React.ReactNode, count: number }) => (
+        <div className="flex items-center gap-3">
+            {children}
+            {count > 0 && <Badge variant="destructive" className="flex h-5 w-5 items-center justify-center rounded-full p-0">{count > 9 ? '9+' : count}</Badge>}
+        </div>
+    );
+    
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4">
@@ -1189,43 +1223,43 @@ export default function OperatorDetailPage() {
                 </div>
             </div>
 
-            <Accordion type="multiple" className="w-full space-y-4" defaultValue={['item-1']}>
+            <Accordion type="multiple" className="w-full space-y-4" value={accordionState} onValueChange={setAccordionState}>
                  <Card>
                     <AccordionItem value="item-1" className="border-b-0">
-                        <AccordionTrigger className="p-6">
-                            <div className="flex items-center gap-3">
+                        <AccordionTrigger className="p-6" onClick={() => pendingShiftsCount > 0 && setPendingShiftsCount(0)}>
+                           <AccordionTriggerWithBadge count={pendingShiftsCount}>
                                 <ListChecks className="h-6 w-6 text-primary"/>
                                 <h3 className="text-xl font-semibold">Approvazione Turni e Straordinari</h3>
-                            </div>
+                            </AccordionTriggerWithBadge>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                            <ShiftApproval operator={operator} />
+                            <ShiftApproval operator={operator} setPendingCount={setPendingShiftsCount} />
                         </AccordionContent>
                     </AccordionItem>
                 </Card>
                  <Card>
                     <AccordionItem value="item-2" className="border-b-0">
-                        <AccordionTrigger className="p-6">
-                            <div className="flex items-center gap-3">
+                        <AccordionTrigger className="p-6" onClick={() => pendingLeaveCount > 0 && setPendingLeaveCount(0)}>
+                            <AccordionTriggerWithBadge count={pendingLeaveCount}>
                                 <ClipboardList className="h-6 w-6 text-primary"/>
                                 <h3 className="text-xl font-semibold">Gestione Richieste Ferie/Permessi</h3>
-                            </div>
+                            </AccordionTriggerWithBadge>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                           <LeaveRequests operatorId={operator.id} />
+                           <LeaveRequests operatorId={operator.id} setPendingCount={setPendingLeaveCount} />
                         </AccordionContent>
                     </AccordionItem>
                 </Card>
                  <Card>
                     <AccordionItem value="item-3" className="border-b-0">
-                        <AccordionTrigger className="p-6">
-                             <div className="flex items-center gap-3">
+                        <AccordionTrigger className="p-6" onClick={() => pendingSupplyCount > 0 && setPendingSupplyCount(0)}>
+                             <AccordionTriggerWithBadge count={pendingSupplyCount}>
                                 <PackageSearch className="h-6 w-6 text-primary"/>
                                 <h3 className="text-xl font-semibold">Gestione Richieste Forniture</h3>
-                            </div>
+                            </AccordionTriggerWithBadge>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                           <SupplyRequests operatorId={operator.id} operatorUsername={operator.username} />
+                           <SupplyRequests operatorId={operator.id} setPendingCount={setPendingSupplyCount} />
                         </AccordionContent>
                     </AccordionItem>
                 </Card>
