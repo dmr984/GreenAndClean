@@ -111,8 +111,8 @@ function DailySummaryContent() {
         // Fetch requests for leave highlighting
         const requestsQuery = query(
             collection(firestore, `app-users/${targetUserId}/requests`),
-            where('startDate', '<=', endOfPeriod),
-            where('status', '==', 'approvato')
+            where('startDate', '<=', endOfPeriod)
+            // Removed: where('status', '==', 'approvato')
         );
 
         const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
@@ -122,12 +122,15 @@ function DailySummaryContent() {
             const malattia: Date[] = [];
             const permesso: Date[] = [];
 
-            snapshot.docs.forEach(doc => {
-                const req = doc.data() as Request;
+            const approvedRequests = snapshot.docs
+                .map(doc => doc.data() as Request)
+                .filter(req => req.status === 'approvato');
+
+            approvedRequests.forEach(req => {
                 const startReq = req.startDate.toDate();
                 const endReq = req.endDate.toDate();
 
-                for (let day = startReq; day <= endReq; day.setDate(day.getDate() + 1)) {
+                for (let day = new Date(startReq); day <= endReq; day.setDate(day.getDate() + 1)) {
                     if (isWithinInterval(day, { start: monthStart, end: monthEnd })) {
                         if (req.type === 'ferie') ferie.push(new Date(day));
                         if (req.type === 'malattia') malattia.push(new Date(day));
@@ -140,6 +143,7 @@ function DailySummaryContent() {
              console.error("Error fetching requests:", error);
              toast({ title: "Errore", description: "Impossibile caricare le richieste di assenza.", variant: "destructive" });
         });
+
 
         return () => {
             unsubTimbrature();
