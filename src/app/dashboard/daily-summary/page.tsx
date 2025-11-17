@@ -1,9 +1,9 @@
 'use client';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { collection, query, where, Timestamp, onSnapshot, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, doc, writeBatch, getDocs, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, Loader2, Plus } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Loader2, Plus, Trash2, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,6 +17,16 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, Resp
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -37,6 +47,12 @@ type Timbratura = {
     status: 'sospesa' | 'confermata';
     latitude?: number;
     longitude?: number;
+};
+
+type Shift = {
+    events: Timbratura[];
+    startTime: Timestamp;
+    endTime: Timestamp | null;
 };
 
 type Request = {
@@ -66,7 +82,7 @@ function DailySummaryContent() {
 
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate);
     const [currentMonth, setCurrentMonth] = useState(initialDate);
-    const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
+    const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
     const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
     const [isLoading, setIsLoading] = useState(true);
@@ -79,12 +95,19 @@ function DailySummaryContent() {
         fine_pausa: '',
     });
 
+    const [editingShift, setEditingShift] = useState<Shift | null>(null);
+    const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+    const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+
     const [operatorData, setOperatorData] = useState<Operator | null>(null);
 
     const targetUserId = operatorId || user?.id;
     const isAdminView = !!operatorId && user?.role === 'admin';
 
-    // Effect to fetch operator's data for work schedule
     useEffect(() => {
         if (!firestore || !targetUserId) return;
 
@@ -110,20 +133,18 @@ function DailySummaryContent() {
         };
     }, [currentMonth]);
     
-    // Effect for fetching all month data (timbrature and requests)
     useEffect(() => {
         if (!firestore || !targetUserId || !operatorData) return;
 
-        // Fetch timbrature
         const monthlyTimbratureQuery = query(
             collection(firestore, `app-users/${targetUserId}/timbrature`),
             where('timestamp', '>=', startOfPeriod),
-            where('timestamp', '<=', endOfPeriod)
+            where('timestamp', '<=', endOfPeriod),
         );
 
         const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, 
             (snapshot) => {
-                const allTimbrature = snapshot.docs.map(doc => doc.data() as Timbratura);
+                const allTimbrature = snapshot.docs.map(doc => doc.data() as {type: string, timestamp: Timestamp, status: string});
                 const confirmedTimbrature = allTimbrature.filter(data => data.status === 'confermata');
                 
                 const dailyEvents = confirmedTimbrature.reduce((acc, t) => {
@@ -131,13 +152,13 @@ function DailySummaryContent() {
                     if (!acc[day]) acc[day] = [];
                     acc[day].push(t.type);
                     return acc;
-                }, {} as Record<string, ('entrata' | 'uscita')[]>);
+                }, {} as Record<string, string[]>);
 
                 const validWorkedDays: Date[] = [];
                 for (const dayStr in dailyEvents) {
                     const events = dailyEvents[dayStr];
                     if (events.includes('entrata') && events.includes('uscita')) {
-                         validWorkedDays.push(new Date(dayStr + 'T12:00:00')); // Use noon to avoid timezone issues
+                         validWorkedDays.push(new Date(dayStr + 'T12:00:00'));
                     }
                 }
                 setWorkedDays(validWorkedDays);
@@ -148,7 +169,6 @@ function DailySummaryContent() {
             }
         );
 
-        // Fetch requests for leave highlighting
         const requestsQuery = query(
             collection(firestore, `app-users/${targetUserId}/requests`),
             where('startDate', '<=', endOfPeriod)
@@ -171,8 +191,7 @@ function DailySummaryContent() {
 
                 for (let day = new Date(startReq); day <= endReq; day.setDate(day.getDate() + 1)) {
                      if (isWithinInterval(day, { start: monthStart, end: monthEnd })) {
-                        // Check if this day is a contractual workday
-                        const dayOfWeekIndex = getDay(day); // 0 for Sunday, 1 for Monday, etc.
+                        const dayOfWeekIndex = getDay(day);
                         const dayName = dayIndexToName[dayOfWeekIndex];
                         const contractualHours = operatorData.workSchedule[dayName] || 0;
 
@@ -180,7 +199,6 @@ function DailySummaryContent() {
                             if (req.type === 'ferie') ferie.push(new Date(day));
                             if (req.type === 'malattia') malattia.push(new Date(day));
                         }
-                         // Permesso is hour-based, so we highlight the day regardless of work schedule for simplicity
                          if (req.type === 'permesso') {
                              permesso.push(new Date(day));
                          }
@@ -193,19 +211,16 @@ function DailySummaryContent() {
              toast({ title: "Errore", description: "Impossibile caricare le richieste di assenza.", variant: "destructive" });
         });
 
-
         return () => {
             unsubTimbrature();
             unsubRequests();
         };
     }, [firestore, targetUserId, startOfPeriod, endOfPeriod, toast, currentMonth, operatorData]);
 
-
-    // Effect to fetch details for the selected day
     useEffect(() => {
         if (!firestore || !targetUserId || !selectedDate) {
             if (!isUserLoading) setIsLoading(false);
-            setTimbrature([]);
+            setDailyShifts([]);
             return;
         }
 
@@ -213,22 +228,44 @@ function DailySummaryContent() {
 
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
-
         const startOfDayTs = Timestamp.fromDate(start);
         const endOfDayTs = Timestamp.fromDate(end);
         
         const timbratureQuery = query(
             collection(firestore, `app-users/${targetUserId}/timbrature`),
             where('timestamp', '>=', startOfDayTs),
-            where('timestamp', '<=', endOfDayTs)
+            where('timestamp', '<=', endOfDayTs),
+            orderBy('timestamp', 'asc')
         );
 
         const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
             (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                const sorted = data.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                const timbratureDelGiorno = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
+                const shifts: Shift[] = [];
+                let currentShiftEvents: Timbratura[] = [];
+
+                timbratureDelGiorno.forEach(t => {
+                    if (t.type === 'entrata' && currentShiftEvents.length > 0) {
+                        shifts.push({ 
+                            events: currentShiftEvents,
+                            startTime: currentShiftEvents[0].timestamp,
+                            endTime: currentShiftEvents[currentShiftEvents.length - 1].type === 'uscita' ? currentShiftEvents[currentShiftEvents.length - 1].timestamp : null
+                        });
+                        currentShiftEvents = [t];
+                    } else {
+                        currentShiftEvents.push(t);
+                    }
+                });
+
+                if (currentShiftEvents.length > 0) {
+                    shifts.push({ 
+                        events: currentShiftEvents,
+                        startTime: currentShiftEvents[0].timestamp,
+                        endTime: currentShiftEvents[currentShiftEvents.length - 1].type === 'uscita' ? currentShiftEvents[currentShiftEvents.length - 1].timestamp : null
+                    });
+                }
                 
-                setTimbrature(sorted);
+                setDailyShifts(shifts);
                 setIsLoading(false);
             },
             (error) => {
@@ -269,7 +306,7 @@ function DailySummaryContent() {
                 const timestamp = createTimestamp(event.time);
                 if (!timestamp) {
                     toast({ title: `Orario non valido per ${event.type}`, variant: 'destructive'});
-                    return; // Stop the whole process if one time is invalid
+                    return;
                 }
                 const newDocRef = doc(timbratureCollectionRef);
                 batch.set(newDocRef, {
@@ -292,6 +329,94 @@ function DailySummaryContent() {
         }
     };
     
+    const handleOpenEditDialog = (shift: Shift) => {
+        setEditingShift(shift);
+        const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
+        shift.events.forEach(e => {
+            times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
+        });
+        setEditShiftTimes(times);
+        setIsEditDialogOpen(true);
+    };
+
+    const handleEditShift = async () => {
+        if (!firestore || !editingShift || !targetUserId || !selectedDate) {
+            return;
+        }
+
+        const batch = writeBatch(firestore);
+
+        const createTimestamp = (time: string): Timestamp | null => {
+            if (!time) return null;
+            const [hours, minutes] = time.split(':').map(Number);
+            if (isNaN(hours) || isNaN(minutes)) return null;
+            return Timestamp.fromDate(set(selectedDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+        };
+
+        const newEventsMap: Partial<Record<Timbratura['type'], { timestamp: Timestamp | null }>> = {
+            entrata: { timestamp: createTimestamp(editShiftTimes.entrata) },
+            uscita: { timestamp: createTimestamp(editShiftTimes.uscita) },
+            pausa: { timestamp: createTimestamp(editShiftTimes.pausa) },
+            fine_pausa: { timestamp: createTimestamp(editShiftTimes.fine_pausa) },
+        };
+
+        // Update existing or delete if time is cleared
+        for (const event of editingShift.events) {
+            const docRef = doc(firestore, `app-users/${targetUserId}/timbrature`, event.id);
+            if (newEventsMap[event.type] && newEventsMap[event.type]?.timestamp) {
+                batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp });
+            } else {
+                batch.delete(docRef);
+            }
+            delete newEventsMap[event.type];
+        }
+
+        // Add new events
+        for (const type in newEventsMap) {
+            const eventType = type as Timbratura['type'];
+            const timestamp = newEventsMap[eventType]?.timestamp;
+            if (timestamp) {
+                const newDocRef = doc(collection(firestore, `app-users/${targetUserId}/timbrature`));
+                batch.set(newDocRef, {
+                    userId: targetUserId,
+                    type: eventType,
+                    timestamp: timestamp,
+                    status: 'confermata',
+                });
+            }
+        }
+
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Turno aggiornato.' });
+        } catch (error) {
+            console.error("Error editing shift:", error);
+            toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
+        } finally {
+            setIsEditDialogOpen(false);
+            setEditingShift(null);
+        }
+    };
+    
+    const handleDeleteShift = async () => {
+        if (!firestore || !shiftToDelete || !targetUserId) return;
+        const batch = writeBatch(firestore);
+        shiftToDelete.events.forEach(event => {
+            const docRef = doc(firestore, `app-users/${targetUserId}/timbrature`, event.id);
+            batch.delete(docRef);
+        });
+        
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Turno eliminato con successo.' });
+        } catch (error) {
+            toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
+        } finally {
+            setIsDeleteDialogOpen(false);
+            setShiftToDelete(null);
+        }
+    };
+
     if (isUserLoading || !operatorData) {
         return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
@@ -302,6 +427,10 @@ function DailySummaryContent() {
 
     const handleInputChange = (field: keyof typeof newShift, value: string) => {
         setNewShift(prev => ({ ...prev, [field]: value }));
+    };
+    
+    const handleEditInputChange = (field: keyof typeof editShiftTimes, value: string) => {
+        setEditShiftTimes(prev => ({ ...prev, [field]: value }));
     };
 
     return (
@@ -367,34 +496,51 @@ function DailySummaryContent() {
                          <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                     ) : (
                         <div className="border rounded-md">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Orario</TableHead>
-                                        <TableHead>Evento</TableHead>
-                                        <TableHead className="text-right">Stato</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {timbrature.length > 0 ? (
-                                        timbrature.map((t) => (
-                                            <TableRow key={t.id}>
-                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Badge variant={t.status === 'confermata' ? 'secondary' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>
-                                                        {t.status}
-                                                    </Badge>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={3} className="text-center h-24">Nessuna timbratura trovata per questo giorno.</TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+                            {dailyShifts.length > 0 ? (
+                                dailyShifts.map((shift, index) => (
+                                    <div key={index} className="border-b last:border-b-0">
+                                        <div className='p-4'>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                {isAdminView && (
+                                                    <div className="flex gap-2">
+                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}>
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" onClick={() => {setShiftToDelete(shift); setIsDeleteDialogOpen(true);}}>
+                                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>Orario</TableHead>
+                                                        <TableHead>Evento</TableHead>
+                                                        <TableHead className="text-right">Stato</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {shift.events.map(t => (
+                                                        <TableRow key={t.id}>
+                                                            <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                            <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                            <TableCell className="text-right">
+                                                                <Badge variant={t.status === 'confermata' ? 'secondary' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>
+                                                                    {t.status}
+                                                                </Badge>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center h-24 flex items-center justify-center">Nessun turno trovato per questo giorno.</div>
+                            )}
                         </div>
                     )}
                 </CardContent>
@@ -434,6 +580,55 @@ function DailySummaryContent() {
                 </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
+        
+        <ResponsiveDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Modifica Turno</ResponsiveDialogTitle>
+                </ResponsiveDialogHeader>
+                <div className="grid gap-4 py-4">
+                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <Label htmlFor="edit-entrata">Entrata*</Label>
+                           <Input id="edit-entrata" type="time" value={editShiftTimes.entrata} onChange={e => handleEditInputChange('entrata', e.target.value)} required />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="edit-uscita">Uscita*</Label>
+                            <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => handleEditInputChange('uscita', e.target.value)} required />
+                        </div>
+                     </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <Label htmlFor="edit-pausa">Inizio Pausa (Opz.)</Label>
+                           <Input id="edit-pausa" type="time" value={editShiftTimes.pausa} onChange={e => handleEditInputChange('pausa', e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="edit-fine-pausa">Fine Pausa (Opz.)</Label>
+                            <Input id="edit-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => handleEditInputChange('fine_pausa', e.target.value)} />
+                        </div>
+                     </div>
+                </div>
+                <ResponsiveDialogFooter>
+                    <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Annulla</Button>
+                    <Button onClick={handleEditShift}>Salva Modifiche</Button>
+                </ResponsiveDialogFooter>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+
+         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei sicuro di voler eliminare questo turno?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione è permanente e non può essere annullata. Tutte le timbrature associate a questo turno verranno eliminate.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteShift}>Elimina</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         </>
     );
 }

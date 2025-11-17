@@ -148,7 +148,10 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
                  groupedShifts.push({ events: currentShiftEvents, status, workDuration });
             }
             
-            setShifts(groupedShifts.reverse());
+            // Filter to show only shifts requiring action
+            const actionRequiredShifts = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
+            
+            setShifts(actionRequiredShifts.reverse());
             setIsLoading(false);
         }, error => {
             console.error(error);
@@ -386,7 +389,7 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
     
 
     if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
-    if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno trovato.</p>;
+    if (shifts.length === 0) return <p className="text-sm text-muted-foreground">Nessun turno in attesa di approvazione.</p>;
     
     const formatTime = (date: Timestamp | undefined) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
     const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
@@ -901,8 +904,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         
         const unsubRequests = onSnapshot(requestsQuery, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()} as Request))));
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
-            const allTimbrature = s.docs.map(d => d.data() as Timbratura);
-            setTimbrature(allTimbrature.filter(t => t.status === 'confermata'));
+            setTimbrature(s.docs.map(d => d.data() as Timbratura));
             setIsLoading(false);
         });
 
