@@ -25,10 +25,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, differenceInDays, parse, set, getDay } from 'date-fns';
+import { format, differenceInDays, parse, set } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 
 type Operator = {
@@ -37,6 +41,7 @@ type Operator = {
     firstName: string;
     lastName: string;
     workHours: number;
+    workDays: DayOfWeek[];
 };
 
 type Timbratura = {
@@ -279,19 +284,22 @@ const ShiftApproval = ({ operator }: { operator: Operator }) => {
     }
 
     const calculateOvertime = (shift: Shift | null): { regular: number, overtime: number } => {
-        if (!shift || !operator.workHours) return { regular: 0, overtime: 0 };
+        if (!shift || !operator.workHours || !operator.workDays) return { regular: 0, overtime: 0 };
         const shiftDate = shift.events[0]?.timestamp.toDate();
         if (!shiftDate) return { regular: 0, overtime: 0 };
 
-        const dayOfWeek = getDay(shiftDate); // Sunday = 0, Saturday = 6
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const dayOfWeekFns = getDayFns(shiftDate); // date-fns: Sunday = 0, Saturday = 6
+        const dayName = dayIndexToName[dayOfWeekFns];
 
+        const isWorkDay = operator.workDays.includes(dayName);
         const totalMinutes = shift.workDuration;
 
-        if (isWeekend) {
+        if (!isWorkDay) {
+            // If it's not a contractual work day, all duration is overtime
             return { regular: 0, overtime: totalMinutes };
         }
 
+        // It is a work day, calculate overtime based on workHours
         const contractualMinutes = operator.workHours * 60;
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
@@ -903,6 +911,17 @@ export default function OperatorDetailPage() {
         return username.substring(0, 2).toUpperCase();
     };
 
+    const formatWorkInfo = () => {
+        if (!operator) return '';
+        const days = operator.workDays || [];
+        const sortedDays = days.slice().sort((a,b) => dayIndexToName.indexOf(a) - dayIndexToName.indexOf(b));
+        const dayMapping: Record<DayOfWeek, string> = {
+            monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom'
+        };
+        const dayStr = sortedDays.map(d => dayMapping[d]).join(', ');
+        return `Ore: ${operator.workHours}/g | Giorni: ${dayStr || 'N/D'} | ID: ${operator.id}`;
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4">
@@ -911,7 +930,7 @@ export default function OperatorDetailPage() {
                 </Avatar>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">{operator.username}</h1>
-                    <p className="text-muted-foreground">Ore giornaliere: {operator.workHours} | ID: {operator.id}</p>
+                    <p className="text-muted-foreground">{formatWorkInfo()}</p>
                 </div>
             </div>
 
@@ -972,5 +991,3 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
-
-    

@@ -30,6 +30,21 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
+import { Checkbox } from '@/components/ui/checkbox';
+
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+const dayLabels: Record<DayOfWeek, string> = {
+    monday: 'Lunedì',
+    tuesday: 'Martedì',
+    wednesday: 'Mercoledì',
+    thursday: 'Giovedì',
+    friday: 'Venerdì',
+    saturday: 'Sabato',
+    sunday: 'Domenica',
+};
+const weekDays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
 
 type Operator = {
     id: string;
@@ -39,6 +54,7 @@ type Operator = {
     role: 'operator';
     visibleInLogin: boolean;
     workHours: number;
+    workDays: DayOfWeek[];
 };
 
 export default function ManageOperatorsPage() {
@@ -52,13 +68,17 @@ export default function ManageOperatorsPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
     
+    // Add form state
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
     const [newWorkHours, setNewWorkHours] = useState("");
+    const [newWorkDays, setNewWorkDays] = useState<DayOfWeek[]>([]);
 
+    // Edit form state
     const [editingFirstName, setEditingFirstName] = useState("");
     const [editingLastName, setEditingLastName] = useState("");
     const [editingWorkHours, setEditingWorkHours] = useState("");
+    const [editingWorkDays, setEditingWorkDays] = useState<DayOfWeek[]>([]);
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -103,7 +123,14 @@ export default function ManageOperatorsPage() {
 
     const handleAddOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !newFirstName.trim() || !newLastName.trim() || !newWorkHours) return;
+        if (!firestore || !newFirstName.trim() || !newLastName.trim() || !newWorkHours || newWorkDays.length === 0) {
+            toast({
+                title: "Campi Mancanti",
+                description: "Per favore, compila tutti i campi obbligatori, inclusi i giorni lavorativi.",
+                variant: "destructive",
+            });
+            return;
+        }
 
         const generatedUsername = `${newFirstName} ${newLastName}`;
         
@@ -114,6 +141,7 @@ export default function ManageOperatorsPage() {
             firstName: newFirstName,
             lastName: newLastName,
             workHours: Number(newWorkHours),
+            workDays: newWorkDays,
         };
         
         addDoc(collection(firestore, 'app-users'), newOperatorDoc)
@@ -126,6 +154,7 @@ export default function ManageOperatorsPage() {
             setNewFirstName("");
             setNewLastName("");
             setNewWorkHours("");
+            setNewWorkDays([]);
           }).catch((error: any) => {
             console.error("Error adding operator:", error);
             if (error.code === 'permission-denied') {
@@ -147,7 +176,14 @@ export default function ManageOperatorsPage() {
 
     const handleEditOperator = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !selectedOperator || !editingFirstName.trim() || !editingLastName.trim() || !editingWorkHours) return;
+        if (!firestore || !selectedOperator || !editingFirstName.trim() || !editingLastName.trim() || !editingWorkHours || editingWorkDays.length === 0) {
+            toast({
+                title: "Campi Mancanti",
+                description: "Per favore, compila tutti i campi obbligatori, inclusi i giorni lavorativi.",
+                variant: "destructive",
+            });
+            return;
+        }
         
         const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
         
@@ -158,6 +194,7 @@ export default function ManageOperatorsPage() {
             firstName: editingFirstName,
             lastName: editingLastName,
             workHours: Number(editingWorkHours),
+            workDays: editingWorkDays,
         };
 
         updateDoc(operatorRef, updatePayload)
@@ -239,6 +276,23 @@ export default function ManageOperatorsPage() {
                 }
             });
     };
+
+    const formatWorkDays = (days: DayOfWeek[]) => {
+        if (!days || days.length === 0) return 'N/D';
+        // Map to short Italian day names and join
+        const dayMapping: Record<DayOfWeek, string> = {
+            monday: 'Lun',
+            tuesday: 'Mar',
+            wednesday: 'Mer',
+            thursday: 'Gio',
+            friday: 'Ven',
+            saturday: 'Sab',
+            sunday: 'Dom'
+        };
+        // Sort according to weekDays order
+        const sortedDays = days.slice().sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
+        return sortedDays.map(day => dayMapping[day]).join(', ');
+    };
     
     if (!user) {
         return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
@@ -259,7 +313,7 @@ export default function ManageOperatorsPage() {
                                     <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Operatore
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent className="sm:max-w-md">
                                 <form onSubmit={handleAddOperator}>
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
@@ -269,22 +323,38 @@ export default function ManageOperatorsPage() {
                                     </DialogHeader>
                                     <div className="grid gap-4 py-4">
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="firstName" className="text-right">
-                                                Nome
-                                            </Label>
+                                            <Label htmlFor="firstName" className="text-right">Nome</Label>
                                             <Input id="firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} className="col-span-3" required />
                                         </div>
                                          <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="lastName" className="text-right">
-                                                Cognome
-                                            </Label>
+                                            <Label htmlFor="lastName" className="text-right">Cognome</Label>
                                             <Input id="lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} className="col-span-3" required />
                                         </div>
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="workHours" className="text-right">
-                                                Ore Contrattuali
-                                            </Label>
+                                            <Label htmlFor="workHours" className="text-right">Ore/Giorno</Label>
                                             <Input id="workHours" type="number" value={newWorkHours} onChange={(e) => setNewWorkHours(e.target.value)} className="col-span-3" required min="1" />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-start gap-4">
+                                            <Label className="text-right pt-2">Giorni Lavorativi</Label>
+                                            <div className="col-span-3 grid grid-cols-3 gap-2">
+                                                {weekDays.map(day => (
+                                                    <div key={day} className="flex items-center space-x-2">
+                                                        <Checkbox 
+                                                            id={`new-${day}`}
+                                                            checked={newWorkDays.includes(day)}
+                                                            onCheckedChange={(checked) => {
+                                                                const updatedDays = checked
+                                                                    ? [...newWorkDays, day]
+                                                                    : newWorkDays.filter(d => d !== day);
+                                                                setNewWorkDays(updatedDays);
+                                                            }}
+                                                        />
+                                                        <Label htmlFor={`new-${day}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                            {dayLabels[day]}
+                                                        </Label>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -307,6 +377,7 @@ export default function ManageOperatorsPage() {
                                     <TableRow>
                                         <TableHead>Nome Operatore</TableHead>
                                         <TableHead>Ore Contratto</TableHead>
+                                        <TableHead>Giorni Lavorativi</TableHead>
                                         <TableHead>Visibile nel Login</TableHead>
                                         <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
@@ -314,12 +385,9 @@ export default function ManageOperatorsPage() {
                                 <TableBody>
                                     {operators.map((operator) => (
                                         <TableRow key={operator.id}>
-                                            <TableCell className="font-medium">
-                                                {operator.username}
-                                            </TableCell>
-                                            <TableCell>
-                                                {operator.workHours}
-                                            </TableCell>
+                                            <TableCell className="font-medium">{operator.username}</TableCell>
+                                            <TableCell>{operator.workHours}</TableCell>
+                                            <TableCell>{formatWorkDays(operator.workDays)}</TableCell>
                                             <TableCell>
                                                 <Switch
                                                     checked={operator.visibleInLogin}
@@ -328,7 +396,7 @@ export default function ManageOperatorsPage() {
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkHours(String(operator.workHours)); setIsEditDialogOpen(true);}}>
+                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkHours(String(operator.workHours)); setEditingWorkDays(operator.workDays || []); setIsEditDialogOpen(true);}}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -345,7 +413,7 @@ export default function ManageOperatorsPage() {
             </Card>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                     <form onSubmit={handleEditOperator}>
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
@@ -355,22 +423,38 @@ export default function ManageOperatorsPage() {
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-firstName" className="text-right">
-                                    Nome
-                                </Label>
+                                <Label htmlFor="editing-firstName" className="text-right">Nome</Label>
                                 <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} className="col-span-3" required />
                             </div>
                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-lastName" className="text-right">
-                                    Cognome
-                                </Label>
+                                <Label htmlFor="editing-lastName" className="text-right">Cognome</Label>
                                 <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} className="col-span-3" required />
                             </div>
                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="editing-workHours" className="text-right">
-                                    Ore Contrattuali
-                                </Label>
+                                <Label htmlFor="editing-workHours" className="text-right">Ore/Giorno</Label>
                                 <Input id="editing-workHours" type="number" value={editingWorkHours} onChange={(e) => setEditingWorkHours(e.target.value)} className="col-span-3" required min="1"/>
+                            </div>
+                            <div className="grid grid-cols-4 items-start gap-4">
+                                <Label className="text-right pt-2">Giorni Lavorativi</Label>
+                                <div className="col-span-3 grid grid-cols-3 gap-2">
+                                    {weekDays.map(day => (
+                                        <div key={day} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`edit-${day}`}
+                                                checked={editingWorkDays.includes(day)}
+                                                onCheckedChange={(checked) => {
+                                                    const updatedDays = checked
+                                                        ? [...editingWorkDays, day]
+                                                        : editingWorkDays.filter(d => d !== day);
+                                                    setEditingWorkDays(updatedDays);
+                                                }}
+                                            />
+                                            <Label htmlFor={`edit-${day}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                {dayLabels[day]}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                         <DialogFooter>
@@ -397,5 +481,3 @@ export default function ManageOperatorsPage() {
         </>
     );
 }
-
-    

@@ -30,6 +30,14 @@
         "workHours": {
           "type": "number",
           "description": "The contractual daily work hours for the operator."
+        },
+        "workDays": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+          },
+          "description": "The contractual working days for the operator."
         }
       },
       "required": [
@@ -38,7 +46,8 @@
         "firstName",
         "lastName",
         "visibleInLogin",
-        "workHours"
+        "workHours",
+        "workDays"
       ]
     },
     "Admin": {
@@ -296,5 +305,3 @@
     "reasoning": "Added 'Product' and 'SupplyRequest' entities and corresponding Firestore collections to support the new supply management feature."
   }
 }
-
-    
