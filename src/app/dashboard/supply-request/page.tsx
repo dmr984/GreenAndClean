@@ -222,7 +222,7 @@ export default function SupplyRequestPage() {
 
     return (
         <>
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-1">
             <Card>
                 <CardHeader>
                     <div className="flex items-center gap-3">

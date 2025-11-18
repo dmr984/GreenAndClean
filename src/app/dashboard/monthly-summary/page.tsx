@@ -252,20 +252,22 @@ export default function MonthlySummaryPage() {
             }
 
             return (
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Giorno</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {allDays.map((day, index) => (
-                            <TableRow key={index}>
-                                <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Giorno</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableHeader>
+                        <TableBody>
+                            {allDays.map((day, index) => (
+                                <TableRow key={index}>
+                                    <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
             );
         }
 
@@ -280,24 +282,26 @@ export default function MonthlySummaryPage() {
         }
 
         return (
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Dal</TableHead>
-                        <TableHead>Al</TableHead>
-                        { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead> }
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filteredItems.map(item => (
-                         <TableRow key={item.id}>
-                            <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                            <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                            { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell> }
+            <div className="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Dal</TableHead>
+                            <TableHead>Al</TableHead>
+                            { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead> }
                         </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredItems.map(item => (
+                             <TableRow key={item.id}>
+                                <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                                <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                                { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell> }
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
         );
     };
     
@@ -317,7 +321,7 @@ export default function MonthlySummaryPage() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                 <Card
                     onClick={handleWorkedDaysClick}
                     className="cursor-pointer transition-all hover:bg-muted/50"

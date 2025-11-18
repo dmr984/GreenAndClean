@@ -479,7 +479,7 @@ function DailySummaryContent() {
 
     return (
         <>
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-[auto_1fr]">
+        <div className="grid gap-6 md:grid-cols-[350px_1fr]">
             <div className="flex flex-col gap-6">
                 <Card>
                     <CardHeader>

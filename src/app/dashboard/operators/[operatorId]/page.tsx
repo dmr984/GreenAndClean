@@ -408,7 +408,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
 
     return (
         <>
-            <div className="border rounded-lg">
+            <div className="border rounded-lg overflow-x-auto">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -672,27 +672,29 @@ const LeaveRequests = ({ operatorId, setPendingCount }: { operatorId: string, se
 
     return (
         <>
-        <Table>
-            <TableHeader><TableRow><TableHead>Tipo</TableHead><TableHead>Dal</TableHead><TableHead>Al</TableHead><TableHead>Ore</TableHead><TableHead className='text-right'>Azioni</TableHead></TableRow></TableHeader>
-            <TableBody>
-                {requests.map(req => (
-                    <TableRow key={req.id}>
-                        <TableCell className="capitalize">{req.type.replace('_', ' ')}</TableCell>
-                        <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                        <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                        <TableCell>{req.hours || '-'}</TableCell>
-                        <TableCell className='text-right'>
-                            <div className="flex gap-2 justify-end">
-                                <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'approvato')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'rifiutato')}><XCircle className="h-5 w-5 text-red-500" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleEditRequest(req)}><Pencil className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
-                            </div>
-                        </TableCell>
-                    </TableRow>
-                ))}
-            </TableBody>
-        </Table>
+        <div className="overflow-x-auto">
+            <Table>
+                <TableHeader><TableRow><TableHead>Tipo</TableHead><TableHead>Dal</TableHead><TableHead>Al</TableHead><TableHead>Ore</TableHead><TableHead className='text-right'>Azioni</TableHead></TableRow></TableHeader>
+                <TableBody>
+                    {requests.map(req => (
+                        <TableRow key={req.id}>
+                            <TableCell className="capitalize">{req.type.replace('_', ' ')}</TableCell>
+                            <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
+                            <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
+                            <TableCell>{req.hours || '-'}</TableCell>
+                            <TableCell className='text-right'>
+                                <div className="flex gap-2 justify-end">
+                                    <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'approvato')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'rifiutato')}><XCircle className="h-5 w-5 text-red-500" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleEditRequest(req)}><Pencil className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </div>
          <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -899,20 +901,22 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
             }
 
             return (
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Giorno</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {allDays.map((day, index) => (
-                            <TableRow key={index}>
-                                <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Giorno</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableHeader>
+                        <TableBody>
+                            {allDays.map((day, index) => (
+                                <TableRow key={index}>
+                                    <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
             );
         }
 
@@ -927,24 +931,26 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         }
 
         return (
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Dal</TableHead>
-                        <TableHead>Al</TableHead>
-                        {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead>}
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filteredItems.map(item => (
-                         <TableRow key={item.id}>
-                            <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                            <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                            {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell>}
+            <div className="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Dal</TableHead>
+                            <TableHead>Al</TableHead>
+                            {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead>}
                         </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredItems.map(item => (
+                             <TableRow key={item.id}>
+                                <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                                <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                                {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell>}
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
         );
     };
 
@@ -959,7 +965,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                 <h4 className="text-lg font-semibold">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Card
                   onClick={handleWorkedDaysClick}
                   className="cursor-pointer transition-all hover:bg-muted/50"
