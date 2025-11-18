@@ -64,7 +64,7 @@ type Operator = {
 };
 
 export default function ManageOperatorsPage() {
-    const { user } = useUser();
+    const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const router = useRouter();
     const { toast } = useToast();
@@ -88,14 +88,13 @@ export default function ManageOperatorsPage() {
 
 
     const operatorsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        const q = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
-        return q;
-    }, [firestore]);
+        if (!firestore || !user || user.role !== 'admin') return null;
+        return query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
+    }, [firestore, user]);
 
     useEffect(() => {
-        if (!operatorsQuery || !user || user.role !== 'admin' ) {
-            setIsLoading(false);
+        if (!operatorsQuery) {
+            if (!isUserLoading) setIsLoading(false);
             return;
         }
 
@@ -105,7 +104,12 @@ export default function ManageOperatorsPage() {
             setOperators(usersData);
             setIsLoading(false);
         }, (error) => {
-            console.error("Error fetching operators:", error)
+            // This is now only for legitimate permission errors,
+            // not the auth race condition.
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'app-users' });
+                errorEmitter.emit('permission-error', contextualError);
+            }
             toast({ title: "Errore", description: "Impossibile caricare gli operatori.", variant: "destructive" });
             setIsLoading(false);
         });
@@ -114,7 +118,7 @@ export default function ManageOperatorsPage() {
         const pendingLeaveQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
         const pendingSupplyQuery = query(collectionGroup(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
 
-        const countPending = (q: any, itemType: string, path: string) => onSnapshot(q, (snapshot) => {
+        const countPending = (q: any, itemType: string) => onSnapshot(q, (snapshot) => {
             const counts: Record<string, number> = {};
             snapshot.forEach(doc => {
                 const userId = doc.data().userId;
@@ -123,14 +127,13 @@ export default function ManageOperatorsPage() {
 
             setPendingCounts(prev => {
                  const newCounts = { ...prev };
-                // Reset counts for this type before updating
                 operators.forEach(op => {
                     const key = `${op.id}_${itemType}`;
-                    delete newCounts[key];
-                });
-                Object.entries(counts).forEach(([userId, count]) => {
-                    const key = `${userId}_${itemType}`;
-                    newCounts[key] = count;
+                    if(counts[op.id]) {
+                        newCounts[key] = counts[op.id];
+                    } else {
+                        delete newCounts[key];
+                    }
                 });
 
                 const totalCounts: Record<string, number> = {};
@@ -143,9 +146,10 @@ export default function ManageOperatorsPage() {
             });
         }, (error) => {
             if (error.code === 'permission-denied') {
+                const collectionGroupId = q.path.split('/')[0];
                 const contextualError = new FirestorePermissionError({
                     operation: 'list',
-                    path: path, 
+                    path: `collectionGroup/${collectionGroupId}`, 
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
@@ -153,9 +157,9 @@ export default function ManageOperatorsPage() {
             }
         });
 
-        const unsubShifts = countPending(pendingShiftsQuery, 'shifts', 'timbrature');
-        const unsubLeave = countPending(pendingLeaveQuery, 'leave', 'requests');
-        const unsubSupply = countPending(pendingSupplyQuery, 'supply', 'supply-requests');
+        const unsubShifts = countPending(pendingShiftsQuery, 'shifts');
+        const unsubLeave = countPending(pendingLeaveQuery, 'leave');
+        const unsubSupply = countPending(pendingSupplyQuery, 'supply');
 
 
         return () => {
@@ -164,7 +168,7 @@ export default function ManageOperatorsPage() {
             unsubLeave();
             unsubSupply();
         };
-    }, [operatorsQuery, toast, firestore, user, operators]);
+    }, [operatorsQuery, toast, firestore, user, operators, isUserLoading]);
     
     const handleWorkScheduleChange = (
       setter: React.Dispatch<React.SetStateAction<WorkSchedule>>,
@@ -319,8 +323,12 @@ export default function ManageOperatorsPage() {
             .join(', ');
     };
     
-    if (!user) {
-        return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
+    if (isUserLoading) {
+        return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    }
+    
+    if (!user || user.role !== 'admin') {
+         return <div className="flex items-center justify-center h-full"><p className="text-muted-foreground">Accesso Negato.</p></div>;
     }
 
     const renderWorkScheduleFields = (
@@ -493,4 +501,3 @@ export default function ManageOperatorsPage() {
             </AlertDialog>
         </>
     );
-}
