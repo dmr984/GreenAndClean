@@ -64,7 +64,7 @@ export default function AdminSupplyRequestsPage() {
     const { pendingRequests, historicalRequests } = useMemo(() => {
         const pending = allRequests.filter(r => r.status === 'in_attesa');
         const historical = allRequests.filter(r => r.status !== 'in_attesa');
-        return { pendingRequests, historicalRequests };
+        return { pendingRequests: pending, historicalRequests: historical };
     }, [allRequests]);
 
 
