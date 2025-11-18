@@ -30,7 +30,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 
@@ -115,61 +114,13 @@ export default function ManageOperatorsPage() {
             }
             setIsLoading(false);
         });
-
-        const pendingShiftsQuery = query(collectionGroup(firestore, 'timbrature'), where('status', '==', 'sospesa'));
-        const pendingLeaveQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
-        const pendingSupplyQuery = query(collectionGroup(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
-
-        const countPending = (q: Query, itemType: string) => onSnapshot(q, (snapshot) => {
-            const counts: Record<string, number> = {};
-            snapshot.forEach(doc => {
-                const userId = doc.data().userId;
-                counts[userId] = (counts[userId] || 0) + 1;
-            });
-
-            setPendingCounts(prev => {
-                 const newCounts = { ...prev };
-                operators.forEach(op => {
-                    const key = `${op.id}_${itemType}`;
-                    if(counts[op.id]) {
-                        newCounts[key] = counts[op.id];
-                    } else {
-                        delete newCounts[key];
-                    }
-                });
-
-                const totalCounts: Record<string, number> = {};
-                 operators.forEach(op => {
-                    totalCounts[op.id] = (newCounts[`${op.id}_shifts`] || 0) + 
-                                         (newCounts[`${op.id}_leave`] || 0) + 
-                                         (newCounts[`${op.id}_supply`] || 0);
-                });
-                return totalCounts;
-            });
-        }, (error) => {
-            if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'list',
-                    path: `collectionGroup/${itemType}`, 
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            } else {
-                console.error(`Error counting ${itemType}:`, error);
-            }
-        });
-
-        const unsubShifts = countPending(pendingShiftsQuery, 'timbrature');
-        const unsubLeave = countPending(pendingLeaveQuery, 'requests');
-        const unsubSupply = countPending(pendingSupplyQuery, 'supply-requests');
-
-
+        
+        // Removed all pending count logic
+        
         return () => {
             unsubscribeOperators();
-            unsubShifts();
-            unsubLeave();
-            unsubSupply();
         };
-    }, [operatorsQuery, toast, firestore, user, operators, isUserLoading]);
+    }, [operatorsQuery, toast, firestore, user, isUserLoading]);
     
     const handleWorkScheduleChange = (
       setter: React.Dispatch<React.SetStateAction<WorkSchedule>>,
@@ -419,14 +370,11 @@ export default function ManageOperatorsPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {operators.map((operator) => {
-                                        const count = pendingCounts[operator.id] || 0;
-                                        return (
+                                    {operators.map((operator) => (
                                         <TableRow key={operator.id} onClick={() => router.push(`/dashboard/operators/${operator.id}`)} className="cursor-pointer">
                                             <TableCell className="font-medium">
                                                 <div className="flex items-center gap-2">
                                                     <span>{operator.username}</span>
-                                                    {count > 0 && <Badge variant="destructive">{count}</Badge>}
                                                 </div>
                                             </TableCell>
                                             <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
@@ -446,7 +394,7 @@ export default function ManageOperatorsPage() {
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
-                                    )})}
+                                    ))}
                                 </TableBody>
                             </Table>
                         </div>
