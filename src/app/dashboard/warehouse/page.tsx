@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, Query } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
@@ -50,11 +50,11 @@ export default function WarehousePage() {
             setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
             setIsLoading(false);
         }, error => {
-            console.error("Error fetching products:", error);
             if (error.code === 'permission-denied' && firestore) {
-                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'products' });
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: (productsQuery as Query).path });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
+                console.error("Error fetching products:", error);
                 toast({ title: "Errore", description: "Impossibile caricare i prodotti dal magazzino.", variant: "destructive" });
             }
             setIsLoading(false);
@@ -271,5 +271,3 @@ export default function WarehousePage() {
         </>
     );
 }
-
-    

@@ -1,9 +1,9 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where, collectionGroup } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, collectionGroup, Query } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, User } from 'lucide-react';
+import { Users, Loader2, User, Warehouse, HardHat } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
@@ -35,12 +35,12 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
 
     const operatorsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || user?.role !== 'admin') return null;
         return query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
-    }, [firestore]);
+    }, [firestore, user]);
 
     useEffect(() => {
-        if (!operatorsQuery || user?.role !== 'admin') {
+        if (!operatorsQuery) {
             setIsLoading(false);
             return;
         }
@@ -51,8 +51,13 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
             setOperators(usersData);
             setIsLoading(false);
         }, (error) => {
-            console.error("Error fetching operators:", error);
-            toast({ title: "Errore", description: "Impossibile caricare gli operatori.", variant: "destructive" });
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: (operatorsQuery as Query).path });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                console.error("Error fetching operators:", error);
+                toast({ title: "Errore", description: "Impossibile caricare gli operatori.", variant: "destructive" });
+            }
             setIsLoading(false);
         });
         
@@ -60,7 +65,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         const pendingLeaveQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
         const pendingSupplyQuery = query(collectionGroup(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
 
-        const countPending = (query: any, itemType: string) => onSnapshot(query, (snapshot) => {
+        const countPending = (q: Query, itemType: string) => onSnapshot(q, (snapshot) => {
             const counts: Record<string, number> = {};
             snapshot.forEach(doc => {
                 const userId = doc.data().userId;
@@ -80,11 +85,18 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                 return newCounts;
             });
 
-        }, (error) => console.error(`Error counting ${itemType}:`, error));
+        }, (error) => {
+             if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: `collectionGroup/${itemType}` });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                console.error(`Error counting ${itemType}:`, error);
+            }
+        });
 
-        const unsubShifts = countPending(pendingShiftsQuery, 'shifts');
-        const unsubLeave = countPending(pendingLeaveQuery, 'leave');
-        const unsubSupply = countPending(pendingSupplyQuery, 'supply');
+        const unsubShifts = countPending(pendingShiftsQuery, 'timbrature');
+        const unsubLeave = countPending(pendingLeaveQuery, 'requests');
+        const unsubSupply = countPending(pendingSupplyQuery, 'supply-requests');
 
         return () => {
             unsubscribeOperators();
@@ -93,17 +105,20 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
             unsubSupply();
         };
 
-    }, [operatorsQuery, user, firestore, toast]);
+    }, [operatorsQuery, firestore, toast]);
 
     if (!user) {
         return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
     }
+     if (user.role !== 'admin') {
+        return <div className="flex items-center justify-center h-full">Accesso non autorizzato.</div>;
+    }
 
     const getTotalPendingForOperator = (operatorId: string) => {
         let total = 0;
-        if(pendingCounts[`shifts_${operatorId}`]) total += 1; // Treat all pending shifts for a day as one notification item
-        if(pendingCounts[`leave_${operatorId}`]) total += pendingCounts[`leave_${operatorId}`];
-        if(pendingCounts[`supply_${operatorId}`]) total += pendingCounts[`supply_${operatorId}`];
+        if(pendingCounts[`timbrature_${operatorId}`]) total += 1; // Treat all pending shifts for a day as one notification item
+        if(pendingCounts[`requests_${operatorId}`]) total += pendingCounts[`requests_${operatorId}`];
+        if(pendingCounts[`supply-requests_${operatorId}`]) total += pendingCounts[`supply-requests_${operatorId}`];
         return total;
     }
     
@@ -112,12 +127,27 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     };
 
     return (
-        <>
+        <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-2xl">Pannello di Controllo Admin</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     <Button variant="outline" className="h-28 text-lg" onClick={() => router.push('/dashboard/operators')}>
+                        <HardHat className="mr-4 h-8 w-8" />
+                        Gestione Operatori
+                    </Button>
+                    <Button variant="outline" className="h-28 text-lg" onClick={() => router.push('/dashboard/warehouse')}>
+                        <Warehouse className="mr-4 h-8 w-8" />
+                        Gestione Magazzino
+                    </Button>
+                </CardContent>
+            </Card>
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <Users className="h-6 w-6 text-primary" />
-                        <CardTitle className="text-2xl">Accesso Operatori</CardTitle>
+                        <CardTitle className="text-2xl">Accesso Rapido Operatori</CardTitle>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -154,6 +184,6 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                     )}
                 </CardContent>
             </Card>
-        </>
+        </div>
     );
 }

@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
@@ -93,8 +93,10 @@ export default function ManageOperatorsPage() {
     }, [firestore, user]);
 
     useEffect(() => {
-        if (!operatorsQuery) {
-            if (!isUserLoading) setIsLoading(false);
+        if (!operatorsQuery || !firestore) {
+            if (!isUserLoading && user?.role === 'admin') {
+                 setIsLoading(false);
+            }
             return;
         }
 
@@ -104,13 +106,13 @@ export default function ManageOperatorsPage() {
             setOperators(usersData);
             setIsLoading(false);
         }, (error) => {
-            // This is now only for legitimate permission errors,
-            // not the auth race condition.
             if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'app-users' });
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: (operatorsQuery as Query).path });
                 errorEmitter.emit('permission-error', contextualError);
+            } else {
+                 console.error("Error fetching operators:", error);
+                 toast({ title: "Errore", description: "Impossibile caricare gli operatori.", variant: "destructive" });
             }
-            toast({ title: "Errore", description: "Impossibile caricare gli operatori.", variant: "destructive" });
             setIsLoading(false);
         });
 
@@ -118,7 +120,7 @@ export default function ManageOperatorsPage() {
         const pendingLeaveQuery = query(collectionGroup(firestore, 'requests'), where('status', '==', 'in_attesa'));
         const pendingSupplyQuery = query(collectionGroup(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
 
-        const countPending = (q: any, itemType: string) => onSnapshot(q, (snapshot) => {
+        const countPending = (q: Query, itemType: string) => onSnapshot(q, (snapshot) => {
             const counts: Record<string, number> = {};
             snapshot.forEach(doc => {
                 const userId = doc.data().userId;
@@ -146,10 +148,9 @@ export default function ManageOperatorsPage() {
             });
         }, (error) => {
             if (error.code === 'permission-denied') {
-                const collectionGroupId = q.path.split('/')[0];
                 const contextualError = new FirestorePermissionError({
                     operation: 'list',
-                    path: `collectionGroup/${collectionGroupId}`, 
+                    path: `collectionGroup/${itemType}`, 
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
@@ -157,9 +158,9 @@ export default function ManageOperatorsPage() {
             }
         });
 
-        const unsubShifts = countPending(pendingShiftsQuery, 'shifts');
-        const unsubLeave = countPending(pendingLeaveQuery, 'leave');
-        const unsubSupply = countPending(pendingSupplyQuery, 'supply');
+        const unsubShifts = countPending(pendingShiftsQuery, 'timbrature');
+        const unsubLeave = countPending(pendingLeaveQuery, 'requests');
+        const unsubSupply = countPending(pendingSupplyQuery, 'supply-requests');
 
 
         return () => {
