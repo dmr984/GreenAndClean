@@ -76,19 +76,6 @@ type Request = {
     createdAt: Timestamp;
 };
 
-type SupplyRequest = {
-    id: string;
-    userId: string;
-    username: string;
-    productId: string;
-    productName: string;
-    requestedQuantity: number;
-    approvedQuantity?: number;
-    status: 'in_attesa' | 'approvata' | 'rifiutata';
-    createdAt: any;
-    viewedByOperator?: boolean;
-};
-
 type DetailView = {
     type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
     title: string;
@@ -770,141 +757,6 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     );
 };
 
-
-const SupplyRequests = ({ operatorId, setPendingCount }: { operatorId: string, setPendingCount: (count: number) => void }) => {
-    const firestore = useFirestore();
-    const { toast } = useToast();
-    const [requests, setRequests] = useState<SupplyRequest[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
-    const [approvedQuantity, setApprovedQuantity] = useState('');
-    const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState<SupplyRequest | null>(null);
-
-     useEffect(() => {
-        if (!firestore) return;
-        const q = query(
-            collection(firestore, 'supply-requests'),
-            where('userId', '==', operatorId),
-            where('status', '==', 'in_attesa')
-        );
-        const unsubscribe = onSnapshot(q, snapshot => {
-            const pendingRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupplyRequest));
-            pendingRequests.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-            setRequests(pendingRequests);
-            setPendingCount(snapshot.size);
-            setIsLoading(false);
-        }, error => {
-            console.error(error);
-            toast({ title: 'Errore', description: 'Impossibile caricare le richieste di fornitura.', variant: 'destructive' });
-            setIsLoading(false);
-            setPendingCount(0);
-        });
-        return unsubscribe;
-    }, [firestore, operatorId, toast, setPendingCount]);
-    
-    const openApproveDialog = (request: SupplyRequest) => {
-        setSelectedRequest(request);
-        setApprovedQuantity(String(request.requestedQuantity));
-        setIsApproveDialogOpen(true);
-    };
-
-    const handleApproveRequest = async () => {
-        if (!firestore || !selectedRequest) return;
-        const finalQuantity = parseInt(approvedQuantity, 10);
-        if (isNaN(finalQuantity) || finalQuantity < 0) {
-            toast({ title: "Quantità Invalida", variant: "destructive"});
-            return;
-        }
-
-        const requestRef = doc(firestore, 'supply-requests', selectedRequest.id);
-        const productRef = doc(firestore, 'products', selectedRequest.productId);
-        const updatePayload = { status: 'approvata' as const, approvedQuantity: finalQuantity, viewedByOperator: false };
-
-        try {
-            await runTransaction(firestore, async (transaction) => {
-                const productDoc = await transaction.get(productRef);
-                if (!productDoc.exists()) throw new Error("Prodotto non trovato.");
-                const currentStock = productDoc.data().quantity;
-                if (currentStock < finalQuantity) throw new Error(`Scorte insufficienti: ${currentStock}.`);
-                transaction.update(productRef, { quantity: currentStock - finalQuantity });
-                transaction.update(requestRef, updatePayload);
-            });
-            toast({ title: "Successo", description: "Richiesta approvata e magazzino aggiornato." });
-        } catch (error: any) {
-             toast({ title: "Errore", description: error.message || "Impossibile approvare la richiesta.", variant: "destructive"});
-        } finally {
-            setIsApproveDialogOpen(false);
-        }
-    };
-    
-    const handleRejectRequest = async (request: SupplyRequest) => {
-        if (!firestore) return;
-        const requestRef = doc(firestore, 'supply-requests', request.id);
-        updateDoc(requestRef, { status: 'rifiutata' as const, viewedByOperator: false }).catch(err => toast({ title: 'Errore', description: 'Impossibile rifiutare la richiesta.', variant: 'destructive'}));
-    };
-
-    const handleDelete = async () => {
-        if (!firestore || !itemToDelete) return;
-        const docRef = doc(firestore, `supply-requests`, itemToDelete.id);
-        await deleteDoc(docRef).then(() => {
-            toast({ title: 'Successo', description: 'Richiesta di fornitura eliminata.' });
-        }).catch(err => {
-            console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
-        });
-        setItemToDelete(null);
-    };
-
-    if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
-    if (requests.length === 0) return <p className="text-sm text-muted-foreground">Nessuna richiesta di fornitura in attesa.</p>;
-
-    return (
-        <>
-            <Table>
-                <TableHeader><TableRow><TableHead>Prodotto</TableHead><TableHead>Qtà Rich.</TableHead><TableHead>Data</TableHead><TableHead className="text-right">Azioni</TableHead></TableRow></TableHeader>
-                <TableBody>
-                    {requests.map(req => (
-                        <TableRow key={req.id}>
-                            <TableCell>{req.productName}</TableCell>
-                            <TableCell>{req.requestedQuantity}</TableCell>
-                            <TableCell>{req.createdAt?.toDate().toLocaleDateString('it-IT')}</TableCell>
-                            <TableCell className="text-right">
-                                <div className="flex gap-2 justify-end">
-                                    <Button variant="ghost" size="icon" onClick={() => openApproveDialog(req)}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
-                                    <Button variant="ghost" size="icon" onClick={() => handleRejectRequest(req)}><XCircle className="h-5 w-5 text-red-500" /></Button>
-                                    <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
-                                </div>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-            <AlertDialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Approva Richiesta</AlertDialogTitle></AlertDialogHeader>
-                    <div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="approved-quantity" className="text-right">Quantità</Label><Input id="approved-quantity" type="number" value={approvedQuantity} onChange={(e) => setApprovedQuantity(e.target.value)} className="col-span-3"/></div></div>
-                    <AlertDialogFooter><AlertDialogCancel>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleApproveRequest}>Approva</AlertDialogAction></AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Questa azione eliminerà la richiesta di fornitura in modo permanente. L'azione non può essere annullata.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete}>Elimina</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </>
-    );
-};
-
 const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator: Operator }) => {
     const firestore = useFirestore();
     const router = useRouter();
@@ -1159,7 +1011,6 @@ export default function OperatorDetailPage() {
 
     const [pendingShiftsCount, setPendingShiftsCount] = useState(0);
     const [pendingLeaveCount, setPendingLeaveCount] = useState(0);
-    const [pendingSupplyCount, setPendingSupplyCount] = useState(0);
 
     const operatorDocRef = useMemoFirebase(() => {
         if (!firestore || !operatorId) return null;
@@ -1250,19 +1101,6 @@ export default function OperatorDetailPage() {
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
                            <LeaveRequests operatorId={operator.id} setPendingCount={setPendingLeaveCount} />
-                        </AccordionContent>
-                    </AccordionItem>
-                </Card>
-                 <Card>
-                    <AccordionItem value="item-3" className="border-b-0">
-                        <AccordionTrigger className="p-6" onClick={() => pendingSupplyCount > 0 && setPendingSupplyCount(0)}>
-                             <AccordionTriggerWithBadge count={pendingSupplyCount}>
-                                <PackageSearch className="h-6 w-6 text-primary"/>
-                                <h3 className="text-xl font-semibold">Gestione Richieste Forniture</h3>
-                            </AccordionTriggerWithBadge>
-                        </AccordionTrigger>
-                        <AccordionContent className="px-6 pb-6">
-                           <SupplyRequests operatorId={operator.id} setPendingCount={setPendingSupplyCount} />
                         </AccordionContent>
                     </AccordionItem>
                 </Card>
