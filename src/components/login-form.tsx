@@ -9,6 +9,7 @@ import { useFirestore } from '@/firebase';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2 } from 'lucide-react';
 
 type User = {
   id: string;
@@ -28,54 +29,34 @@ export default function LoginForm() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [password, setPassword] = useState('');
 
-
-  // Effect to ensure the admin user exists in Firestore on first load
-  useEffect(() => {
-    if (!firestore) return;
-
-    const ensureAdminExists = async () => {
-        const adminId = "admin_user"; 
-        const adminDocRef = doc(firestore, 'app-users', adminId);
-
-        try {
-            const docSnap = await getDoc(adminDocRef);
-            if (!docSnap.exists()) {
-                console.log("No admin user found, creating one...");
-                await setDoc(adminDocRef, {
-                    username: "Amministratore",
-                    role: "admin",
-                    password: "admin", // Default password
-                    visibleInLogin: true, // Make admin visible for login
-                    firstName: "Admin",
-                    lastName: "User",
-                    workSchedule: {},
-                });
-                console.log("Admin user created successfully.");
-            } else {
-                 console.log("Admin user already exists.");
-            }
-        } catch (error) {
-            console.error("Error checking or creating admin user:", error);
-             toast({
-                variant: "destructive",
-                title: "Errore di Setup Critico",
-                description: "Impossibile configurare l'utente amministratore iniziale.",
-            });
-        }
-    };
-    
-    ensureAdminExists();
-  }, [firestore, toast]);
-  
   // Effect to fetch login users
   useEffect(() => {
     if (!firestore) return;
     setIsUsersLoading(true);
 
     const q = query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
-    const unsubscribe = getDocs(q).then(snapshot => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-      setUsers(usersData);
+    
+    getDocs(q).then(async (snapshot) => {
+      if (snapshot.empty) {
+        // If no users are found, create the default admin user.
+        // This is a failsafe for the very first run of the application.
+        const adminId = "admin_user"; 
+        const adminDocRef = doc(firestore, 'app-users', adminId);
+        const adminData = {
+            username: "Amministratore",
+            role: "admin" as const,
+            password: "admin",
+            visibleInLogin: true,
+            firstName: "Admin",
+            lastName: "User",
+            workSchedule: {},
+        };
+        await setDoc(adminDocRef, adminData);
+        setUsers([{id: adminId, ...adminData}]);
+      } else {
+        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        setUsers(usersData);
+      }
       setIsUsersLoading(false);
     }).catch(error => {
       console.error("Error fetching login users:", error);
@@ -95,9 +76,6 @@ export default function LoginForm() {
       setIsLoading(false);
       return;
     }
-    
-    // For simplicity, we are not using a password for now.
-    // The user is logged in just by selecting their profile.
 
     const selectedUser = users.find(u => u.id === selectedUserId);
     
@@ -114,6 +92,7 @@ export default function LoginForm() {
     };
     
     localStorage.setItem('user', JSON.stringify(userToStore));
+    // Use window.location to force a hard reload, ensuring all states are fresh.
     window.location.href = '/dashboard';
   };
 
@@ -136,7 +115,7 @@ export default function LoginForm() {
       </div>
       
       <Button type="submit" className="w-full font-bold" disabled={isLoading || isUsersLoading}>
-        {isLoading ? 'Accesso in corso...' : 'Accedi'}
+        {isLoading ? <Loader2 className="animate-spin" /> : 'Accedi'}
       </Button>
     </form>
   );

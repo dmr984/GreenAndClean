@@ -11,7 +11,7 @@ export default function LoginPage() {
           <Briefcase className="h-10 w-10 mx-auto text-primary" />
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
-            Seleziona il tuo nome utente e inserisci il codice per accedere.
+            Seleziona il tuo nome utente per accedere.
           </p>
         </div>
         <LoginForm />
