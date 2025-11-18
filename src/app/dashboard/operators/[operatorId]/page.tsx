@@ -612,11 +612,12 @@ const LeaveRequests = ({ operatorId, setPendingCount }: { operatorId: string, se
         if (!firestore) return;
         const q = query(
             collection(firestore, `app-users/${operatorId}/requests`),
-            where('status', '==', 'in_attesa'),
-            orderBy('createdAt', 'desc')
+            where('status', '==', 'in_attesa')
         );
         const unsubscribe = onSnapshot(q, snapshot => {
             const pendingRequests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
+            // Sort client-side
+            pendingRequests.sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis());
             setRequests(pendingRequests);
             setPendingCount(snapshot.size);
             setIsLoading(false);
