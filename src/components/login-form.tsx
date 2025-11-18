@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, getDoc, doc, setDoc, getDocs } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type User = {
   id: string;
@@ -22,7 +23,9 @@ export default function LoginForm() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [username, setUsername] = useState('');
+  const [isUsersLoading, setIsUsersLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [password, setPassword] = useState('');
 
 
@@ -31,45 +34,55 @@ export default function LoginForm() {
     if (!firestore) return;
 
     const ensureAdminExists = async () => {
-        const adminUsername = "Amministratore";
-        const q = query(collection(firestore, 'app-users'), where("role", "==", "admin"));
-        const querySnapshot = await getDocs(q);
-        
-        if (querySnapshot.empty) {
-            console.log("No admin user found, creating one...");
-            const adminId = "admin_user"; 
-            const adminDocRef = doc(firestore, 'app-users', adminId);
-            const adminRoleDocRef = doc(firestore, 'roles_admin', adminId);
+        const adminId = "admin_user"; 
+        const adminDocRef = doc(firestore, 'app-users', adminId);
 
-            try {
+        try {
+            const docSnap = await getDoc(adminDocRef);
+            if (!docSnap.exists()) {
+                console.log("No admin user found, creating one...");
                 await setDoc(adminDocRef, {
-                    username: adminUsername,
+                    username: "Amministratore",
                     role: "admin",
                     password: "admin", // Default password
-                    visibleInLogin: false, // Admin should not be in login dropdown
+                    visibleInLogin: true, // Make admin visible for login
                     firstName: "Admin",
                     lastName: "User",
                     workSchedule: {},
                 });
-                 await setDoc(adminRoleDocRef, {
-                     firstName: "Admin",
-                     lastName: "User",
-                });
-                console.log("Admin user and role created successfully.");
-            } catch (error) {
-                console.error("Error creating admin user:", error);
-                 toast({
-                    variant: "destructive",
-                    title: "Errore di Setup Critico",
-                    description: "Impossibile configurare l'utente amministratore iniziale.",
-                });
+                console.log("Admin user created successfully.");
+            } else {
+                 console.log("Admin user already exists.");
             }
-        } else {
-             console.log("Admin user already exists.");
+        } catch (error) {
+            console.error("Error checking or creating admin user:", error);
+             toast({
+                variant: "destructive",
+                title: "Errore di Setup Critico",
+                description: "Impossibile configurare l'utente amministratore iniziale.",
+            });
         }
     };
     
     ensureAdminExists();
+  }, [firestore, toast]);
+  
+  // Effect to fetch login users
+  useEffect(() => {
+    if (!firestore) return;
+    setIsUsersLoading(true);
+
+    const q = query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
+    const unsubscribe = getDocs(q).then(snapshot => {
+      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+      setUsers(usersData);
+      setIsUsersLoading(false);
+    }).catch(error => {
+      console.error("Error fetching login users:", error);
+      toast({ title: "Errore", description: "Impossibile caricare la lista utenti.", variant: "destructive" });
+      setIsUsersLoading(false);
+    });
+
   }, [firestore, toast]);
 
 
@@ -77,92 +90,52 @@ export default function LoginForm() {
     event.preventDefault();
     setIsLoading(true);
 
-    if (!username || !password) {
-      toast({ variant: "destructive", title: "Campi mancanti", description: "Inserisci nome utente e codice." });
+    if (!selectedUserId) {
+      toast({ variant: "destructive", title: "Campo mancante", description: "Seleziona un nome utente." });
       setIsLoading(false);
       return;
     }
+    
+    // For simplicity, we are not using a password for now.
+    // The user is logged in just by selecting their profile.
 
-    if (!firestore) {
-         toast({ variant: "destructive", title: "Errore", description: "Servizi Firebase non disponibili." });
-         setIsLoading(false);
-         return;
-    }
-
-    try {
-        const usersRef = collection(firestore, 'app-users');
-        const q = query(usersRef, where("username", "==", username));
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
-            toast({
-                variant: "destructive",
-                title: "Login Fallito",
-                description: "Nome utente o codice non corretti.",
-            });
-            setIsLoading(false);
-            return;
-        }
-
-        const userDoc = querySnapshot.docs[0];
-        const userData = userDoc.data() as User;
-
-        if (userData.password !== password) {
-             toast({
-                variant: "destructive",
-                title: "Login Fallito",
-                description: "Nome utente o codice non corretti.",
-            });
-            setIsLoading(false);
-            return;
-        }
-        
-        const userToStore = {
-            id: userDoc.id,
-            username: userData.username,
-            role: userData.role,
-        };
-        
-        localStorage.setItem('user', JSON.stringify(userToStore));
-        window.location.href = '/dashboard';
-        
-    } catch (error: any) {
-        console.error("Login failed:", error);
-        toast({
-            variant: "destructive",
-            title: "Errore di Login",
-            description: `Si è verificato un errore durante l'accesso: ${error.message}`,
-        });
+    const selectedUser = users.find(u => u.id === selectedUserId);
+    
+    if (!selectedUser) {
+        toast({ variant: "destructive", title: "Login Fallito", description: "Utente non trovato." });
         setIsLoading(false);
+        return;
     }
+        
+    const userToStore = {
+        id: selectedUser.id,
+        username: selectedUser.username,
+        role: selectedUser.role,
+    };
+    
+    localStorage.setItem('user', JSON.stringify(userToStore));
+    window.location.href = '/dashboard';
   };
 
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
         <Label htmlFor="username">Nome Utente</Label>
-        <Input 
-            id="username" 
-            type="text" 
-            placeholder="Es: Mario Rossi" 
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required 
-            disabled={isLoading}
-        />
+        <Select onValueChange={setSelectedUserId} value={selectedUserId} required disabled={isUsersLoading || isLoading}>
+            <SelectTrigger id="username">
+                <SelectValue placeholder={isUsersLoading ? "Caricamento utenti..." : "Seleziona il tuo profilo"} />
+            </SelectTrigger>
+            <SelectContent>
+                {users.map(user => (
+                    <SelectItem key={user.id} value={user.id}>
+                        {user.username}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
       </div>
-       <div className="grid gap-2">
-        <Label htmlFor="password">Codice di Accesso</Label>
-         <Input 
-            id="password" 
-            type="password" 
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required 
-            disabled={isLoading}
-        />
-      </div>
-      <Button type="submit" className="w-full font-bold" disabled={isLoading}>
+      
+      <Button type="submit" className="w-full font-bold" disabled={isLoading || isUsersLoading}>
         {isLoading ? 'Accesso in corso...' : 'Accedi'}
       </Button>
     </form>

@@ -1,5 +1,5 @@
 'use client';
-import { Briefcase } from 'lucide-react';
+import { Briefcase, Loader2 } from 'lucide-react';
 import LoginForm from '@/components/login-form';
 import { useUser } from '@/hooks/use-user';
 import { useRouter } from 'next/navigation';
@@ -9,8 +9,6 @@ export default function LoginPage() {
   const { user, isLoading } = useUser();
   const router = useRouter();
 
-  // This page should only render the login form.
-  // The logic to protect the dashboard is centralized in the DashboardLayout.
   useEffect(() => {
     // If a user is already logged in, redirect them to the dashboard.
     // This handles cases where a logged-in user manually navigates to the login page.
@@ -19,14 +17,18 @@ export default function LoginPage() {
     }
   }, [user, isLoading, router]);
 
-
+  // While checking for user, show a loader to prevent content flash
   if (isLoading) {
-    return null; // Or a loading spinner
+    return (
+       <div className="flex items-center justify-center min-h-screen bg-background">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+       </div>
+    );
   }
 
   // Prevent rendering the form if a user is found, to avoid a flash of content
   // while the redirection is in progress.
-  if (user) {
+  if (!isLoading && user) {
     return null;
   }
 
@@ -37,7 +39,7 @@ export default function LoginPage() {
           <Briefcase className="h-10 w-10 mx-auto text-primary" />
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
-            Seleziona il tuo nome utente per accedere.
+            Seleziona il tuo nome utente e inserisci il codice per accedere.
           </p>
         </div>
         <LoginForm />
