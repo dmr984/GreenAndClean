@@ -1,14 +1,24 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, Timestamp, writeBatch, doc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plane, PlusCircle, Loader2, Circle } from 'lucide-react';
+import { Plane, PlusCircle, Loader2, Circle, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 import { useUser } from '@/hooks/use-user';
 import { RequestForm } from '@/components/request-form';
@@ -35,6 +45,7 @@ export default function RequestsPage() {
     const [requests, setRequests] = useState<Request[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
     
     useEffect(() => {
         if (!firestore || !user?.id) {
@@ -81,6 +92,36 @@ export default function RequestsPage() {
         return () => unsubscribe();
     }, [firestore, user, isUserLoading, toast]);
 
+    const handleCancelRequest = async () => {
+        if (!firestore || !user?.id || !requestToDelete) return;
+
+        const requestRef = doc(firestore, `app-users/${user.id}/requests`, requestToDelete.id);
+
+        try {
+            await deleteDoc(requestRef);
+            toast({
+                title: "Successo",
+                description: "La richiesta è stata annullata."
+            });
+        } catch (error: any) {
+             if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'delete',
+                    path: requestRef.path
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({
+                    title: "Errore",
+                    description: "Impossibile annullare la richiesta.",
+                    variant: "destructive"
+                });
+            }
+        } finally {
+            setRequestToDelete(null);
+        }
+    }
+
     if (isUserLoading || isLoadingData) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -98,6 +139,7 @@ export default function RequestsPage() {
     }
 
     return (
+        <>
         <Card>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -132,6 +174,7 @@ export default function RequestsPage() {
                                 <TableHead>Al</TableHead>
                                 <TableHead>Ore</TableHead>
                                 <TableHead className="text-right">Stato</TableHead>
+                                <TableHead className="w-[100px] text-right">Azioni</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -155,11 +198,18 @@ export default function RequestsPage() {
                                                 {req.status.replace('_', ' ')}
                                             </Badge>
                                         </TableCell>
+                                        <TableCell className="text-right">
+                                            {req.status === 'in_attesa' && (
+                                                <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(req)}>
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                            )}
+                                        </TableCell>
                                     </TableRow>
                                 ))
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center h-24">Nessuna richiesta trovata.</TableCell>
+                                    <TableCell colSpan={7} className="text-center h-24">Nessuna richiesta trovata.</TableCell>
                                 </TableRow>
                             )}
                         </TableBody>
@@ -167,5 +217,20 @@ export default function RequestsPage() {
                 </div>
             </CardContent>
         </Card>
+        <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Annullare la richiesta?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione è permanente. Sei sicuro di voler annullare questa richiesta?
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Chiudi</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCancelRequest}>Annulla Richiesta</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 }

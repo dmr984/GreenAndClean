@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, where, writeBatch, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, where, writeBatch, doc, deleteDoc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
@@ -11,7 +11,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PackageSearch, Loader2, Send, Circle } from 'lucide-react';
+import { PackageSearch, Loader2, Send, Circle, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 
 type Product = {
@@ -40,6 +50,8 @@ export default function SupplyRequestPage() {
     const [isLoadingProducts, setIsLoadingProducts] = useState(true);
     const [isLoadingRequests, setIsLoadingRequests] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    const [requestToDelete, setRequestToDelete] = useState<SupplyRequest | null>(null);
 
     const [selectedProductId, setSelectedProductId] = useState('');
     const [quantity, setQuantity] = useState('');
@@ -177,6 +189,28 @@ export default function SupplyRequestPage() {
                 setIsSubmitting(false);
             });
     };
+
+    const handleCancelRequest = async () => {
+        if (!firestore || !requestToDelete) return;
+        const requestRef = doc(firestore, 'supply-requests', requestToDelete.id);
+        
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: "Successo", description: "Richiesta annullata." });
+        } catch (error: any) {
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({
+                    operation: 'delete',
+                    path: requestRef.path,
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile annullare la richiesta.", variant: "destructive"});
+            }
+        } finally {
+            setRequestToDelete(null);
+        }
+    };
     
     if (isUserLoading) {
         return (
@@ -187,6 +221,7 @@ export default function SupplyRequestPage() {
     }
 
     return (
+        <>
         <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
             <Card>
                 <CardHeader>
@@ -249,8 +284,8 @@ export default function SupplyRequestPage() {
                                         <TableHead></TableHead>
                                         <TableHead>Prodotto</TableHead>
                                         <TableHead>Qtà Rich.</TableHead>
-                                        <TableHead>Qtà Appr.</TableHead>
-                                        <TableHead className="text-right">Stato</TableHead>
+                                        <TableHead>Stato</TableHead>
+                                        <TableHead className="w-[100px] text-right">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -266,13 +301,19 @@ export default function SupplyRequestPage() {
                                                 </TableCell>
                                                 <TableCell>{req.productName}</TableCell>
                                                 <TableCell>{req.requestedQuantity}</TableCell>
-                                                <TableCell>{req.approvedQuantity ?? '-'}</TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell>
                                                     <Badge variant={
                                                         req.status === 'approvata' ? 'secondary'
                                                         : req.status === 'rifiutata' ? 'destructive'
                                                         : 'default'
                                                     }>{req.status.replace('_', ' ')}</Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                  {req.status === 'in_attesa' && (
+                                                    <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(req)}>
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                  )}
                                                 </TableCell>
                                             </TableRow>
                                         ))
@@ -284,5 +325,20 @@ export default function SupplyRequestPage() {
                 </CardContent>
             </Card>
         </div>
+        <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Annullare la richiesta?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione è permanente. Sei sicuro di voler annullare questa richiesta di fornitura?
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Chiudi</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCancelRequest}>Annulla Richiesta</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 }
