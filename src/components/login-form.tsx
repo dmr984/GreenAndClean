@@ -7,28 +7,24 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, onSnapshot, getDoc, doc, setDoc, getDocs } from 'firebase/firestore';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 
 type User = {
   id: string;
   username: string;
   role: 'admin' | 'operator';
+  password?: string;
   visibleInLogin?: boolean;
 };
-
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
-  const usersQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
-  }, [firestore]);
 
   // Effect to ensure the admin user exists in Firestore on first load
   useEffect(() => {
@@ -49,12 +45,13 @@ export default function LoginForm() {
                 await setDoc(adminDocRef, {
                     username: adminUsername,
                     role: "admin",
-                    visibleInLogin: true,
+                    password: "admin", // Default password
+                    visibleInLogin: false, // Admin should not be in login dropdown
                     firstName: "Admin",
                     lastName: "User",
                     workSchedule: {},
                 });
-                await setDoc(adminRoleDocRef, {
+                 await setDoc(adminRoleDocRef, {
                      firstName: "Admin",
                      lastName: "User",
                 });
@@ -76,45 +73,12 @@ export default function LoginForm() {
   }, [firestore, toast]);
 
 
-  useEffect(() => {
-    if (!firestore || !usersQuery) {
-        setIsLoading(false);
-        return;
-    };
-
-    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
-        const userList: User[] = [];
-        snapshot.forEach((doc) => {
-            userList.push({ id: doc.id, ...doc.data() } as User);
-        });
-
-        userList.sort((a, b) => {
-            if (a.role === 'admin') return -1;
-            if (b.role === 'admin') return 1;
-            return a.username.localeCompare(b.username, undefined, { numeric: true });
-        });
-
-        setUsers(userList);
-        setIsLoading(false);
-    }, (error) => {
-        console.error("Error fetching users for login:", error);
-        toast({
-            title: "Errore di Connessione",
-            description: "Impossibile caricare la lista utenti. Riprova tra poco.",
-            variant: "destructive",
-        });
-        setIsLoading(false);
-    });
-    
-    return () => unsubscribe();
-  }, [usersQuery, toast, firestore]);
-
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
 
-    if (!selectedUserId) {
-      toast({ variant: "destructive", title: "Campo mancante", description: "Seleziona un utente." });
+    if (!username || !password) {
+      toast({ variant: "destructive", title: "Campi mancanti", description: "Inserisci nome utente e codice." });
       setIsLoading(false);
       return;
     }
@@ -126,20 +90,33 @@ export default function LoginForm() {
     }
 
     try {
-        const userDocRef = doc(firestore, 'app-users', selectedUserId);
-        const userDoc = await getDoc(userDocRef);
+        const usersRef = collection(firestore, 'app-users');
+        const q = query(usersRef, where("username", "==", username));
+        const querySnapshot = await getDocs(q);
 
-        if (!userDoc.exists()) {
+        if (querySnapshot.empty) {
+            toast({
+                variant: "destructive",
+                title: "Login Fallito",
+                description: "Nome utente o codice non corretti.",
+            });
+            setIsLoading(false);
+            return;
+        }
+
+        const userDoc = querySnapshot.docs[0];
+        const userData = userDoc.data() as User;
+
+        if (userData.password !== password) {
              toast({
                 variant: "destructive",
-                title: "Utente non trovato",
-                description: "L'utente selezionato non esiste più.",
+                title: "Login Fallito",
+                description: "Nome utente o codice non corretti.",
             });
             setIsLoading(false);
             return;
         }
         
-        const userData = userDoc.data();
         const userToStore = {
             id: userDoc.id,
             username: userData.username,
@@ -147,8 +124,6 @@ export default function LoginForm() {
         };
         
         localStorage.setItem('user', JSON.stringify(userToStore));
-        // Force a full page reload to clear all state and ensure the new
-        // user's context is loaded fresh, preventing state conflicts.
         window.location.href = '/dashboard';
         
     } catch (error: any) {
@@ -166,18 +141,26 @@ export default function LoginForm() {
     <form onSubmit={handleLogin} className="grid gap-4">
       <div className="grid gap-2">
         <Label htmlFor="username">Nome Utente</Label>
-        <Select onValueChange={setSelectedUserId} value={selectedUserId} required>
-          <SelectTrigger id="username" disabled={isLoading || users.length === 0}>
-            <SelectValue placeholder={isLoading ? "Caricamento..." : "Seleziona un utente..."} />
-          </SelectTrigger>
-          <SelectContent>
-            {users.map((user) => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.username}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Input 
+            id="username" 
+            type="text" 
+            placeholder="Es: Mario Rossi" 
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required 
+            disabled={isLoading}
+        />
+      </div>
+       <div className="grid gap-2">
+        <Label htmlFor="password">Codice di Accesso</Label>
+         <Input 
+            id="password" 
+            type="password" 
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required 
+            disabled={isLoading}
+        />
       </div>
       <Button type="submit" className="w-full font-bold" disabled={isLoading}>
         {isLoading ? 'Accesso in corso...' : 'Accedi'}
