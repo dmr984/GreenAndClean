@@ -15,7 +15,7 @@ import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 
@@ -903,4 +903,3 @@ export default function OperatorSummaryPage() {
         </div>
     );
 }
-
