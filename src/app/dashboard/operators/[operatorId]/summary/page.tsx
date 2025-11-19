@@ -120,7 +120,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
 
     const summary = useMemo(() => {
         let workedDaysCount = 0;
-        let totalWorkedHours = 0;
+        let totalWorkedMillis = 0;
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
     
         const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
@@ -132,21 +132,29 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             return acc;
         }, {} as Record<string, Timbratura[]>);
     
-        if (operator?.workSchedule) {
-            for (const dayString in dailyTimbrature) {
-                const dayEvents = dailyTimbrature[dayString];
-                const hasEntrata = dayEvents.some(e => e.type === 'entrata');
-                const hasUscita = dayEvents.some(e => e.type === 'uscita');
-    
-                if (hasEntrata && hasUscita) {
+        for (const dayString in dailyTimbrature) {
+            const dayEvents = dailyTimbrature[dayString].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            let entrata: Timestamp | null = null;
+            let currentBreakStart: Timestamp | null = null;
+
+            dayEvents.forEach(event => {
+                if (event.type === 'entrata') {
+                    entrata = event.timestamp;
+                } else if (event.type === 'pausa' && entrata) {
+                    currentBreakStart = event.timestamp;
+                } else if (event.type === 'fine_pausa' && entrata && currentBreakStart) {
+                     totalWorkedMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
+                     currentBreakStart = null;
+                } else if (event.type === 'uscita' && entrata) {
                     workedDaysCount++;
-                    const day = new Date(dayString);
-                    const dayName = dayIndexToName[getDay(day)];
-                    const contractualHours = operator.workSchedule[dayName] || 0;
-                    totalWorkedHours += contractualHours;
+                    totalWorkedMillis += (event.timestamp.toMillis() - entrata.toMillis());
+                    entrata = null; // Reset for next shift on same day
                 }
-            }
+            });
         }
+        
+        const totalWorkedHours = Math.floor(totalWorkedMillis / (1000 * 60 * 60));
     
         const approvedRequests = requests.filter(r => r.status === 'approvato');
         let ferieDaysCount = 0;
@@ -934,7 +942,7 @@ function OperatorSummaryPageInternal() {
 
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery),
+                getDocs(requestsSnapshot),
             ]);
 
             if (timbratureSnapshot.empty && requestsSnapshot.empty) {
