@@ -73,7 +73,7 @@ type SelectedDayInfo = {
 } | null;
 
 
-const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: string, operator: Operator, onDateClick: (date: Date) => void }) => {
+const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { operatorId: string, operator: Operator, onDateClick: (date: Date) => void, onCleanMonth: (date: Date) => void }) => {
     const firestore = useFirestore();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
@@ -350,6 +350,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
                 <h4 className="text-lg font-semibold capitalize text-center flex-1">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
+                 <Button variant="destructive" size="icon" onClick={() => onCleanMonth(currentDate)}><Archive className="h-4 w-4" /></Button>
             </div>
             
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -858,6 +859,8 @@ function OperatorSummaryPageInternal() {
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [monthToClean, setMonthToClean] = useState<Date | null>(null);
 
     const initialView = searchParams.get('view') === 'daily' ? 'daily' : 'monthly';
     const [currentView, setCurrentView] = useState<'monthly' | 'daily'>(initialView);
@@ -892,34 +895,107 @@ function OperatorSummaryPageInternal() {
         setCurrentView('daily');
     };
 
+    const handleCleanMonth = async () => {
+        if (!firestore || !operatorId || !monthToClean) return;
+        setIsCleaning(true);
+
+        const monthStart = startOfMonth(monthToClean);
+        const monthEnd = endOfMonth(monthToClean);
+
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${operatorId}/timbrature`),
+            where('timestamp', '>=', monthStart),
+            where('timestamp', '<=', monthEnd)
+        );
+
+        const requestsQuery = query(
+            collection(firestore, `app-users/${operatorId}/requests`),
+            where('startDate', '>=', monthStart),
+            where('startDate', '<=', monthEnd)
+        );
+
+        try {
+            const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
+                getDocs(timbratureQuery),
+                getDocs(requestsQuery),
+            ]);
+
+            if (timbratureSnapshot.empty && requestsSnapshot.empty) {
+                toast({ title: 'Nessun dato', description: 'Non ci sono dati da eliminare per questo mese.' });
+                return;
+            }
+
+            const batch = writeBatch(firestore);
+            timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
+            requestsSnapshot.forEach(doc => batch.delete(doc.ref));
+
+            await batch.commit();
+
+            toast({ title: 'Successo!', description: `I dati di ${format(monthToClean, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
+
+        } catch (error) {
+            console.error("Errore durante la pulizia del mese:", error);
+            toast({ title: 'Errore', description: 'Impossibile completare la pulizia.', variant: 'destructive' });
+        } finally {
+            setIsCleaning(false);
+            setMonthToClean(null);
+        }
+    };
+
+
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
     return (
-        <div className="space-y-6">
-            <Card>
-                 <CardHeader>
-                    <div className="flex flex-col items-start gap-4">
-                        <div>
-                             <CardTitle>Riepilogo Attività di {operator.username}</CardTitle>
-                             <CardDescription>Visualizza il riepilogo mensile o giornaliero.</CardDescription>
+        <>
+            <div className="space-y-6">
+                <Card>
+                     <CardHeader>
+                        <div className="flex flex-col items-start gap-4">
+                            <div>
+                                 <CardTitle>Riepilogo Attività di {operator.username}</CardTitle>
+                                 <CardDescription>Visualizza il riepilogo mensile o giornaliero.</CardDescription>
+                            </div>
+                            <div className="flex gap-2">
+                                 <Button variant={currentView === 'monthly' ? 'secondary' : 'outline'} onClick={() => setCurrentView('monthly')}>Mensile</Button>
+                                 <Button variant={currentView === 'daily' ? 'secondary' : 'outline'} onClick={() => setCurrentView('daily')}>Giornaliero</Button>
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                             <Button variant={currentView === 'monthly' ? 'secondary' : 'outline'} onClick={() => setCurrentView('monthly')}>Mensile</Button>
-                             <Button variant={currentView === 'daily' ? 'secondary' : 'outline'} onClick={() => setCurrentView('daily')}>Giornaliero</Button>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {currentView === 'monthly' ? (
-                        <MonthlySummary operatorId={operatorId} operator={operator} onDateClick={handleDateClick} />
-                    ) : (
-                        <DailySummaryContent operatorId={operatorId} operator={operator} initialDate={dailyViewDate} />
-                    )}
-                </CardContent>
-            </Card>
-        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {currentView === 'monthly' ? (
+                            <MonthlySummary 
+                                operatorId={operatorId} 
+                                operator={operator} 
+                                onDateClick={handleDateClick} 
+                                onCleanMonth={(date) => setMonthToClean(date)}
+                            />
+                        ) : (
+                            <DailySummaryContent operatorId={operatorId} operator={operator} initialDate={dailyViewDate} />
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+            <AlertDialog open={!!monthToClean} onOpenChange={(open) => !open && setMonthToClean(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione è irreversibile. Verranno eliminate tutte le timbrature e le richieste che iniziano nel mese di{' '}
+                            <span className="font-bold">{monthToClean ? format(monthToClean, 'MMMM yyyy', { locale: it }) : ''}</span>.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaning}>
+                            {isCleaning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Conferma ed Elimina
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </>
     );
 }
 
