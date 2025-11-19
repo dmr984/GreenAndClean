@@ -83,7 +83,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [itemToModify, setItemToModify] = useState<{ request: Request, day: Date } | null>(null);
     const [isCleaningMonth, setIsCleaningMonth] = useState(false);
-    const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [cleanConfirmStep, setCleanConfirmStep] = useState(0);
     const {toast} = useToast();
 
     useEffect(() => {
@@ -291,9 +291,19 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
              toast({ title: 'Errore', description: 'Impossibile completare la pulizia del mese.', variant: 'destructive'});
         } finally {
             setIsCleaningMonth(false);
-            setIsCleanConfirmOpen(false);
+            setCleanConfirmStep(0);
         }
     };
+    
+    const openCleanDialog = () => setCleanConfirmStep(1);
+    const closeCleanDialog = () => setCleanConfirmStep(0);
+    const advanceCleanDialog = () => setCleanConfirmStep(prev => prev + 1);
+
+    useEffect(() => {
+        if(cleanConfirmStep === 4) {
+            handleCleanMonth();
+        }
+    }, [cleanConfirmStep]);
 
 
     const renderDetailTable = () => {
@@ -395,10 +405,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 <h4 className="text-lg font-semibold capitalize text-center flex-1">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
             </div>
-            <Button variant="destructive" className="w-full" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaningMonth}>
-                {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
-                Pulisci Mese
-            </Button>
+            
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Card
                   onClick={() => onDateClick(currentDate)}
@@ -424,6 +431,17 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Malattia (giorni)</CardTitle><Stethoscope className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.malattiaDays}</div></CardContent></Card>
             </div>
         </div>
+
+        <Card>
+            <CardFooter className="pt-6 justify-center">
+                 <Button variant="destructive" className="w-full sm:w-auto" onClick={openCleanDialog} disabled={isCleaningMonth}>
+                    {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+                    Pulisci Mese
+                </Button>
+            </CardFooter>
+        </Card>
+
+
         <ResponsiveDialog open={!!detailView} onOpenChange={() => setDetailView(null)}>
             <ResponsiveDialogContent>
                 <ResponsiveDialogHeader>
@@ -453,17 +471,45 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
             </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
+        <AlertDialog open={cleanConfirmStep === 1} onOpenChange={(open) => !open && closeCleanDialog()}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
                     <AlertDialogDescription>
-                       Questa azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste per l'operatore {operator.username} nel mese di {format(currentDate, 'MMMM yyyy', { locale: it })}.
+                       Passaggio 1/3: Questa azione eliminerà tutti i dati per {operator.username} nel mese di {format(currentDate, 'MMMM yyyy', { locale: it })}.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaningMonth}>
+                    <AlertDialogAction onClick={advanceCleanDialog}>Conferma</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={cleanConfirmStep === 2} onOpenChange={(open) => !open && closeCleanDialog()}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei davvero sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Passaggio 2/3: L'azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={advanceCleanDialog}>Conferma Ancora</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={cleanConfirmStep === 3} onOpenChange={(open) => !open && closeCleanDialog()}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Ultima conferma</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Passaggio 3/3: Cliccando "Conferma ed Elimina" i dati verranno eliminati per sempre.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={advanceCleanDialog} disabled={isCleaningMonth}>
                          {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Conferma ed Elimina
                     </AlertDialogAction>
@@ -790,7 +836,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     return (
         <>
         <div className="flex flex-col xl:flex-row gap-6">
-            <div className="flex-none w-full mx-auto xl:max-w-sm">
+            <div className="flex-none w-full xl:w-auto xl:max-w-sm mx-auto">
                  <Card>
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                     <CardContent className="flex justify-center">
@@ -800,14 +846,14 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                             onSelect={setSelectedDate}
                             month={currentMonth}
                             onMonthChange={setCurrentMonth}
-                            className="rounded-md border p-0"
+                            className="p-0"
                             locale={it}
                             disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
                             modifiers={{ worked: workedDays, ferie: leaveDays.ferie, malattia: leaveDays.malattia, permesso: leaveDays.permesso }}
                             modifiersClassNames={{ worked: 'bg-primary/20', ferie: 'bg-green-500/30 text-green-800', malattia: 'bg-red-500/30 text-red-800', permesso: 'bg-yellow-500/30 text-yellow-800' }}
                         />
                     </CardContent>
-                     <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground">
+                     <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground pt-4">
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-primary/20 border"></div> Giorno Lavorato</div>
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-green-500/30 border"></div> Ferie</div>
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
@@ -974,3 +1020,5 @@ export default function OperatorSummaryPage() {
         </div>
     );
 }
+
+    
