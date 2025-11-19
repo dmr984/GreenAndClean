@@ -724,11 +724,11 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
     return (
         <>
-        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-[380px_1fr]">
+        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-[auto_1fr]">
             <div className="flex flex-col gap-6">
                 <Card>
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardContent className="flex justify-center">
                         <Calendar
                             mode="single"
                             selected={selectedDate}
@@ -741,15 +741,13 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                             modifiers={{ worked: workedDays, ferie: leaveDays.ferie, malattia: leaveDays.malattia, permesso: leaveDays.permesso }}
                             modifiersClassNames={{ worked: 'bg-primary/20', ferie: 'bg-green-500/30 text-green-800', malattia: 'bg-red-500/30 text-red-800', permesso: 'bg-yellow-500/30 text-yellow-800' }}
                         />
-                         <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-primary/20 border"></div> Giorno Lavorato</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-green-500/30 border"></div> Ferie</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
-                        </div>
                     </CardContent>
-                    <CardFooter>
-                        <Button className="w-full" onClick={() => setIsAddDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
+                     <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground">
+                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-primary/20 border"></div> Giorno Lavorato</div>
+                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-green-500/30 border"></div> Ferie</div>
+                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
+                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
+                         <Button className="w-full mt-4" onClick={() => setIsAddDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
                     </CardFooter>
                 </Card>
             </div>
@@ -887,7 +885,7 @@ export default function OperatorSummaryPage() {
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col items-start gap-4">
                         <div>
                              <CardTitle>Riepilogo Attività di {operator.username}</CardTitle>
                              <CardDescription>Visualizza il riepilogo mensile o giornaliero.</CardDescription>
