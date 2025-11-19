@@ -73,17 +73,15 @@ type SelectedDayInfo = {
 } | null;
 
 
-const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: string, operator: Operator, onDateClick: (date: Date) => void }) => {
+const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonthClick }: { operatorId: string, operator: Operator, onDateClick: (date: Date) => void, onCleanMonthClick: (date: Date) => void }) => {
     const firestore = useFirestore();
-    const router = useRouter();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [itemToModify, setItemToModify] = useState<{ request: Request, day: Date } | null>(null);
-    const [isCleaningMonth, setIsCleaningMonth] = useState(false);
-    const [cleanConfirmStep, setCleanConfirmStep] = useState(0);
+    
     const {toast} = useToast();
 
     useEffect(() => {
@@ -253,80 +251,6 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
             setItemToModify(null);
         }
     };
-    
-    const handleCleanMonth = async () => {
-        if (!firestore) return;
-        setIsCleaningMonth(true);
-        closeCleanDialog();
-    
-        const monthStart = startOfMonth(currentDate);
-        const monthEnd = endOfMonth(currentDate);
-    
-        try {
-            // 1. Fetch all documents to be deleted outside the transaction
-            const timbratureQuery = query(
-                collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('timestamp', '>=', monthStart),
-                where('timestamp', '<=', monthEnd)
-            );
-            const timbratureSnapshot = await getDocs(timbratureQuery);
-    
-            const requestsQuery = query(
-                collection(firestore, `app-users/${operatorId}/requests`),
-                where('startDate', '>=', monthStart),
-                where('startDate', '<=', monthEnd)
-            );
-            const requestsSnapshot = await getDocs(requestsQuery);
-    
-            // 2. Perform deletions in a single transaction
-            await runTransaction(firestore, async (transaction) => {
-                timbratureSnapshot.forEach(doc => transaction.delete(doc.ref));
-                requestsSnapshot.forEach(doc => transaction.delete(doc.ref));
-            });
-    
-            toast({
-                title: 'Operazione Completata',
-                description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati.`
-            });
-        } catch (error) {
-            console.error("Error cleaning month:", error);
-            toast({
-                title: 'Errore',
-                description: 'Impossibile completare la pulizia del mese.',
-                variant: 'destructive'
-            });
-        } finally {
-            setIsCleaningMonth(false);
-        }
-    };
-    
-    
-    const openCleanDialog = () => setCleanConfirmStep(1);
-    const closeCleanDialog = () => setCleanConfirmStep(0);
-    
-    const advanceCleanDialog = () => {
-        if (cleanConfirmStep === 3) {
-            handleCleanMonth();
-        } else {
-            setCleanConfirmStep(prev => prev + 1);
-        }
-    };
-    
-    const cleanDialogs = {
-        1: {
-            title: "Sei assolutamente sicuro?",
-            description: `Passaggio 1/3: Questa azione eliminerà tutti i dati per ${operator.username} nel mese di ${format(currentDate, 'MMMM yyyy', { locale: it })}.`
-        },
-        2: {
-            title: "Sei davvero sicuro?",
-            description: "Passaggio 2/3: L'azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste."
-        },
-        3: {
-            title: "Ultima conferma",
-            description: `Passaggio 3/3: Cliccando "Conferma ed Elimina" i dati verranno eliminati per sempre.`
-        }
-    };
-
 
     const renderDetailTable = () => {
         if (!detailView || detailView.items.length === 0) {
@@ -456,8 +380,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
 
         <Card>
             <CardFooter className="pt-6 justify-center">
-                 <Button variant="destructive" className="w-full sm:w-auto" onClick={openCleanDialog} disabled={isCleaningMonth}>
-                    {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+                 <Button variant="destructive" className="w-full sm:w-auto" onClick={() => onCleanMonthClick(currentDate)}>
+                    <Archive className="mr-2 h-4 w-4" />
                     Pulisci Mese
                 </Button>
             </CardFooter>
@@ -489,24 +413,6 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 <AlertDialogFooter>
                     <AlertDialogCancel>Chiudi</AlertDialogCancel>
                     <AlertDialogAction onClick={handleCancelSingleDayOfLeave}>Annulla Giorno di Assenza</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog open={cleanConfirmStep > 0} onOpenChange={(open) => !open && closeCleanDialog()}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>{cleanDialogs[cleanConfirmStep as keyof typeof cleanDialogs]?.title}</AlertDialogTitle>
-                    <AlertDialogDescription>
-                       {cleanDialogs[cleanConfirmStep as keyof typeof cleanDialogs]?.description}
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={advanceCleanDialog} disabled={isCleaningMonth}>
-                        {isCleaningMonth && cleanConfirmStep === 3 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {cleanConfirmStep === 3 ? "Conferma ed Elimina" : "Conferma"}
-                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
@@ -976,6 +882,91 @@ function OperatorSummaryPageInternal() {
     };
 
     const [dailyViewDate, setDailyViewDate] = useState(getInitialDate());
+    
+    // State for Clean Month functionality, moved to the parent
+    const [isCleaningMonth, setIsCleaningMonth] = useState(false);
+    const [cleanConfirmStep, setCleanConfirmStep] = useState(0);
+    const [monthToClean, setMonthToClean] = useState<Date | null>(null);
+
+    const openCleanDialog = (date: Date) => {
+        setMonthToClean(date);
+        setCleanConfirmStep(1);
+    };
+
+    const closeCleanDialog = () => {
+        setCleanConfirmStep(0);
+        setMonthToClean(null);
+    };
+
+    const advanceCleanDialog = () => {
+        if (cleanConfirmStep < 3) {
+            setCleanConfirmStep(prev => prev + 1);
+        } else {
+            handleCleanMonth();
+        }
+    };
+    
+    const handleCleanMonth = async () => {
+        if (!firestore || !monthToClean || !operator) return;
+        setIsCleaningMonth(true);
+    
+        const monthStart = startOfMonth(monthToClean);
+        const monthEnd = endOfMonth(monthToClean);
+    
+        try {
+            // 1. Fetch all documents to be deleted outside the transaction
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operator.id}/timbrature`),
+                where('timestamp', '>=', monthStart),
+                where('timestamp', '<=', monthEnd)
+            );
+            const timbratureSnapshot = await getDocs(timbratureQuery);
+    
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operator.id}/requests`),
+                where('startDate', '>=', monthStart),
+                where('startDate', '<=', monthEnd)
+            );
+            const requestsSnapshot = await getDocs(requestsQuery);
+    
+            // 2. Perform deletions in a single transaction
+            await runTransaction(firestore, async (transaction) => {
+                timbratureSnapshot.forEach(doc => transaction.delete(doc.ref));
+                requestsSnapshot.forEach(doc => transaction.delete(doc.ref));
+            });
+    
+            toast({
+                title: 'Operazione Completata',
+                description: `Tutti i dati per ${format(monthToClean, 'MMMM yyyy', { locale: it })} sono stati eliminati.`
+            });
+        } catch (error) {
+            console.error("Error cleaning month:", error);
+            toast({
+                title: 'Errore',
+                description: 'Impossibile completare la pulizia del mese.',
+                variant: 'destructive'
+            });
+        } finally {
+            setIsCleaningMonth(false);
+            closeCleanDialog();
+        }
+    };
+    
+    const cleanDialogs = {
+        1: {
+            title: "Sei assolutamente sicuro?",
+            description: `Passaggio 1/3: Questa azione eliminerà tutti i dati per ${operator?.username} nel mese di ${monthToClean ? format(monthToClean, 'MMMM yyyy', { locale: it }) : ''}.`
+        },
+        2: {
+            title: "Sei davvero sicuro?",
+            description: "Passaggio 2/3: L'azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste."
+        },
+        3: {
+            title: "Ultima conferma",
+            description: `Passaggio 3/3: Cliccando "Conferma ed Elimina" i dati verranno eliminati per sempre.`
+        }
+    };
+
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -1017,12 +1008,31 @@ function OperatorSummaryPageInternal() {
                 </CardHeader>
                 <CardContent>
                     {currentView === 'monthly' ? (
-                        <MonthlySummary operatorId={operatorId} operator={operator} onDateClick={handleDateClick} />
+                        <MonthlySummary operatorId={operatorId} operator={operator} onDateClick={handleDateClick} onCleanMonthClick={openCleanDialog} />
                     ) : (
                         <DailySummaryContent operatorId={operatorId} operator={operator} initialDate={dailyViewDate} />
                     )}
                 </CardContent>
             </Card>
+
+            <AlertDialog open={cleanConfirmStep > 0} onOpenChange={(open) => !open && closeCleanDialog()}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{cleanDialogs[cleanConfirmStep as keyof typeof cleanDialogs]?.title}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                        {cleanDialogs[cleanConfirmStep as keyof typeof cleanDialogs]?.description}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={advanceCleanDialog} disabled={isCleaningMonth && cleanConfirmStep === 3}>
+                            {isCleaningMonth && cleanConfirmStep === 3 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            {cleanConfirmStep === 3 ? "Conferma ed Elimina" : "Conferma"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
         </div>
     );
 }
