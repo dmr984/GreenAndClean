@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, doc, updateDoc, runTransaction, query, orderBy, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, runTransaction, query, orderBy, where, getDocs, writeBatch } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
-import { ClipboardList, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { ClipboardList, Loader2, CheckCircle, XCircle, Archive } from 'lucide-react';
 import { format } from 'date-fns';
 
 type SupplyRequest = {
@@ -37,6 +37,9 @@ export default function AdminSupplyRequestsPage() {
     const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
     const [approvedQuantity, setApprovedQuantity] = useState('');
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+    
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
 
     useEffect(() => {
         if (!firestore || !user || user.role !== 'admin') {
@@ -111,6 +114,33 @@ export default function AdminSupplyRequestsPage() {
             toast({ title: 'Errore', description: 'Impossibile rifiutare la richiesta.', variant: 'destructive'})
         });
     };
+    
+    const handleCleanHistory = async () => {
+        if(!firestore) return;
+        setIsCleaning(true);
+
+        const q = query(collection(firestore, 'supply-requests'), where('status', '!=', 'in_attesa'));
+        
+        try {
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) {
+                toast({ title: 'Nessun dato', description: 'Non ci sono richieste storiche da eliminare.' });
+                return;
+            }
+            const batch = writeBatch(firestore);
+            snapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Lo storico delle richieste è stato pulito.' });
+        } catch (error) {
+            console.error("Error cleaning history: ", error);
+            toast({ title: 'Errore', description: "Impossibile pulire lo storico.", variant: "destructive" });
+        } finally {
+            setIsCleaning(false);
+            setIsCleanConfirmOpen(false);
+        }
+    };
 
     if (isUserLoading || isLoading) {
         return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -164,13 +194,20 @@ export default function AdminSupplyRequestsPage() {
     );
 
     return (
+        <>
         <div className="space-y-8">
-            <div className="flex items-center gap-4">
-                <ClipboardList className="h-8 w-8 text-primary" />
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Richieste Forniture</h1>
-                    <p className="text-muted-foreground">Approva o rifiuta le richieste di materiale degli operatori.</p>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <ClipboardList className="h-8 w-8 text-primary" />
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Richieste Forniture</h1>
+                        <p className="text-muted-foreground">Approva o rifiuta le richieste di materiale degli operatori.</p>
+                    </div>
                 </div>
+                 <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning}>
+                     {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Archive className="mr-2 h-4 w-4" />}
+                    Pulisci Storico
+                </Button>
             </div>
 
             <Card>
@@ -212,5 +249,24 @@ export default function AdminSupplyRequestsPage() {
                 </AlertDialogContent>
             </AlertDialog>
         </div>
+        
+        <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Questa azione è irreversibile. Verranno eliminate tutte le richieste di fornitura approvate e rifiutate. Le richieste in attesa non verranno toccate.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCleanHistory} disabled={isCleaning}>
+                        {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                        Conferma ed Elimina
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 }

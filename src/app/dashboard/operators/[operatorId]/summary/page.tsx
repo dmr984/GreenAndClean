@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -82,6 +82,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [itemToModify, setItemToModify] = useState<{ request: Request, day: Date } | null>(null);
+    const [isCleaningMonth, setIsCleaningMonth] = useState(false);
+    const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
     const {toast} = useToast();
 
     useEffect(() => {
@@ -107,7 +109,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
         }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
-            setTimbrature(s.docs.map(d => d.data() as Timbratura));
+            setTimbrature(s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)));
             setIsLoading(false);
         }, () => setIsLoading(false));
 
@@ -194,32 +196,31 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
 
         try {
             await runTransaction(firestore, async (transaction) => {
-                // If it's a single-day request, just delete it.
+                const requestDoc = await transaction.get(requestRef);
+                if (!requestDoc.exists()) {
+                    throw "Request does not exist!";
+                }
+
                 if (isSameDay(startDate, endDate)) {
                     transaction.delete(requestRef);
                     return;
                 }
 
-                // If canceling the start date, move the start date forward.
                 if (isSameDay(dayToCancel, startDate)) {
                     const newStartDate = addDays(startDate, 1);
                     transaction.update(requestRef, { startDate: Timestamp.fromDate(newStartDate) });
                     return;
                 }
                 
-                // If canceling the end date, move the end date back.
                 if (isSameDay(dayToCancel, endDate)) {
                     const newEndDate = subDays(endDate, 1);
                     transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate) });
                     return;
                 }
 
-                // If canceling a middle day, split the request.
-                // 1. Update the original request to end before the canceled day.
                 const newEndDate1 = subDays(dayToCancel, 1);
                 transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
 
-                // 2. Create a new request for the period after the canceled day.
                 const newStartDate2 = addDays(dayToCancel, 1);
                 
                 const { id, ...restOfRequest } = request;
@@ -245,41 +246,52 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
             });
 
         } catch (err: any) {
-             if (err.code === 'failed-precondition' && err.message.includes('Unsupported field value: undefined')) {
-                // This is the specific error we want to fix.
-                // It happens when we try to write the `id` field.
-                
-                // Let's retry the transaction, but this time, we remove the `id` field from the new request data.
-                 await runTransaction(firestore, async (transaction) => {
-                    // Re-read the logic to ensure we have the latest state.
-                    if (isSameDay(startDate, endDate)) { transaction.delete(requestRef); return; }
-                    if (isSameDay(dayToCancel, startDate)) { transaction.update(requestRef, { startDate: Timestamp.fromDate(addDays(startDate, 1)) }); return; }
-                    if (isSameDay(dayToCancel, endDate)) { transaction.update(requestRef, { endDate: Timestamp.fromDate(subDays(endDate, 1)) }); return; }
+             console.error(err);
+             toast({ title: 'Errore', description: 'Impossibile annullare il giorno di assenza.', variant: 'destructive' });
 
-                    const newEndDate1 = subDays(dayToCancel, 1);
-                    transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
-                    
-                    const newStartDate2 = addDays(dayToCancel, 1);
-                    const { id, ...restOfRequest } = request;
-                    const newRequestData = {
-                        ...restOfRequest,
-                        startDate: Timestamp.fromDate(newStartDate2),
-                        endDate: request.endDate,
-                        createdAt: serverTimestamp(),
-                        viewedByOperator: false,
-                    };
-                    // IMPORTANT: The `id` is not part of `newRequestData` here.
-                    const newDocRef = doc(requestsCollectionRef);
-                    transaction.set(newDocRef, newRequestData);
-                 });
-
-
-            } else {
-                console.error(err);
-                toast({ title: 'Errore', description: 'Impossibile annullare il giorno di assenza.', variant: 'destructive' });
-            }
         } finally {
             setItemToModify(null);
+        }
+    };
+    
+    const handleCleanMonth = async () => {
+        if (!firestore) return;
+        setIsCleaningMonth(true);
+
+        const start = startOfMonth(currentDate);
+        const end = endOfMonth(currentDate);
+        
+        try {
+            // Delete timbrature for the month
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operatorId}/timbrature`),
+                where('timestamp', '>=', start),
+                where('timestamp', '<=', end)
+            );
+            const timbratureSnapshot = await getDocs(timbratureQuery);
+            const timbratureBatch = writeBatch(firestore);
+            timbratureSnapshot.forEach(doc => timbratureBatch.delete(doc.ref));
+            await timbratureBatch.commit();
+            
+            // Delete requests that start within the month
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operatorId}/requests`),
+                where('startDate', '>=', start),
+                where('startDate', '<=', end)
+            );
+            const requestsSnapshot = await getDocs(requestsQuery);
+            const requestsBatch = writeBatch(firestore);
+            requestsSnapshot.forEach(doc => requestsBatch.delete(doc.ref));
+            await requestsBatch.commit();
+
+            toast({ title: 'Operazione Completata', description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
+
+        } catch(error) {
+             console.error("Error cleaning month:", error);
+             toast({ title: 'Errore', description: 'Impossibile completare la pulizia del mese.', variant: 'destructive'});
+        } finally {
+            setIsCleaningMonth(false);
+            setIsCleanConfirmOpen(false);
         }
     };
 
@@ -378,11 +390,15 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     return (
         <>
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-2">
                 <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                <h4 className="text-lg font-semibold capitalize">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
+                <h4 className="text-lg font-semibold capitalize text-center flex-1">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
             </div>
+            <Button variant="destructive" className="w-full" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaningMonth}>
+                {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+                Pulisci Mese
+            </Button>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Card
                   onClick={() => onDateClick(currentDate)}
@@ -433,6 +449,24 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 <AlertDialogFooter>
                     <AlertDialogCancel>Chiudi</AlertDialogCancel>
                     <AlertDialogAction onClick={handleCancelSingleDayOfLeave}>Annulla Giorno di Assenza</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Questa azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste per l'operatore {operator.username} nel mese di {format(currentDate, 'MMMM yyyy', { locale: it })}.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaningMonth}>
+                         {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Conferma ed Elimina
+                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
@@ -756,7 +790,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     return (
         <>
         <div className="flex flex-col xl:flex-row gap-6">
-            <div className="flex-none xl:max-w-sm w-full mx-auto">
+            <div className="flex-none w-full mx-auto xl:max-w-sm">
                  <Card>
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                     <CardContent className="flex justify-center">
