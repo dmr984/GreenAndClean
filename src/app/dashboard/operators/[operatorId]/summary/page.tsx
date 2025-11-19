@@ -244,9 +244,40 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 };
             });
 
-        } catch (err) {
-            console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile annullare il giorno di assenza.', variant: 'destructive' });
+        } catch (err: any) {
+             if (err.code === 'failed-precondition' && err.message.includes('Unsupported field value: undefined')) {
+                // This is the specific error we want to fix.
+                // It happens when we try to write the `id` field.
+                
+                // Let's retry the transaction, but this time, we remove the `id` field from the new request data.
+                 await runTransaction(firestore, async (transaction) => {
+                    // Re-read the logic to ensure we have the latest state.
+                    if (isSameDay(startDate, endDate)) { transaction.delete(requestRef); return; }
+                    if (isSameDay(dayToCancel, startDate)) { transaction.update(requestRef, { startDate: Timestamp.fromDate(addDays(startDate, 1)) }); return; }
+                    if (isSameDay(dayToCancel, endDate)) { transaction.update(requestRef, { endDate: Timestamp.fromDate(subDays(endDate, 1)) }); return; }
+
+                    const newEndDate1 = subDays(dayToCancel, 1);
+                    transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
+                    
+                    const newStartDate2 = addDays(dayToCancel, 1);
+                    const { id, ...restOfRequest } = request;
+                    const newRequestData = {
+                        ...restOfRequest,
+                        startDate: Timestamp.fromDate(newStartDate2),
+                        endDate: request.endDate,
+                        createdAt: serverTimestamp(),
+                        viewedByOperator: false,
+                    };
+                    // IMPORTANT: The `id` is not part of `newRequestData` here.
+                    const newDocRef = doc(requestsCollectionRef);
+                    transaction.set(newDocRef, newRequestData);
+                 });
+
+
+            } else {
+                console.error(err);
+                toast({ title: 'Errore', description: 'Impossibile annullare il giorno di assenza.', variant: 'destructive' });
+            }
         } finally {
             setItemToModify(null);
         }
@@ -724,12 +755,12 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
     return (
         <>
-        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-[auto_1fr]">
-            <div className="flex flex-col gap-6">
-                <Card>
+        <div className="flex flex-col xl:flex-row gap-6">
+            <div className="flex-none xl:max-w-sm w-full mx-auto">
+                 <Card>
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                     <CardContent className="flex justify-center">
-                        <Calendar
+                         <Calendar
                             mode="single"
                             selected={selectedDate}
                             onSelect={setSelectedDate}
@@ -752,54 +783,56 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 </Card>
             </div>
             
-            <Card>
-                <CardHeader>
-                    <CardTitle>Dettaglio del {selectedDate ? format(selectedDate, 'PPP', { locale: it }) : '...'}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                         <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                    ) : selectedDayInfo ? (
-                        <LeaveDayCard type={selectedDayInfo.type} />
-                    ) : (
-                        <div className="border rounded-md">
-                            {dailyShifts.length > 0 ? (
-                                dailyShifts.map((shift, index) => (
-                                    <div key={index} className="border-b last:border-b-0">
-                                        <div className='p-4'>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                <div className="flex gap-2">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}><Pencil className="h-4 w-4" /></Button>
-                                                    <Button variant="ghost" size="icon" onClick={() => {setShiftToDelete(shift); setIsDeleteDialogOpen(true);}}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+            <div className="flex-1 min-w-0">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Dettaglio del {selectedDate ? format(selectedDate, 'PPP', { locale: it }) : '...'}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? (
+                            <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                        ) : selectedDayInfo ? (
+                            <LeaveDayCard type={selectedDayInfo.type} />
+                        ) : (
+                            <div className="border rounded-md">
+                                {dailyShifts.length > 0 ? (
+                                    dailyShifts.map((shift, index) => (
+                                        <div key={index} className="border-b last:border-b-0">
+                                            <div className='p-4'>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                    <div className="flex gap-2">
+                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}><Pencil className="h-4 w-4" /></Button>
+                                                        <Button variant="ghost" size="icon" onClick={() => {setShiftToDelete(shift); setIsDeleteDialogOpen(true);}}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {shift.events.map(t => (
-                                                        <TableRow key={t.id}>
-                                                            <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                            <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                            <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
                                                         </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {shift.events.map(t => (
+                                                            <TableRow key={t.id}>
+                                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                                <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-center h-24 flex items-center justify-center">Nessun turno trovato per questo giorno.</div>
-                            )}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                                    ))
+                                ) : (
+                                    <div className="text-center h-24 flex items-center justify-center">Nessun turno trovato per questo giorno.</div>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
         </div>
 
         <ResponsiveDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -884,7 +917,7 @@ export default function OperatorSummaryPage() {
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader>
+                 <CardHeader>
                     <div className="flex flex-col items-start gap-4">
                         <div>
                              <CardTitle>Riepilogo Attività di {operator.username}</CardTitle>
