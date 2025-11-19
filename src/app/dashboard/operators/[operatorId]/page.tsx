@@ -360,29 +360,55 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
         setDetailShift(shift);
         setIsDetailOpen(true);
     }
+    
+    const calculateOvertimeWithTolerance = (shift: Shift | null): number => {
+        if (!shift || !operator.workSchedule) return 0;
 
-    const calculateOvertime = (shift: Shift | null): { regular: number, overtime: number } => {
-        if (!shift || !operator.workSchedule) return { regular: 0, overtime: 0 };
         const shiftDate = shift.events[0]?.timestamp.toDate();
-        if (!shiftDate) return { regular: 0, overtime: 0 };
+        if (!shiftDate) return 0;
 
-        const dayOfWeekFns = getDay(shiftDate); // date-fns: Sunday = 0, Saturday = 6
+        const dayOfWeekFns = getDay(shiftDate);
+        const dayName = dayIndexToName[dayOfWeekFns];
+
+        const contractualHours = operator.workSchedule[dayName] || 0;
+        const contractualMinutes = contractualHours * 60;
+        const totalMinutes = shift.workDuration;
+
+        if (totalMinutes <= contractualMinutes) return 0;
+
+        const overtimeMinutes = totalMinutes - contractualMinutes;
+
+        // If less than 45 minutes, it doesn't count.
+        if (overtimeMinutes < 45) return 0;
+
+        // Calculate hours and remaining minutes
+        const hours = Math.floor(overtimeMinutes / 60);
+        const remainingMinutes = overtimeMinutes % 60;
+
+        // If remaining minutes are 45 or more, count it as a full next hour
+        if (remainingMinutes >= 45) {
+            return hours + 1;
+        }
+
+        // Otherwise, just count the full hours
+        return hours;
+    };
+
+
+    const calculateRawOvertimeMinutes = (shift: Shift | null): number => {
+        if (!shift || !operator.workSchedule) return 0;
+        const shiftDate = shift.events[0]?.timestamp.toDate();
+        if (!shiftDate) return 0;
+
+        const dayOfWeekFns = getDay(shiftDate);
         const dayName = dayIndexToName[dayOfWeekFns];
 
         const contractualHours = operator.workSchedule[dayName] || 0;
         const contractualMinutes = contractualHours * 60;
         const totalMinutes = shift.workDuration;
         
-        if (contractualMinutes === 0) {
-            return { regular: 0, overtime: totalMinutes };
-        }
-
-        if (totalMinutes > contractualMinutes) {
-            const overtimeMinutes = totalMinutes - contractualMinutes;
-            return { regular: contractualMinutes, overtime: overtimeMinutes };
-        }
-
-        return { regular: totalMinutes, overtime: 0 };
+        const overtime = totalMinutes - contractualMinutes;
+        return overtime > 0 ? overtime : 0;
     };
 
     const formatMinutes = (minutes: number) => {
@@ -392,9 +418,8 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
     };
 
     const handleOpenOvertimeDialog = (shift: Shift) => {
-        const { overtime } = calculateOvertime(shift);
-        const overtimeInHours = (overtime / 60).toFixed(2);
-        setOvertimeHours(overtimeInHours);
+        const overtimeValue = calculateOvertimeWithTolerance(shift);
+        setOvertimeHours(String(overtimeValue));
         setDetailShift(shift);
         setIsApproveOvertimeOpen(true);
     }
@@ -483,8 +508,8 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                             <CardContent className="text-sm">
                                 <div className="grid grid-cols-3 gap-2">
                                     <div><p className="font-semibold">Durata Turno</p><p>{formatMinutes(detailShift.workDuration)}</p></div>
-                                    <div><p className="font-semibold">Ore Ordinarie</p><p>{formatMinutes(calculateOvertime(detailShift).regular)}</p></div>
-                                    <div className={cn(calculateOvertime(detailShift).overtime > 0 && "text-amber-600 font-bold")}><p className="font-semibold">Straordinario</p><p>{formatMinutes(calculateOvertime(detailShift).overtime)}</p></div>
+                                    <div><p className="font-semibold">Ore Ordinarie</p><p>{formatMinutes(detailShift.workDuration - calculateRawOvertimeMinutes(detailShift))}</p></div>
+                                    <div className={cn(calculateRawOvertimeMinutes(detailShift) > 0 && "text-amber-600 font-bold")}><p className="font-semibold">Straordinario</p><p>{formatMinutes(calculateRawOvertimeMinutes(detailShift))}</p></div>
                                 </div>
                             </CardContent>
                         </Card>
@@ -575,12 +600,12 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                 <AlertDialogContent>
                      <AlertDialogHeader>
                         <AlertDialogTitle>Approva Turno e Straordinari</AlertDialogTitle>
-                        <AlertDialogDescription>Conferma le ore di straordinario da assegnare per questo turno. Puoi modificare il valore calcolato.</AlertDialogDescription>
+                        <AlertDialogDescription>Conferma le ore di straordinario da assegnare. Il valore è pre-calcolato con la regola di arrotondamento (scatta dopo 45 min).</AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-4">
-                        <Label htmlFor="overtime-hours" className="text-sm font-medium">Ore di Straordinario</Label>
-                        <Input id="overtime-hours" type="number" value={overtimeHours} onChange={(e) => setOvertimeHours(e.target.value)} step="0.01" min="0" />
-                        <p className="text-xs text-muted-foreground mt-2">Usa il punto (.) per i decimali. Es: 1.5 per un'ora e mezza.</p>
+                        <Label htmlFor="overtime-hours" className="text-sm font-medium">Ore di Straordinario Approvate</Label>
+                        <Input id="overtime-hours" type="number" value={overtimeHours} onChange={(e) => setOvertimeHours(e.target.value)} step="1" min="0" />
+                        <p className="text-xs text-muted-foreground mt-2">Puoi modificare il valore calcolato prima di approvare.</p>
                     </div>
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
@@ -1128,5 +1153,3 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
-
-    
