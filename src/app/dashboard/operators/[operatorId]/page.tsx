@@ -1128,3 +1128,5 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
+
+    
