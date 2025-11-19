@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, doc, updateDoc, runTransaction, query, orderBy, where, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, runTransaction, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
@@ -26,6 +26,13 @@ type SupplyRequest = {
     createdAt: any;
 };
 
+type Product = {
+    id: string;
+    name: string;
+    quantity: number;
+};
+
+
 export default function AdminSupplyRequestsPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -35,6 +42,7 @@ export default function AdminSupplyRequestsPage() {
     const [isLoading, setIsLoading] = useState(true);
 
     const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
+    const [currentStock, setCurrentStock] = useState<number | null>(null);
     const [approvedQuantity, setApprovedQuantity] = useState('');
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
     
@@ -71,9 +79,20 @@ export default function AdminSupplyRequestsPage() {
     }, [allRequests]);
 
 
-    const openApproveDialog = (request: SupplyRequest) => {
+    const openApproveDialog = async (request: SupplyRequest) => {
+        if (!firestore) return;
         setSelectedRequest(request);
         setApprovedQuantity(String(request.requestedQuantity));
+
+        // Fetch current stock
+        const productRef = doc(firestore, 'products', request.productId);
+        const productSnap = await getDoc(productRef);
+        if(productSnap.exists()){
+            setCurrentStock(productSnap.data().quantity);
+        } else {
+            setCurrentStock(0);
+            toast({ title: 'Prodotto non trovato', variant: 'destructive'});
+        }
         setIsApproveDialogOpen(true);
     };
 
@@ -103,6 +122,8 @@ export default function AdminSupplyRequestsPage() {
              toast({ title: "Errore", description: error.message || "Impossibile approvare la richiesta.", variant: "destructive"});
         } finally {
             setIsApproveDialogOpen(false);
+            setSelectedRequest(null);
+            setCurrentStock(null);
         }
     };
     
@@ -158,6 +179,7 @@ export default function AdminSupplyRequestsPage() {
                         <TableHead>Operatore</TableHead>
                         <TableHead>Prodotto</TableHead>
                         <TableHead>Qtà Rich.</TableHead>
+                        {isHistory && <TableHead>Qtà Appr.</TableHead>}
                         <TableHead>Data</TableHead>
                         {isHistory && <TableHead>Stato</TableHead>}
                         {!isHistory && <TableHead className="text-right">Azioni</TableHead>}
@@ -165,13 +187,14 @@ export default function AdminSupplyRequestsPage() {
                 </TableHeader>
                 <TableBody>
                     {requests.length === 0 ? (
-                        <TableRow><TableCell colSpan={isHistory ? 5 : 5} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={isHistory ? 6 : 5} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
                     ) : (
                         requests.map(req => (
                             <TableRow key={req.id}>
                                 <TableCell className="font-medium">{req.username}</TableCell>
                                 <TableCell>{req.productName}</TableCell>
                                 <TableCell>{req.requestedQuantity}</TableCell>
+                                {isHistory && <TableCell>{req.approvedQuantity ?? '-'}</TableCell>}
                                 <TableCell>{req.createdAt ? format(req.createdAt.toDate(), 'dd/MM/yyyy') : 'N/D'}</TableCell>
                                 {isHistory ? (
                                     <TableCell>
@@ -231,9 +254,11 @@ export default function AdminSupplyRequestsPage() {
             <AlertDialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Approva Richiesta</AlertDialogTitle>
+                        <AlertDialogTitle>Approva: {selectedRequest?.productName}</AlertDialogTitle>
                         <AlertDialogDescription>
                            Conferma o modifica la quantità da approvare. Verrà scalata dal magazzino.
+                           <br />
+                           <span className='font-bold mt-2 inline-block'>Giacenza attuale: {currentStock ?? <Loader2 className='h-4 w-4 animate-spin inline-block ml-1' />}</span>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="grid gap-4 py-4">
@@ -243,8 +268,8 @@ export default function AdminSupplyRequestsPage() {
                         </div>
                     </div>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleApproveRequest}>Approva e Aggiorna Magazzino</AlertDialogAction>
+                        <AlertDialogCancel onClick={() => setSelectedRequest(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleApproveRequest}>Approva e Aggiorna</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

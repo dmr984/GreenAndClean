@@ -285,6 +285,7 @@ export default function SupplyRequestPage() {
                                         <TableHead></TableHead>
                                         <TableHead>Prodotto</TableHead>
                                         <TableHead>Qtà Rich.</TableHead>
+                                        <TableHead>Qtà Appr.</TableHead>
                                         <TableHead>Stato</TableHead>
                                         <TableHead className="w-[100px] text-right">Azioni</TableHead>
                                     </TableRow>
@@ -292,7 +293,7 @@ export default function SupplyRequestPage() {
                                 <TableBody>
                                     {myRequests.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="h-24 text-center">Nessuna richiesta trovata.</TableCell>
+                                            <TableCell colSpan={6} className="h-24 text-center">Nessuna richiesta trovata.</TableCell>
                                         </TableRow>
                                     ) : (
                                         myRequests.map(req => (
@@ -302,6 +303,7 @@ export default function SupplyRequestPage() {
                                                 </TableCell>
                                                 <TableCell>{req.productName}</TableCell>
                                                 <TableCell>{req.requestedQuantity}</TableCell>
+                                                <TableCell>{req.status === 'approvata' ? req.approvedQuantity : '-'}</TableCell>
                                                 <TableCell>
                                                     <Badge variant={
                                                         req.status === 'approvata' ? 'secondary'
