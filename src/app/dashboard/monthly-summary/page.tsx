@@ -155,6 +155,7 @@ export default function MonthlySummaryPage() {
             
             let entrata: Timestamp | null = null;
             let currentBreakStart: Timestamp | null = null;
+            let dayWorked = false;
 
             dayEvents.forEach(event => {
                 if (event.type === 'entrata') {
@@ -165,7 +166,10 @@ export default function MonthlySummaryPage() {
                      totalWorkedMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
                      currentBreakStart = null;
                 } else if (event.type === 'uscita' && entrata) {
-                    workedDaysCount++;
+                    if (!dayWorked) {
+                        workedDaysCount++;
+                        dayWorked = true;
+                    }
                     totalWorkedMillis += (event.timestamp.toMillis() - entrata.toMillis());
                     entrata = null; // Reset for next shift on same day
                 }
@@ -176,12 +180,11 @@ export default function MonthlySummaryPage() {
 
 
         const approvedRequests = requests.filter(r => r.status === 'approvato');
+        const periodStart = startOfMonth(currentDate);
+        const periodEnd = endOfMonth(currentDate);
         
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
-
-        const periodStart = startOfMonth(currentDate);
-        const periodEnd = endOfMonth(currentDate);
 
         if (operatorData) {
             approvedRequests.forEach(req => {
@@ -203,9 +206,9 @@ export default function MonthlySummaryPage() {
         return {
             workedDays: workedDaysCount,
             workedHours: totalWorkedHours,
-            overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
+            overtimeHours: approvedRequests.filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
             ferieDays: ferieDaysCount,
-            permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
+            permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
             malattiaDays: malattiaDaysCount,
         };
     }, [timbrature, requests, operatorData, currentDate]);

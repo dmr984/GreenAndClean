@@ -49,6 +49,12 @@ type Shift = {
     workDuration: number; // total work minutes
 };
 
+type ApprovalData = {
+    shiftToApprove: Shift | null;
+    overtimeHours: string;
+    leaveHours: string;
+};
+
 const ITEMS_PER_PAGE = 5;
 
 export default function ShiftApprovalPage() {
@@ -76,9 +82,8 @@ export default function ShiftApprovalPage() {
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
 
-    const [overtimeHours, setOvertimeHours] = useState<string>("0");
-    const [isApproveOvertimeOpen, setIsApproveOvertimeOpen] = useState(false);
-    const [shiftToApprove, setShiftToApprove] = useState<Shift | null>(null);
+    const [approvalData, setApprovalData] = useState<ApprovalData>({ shiftToApprove: null, overtimeHours: "0", leaveHours: "0"});
+    const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
 
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
@@ -181,9 +186,12 @@ export default function ShiftApprovalPage() {
     };
 
     const handleConfirmApprove = async () => {
+        const { shiftToApprove, overtimeHours, leaveHours } = approvalData;
         if (!firestore || !shiftToApprove || !operator) return;
     
-        const approvedOvertimeHours = parseFloat(overtimeHours) || 0;
+        const approvedOvertime = parseFloat(overtimeHours) || 0;
+        const approvedLeave = parseFloat(leaveHours) || 0;
+
         const batch = writeBatch(firestore);
         
         shiftToApprove.events.forEach(event => {
@@ -193,15 +201,16 @@ export default function ShiftApprovalPage() {
             }
         });
     
-        if (approvedOvertimeHours > 0) {
-            const shiftDate = shiftToApprove.events[0].timestamp.toDate();
+        const shiftDate = shiftToApprove.events[0].timestamp.toDate();
+
+        if (approvedOvertime > 0) {
             const overtimeRequest = {
                 userId: operator.id,
                 type: 'straordinario' as const,
                 status: 'approvato' as const,
                 startDate: Timestamp.fromDate(shiftDate),
                 endDate: Timestamp.fromDate(shiftDate),
-                hours: approvedOvertimeHours,
+                hours: approvedOvertime,
                 reason: 'Straordinario approvato da turno',
                 createdAt: serverTimestamp(),
                 viewedByOperator: false,
@@ -209,18 +218,32 @@ export default function ShiftApprovalPage() {
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
         }
+
+        if (approvedLeave > 0) {
+            const leaveRequest = {
+                userId: operator.id,
+                type: 'permesso' as const,
+                status: 'approvato' as const,
+                startDate: Timestamp.fromDate(shiftDate),
+                endDate: Timestamp.fromDate(shiftDate),
+                hours: approvedLeave,
+                reason: 'Permesso generato da ammanco ore',
+                createdAt: serverTimestamp(),
+                viewedByOperator: false,
+            };
+            const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
+            batch.set(newRequestRef, leaveRequest);
+        }
     
         try {
             await batch.commit();
-            toast({ title: 'Successo', description: 'Turno e straordinari approvati.' });
+            toast({ title: 'Successo', description: 'Turno approvato e richieste registrate.' });
         } catch (err) {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         } finally {
-            setIsApproveOvertimeOpen(false);
-            setShiftToApprove(null);
-            setOvertimeHours("0");
-            // Close detail view as it's now approved
+            setIsApproveDialogOpen(false);
+            setApprovalData({ shiftToApprove: null, overtimeHours: "0", leaveHours: "0"});
             setIsDetailOpen(false);
         }
     };
@@ -356,34 +379,33 @@ export default function ShiftApprovalPage() {
         setIsDetailOpen(true);
     }
     
-    const calculateOvertimeWithTolerance = (shift: Shift | null): number => {
-        if (!shift || !operator?.workSchedule) return 0;
+    const calculateHours = (shift: Shift | null): { overtime: number, leave: number } => {
+        if (!shift || !operator?.workSchedule) return { overtime: 0, leave: 0 };
 
-        const shiftDate = shift.events[0]?.timestamp.toDate();
-        if (!shiftDate) return 0;
-        
-        const dayOfWeek = getDayFns(shiftDate);
-        const dayName = dayIndexToName[dayOfWeek];
-        
-        const contractualHours = operator.workSchedule[dayName] || 0;
-        const contractualMinutes = contractualHours * 60;
+        const contractualMinutes = getContractualHoursForShift(shift) * 60;
         const totalMinutes = shift.workDuration;
-        
-        if (totalMinutes <= contractualMinutes) return 0;
-        
-        const overtimeMinutes = totalMinutes - contractualMinutes;
-        
-        if (overtimeMinutes < 45) return 0;
-        
-        const hours = Math.floor(overtimeMinutes / 60);
-        const remainingMinutes = overtimeMinutes % 60;
 
-        if (remainingMinutes >= 45) {
-            return hours + 1;
+        if (totalMinutes > contractualMinutes) {
+            // Overtime
+            const overtimeMinutes = totalMinutes - contractualMinutes;
+            if (overtimeMinutes < 45) return { overtime: 0, leave: 0 };
+            
+            const hours = Math.floor(overtimeMinutes / 60);
+            const remainingMinutes = overtimeMinutes % 60;
+
+            if (remainingMinutes >= 45) {
+                return { overtime: hours + 1, leave: 0 };
+            }
+            return { overtime: hours, leave: 0 };
+        } else if (totalMinutes < contractualMinutes) {
+            // Leave
+            const leaveMinutes = contractualMinutes - totalMinutes;
+            return { overtime: 0, leave: parseFloat((leaveMinutes / 60).toFixed(2)) };
         }
 
-        return hours;
+        return { overtime: 0, leave: 0 };
     };
+
 
     const formatMinutes = (minutes: number) => {
         if (isNaN(minutes) || minutes < 0) return '00:00';
@@ -392,11 +414,14 @@ export default function ShiftApprovalPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const handleOpenOvertimeDialog = (shift: Shift) => {
-        const overtimeValue = calculateOvertimeWithTolerance(shift);
-        setOvertimeHours(String(overtimeValue));
-        setShiftToApprove(shift);
-        setIsApproveOvertimeOpen(true);
+    const handleOpenApproveDialog = (shift: Shift) => {
+        const { overtime, leave } = calculateHours(shift);
+        setApprovalData({
+            shiftToApprove: shift,
+            overtimeHours: String(overtime),
+            leaveHours: String(leave),
+        });
+        setIsApproveDialogOpen(true);
     }
     
     const getContractualHoursForShift = (shift: Shift | null): number => {
@@ -714,7 +739,7 @@ export default function ShiftApprovalPage() {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                                <p className="text-2xl font-bold">{calculateOvertimeWithTolerance(detailShift)}h</p>
+                                <p className="text-2xl font-bold">{calculateHours(detailShift).overtime}h</p>
                             </div>
                         </div>
                     )}
@@ -761,14 +786,14 @@ export default function ShiftApprovalPage() {
                             <Button variant="destructive" onClick={() => handleRejectShift(detailShift)}>
                                 <XCircle className="mr-2 h-4 w-4"/> Rifiuta Turno
                             </Button>
-                            <Button onClick={() => handleOpenOvertimeDialog(detailShift)}>
+                            <Button onClick={() => handleOpenApproveDialog(detailShift)}>
                                 <CheckCircle className="mr-2 h-4 w-4"/> Approva Turno
                             </Button>
                           </>
                         )}
                         {detailShift && (
                           <>
-                            <Button variant="outline" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                             <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                           </>
                         )}
@@ -808,20 +833,27 @@ export default function ShiftApprovalPage() {
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
 
-            <AlertDialog open={isApproveOvertimeOpen} onOpenChange={setIsApproveOvertimeOpen}>
+            <AlertDialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
                 <AlertDialogContent>
                      <AlertDialogHeader>
-                        <AlertDialogTitle>Approva Turno e Straordinari</AlertDialogTitle>
-                        <AlertDialogDescription>Conferma le ore di straordinario da assegnare. Il valore è pre-calcolato con la regola di arrotondamento (scatta dopo 45 min).</AlertDialogDescription>
+                        <AlertDialogTitle>Riepilogo e Approvazione Turno</AlertDialogTitle>
+                        <AlertDialogDescription>Verifica e modifica le ore calcolate prima di approvare il turno. Le ore verranno registrate come richieste separate.</AlertDialogDescription>
                     </AlertDialogHeader>
-                    <div className="py-4">
-                        <Label htmlFor="overtime-hours" className="text-sm font-medium">Ore di Straordinario Approvate</Label>
-                        <Input id="overtime-hours" type="number" value={overtimeHours} onChange={(e) => setOvertimeHours(e.target.value)} step="1" min="0" />
-                        <p className="text-xs text-muted-foreground mt-2">Puoi modificare il valore calcolato prima di approvare.</p>
+                    <div className="py-4 space-y-4">
+                        <div>
+                            <Label htmlFor="overtime-hours">Ore di Straordinario Calcolate</Label>
+                            <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="0.5" min="0" />
+                            <p className="text-xs text-muted-foreground mt-1">Calcolato con la regola dei 45min. Modifica se necessario.</p>
+                        </div>
+                        <div>
+                             <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
+                             <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="0.5" min="0" />
+                             <p className="text-xs text-muted-foreground mt-1">Calcolato in base alle ore mancanti. Modifica se necessario.</p>
+                        </div>
                     </div>
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmApprove}>Approva</AlertDialogAction>
+                        <AlertDialogAction onClick={handleConfirmApprove}>Approva e Registra</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
