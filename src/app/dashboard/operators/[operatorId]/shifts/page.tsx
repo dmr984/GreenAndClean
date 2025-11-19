@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -74,6 +75,10 @@ export default function ShiftApprovalPage() {
     const [overtimeHours, setOvertimeHours] = useState<string>("0");
     const [isApproveOvertimeOpen, setIsApproveOvertimeOpen] = useState(false);
     const [shiftToApprove, setShiftToApprove] = useState<Shift | null>(null);
+
+    const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
+    const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
+    const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
 
      useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -359,10 +364,8 @@ export default function ShiftApprovalPage() {
         
         const overtimeMinutes = totalMinutes - contractualMinutes;
         
-        // The new rule: overtime hour is granted after 45 minutes
         if (overtimeMinutes < 45) return 0;
         
-        // Calculate how many full hours are in the overtime, plus the threshold
         const hours = Math.floor(overtimeMinutes / 60);
         const remainingMinutes = overtimeMinutes % 60;
 
@@ -395,6 +398,57 @@ export default function ShiftApprovalPage() {
         const dayName = dayIndexToName[dayOfWeek];
         return operator.workSchedule[dayName] || 0;
     };
+
+    const handleAddManualShift = async () => {
+        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita) {
+            toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
+            return;
+        }
+
+        const createTimestamp = (time: string): Timestamp | null => {
+            if (!time) return null;
+            const [hours, minutes] = time.split(':').map(Number);
+            if(isNaN(hours) || isNaN(minutes)) return null;
+            return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+        };
+
+        const batch = writeBatch(firestore);
+        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+
+        const events: { type: Timbratura['type'], time: string }[] = [
+            { type: 'entrata', time: newShiftTimes.entrata },
+            { type: 'uscita', time: newShiftTimes.uscita },
+            { type: 'pausa', time: newShiftTimes.pausa },
+            { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
+        ];
+
+        for (const event of events) {
+            if (event.time) {
+                const timestamp = createTimestamp(event.time);
+                if (!timestamp) {
+                    toast({ title: `Orario non valido per ${event.type}`, variant: 'destructive'});
+                    return;
+                }
+                const newDocRef = doc(timbratureCollectionRef);
+                batch.set(newDocRef, {
+                    userId: operatorId,
+                    type: event.type,
+                    timestamp: timestamp,
+                    status: 'sospesa' as const,
+                    viewedByOperator: false,
+                });
+            }
+        }
+        
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
+            setIsAddShiftOpen(false);
+            setNewShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+        } catch (error) {
+            toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
+        }
+    };
     
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
@@ -404,9 +458,14 @@ export default function ShiftApprovalPage() {
     return (
         <>
             <Card>
-                <CardHeader>
-                    <CardTitle>Approvazione Turni di {operator.username}</CardTitle>
-                    <CardDescription>Conferma o rifiuta i turni di lavoro in sospeso.</CardDescription>
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <CardTitle>Approvazione Turni di {operator.username}</CardTitle>
+                        <CardDescription>Conferma o rifiuta i turni di lavoro in sospeso.</CardDescription>
+                    </div>
+                    <Button onClick={() => setIsAddShiftOpen(true)}>
+                        <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale
+                    </Button>
                 </CardHeader>
                 <CardContent>
                     {shifts.length === 0 ? (
@@ -470,6 +529,45 @@ export default function ShiftApprovalPage() {
                 </CardContent>
             </Card>
 
+            <ResponsiveDialog open={isAddShiftOpen} onOpenChange={setIsAddShiftOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>Seleziona il giorno e inserisci gli orari del turno.</ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                     <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                           <Label>Giorno del turno</Label>
+                           <Calendar mode="single" selected={newShiftDate} onSelect={setNewShiftDate} className="rounded-md border" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="manual-entrata">Entrata*</Label>
+                                <Input id="manual-entrata" type="time" value={newShiftTimes.entrata} onChange={e => setNewShiftTimes(p => ({...p, entrata: e.target.value}))} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="manual-uscita">Uscita*</Label>
+                                <Input id="manual-uscita" type="time" value={newShiftTimes.uscita} onChange={e => setNewShiftTimes(p => ({...p, uscita: e.target.value}))} required />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="manual-pausa">Inizio Pausa (Opz.)</Label>
+                                <Input id="manual-pausa" type="time" value={newShiftTimes.pausa} onChange={e => setNewShiftTimes(p => ({...p, pausa: e.target.value}))} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="manual-fine-pausa">Fine Pausa (Opz.)</Label>
+                                <Input id="manual-fine-pausa" type="time" value={newShiftTimes.fine_pausa} onChange={e => setNewShiftTimes(p => ({...p, fine_pausa: e.target.value}))} />
+                            </div>
+                        </div>
+                    </div>
+                    <ResponsiveDialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddShiftOpen(false)}>Annulla</Button>
+                        <Button onClick={handleAddManualShift}>Salva Turno</Button>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
                     <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
@@ -496,7 +594,7 @@ export default function ShiftApprovalPage() {
                                 <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
                             </div>
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Fatte</p>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
                                 <p className="text-2xl font-bold">{formatMinutes(detailShift.workDuration)}</p>
                             </div>
                             <div>
