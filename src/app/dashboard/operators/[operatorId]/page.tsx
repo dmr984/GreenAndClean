@@ -531,9 +531,6 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                           <>
                             <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
                             <Button onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica Turno</Button>
-                            {detailShift.status === 'in_sospeso' && (
-                                <Button onClick={() => handleOpenOvertimeDialog(detailShift)}><CheckCircle className="mr-2 h-4 w-4" /> Approva</Button>
-                            )}
                           </>
                         )}
                     </ResponsiveDialogFooter>
@@ -915,13 +912,15 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
 
                 // Create a new request for the period after the cancelled day.
                 const newStartDate2 = addDays(dayToCancel, 1);
+                
+                const { id, ...restOfRequest } = request;
+
                 const newRequestData = {
-                    ...request, // copy original data
-                    id: undefined, // remove old id
+                    ...restOfRequest, // copy original data without id
                     startDate: Timestamp.fromDate(newStartDate2),
                     endDate: request.endDate, // original end date
                 };
-                // Since we are inside a transaction, we need to use `transaction.set` on a new doc ref
+                
                 const newDocRef = doc(requestsCollectionRef);
                 transaction.set(newDocRef, newRequestData);
             });
@@ -1087,7 +1086,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                 <AlertDialogHeader>
                     <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
                     <AlertDialogDescription>
-                       Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normalmente.
+                       Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normally.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
