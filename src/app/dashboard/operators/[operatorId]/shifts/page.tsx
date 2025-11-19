@@ -216,11 +216,13 @@ export default function ShiftApprovalPage() {
             setIsApproveOvertimeOpen(false);
             setShiftToApprove(null);
             setOvertimeHours("0");
+            // Close detail view as it's now approved
+            setIsDetailOpen(false);
         }
     };
     
-     const handleRejectShift = async (shiftToReject: Shift) => {
-        if (!firestore || !operator) return;
+     const handleRejectShift = async (shiftToReject: Shift | null) => {
+        if (!firestore || !operator || !shiftToReject) return;
         const batch = writeBatch(firestore);
         shiftToReject.events.forEach(event => {
              if (event.status === 'sospesa') {
@@ -230,6 +232,7 @@ export default function ShiftApprovalPage() {
         });
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno rifiutato.' });
+            setIsDetailOpen(false);
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile rifiutare il turno.', variant: 'destructive' });
@@ -520,21 +523,9 @@ export default function ShiftApprovalPage() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                <div className="flex justify-end items-center">
-                                                        {shift.status === 'in_sospeso' && (
-                                                            <>
-                                                                <Button variant="ghost" size="icon" onClick={() => handleOpenOvertimeDialog(shift)}>
-                                                                    <CheckCircle className="h-5 w-5 text-green-500" />
-                                                                </Button>
-                                                                <Button variant="ghost" size="icon" onClick={() => handleRejectShift(shift)}>
-                                                                    <XCircle className="h-5 w-5 text-red-500" />
-                                                                </Button>
-                                                            </>
-                                                        )}
-                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
-                                                            <Eye className="h-5 w-5" />
-                                                        </Button>
-                                                    </div>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
+                                                        <Eye className="h-5 w-5" />
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         )
@@ -621,7 +612,6 @@ export default function ShiftApprovalPage() {
                                 <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
                                 {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                             </div>
-                            
                         </div>
                     </ResponsiveDialogHeader>
 
@@ -678,11 +668,21 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-                        <ResponsiveDialogClose asChild><Button variant="outline">Chiudi</Button></ResponsiveDialogClose>
+                        <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                        {detailShift && detailShift.status === 'in_sospeso' && (
+                          <>
+                            <Button variant="destructive" onClick={() => handleRejectShift(detailShift)}>
+                                <XCircle className="mr-2 h-4 w-4"/> Rifiuta Turno
+                            </Button>
+                            <Button onClick={() => handleOpenOvertimeDialog(detailShift)}>
+                                <CheckCircle className="mr-2 h-4 w-4"/> Approva Turno
+                            </Button>
+                          </>
+                        )}
                         {detailShift && (
                           <>
-                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
-                            <Button onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica Turno</Button>
+                            <Button variant="outline" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                            <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                           </>
                         )}
                     </ResponsiveDialogFooter>
