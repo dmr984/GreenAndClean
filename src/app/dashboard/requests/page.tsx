@@ -159,7 +159,7 @@ export default function RequestsPage() {
                                 Compila il modulo per inviare una nuova richiesta di ferie, permesso, ecc.
                             </DialogDescription>
                         </DialogHeader>
-                        <RequestForm userId={user.id} onFinished={() => setIsDialogOpen(false)} />
+                        <RequestForm userId={user.id} onFinished={() => setIsDialogOpen(false)} role="operator" />
                     </DialogContent>
                 </Dialog>
             </CardHeader>

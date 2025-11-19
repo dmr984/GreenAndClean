@@ -52,9 +52,10 @@ type RequestFormValues = z.infer<typeof requestSchema>;
 interface RequestFormProps {
     userId: string;
     onFinished: () => void;
+    role: 'admin' | 'operator';
 }
 
-export function RequestForm({ userId, onFinished }: RequestFormProps) {
+export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [isStartPickerOpen, setIsStartPickerOpen] = useState(false);
@@ -88,6 +89,7 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
             endDate: Timestamp.fromDate(finalEndDate),
             reason: data.reason || "",
             createdAt: serverTimestamp(),
+            viewedByOperator: role === 'admin' ? false : true,
         };
 
         if (data.requestType === 'permesso' || data.requestType === 'straordinario') {
@@ -132,8 +134,12 @@ export function RequestForm({ userId, onFinished }: RequestFormProps) {
                                 <SelectContent>
                                     <SelectItem value="ferie">Ferie</SelectItem>
                                     <SelectItem value="permesso">Permesso</SelectItem>
-                                    <SelectItem value="malattia">Malattia</SelectItem>
-                                    <SelectItem value="straordinario">Straordinario</SelectItem>
+                                    {role === 'admin' && (
+                                        <>
+                                            <SelectItem value="malattia">Malattia</SelectItem>
+                                            <SelectItem value="straordinario">Straordinario</SelectItem>
+                                        </>
+                                    )}
                                 </SelectContent>
                             </Select>
                             {errors.requestType && <p className="text-xs text-destructive mt-1">{errors.requestType.message}</p>}

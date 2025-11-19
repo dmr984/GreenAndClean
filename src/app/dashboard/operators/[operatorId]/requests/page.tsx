@@ -264,7 +264,7 @@ export default function LeaveRequestsPage() {
                                     Compila il modulo per inviare una nuova richiesta per conto dell'operatore.
                                 </DialogDescription>
                             </DialogHeader>
-                            <RequestForm userId={operator.id} onFinished={() => setIsAddDialogOpen(false)} />
+                            <RequestForm userId={operator.id} onFinished={() => setIsAddDialogOpen(false)} role="admin" />
                         </DialogContent>
                     </Dialog>
                 </CardHeader>
