@@ -48,6 +48,10 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     const [hours, setHours] = useState(request.hours?.toString() || '');
     const [reason, setReason] = useState(request.reason || '');
 
+    const [startMonth, setStartMonth] = useState(request.startDate.toDate());
+    const [endMonth, setEndMonth] = useState(request.endDate.toDate());
+
+
     const handleSave = () => {
         const editedData: Partial<Request> = {
             type,
@@ -95,6 +99,8 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                                 }
                                             }
                                         }}
+                                        month={startMonth}
+                                        onMonthChange={setStartMonth}
                                         initialFocus
                                     />
                                 </PopoverContent>
@@ -120,6 +126,8 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                             if(date) setEndDate(date);
                                         }}
                                         disabled={{ before: startDate }}
+                                        month={endMonth}
+                                        onMonthChange={setEndMonth}
                                         initialFocus
                                     />
                                 </PopoverContent>
