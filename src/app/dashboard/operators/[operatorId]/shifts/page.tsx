@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format, set, getDay as getDayFns } from 'date-fns';
+import { format, set, getDay as getDayFns, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -538,7 +538,13 @@ export default function ShiftApprovalPage() {
                      <div className="grid gap-4 py-4">
                         <div className="space-y-2">
                            <Label>Giorno del turno</Label>
-                           <Calendar mode="single" selected={newShiftDate} onSelect={setNewShiftDate} className="rounded-md border" />
+                           <Calendar 
+                                mode="single" 
+                                selected={newShiftDate} 
+                                onSelect={setNewShiftDate} 
+                                className="rounded-md border" 
+                                disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
+                           />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
