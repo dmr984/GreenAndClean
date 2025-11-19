@@ -194,26 +194,32 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
 
         try {
             await runTransaction(firestore, async (transaction) => {
+                // If it's a single-day request, just delete it.
                 if (isSameDay(startDate, endDate)) {
                     transaction.delete(requestRef);
                     return;
                 }
 
+                // If canceling the start date, move the start date forward.
                 if (isSameDay(dayToCancel, startDate)) {
                     const newStartDate = addDays(startDate, 1);
                     transaction.update(requestRef, { startDate: Timestamp.fromDate(newStartDate) });
                     return;
                 }
                 
+                // If canceling the end date, move the end date back.
                 if (isSameDay(dayToCancel, endDate)) {
                     const newEndDate = subDays(endDate, 1);
                     transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate) });
                     return;
                 }
 
+                // If canceling a middle day, split the request.
+                // 1. Update the original request to end before the canceled day.
                 const newEndDate1 = subDays(dayToCancel, 1);
                 transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
 
+                // 2. Create a new request for the period after the canceled day.
                 const newStartDate2 = addDays(dayToCancel, 1);
                 
                 const { id, ...restOfRequest } = request;
@@ -343,7 +349,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                <h4 className="text-lg font-semibold">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
+                <h4 className="text-lg font-semibold capitalize">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -718,7 +724,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
     return (
         <>
-        <div className="grid gap-6 md:grid-cols-[350px_1fr]">
+        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-[380px_1fr]">
             <div className="flex flex-col gap-6">
                 <Card>
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
@@ -881,7 +887,7 @@ export default function OperatorSummaryPage() {
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col gap-4">
                         <div>
                              <CardTitle>Riepilogo Attività di {operator.username}</CardTitle>
                              <CardDescription>Visualizza il riepilogo mensile o giornaliero.</CardDescription>
