@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Calendar } from '@/components/ui/calendar';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -215,7 +216,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
 
                 const newStartDate2 = addDays(dayToCancel, 1);
                 
-                const { ...restOfRequest } = request;
+                const { id, ...restOfRequest } = request;
 
                 const newRequestData = {
                     ...restOfRequest, 
@@ -224,7 +225,6 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                     createdAt: serverTimestamp(),
                     viewedByOperator: false,
                 };
-                delete (newRequestData as any).id;
                 
                 const newDocRef = doc(requestsCollectionRef);
                 transaction.set(newDocRef, newRequestData);
