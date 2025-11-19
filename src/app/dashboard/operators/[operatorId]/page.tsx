@@ -103,6 +103,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
 
     const [overtimeHours, setOvertimeHours] = useState<string>("0");
     const [isApproveOvertimeOpen, setIsApproveOvertimeOpen] = useState(false);
+    const [shiftToApprove, setShiftToApprove] = useState<Shift | null>(null);
 
 
     useEffect(() => {
@@ -195,8 +196,10 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
         return { status, workDuration };
     };
 
-    const handleApproveShift = async (shiftToApprove: Shift, approvedOvertimeHours: number) => {
-        if (!firestore) return;
+    const handleConfirmApprove = async () => {
+        if (!firestore || !shiftToApprove) return;
+    
+        const approvedOvertimeHours = parseFloat(overtimeHours) || 0;
         const batch = writeBatch(firestore);
         
         shiftToApprove.events.forEach(event => {
@@ -205,7 +208,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                 batch.update(docRef, { status: 'confermata', viewedByOperator: false });
             }
         });
-
+    
         if (approvedOvertimeHours > 0) {
             const shiftDate = shiftToApprove.events[0].timestamp.toDate();
             const overtimeRequest = {
@@ -222,15 +225,18 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
         }
-
-        await batch.commit().then(() => {
+    
+        try {
+            await batch.commit();
             toast({ title: 'Successo', description: 'Turno e straordinari approvati.' });
-            setIsDetailOpen(false);
-            setIsApproveOvertimeOpen(false);
-        }).catch(err => {
+        } catch (err) {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
-        });
+        } finally {
+            setIsApproveOvertimeOpen(false);
+            setShiftToApprove(null);
+            setOvertimeHours("0");
+        }
     };
     
      const handleRejectShift = async (shiftToReject: Shift) => {
@@ -366,21 +372,21 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
 
         const shiftDate = shift.events[0]?.timestamp.toDate();
         if (!shiftDate) return 0;
-
+        
         const dayOfWeekFns = getDay(shiftDate);
         const dayName = dayIndexToName[dayOfWeekFns];
-
+        
         const contractualHours = operator.workSchedule[dayName] || 0;
         const contractualMinutes = contractualHours * 60;
         const totalMinutes = shift.workDuration;
-
+        
         if (totalMinutes <= contractualMinutes) return 0;
-
+        
         const overtimeMinutes = totalMinutes - contractualMinutes;
-
+        
         // If less than 45 minutes, it doesn't count.
         if (overtimeMinutes < 45) return 0;
-
+        
         // Calculate hours and remaining minutes
         const hours = Math.floor(overtimeMinutes / 60);
         const remainingMinutes = overtimeMinutes % 60;
@@ -394,23 +400,6 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
         return hours;
     };
 
-
-    const calculateRawOvertimeMinutes = (shift: Shift | null): number => {
-        if (!shift || !operator.workSchedule) return 0;
-        const shiftDate = shift.events[0]?.timestamp.toDate();
-        if (!shiftDate) return 0;
-
-        const dayOfWeekFns = getDay(shiftDate);
-        const dayName = dayIndexToName[dayOfWeekFns];
-
-        const contractualHours = operator.workSchedule[dayName] || 0;
-        const contractualMinutes = contractualHours * 60;
-        const totalMinutes = shift.workDuration;
-        
-        const overtime = totalMinutes - contractualMinutes;
-        return overtime > 0 ? overtime : 0;
-    };
-
     const formatMinutes = (minutes: number) => {
         const h = Math.floor(minutes / 60);
         const m = Math.round(minutes % 60);
@@ -420,7 +409,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
     const handleOpenOvertimeDialog = (shift: Shift) => {
         const overtimeValue = calculateOvertimeWithTolerance(shift);
         setOvertimeHours(String(overtimeValue));
-        setDetailShift(shift);
+        setShiftToApprove(shift);
         setIsApproveOvertimeOpen(true);
     }
     
@@ -501,19 +490,6 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                         <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
                          {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
-
-                     {detailShift && detailShift.status !== 'in_corso' && (
-                        <Card className="my-4">
-                            <CardHeader className="pb-2"><CardTitle className="text-lg">Riepilogo Ore</CardTitle></CardHeader>
-                            <CardContent className="text-sm">
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div><p className="font-semibold">Durata Turno</p><p>{formatMinutes(detailShift.workDuration)}</p></div>
-                                    <div><p className="font-semibold">Ore Ordinarie</p><p>{formatMinutes(detailShift.workDuration - calculateRawOvertimeMinutes(detailShift))}</p></div>
-                                    <div className={cn(calculateRawOvertimeMinutes(detailShift) > 0 && "text-amber-600 font-bold")}><p className="font-semibold">Straordinario</p><p>{formatMinutes(calculateRawOvertimeMinutes(detailShift))}</p></div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                     )}
 
                     <div className="overflow-x-auto my-4 max-h-96 overflow-y-auto">
                         <Table>
@@ -609,7 +585,7 @@ const ShiftApproval = ({ operator, setPendingCount }: { operator: Operator, setP
                     </div>
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => detailShift && handleApproveShift(detailShift, parseFloat(overtimeHours) || 0)}>Approva</AlertDialogAction>
+                        <AlertDialogAction onClick={handleConfirmApprove}>Approva</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
