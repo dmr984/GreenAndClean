@@ -51,7 +51,7 @@ type Timbratura = {
     id: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    status: 'sospesa' | 'confermata';
+    status: 'sospesa' | 'confermata' | 'rifiutata';
     latitude?: number;
     longitude?: number;
 };
@@ -257,82 +257,40 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     const handleCleanMonth = async () => {
         if (!firestore) return;
         setIsCleaningMonth(true);
-    
+
         const monthStart = startOfMonth(currentDate);
         const monthEnd = endOfMonth(currentDate);
-    
+
         try {
+            // 1. Fetch documents to delete outside of the transaction
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operatorId}/timbrature`),
+                where('timestamp', '>=', monthStart),
+                where('timestamp', '<=', monthEnd)
+            );
+            const timbratureSnapshot = await getDocs(timbratureQuery);
+
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operatorId}/requests`),
+                where('startDate', '>=', monthStart),
+                where('endDate', '<=', monthEnd)
+            );
+            const requestsSnapshot = await getDocs(requestsQuery);
+
+            // 2. Run the deletions in a single transaction
             await runTransaction(firestore, async (transaction) => {
-                // 1. Delete all timbrature within the month
-                const timbratureQuery = query(
-                    collection(firestore, `app-users/${operatorId}/timbrature`),
-                    where('timestamp', '>=', monthStart),
-                    where('timestamp', '<=', monthEnd)
-                );
-                const timbratureSnapshot = await getDocs(timbratureQuery);
                 timbratureSnapshot.forEach(doc => transaction.delete(doc.ref));
-    
-                // 2. Fetch all requests that could possibly overlap with the month
-                const requestsCollectionRef = collection(firestore, `app-users/${operatorId}/requests`);
-                const requestsQuery = query(requestsCollectionRef, where('endDate', '>=', monthStart));
-                const requestsSnapshot = await getDocs(requestsQuery);
-    
-                for (const docSnap of requestsSnapshot.docs) {
-                    const request = { id: docSnap.id, ...docSnap.data() } as Request;
-                    const requestRef = docSnap.ref;
-                    const reqStart = request.startDate.toDate();
-                    const reqEnd = request.endDate.toDate();
-    
-                    // Skip requests that end before our month starts
-                    if (reqEnd < monthStart) continue;
-                    // Skip requests that start after our month ends
-                    if (reqStart > monthEnd) continue;
-    
-    
-                    const startsBefore = reqStart < monthStart;
-                    const endsAfter = reqEnd > monthEnd;
-    
-                    if (!startsBefore && !endsAfter) {
-                        // Case 1: Request is fully inside the month. Delete it.
-                        transaction.delete(requestRef);
-                    } else if (startsBefore && !endsAfter) {
-                        // Case 2: Request starts before and ends within the month. Truncate it.
-                        const newEndDate = subDays(monthStart, 1);
-                        transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate) });
-                    } else if (!startsBefore && endsAfter) {
-                        // Case 3: Request starts within the month and ends after. Truncate it.
-                        const newStartDate = addDays(monthEnd, 1);
-                        transaction.update(requestRef, { startDate: Timestamp.fromDate(newStartDate) });
-                    } else if (startsBefore && endsAfter) {
-                        // Case 4: Request spans over the entire month. Split it.
-                        // First part
-                        const newEndDate1 = subDays(monthStart, 1);
-                        transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
-    
-                        // Second part
-                        const newStartDate2 = addDays(monthEnd, 1);
-                        const { id, ...restOfRequest } = request;
-                        const newRequestData = {
-                            ...restOfRequest,
-                            startDate: Timestamp.fromDate(newStartDate2),
-                            endDate: request.endDate, // original end date
-                            createdAt: serverTimestamp(),
-                            viewedByOperator: false,
-                        };
-                        const newDocRef = doc(requestsCollectionRef);
-                        transaction.set(newDocRef, newRequestData);
-                    }
-                }
+                requestsSnapshot.forEach(doc => transaction.delete(doc.ref));
             });
-    
-            toast({ title: 'Operazione Completata', description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati o aggiornati.` });
-    
+
+            toast({ title: 'Operazione Completata', description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
+
         } catch (error) {
             console.error("Error cleaning month:", error);
             toast({ title: 'Errore', description: 'Impossibile completare la pulizia del mese.', variant: 'destructive' });
         } finally {
             setIsCleaningMonth(false);
-            setCleanConfirmStep(0);
+            setCleanConfirmStep(0); // Reset dialog state
         }
     };
     
@@ -925,7 +883,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                                             <TableRow key={t.id}>
                                                                 <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                                 <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                                <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
+                                                                <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
                                                             </TableRow>
                                                         ))}
                                                     </TableBody>
