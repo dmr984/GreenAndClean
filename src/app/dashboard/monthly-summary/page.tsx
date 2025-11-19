@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List } from 'lucide-react';
+import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -138,6 +138,8 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, monthStart, monthEnd, toast]);
     
     const summary = useMemo(() => {
+        let totalWorkedMillis = 0;
+
         const dailyTimbrature = timbrature.reduce((acc, t) => {
             const day = t.timestamp.toDate().toDateString();
             if (!acc[day]) {
@@ -150,11 +152,32 @@ export default function MonthlySummaryPage() {
         let workedDaysCount = 0;
 
         Object.values(dailyTimbrature).forEach(dayEvents => {
-            const hasEntrata = dayEvents.some(e => e.type === 'entrata');
-            const hasUscita = dayEvents.some(e => e.type === 'uscita');
-            if (hasEntrata && hasUscita) {
-              workedDaysCount++;
-            }
+            const entrate = dayEvents.filter(e => e.type === 'entrata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const uscite = dayEvents.filter(e => e.type === 'uscita').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+            // Processa ogni turno (coppia entrata/uscita)
+            entrate.forEach((entrata, i) => {
+                const uscita = uscite[i];
+                if (uscita) {
+                    workedDaysCount++;
+                    let shiftMillis = uscita.timestamp.toMillis() - entrata.timestamp.toMillis();
+                    
+                    const breaksInShift = dayEvents
+                        .filter(e => e.timestamp.toMillis() > entrata.timestamp.toMillis() && e.timestamp.toMillis() < uscita.timestamp.toMillis())
+                        .sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+                    let breakStart: Timestamp | null = null;
+                    breaksInShift.forEach(event => {
+                        if (event.type === 'pausa') {
+                            breakStart = event.timestamp;
+                        } else if (event.type === 'fine_pausa' && breakStart) {
+                            shiftMillis -= (event.timestamp.toMillis() - breakStart.toMillis());
+                            breakStart = null;
+                        }
+                    });
+                    totalWorkedMillis += shiftMillis;
+                }
+            });
         });
 
         const approvedRequests = requests.filter(r => r.status === 'approvato');
@@ -181,9 +204,13 @@ export default function MonthlySummaryPage() {
                 }
             });
         }
+        
+        const totalWorkedHours = Math.floor(totalWorkedMillis / (1000 * 60 * 60));
+        const totalWorkedMinutes = Math.floor((totalWorkedMillis % (1000 * 60 * 60)) / (1000 * 60));
 
         return {
             workedDays: workedDaysCount,
+            workedHours: `${totalWorkedHours.toString().padStart(2, '0')}:${totalWorkedMinutes.toString().padStart(2, '0')}`,
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
             ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -323,7 +350,7 @@ export default function MonthlySummaryPage() {
                 </div>
             </div>
 
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
                 <Card
                     onClick={handleWorkedDaysClick}
                     className="cursor-pointer transition-all hover:bg-muted/50"
@@ -334,6 +361,18 @@ export default function MonthlySummaryPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{summary.workedDays}</div>
+                    </CardContent>
+                </Card>
+                 <Card
+                    onClick={handleWorkedDaysClick}
+                    className="cursor-pointer transition-all hover:bg-muted/50"
+                >
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Ore Lavorate</CardTitle>
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{summary.workedHours}</div>
                     </CardContent>
                 </Card>
                 <Card
@@ -384,11 +423,11 @@ export default function MonthlySummaryPage() {
                         <div className="text-2xl font-bold">{summary.malattiaDays}</div>
                     </CardContent>
                 </Card>
-                 <Card className="flex flex-col justify-center items-center">
-                   <Button onClick={() => router.push('/dashboard/requests')}>
-                        <Plus className="mr-2 h-4 w-4" /> Nuova Richiesta
-                    </Button>
-                </Card>
+            </div>
+             <div className="flex justify-center">
+                 <Button onClick={() => router.push('/dashboard/requests')} size="lg">
+                    <Plus className="mr-2 h-4 w-4" /> Nuova Richiesta
+                </Button>
             </div>
             
             <Card>
