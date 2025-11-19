@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, 'useState', useMemo, useEffect } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -176,13 +176,19 @@ export default function MonthlySummaryPage() {
             });
         }
         
-        const totalWorkedHours = Math.floor(totalWorkedMillis / (1000 * 60 * 60));
-
-
         const approvedRequests = requests.filter(r => r.status === 'approvato');
         const periodStart = startOfMonth(currentDate);
         const periodEnd = endOfMonth(currentDate);
+
+        const overtimeTotal = approvedRequests
+            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
+            .reduce((sum, r) => sum + (r.hours || 0), 0);
         
+        const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
+
+
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
 
@@ -206,7 +212,7 @@ export default function MonthlySummaryPage() {
         return {
             workedDays: workedDaysCount,
             workedHours: totalWorkedHours,
-            overtimeHours: approvedRequests.filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
+            overtimeHours: overtimeTotal,
             ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
             malattiaDays: malattiaDaysCount,

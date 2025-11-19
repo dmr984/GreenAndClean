@@ -161,14 +161,21 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             }
         }
         
-        const totalWorkedHours = Math.round(totalWorkedMillis / (1000 * 60 * 60));
+        const periodStart = startOfMonth(currentDate);
+        const periodEnd = endOfMonth(currentDate);
+
+        const overtimeTotal = approvedRequests
+            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
+            .reduce((sum, r) => sum + (r.hours || 0), 0);
+        
+        const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
+
     
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
     
-        const periodStart = startOfMonth(currentDate);
-        const periodEnd = endOfMonth(currentDate);
-        
         if (operator) {
             approvedRequests.forEach(req => {
                 if (req.type === 'ferie' || req.type === 'malattia') {
@@ -189,7 +196,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         return {
             workedDays: workedDaysCount,
             workedHours: totalWorkedHours,
-            overtimeHours: approvedRequests.filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
+            overtimeHours: overtimeTotal,
             ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
             malattiaDays: malattiaDaysCount,
@@ -797,12 +804,10 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         
         const overtimeMinutes = totalMinutes - contractualMinutes;
         
-        if (overtimeMinutes < 45) return 0;
-        
         const hours = Math.floor(overtimeMinutes / 60);
         const remainingMinutes = overtimeMinutes % 60;
 
-        if (remainingMinutes >= 45) {
+        if (remainingMinutes >= 50) {
             return hours + 1;
         }
 

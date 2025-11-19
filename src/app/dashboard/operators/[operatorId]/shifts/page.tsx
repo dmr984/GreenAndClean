@@ -383,20 +383,16 @@ export default function ShiftApprovalPage() {
         if (!shift || !operator?.workSchedule) return { overtime: 0, leave: 0 };
 
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
+        
         const totalMinutes = shift.workDuration;
+        const hoursWorked = Math.floor(totalMinutes / 60);
+        const minutesWorked = totalMinutes % 60;
+        const totalRoundedHours = hoursWorked + (minutesWorked >= 50 ? 1 : 0);
 
-        if (totalMinutes > contractualMinutes) {
+        if (totalRoundedHours > (contractualMinutes / 60)) {
             // Overtime
-            const overtimeMinutes = totalMinutes - contractualMinutes;
-            if (overtimeMinutes < 45) return { overtime: 0, leave: 0 };
-            
-            const hours = Math.floor(overtimeMinutes / 60);
-            const remainingMinutes = overtimeMinutes % 60;
-
-            if (remainingMinutes >= 45) {
-                return { overtime: hours + 1, leave: 0 };
-            }
-            return { overtime: hours, leave: 0 };
+            const overtimeHours = totalRoundedHours - (contractualMinutes / 60);
+            return { overtime: overtimeHours, leave: 0 };
         } else if (totalMinutes < contractualMinutes) {
             // Leave
             const leaveMinutes = contractualMinutes - totalMinutes;
@@ -843,7 +839,7 @@ export default function ShiftApprovalPage() {
                         <div>
                             <Label htmlFor="overtime-hours">Ore di Straordinario Calcolate</Label>
                             <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="0.5" min="0" />
-                            <p className="text-xs text-muted-foreground mt-1">Calcolato con la regola dei 45min. Modifica se necessario.</p>
+                            <p className="text-xs text-muted-foreground mt-1">Calcolato con la regola dei 50min. Modifica se necessario.</p>
                         </div>
                         <div>
                              <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
