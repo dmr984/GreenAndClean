@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Loader2, CheckCircle, XCircle, Trash2, Pencil, PlusCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Trash2, Pencil, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useParams } from 'next/navigation';
@@ -20,6 +21,8 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { RequestForm } from '@/components/request-form';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, formatISO } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+
 
 type Operator = {
     id: string;
@@ -44,12 +47,6 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     const [endDate, setEndDate] = useState(request.endDate.toDate());
     const [hours, setHours] = useState(request.hours?.toString() || '');
     const [reason, setReason] = useState(request.reason || '');
-
-    const monthDates = useMemo(() => {
-        const start = startOfMonth(startDate);
-        const end = endOfMonth(startDate);
-        return eachDayOfInterval({ start, end });
-    }, [startDate]);
 
     const handleSave = () => {
         const editedData: Partial<Request> = {
@@ -76,41 +73,57 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                      <div className='grid grid-cols-2 gap-4'>
                         <div>
                             <Label>Data Inizio</Label>
-                            <Select
-                                value={formatISO(startDate, { representation: 'date' })}
-                                onValueChange={(val) => {
-                                    const newStartDate = new Date(val);
-                                    setStartDate(newStartDate);
-                                    if (newStartDate > endDate) {
-                                        setEndDate(newStartDate); 
-                                    }
-                                }}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    {monthDates.map(date => (
-                                        <SelectItem key={date.toISOString()} value={formatISO(date, { representation: 'date' })}>
-                                            {format(date, 'PPP', { locale: it })}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                             <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant={"outline"}
+                                        className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {startDate ? format(startDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                        mode="single"
+                                        selected={startDate}
+                                        onSelect={(date) => {
+                                            if (date) {
+                                                setStartDate(date);
+                                                if (date > endDate) {
+                                                    setEndDate(date);
+                                                }
+                                            }
+                                        }}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <div>
                             <Label>Data Fine</Label>
-                             <Select
-                                value={formatISO(endDate, { representation: 'date' })}
-                                onValueChange={(val) => setEndDate(new Date(val))}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                     {monthDates.filter(d => d >= startDate).map(date => (
-                                        <SelectItem key={date.toISOString()} value={formatISO(date, { representation: 'date' })}>
-                                            {format(date, 'PPP', { locale: it })}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant={"outline"}
+                                        className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {endDate ? format(endDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                        mode="single"
+                                        selected={endDate}
+                                        onSelect={(date) => {
+                                            if(date) setEndDate(date);
+                                        }}
+                                        disabled={{ before: startDate }}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
                         </div>
                      </div>
 
