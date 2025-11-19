@@ -183,11 +183,10 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         }
         
         const totalWorkedHours = Math.floor(totalWorkedMillis / (1000 * 60 * 60));
-        const totalWorkedMinutes = Math.floor((totalWorkedMillis % (1000 * 60 * 60)) / (1000 * 60));
 
         return {
             workedDays: workedDaysCount,
-            workedHours: `${totalWorkedHours.toString().padStart(2, '0')}:${totalWorkedMinutes.toString().padStart(2, '0')}`,
+            workedHours: totalWorkedHours,
             overtimeHours: approvedRequests.filter(r => r.type === 'straordinario').reduce((sum, r) => sum + (r.hours || 0), 0),
             ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso').reduce((sum, r) => sum + (r.hours || 0), 0),
