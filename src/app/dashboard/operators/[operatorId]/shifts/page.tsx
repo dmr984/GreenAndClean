@@ -585,8 +585,8 @@ export default function ShiftApprovalPage() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}>
-                                                        <Pencil className="h-4 w-4" />
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
+                                                        <Eye className="h-5 w-5" />
                                                     </Button>
                                                 </TableCell>
                                             </TableRow>
