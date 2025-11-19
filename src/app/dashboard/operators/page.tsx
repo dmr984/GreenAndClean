@@ -73,7 +73,7 @@ export default function ManageOperatorsPage() {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
-    const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
+    const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number}>>({});
 
     
     // Form state
@@ -104,9 +104,31 @@ export default function ManageOperatorsPage() {
             usersData.sort((a,b) => a.username.localeCompare(b.username, undefined, { numeric: true }));
             setOperators(usersData);
             setIsLoading(false);
+
+            // For each operator, set up a listener for pending items
+            usersData.forEach(op => {
+                const shiftsQuery = query(collection(firestore, `app-users/${op.id}/timbrature`), where('status', '==', 'sospesa'));
+                const leavesQuery = query(collection(firestore, `app-users/${op.id}/requests`), where('status', '==', 'in_attesa'));
+                
+                onSnapshot(shiftsQuery, (shiftSnapshot) => {
+                    const pendingDays = new Set(shiftSnapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
+                    setPendingCounts(prev => ({
+                        ...prev,
+                        [op.id]: { ...prev[op.id], shifts: pendingDays.size }
+                    }));
+                });
+
+                onSnapshot(leavesQuery, (leaveSnapshot) => {
+                     setPendingCounts(prev => ({
+                        ...prev,
+                        [op.id]: { ...prev[op.id], leaves: leaveSnapshot.size }
+                    }));
+                });
+            });
+
         }, (error) => {
             if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({ operation: 'list', path: (operatorsQuery as Query).path });
+                const contextualError = new FirestorePermissionError({ operation: 'list', path: 'app-users' });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
                  console.error("Error fetching operators:", error);
@@ -114,8 +136,6 @@ export default function ManageOperatorsPage() {
             }
             setIsLoading(false);
         });
-        
-        // Removed all pending count logic
         
         return () => {
             unsubscribeOperators();
@@ -370,31 +390,36 @@ export default function ManageOperatorsPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {operators.map((operator) => (
-                                        <TableRow key={operator.id} onClick={() => router.push(`/dashboard/operators/${operator.id}`)} className="cursor-pointer">
-                                            <TableCell className="font-medium">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{operator.username}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
-                                            <TableCell onClick={(e) => e.stopPropagation()}>
-                                                <Switch
-                                                    checked={operator.visibleInLogin}
-                                                    onCheckedChange={(checked) => handleVisibilityChange(operator.id, checked)}
-                                                    aria-label={`Toggle visibility for ${operator.username}`}
-                                                />
-                                            </TableCell>
-                                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setIsEditDialogOpen(true);}}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {operators.map((operator) => {
+                                        const pending = pendingCounts[operator.id];
+                                        const totalPending = (pending?.shifts || 0) + (pending?.leaves || 0);
+                                        return (
+                                            <TableRow key={operator.id} onClick={() => router.push(`/dashboard/operators/${operator.id}`)} className="cursor-pointer">
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{operator.username}</span>
+                                                        {totalPending > 0 && <Badge variant="destructive">{totalPending}</Badge>}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
+                                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                                    <Switch
+                                                        checked={operator.visibleInLogin}
+                                                        onCheckedChange={(checked) => handleVisibilityChange(operator.id, checked)}
+                                                        aria-label={`Toggle visibility for ${operator.username}`}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setIsEditDialogOpen(true);}}>
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>
@@ -450,3 +475,4 @@ export default function ManageOperatorsPage() {
             </AlertDialog>
         </>
     );
+}
