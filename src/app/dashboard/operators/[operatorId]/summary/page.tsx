@@ -461,7 +461,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
                 <AlertDialogHeader>
                     <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
                     <AlertDialogDescription>
-                       Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normalmente.
+                       Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normally.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -836,7 +836,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     return (
         <>
         <div className="flex flex-col xl:flex-row gap-6">
-            <div className="flex-none w-full xl:w-auto xl:max-w-sm mx-auto">
+             <div className="flex flex-col w-full xl:max-w-sm mx-auto">
                  <Card>
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                     <CardContent className="flex justify-center">
@@ -959,17 +959,29 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     );
 }
 
-
-export default function OperatorSummaryPage() {
+function OperatorSummaryPageInternal() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const operatorId = params.operatorId as string;
     const { toast } = useToast();
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('monthly');
-    const [dailyViewDate, setDailyViewDate] = useState(new Date());
+
+    const initialView = searchParams.get('view') === 'daily' ? 'daily' : 'monthly';
+    const [currentView, setCurrentView] = useState<'monthly' | 'daily'>(initialView);
+
+    const getInitialDate = () => {
+        const month = searchParams.get('month');
+        const year = searchParams.get('year');
+        if (month && year) {
+            return new Date(parseInt(year), parseInt(month) - 1, 1);
+        }
+        return new Date();
+    };
+
+    const [dailyViewDate, setDailyViewDate] = useState(getInitialDate());
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -1018,6 +1030,14 @@ export default function OperatorSummaryPage() {
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+export default function OperatorSummaryPage() {
+    return (
+        <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <OperatorSummaryPageInternal />
+        </Suspense>
     );
 }
 

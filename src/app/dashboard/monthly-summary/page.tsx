@@ -196,9 +196,11 @@ export default function MonthlySummaryPage() {
     };
     
     const handleWorkedDaysClick = () => {
+        if (!user) return;
         const month = currentDate.getMonth() + 1;
         const year = currentDate.getFullYear();
-        router.push(`/dashboard/daily-summary?month=${month}&year=${year}`);
+        // The admin page for operator summary handles the view state
+        router.push(`/dashboard/operators/${user.id}/summary?view=daily&month=${month}&year=${year}`);
     };
 
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
