@@ -721,14 +721,14 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                     userId: operatorId,
                     type: event.type,
                     timestamp: timestamp,
-                    status: 'confermata' as const,
+                    status: 'sospesa' as const,
                 });
             }
         }
         
         try {
             await batch.commit();
-            toast({ title: 'Successo', description: 'Turno manuale aggiunto con successo.' });
+            toast({ title: 'Successo', description: 'Turno manuale aggiunto con successo. In attesa di approvazione.' });
             setIsAddDialogOpen(false);
             setNewShift({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
         } catch (error) {
