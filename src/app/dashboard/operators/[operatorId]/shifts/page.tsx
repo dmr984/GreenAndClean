@@ -466,8 +466,24 @@ export default function ShiftApprovalPage() {
              <ResponsiveDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
                 <ResponsiveDialogContent className="sm:max-w-3xl">
                     <ResponsiveDialogHeader>
-                        <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
-                         {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
+                                {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
+                            </div>
+                            {detailShift && detailShift.status !== 'in_corso' && operator && (
+                                <div className="flex flex-col items-end gap-1 text-xs">
+                                     <Badge variant="outline">
+                                        <Clock className="h-3 w-3 mr-1.5" />
+                                        Durata: {formatMinutes(detailShift.workDuration)}
+                                     </Badge>
+                                     <Badge variant="secondary">
+                                        <Plus className="h-3 w-3 mr-1.5" />
+                                        Straordinari: {`${calculateOvertimeWithTolerance(detailShift)}h`}
+                                     </Badge>
+                                </div>
+                            )}
+                        </div>
                     </ResponsiveDialogHeader>
 
                     <div className="overflow-x-auto my-4 max-h-80 overflow-y-auto">
@@ -504,39 +520,6 @@ export default function ShiftApprovalPage() {
                             </TableBody>
                         </Table>
                     </div>
-
-                    {detailShift && detailShift.status !== 'in_corso' && operator && (
-                        <>
-                            <Separator />
-                            <div className="grid gap-4 py-4 text-sm">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2 text-muted-foreground">
-                                        <Clock className="h-4 w-4" />
-                                        <span>Durata Turno</span>
-                                    </div>
-                                    <span className="font-semibold">{formatMinutes(detailShift.workDuration)}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2 text-muted-foreground">
-                                        <Briefcase className="h-4 w-4" />
-                                        <span>Ore da Contratto</span>
-                                    </div>
-                                    <span className="font-semibold">
-                                        {`${operator.workSchedule[dayIndexToName[getDayFns(detailShift.events[0].timestamp.toDate())]] || 0}h`}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2 text-muted-foreground">
-                                        <Plus className="h-4 w-4" />
-                                        <span>Straordinari Maturati</span>
-                                    </div>
-                                    <span className="font-semibold text-primary">{`${calculateOvertimeWithTolerance(detailShift)}h`}</span>
-                                </div>
-                            </div>
-                            <Separator />
-                        </>
-                    )}
-
 
                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
                         <ResponsiveDialogClose asChild><Button variant="outline">Chiudi</Button></ResponsiveDialogClose>
