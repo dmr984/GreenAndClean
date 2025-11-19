@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type Product = {
     id: string;
@@ -222,7 +223,7 @@ export default function SupplyRequestPage() {
 
     return (
         <>
-        <div className="grid gap-6 md:grid-cols-1">
+        <div className="flex flex-col gap-6">
             <Card>
                 <CardHeader>
                     <div className="flex items-center gap-3">
@@ -277,7 +278,7 @@ export default function SupplyRequestPage() {
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : (
-                        <div className="border rounded-md max-h-96 overflow-y-auto">
+                        <ScrollArea className="h-96">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
@@ -320,7 +321,7 @@ export default function SupplyRequestPage() {
                                     )}
                                 </TableBody>
                             </Table>
-                        </div>
+                        </ScrollArea>
                     )}
                 </CardContent>
             </Card>
