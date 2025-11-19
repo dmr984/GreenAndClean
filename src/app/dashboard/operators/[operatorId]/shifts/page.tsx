@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format, set, getDay } from 'date-fns';
+import { format, set, getDay as getDayFns } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -345,8 +345,8 @@ export default function ShiftApprovalPage() {
         const shiftDate = shift.events[0]?.timestamp.toDate();
         if (!shiftDate) return 0;
         
-        const dayOfWeekFns = getDay(shiftDate);
-        const dayName = dayIndexToName[dayOfWeekFns];
+        const dayOfWeek = getDayFns(shiftDate);
+        const dayName = dayIndexToName[dayOfWeek];
         
         const contractualHours = operator.workSchedule[dayName] || 0;
         const contractualMinutes = contractualHours * 60;
