@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, parse, set, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval } from 'date-fns';
+import { format, parse, set, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
@@ -763,12 +763,14 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
 
 const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator: Operator }) => {
     const firestore = useFirestore();
+    const { toast } = useToast();
     const router = useRouter();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
+    const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -873,6 +875,28 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         setDetailView({ type, title, items: approvedRequests });
     };
 
+    const handleCancelRequest = async () => {
+        if (!firestore || !itemToDelete) return;
+        const docRef = doc(firestore, `app-users/${operatorId}/requests`, itemToDelete.id);
+        try {
+            await deleteDoc(docRef);
+            toast({ title: 'Successo', description: 'La richiesta di assenza è stata annullata.' });
+            setDetailView(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    items: prev.items.filter(item => item.id !== itemToDelete.id)
+                };
+            });
+        } catch (err) {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile annullare la richiesta.', variant: 'destructive' });
+        } finally {
+            setItemToDelete(null);
+        }
+    };
+
+
     const renderDetailTable = () => {
         if (!detailView || detailView.items.length === 0) {
             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
@@ -881,7 +905,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
 
         if (detailView.type === 'ferie' || detailView.type === 'malattia') {
-            const allDays: Date[] = [];
+            const allDays: { day: Date, request: Request }[] = [];
             detailView.items.forEach(item => {
                 const interval = { start: item.startDate.toDate(), end: item.endDate.toDate() };
                 const daysInInterval = eachDayOfInterval(interval);
@@ -891,7 +915,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                         const dayName = dayIndexToName[getDay(day)];
                         const contractualHours = operator?.workSchedule[dayName] || 0;
                         if (contractualHours > 0) {
-                            allDays.push(day);
+                            allDays.push({ day, request: item });
                         }
                     }
                 });
@@ -907,12 +931,18 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Giorno</TableHead>
+                                <TableHead className="text-right">Azione</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {allDays.map((day, index) => (
+                            {allDays.map(({ day, request }, index) => (
                                 <TableRow key={index}>
                                     <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => setItemToDelete(request)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -1004,6 +1034,21 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                 </div>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
+
+         <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Annullare la richiesta?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Questa azione annullerà l'intera richiesta di assenza associata a questo giorno. L'operatore dovrà timbrare normalmente.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Chiudi</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCancelRequest}>Annulla Richiesta</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         </>
     );
 };
