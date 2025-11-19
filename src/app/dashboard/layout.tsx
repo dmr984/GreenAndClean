@@ -63,7 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     
     if (pathname === '/dashboard') {
         if (user.role === 'admin') {
-          return <AdminDashboard user={user} />;
+          return <AdminDashboard />;
         }
         if (user.role === 'operator') {
           return <OperatorDashboard user={user} />;
