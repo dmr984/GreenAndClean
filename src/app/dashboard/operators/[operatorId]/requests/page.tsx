@@ -12,7 +12,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useParams } from 'next/navigation';
@@ -48,6 +47,9 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     const [hours, setHours] = useState(request.hours?.toString() || '');
     const [reason, setReason] = useState(request.reason || '');
 
+    const [isStartPickerOpen, setIsStartPickerOpen] = useState(false);
+    const [isEndPickerOpen, setIsEndPickerOpen] = useState(false);
+    
     const currentYear = new Date().getFullYear();
 
     const handleSave = () => {
@@ -75,8 +77,8 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                      <div className='grid grid-cols-2 gap-4'>
                         <div>
                             <Label>Data Inizio</Label>
-                             <Popover>
-                                <PopoverTrigger asChild>
+                             <Dialog open={isStartPickerOpen} onOpenChange={setIsStartPickerOpen}>
+                                <DialogTrigger asChild>
                                     <Button
                                         variant={"outline"}
                                         className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}
@@ -84,32 +86,30 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {startDate ? format(startDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
                                     </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
+                                </DialogTrigger>
+                                <DialogContent className="w-auto p-0">
                                     <Calendar
                                         mode="single"
                                         selected={startDate}
                                         onSelect={(date) => {
                                             if (date) {
                                                 setStartDate(date);
-                                                if (date > endDate) {
-                                                    setEndDate(date);
-                                                }
+                                                if (date > endDate) setEndDate(date);
                                             }
+                                            setIsStartPickerOpen(false);
                                         }}
                                         captionLayout="dropdown-buttons"
                                         fromYear={currentYear - 1}
                                         toYear={currentYear + 5}
-                                        numberOfMonths={1}
                                         initialFocus
                                     />
-                                </PopoverContent>
-                            </Popover>
+                                </DialogContent>
+                            </Dialog>
                         </div>
                         <div>
                             <Label>Data Fine</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
+                            <Dialog open={isEndPickerOpen} onOpenChange={setIsEndPickerOpen}>
+                                <DialogTrigger asChild>
                                     <Button
                                         variant={"outline"}
                                         className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}
@@ -117,23 +117,23 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {endDate ? format(endDate, "PPP", { locale: it }) : <span>Scegli una data</span>}
                                     </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
+                                </DialogTrigger>
+                                <DialogContent className="w-auto p-0">
                                     <Calendar
                                         mode="single"
                                         selected={endDate}
                                         onSelect={(date) => {
                                             if(date) setEndDate(date);
+                                            setIsEndPickerOpen(false);
                                         }}
                                         disabled={{ before: startDate }}
                                         captionLayout="dropdown-buttons"
                                         fromYear={currentYear - 1}
                                         toYear={currentYear + 5}
-                                        numberOfMonths={1}
                                         initialFocus
                                     />
-                                </PopoverContent>
-                            </Popover>
+                                </DialogContent>
+                            </Dialog>
                         </div>
                      </div>
 
