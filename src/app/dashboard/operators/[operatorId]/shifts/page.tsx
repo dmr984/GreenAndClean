@@ -79,6 +79,8 @@ export default function ShiftApprovalPage() {
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+    const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
+
 
      useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -398,12 +400,27 @@ export default function ShiftApprovalPage() {
         const dayName = dayIndexToName[dayOfWeek];
         return operator.workSchedule[dayName] || 0;
     };
-
+    
     const handleAddManualShift = async () => {
+        if (!operator || !newShiftDate) return;
+        
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
+        const contractualHours = operator.workSchedule[dayName] || 0;
+
+        if (contractualHours <= 0) {
+            setIsNonWorkDayConfirmOpen(true);
+            return;
+        }
+        await proceedWithAddManualShift();
+    }
+
+    const proceedWithAddManualShift = async () => {
         if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita) {
             toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
             return;
         }
+
+        setIsNonWorkDayConfirmOpen(false);
 
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
@@ -573,6 +590,21 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
+
+            <AlertDialog open={isNonWorkDayConfirmOpen} onOpenChange={setIsNonWorkDayConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Giorno Non Lavorativo</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questo non è un giorno lavorativo assegnato. Sei sicuro di voler creare questo turno?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={proceedWithAddManualShift}>Conferma</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
