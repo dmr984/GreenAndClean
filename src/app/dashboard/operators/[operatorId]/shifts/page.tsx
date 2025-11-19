@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import { format, set, getDay as getDayFns } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { Separator } from '@/components/ui/separator';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -469,7 +470,7 @@ export default function ShiftApprovalPage() {
                          {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
 
-                    <div className="overflow-x-auto my-4 max-h-96 overflow-y-auto">
+                    <div className="overflow-x-auto my-4 max-h-80 overflow-y-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -503,7 +504,41 @@ export default function ShiftApprovalPage() {
                             </TableBody>
                         </Table>
                     </div>
-                    <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2">
+
+                    {detailShift && detailShift.status !== 'in_corso' && operator && (
+                        <>
+                            <Separator />
+                            <div className="grid gap-4 py-4 text-sm">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                        <Clock className="h-4 w-4" />
+                                        <span>Durata Turno</span>
+                                    </div>
+                                    <span className="font-semibold">{formatMinutes(detailShift.workDuration)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                        <Briefcase className="h-4 w-4" />
+                                        <span>Ore da Contratto</span>
+                                    </div>
+                                    <span className="font-semibold">
+                                        {`${operator.workSchedule[dayIndexToName[getDayFns(detailShift.events[0].timestamp.toDate())]] || 0}h`}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                        <Plus className="h-4 w-4" />
+                                        <span>Straordinari Maturati</span>
+                                    </div>
+                                    <span className="font-semibold text-primary">{`${calculateOvertimeWithTolerance(detailShift)}h`}</span>
+                                </div>
+                            </div>
+                            <Separator />
+                        </>
+                    )}
+
+
+                    <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
                         <ResponsiveDialogClose asChild><Button variant="outline">Chiudi</Button></ResponsiveDialogClose>
                         {detailShift && (
                           <>
