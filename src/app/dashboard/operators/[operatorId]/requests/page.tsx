@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Loader2, CheckCircle, XCircle, Trash2, Pencil } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Trash2, Pencil, PlusCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,8 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { RequestForm } from '@/components/request-form';
 
 type Operator = {
     id: string;
@@ -84,6 +86,7 @@ export default function LeaveRequestsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
+    const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -195,11 +198,30 @@ export default function LeaveRequestsPage() {
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader>
-                    <CardTitle>Richieste in Attesa di {operator.username}</CardTitle>
-                    <CardDescription>Approva o rifiuta le richieste di ferie, permessi, ecc.</CardDescription>
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <CardTitle>Richieste di {operator.username}</CardTitle>
+                        <CardDescription>Approva, rifiuta o aggiungi richieste di ferie, permessi, ecc.</CardDescription>
+                    </div>
+                     <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button>
+                                <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Richiesta
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-xl">
+                             <DialogHeader>
+                                <DialogTitle>Crea Nuova Richiesta per {operator.username}</DialogTitle>
+                                <DialogDescription>
+                                    Compila il modulo per inviare una nuova richiesta per conto dell'operatore.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <RequestForm userId={operator.id} onFinished={() => setIsAddDialogOpen(false)} />
+                        </DialogContent>
+                    </Dialog>
                 </CardHeader>
                 <CardContent>
+                    <h3 className="text-lg font-medium mb-2">In Attesa</h3>
                     {renderTable(pendingRequests)}
                 </CardContent>
             </Card>
