@@ -88,6 +88,9 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent className="w-auto p-0">
+                                     <DialogHeader className="p-4 pb-0">
+                                       <DialogTitle>Seleziona data di inizio</DialogTitle>
+                                     </DialogHeader>
                                     <Calendar
                                         mode="single"
                                         selected={startDate}
@@ -119,6 +122,9 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent className="w-auto p-0">
+                                    <DialogHeader className="p-4 pb-0">
+                                        <DialogTitle>Seleziona data di fine</DialogTitle>
+                                    </DialogHeader>
                                     <Calendar
                                         mode="single"
                                         selected={endDate}
