@@ -359,8 +359,10 @@ export default function ShiftApprovalPage() {
         
         const overtimeMinutes = totalMinutes - contractualMinutes;
         
+        // The new rule: overtime hour is granted after 45 minutes
         if (overtimeMinutes < 45) return 0;
         
+        // Calculate how many full hours are in the overtime, plus the threshold
         const hours = Math.floor(overtimeMinutes / 60);
         const remainingMinutes = overtimeMinutes % 60;
 
@@ -372,6 +374,7 @@ export default function ShiftApprovalPage() {
     };
 
     const formatMinutes = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return '00:00';
         const h = Math.floor(minutes / 60);
         const m = Math.round(minutes % 60);
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
@@ -383,6 +386,15 @@ export default function ShiftApprovalPage() {
         setShiftToApprove(shift);
         setIsApproveOvertimeOpen(true);
     }
+    
+    const getContractualHoursForShift = (shift: Shift | null): number => {
+        if (!shift || !operator?.workSchedule) return 0;
+        const shiftDate = shift.events[0]?.timestamp.toDate();
+        if (!shiftDate) return 0;
+        const dayOfWeek = getDayFns(shiftDate);
+        const dayName = dayIndexToName[dayOfWeek];
+        return operator.workSchedule[dayName] || 0;
+    };
     
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
@@ -473,22 +485,28 @@ export default function ShiftApprovalPage() {
                                 <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
                                 {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                             </div>
-                            {detailShift && detailShift.status !== 'in_corso' && operator && (
-                                <div className="flex flex-col items-end gap-1 text-xs">
-                                     <Badge variant="outline">
-                                        <Clock className="h-3 w-3 mr-1.5" />
-                                        Durata: {formatMinutes(detailShift.workDuration)}
-                                     </Badge>
-                                     <Badge variant="secondary">
-                                        <Plus className="h-3 w-3 mr-1.5" />
-                                        Straordinari: {`${calculateOvertimeWithTolerance(detailShift)}h`}
-                                     </Badge>
-                                </div>
-                            )}
+                            
                         </div>
                     </ResponsiveDialogHeader>
 
-                    <div className="overflow-x-auto my-4 max-h-80 overflow-y-auto">
+                     {detailShift && detailShift.status !== 'in_corso' && operator && (
+                        <div className="grid grid-cols-3 gap-4 text-center my-4">
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
+                                <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Fatte</p>
+                                <p className="text-2xl font-bold">{formatMinutes(detailShift.workDuration)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
+                                <p className="text-2xl font-bold">{calculateOvertimeWithTolerance(detailShift)}h</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="overflow-x-auto mt-2 max-h-80 overflow-y-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
