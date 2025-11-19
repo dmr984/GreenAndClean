@@ -257,38 +257,79 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     const handleCleanMonth = async () => {
         if (!firestore) return;
         setIsCleaningMonth(true);
-
-        const start = startOfMonth(currentDate);
-        const end = endOfMonth(currentDate);
-        
+    
+        const monthStart = startOfMonth(currentDate);
+        const monthEnd = endOfMonth(currentDate);
+    
         try {
-            // Delete timbrature for the month
-            const timbratureQuery = query(
-                collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('timestamp', '>=', start),
-                where('timestamp', '<=', end)
-            );
-            const timbratureSnapshot = await getDocs(timbratureQuery);
-            const timbratureBatch = writeBatch(firestore);
-            timbratureSnapshot.forEach(doc => timbratureBatch.delete(doc.ref));
-            await timbratureBatch.commit();
-            
-            // Delete requests that start within the month
-            const requestsQuery = query(
-                collection(firestore, `app-users/${operatorId}/requests`),
-                where('startDate', '>=', start),
-                where('startDate', '<=', end)
-            );
-            const requestsSnapshot = await getDocs(requestsQuery);
-            const requestsBatch = writeBatch(firestore);
-            requestsSnapshot.forEach(doc => requestsBatch.delete(doc.ref));
-            await requestsBatch.commit();
-
-            toast({ title: 'Operazione Completata', description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
-
-        } catch(error) {
-             console.error("Error cleaning month:", error);
-             toast({ title: 'Errore', description: 'Impossibile completare la pulizia del mese.', variant: 'destructive'});
+            await runTransaction(firestore, async (transaction) => {
+                // 1. Delete all timbrature within the month
+                const timbratureQuery = query(
+                    collection(firestore, `app-users/${operatorId}/timbrature`),
+                    where('timestamp', '>=', monthStart),
+                    where('timestamp', '<=', monthEnd)
+                );
+                const timbratureSnapshot = await getDocs(timbratureQuery);
+                timbratureSnapshot.forEach(doc => transaction.delete(doc.ref));
+    
+                // 2. Fetch all requests that could possibly overlap with the month
+                const requestsCollectionRef = collection(firestore, `app-users/${operatorId}/requests`);
+                const requestsQuery = query(requestsCollectionRef, where('endDate', '>=', monthStart));
+                const requestsSnapshot = await getDocs(requestsQuery);
+    
+                for (const docSnap of requestsSnapshot.docs) {
+                    const request = { id: docSnap.id, ...docSnap.data() } as Request;
+                    const requestRef = docSnap.ref;
+                    const reqStart = request.startDate.toDate();
+                    const reqEnd = request.endDate.toDate();
+    
+                    // Skip requests that end before our month starts
+                    if (reqEnd < monthStart) continue;
+                    // Skip requests that start after our month ends
+                    if (reqStart > monthEnd) continue;
+    
+    
+                    const startsBefore = reqStart < monthStart;
+                    const endsAfter = reqEnd > monthEnd;
+    
+                    if (!startsBefore && !endsAfter) {
+                        // Case 1: Request is fully inside the month. Delete it.
+                        transaction.delete(requestRef);
+                    } else if (startsBefore && !endsAfter) {
+                        // Case 2: Request starts before and ends within the month. Truncate it.
+                        const newEndDate = subDays(monthStart, 1);
+                        transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate) });
+                    } else if (!startsBefore && endsAfter) {
+                        // Case 3: Request starts within the month and ends after. Truncate it.
+                        const newStartDate = addDays(monthEnd, 1);
+                        transaction.update(requestRef, { startDate: Timestamp.fromDate(newStartDate) });
+                    } else if (startsBefore && endsAfter) {
+                        // Case 4: Request spans over the entire month. Split it.
+                        // First part
+                        const newEndDate1 = subDays(monthStart, 1);
+                        transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
+    
+                        // Second part
+                        const newStartDate2 = addDays(monthEnd, 1);
+                        const { id, ...restOfRequest } = request;
+                        const newRequestData = {
+                            ...restOfRequest,
+                            startDate: Timestamp.fromDate(newStartDate2),
+                            endDate: request.endDate, // original end date
+                            createdAt: serverTimestamp(),
+                            viewedByOperator: false,
+                        };
+                        const newDocRef = doc(requestsCollectionRef);
+                        transaction.set(newDocRef, newRequestData);
+                    }
+                }
+            });
+    
+            toast({ title: 'Operazione Completata', description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati o aggiornati.` });
+    
+        } catch (error) {
+            console.error("Error cleaning month:", error);
+            toast({ title: 'Errore', description: 'Impossibile completare la pulizia del mese.', variant: 'destructive' });
         } finally {
             setIsCleaningMonth(false);
             setCleanConfirmStep(0);
