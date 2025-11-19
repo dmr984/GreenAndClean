@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFirestore, useMemoFirebase } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy } from 'firebase/firestore';
@@ -46,11 +46,11 @@ type Request = {
 
 const RecentActivity = ({ operatorId }: { operatorId: string }) => {
     const firestore = useFirestore();
-    const [recentTimbrature, setRecentTimbrature] = React.useState<Timbratura[]>([]);
-    const [recentRequests, setRecentRequests] = React.useState<Request[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    const [recentTimbrature, setRecentTimbrature] = useState<Timbratura[]>([]);
+    const [recentRequests, setRecentRequests] = useState<Request[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (!firestore) return;
         setLoading(true);
 
@@ -284,5 +284,3 @@ export default function OperatorDetailPage() {
         </div>
     );
 }
-
-    
