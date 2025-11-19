@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Warehouse, PackageSearch, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Warehouse, PackageSearch, ClipboardList, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -12,14 +12,18 @@ import { useUser } from '@/hooks/use-user';
 import { AdminDashboard } from './admin-dashboard';
 import { OperatorDashboard } from './operator-dashboard';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { useFirestore } from '@/firebase';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const { user, isLoading } = useUser();
+  const firestore = useFirestore();
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [pendingSupplyRequests, setPendingSupplyRequests] = useState(0);
 
   useEffect(() => {
     // This is the single "gatekeeper" for the dashboard.
@@ -28,6 +32,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.replace('/');
     }
   }, [user, isLoading, router]);
+
+  // Listener for supply request notifications, only for admins
+  useEffect(() => {
+    if (!firestore || user?.role !== 'admin') {
+      setPendingSupplyRequests(0);
+      return;
+    }
+
+    const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
+    const unsubscribe = onSnapshot(supplyRequestsQuery, (snapshot) => {
+        setPendingSupplyRequests(snapshot.size);
+    }, (error) => {
+        console.error("Error fetching supply request notifications:", error);
+    });
+
+    return () => unsubscribe();
+  }, [firestore, user]);
 
   const handleLogout = async () => {
     localStorage.removeItem('user');
@@ -132,8 +153,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </Button>
                           </Link>
                            <Link href="/dashboard/supply-requests" passHref>
-                            <Button variant={pathname === '/dashboard/supply-requests' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <ClipboardList className="h-5 w-5" /> Richieste Forniture
+                            <Button variant={pathname === '/dashboard/supply-requests' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full relative" onClick={() => setIsSidebarOpen(false)}>
+                                <ClipboardList className="h-5 w-5" /> 
+                                Richieste Forniture
+                                {pendingSupplyRequests > 0 && (
+                                   <Circle fill="red" className="h-2.5 w-2.5 text-red-500 absolute right-3 top-1/2 -translate-y-1/2" />
+                                )}
                             </Button>
                           </Link>
                            <Link href="/dashboard/warehouse" passHref>

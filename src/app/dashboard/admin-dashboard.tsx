@@ -19,10 +19,6 @@ export function AdminDashboard() {
     const [operators, setOperators] = useState<Operator[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number}>>({});
-    
-    // The state for supply requests is kept for potential future use (e.g. a global notification icon)
-    // but the card itself is removed as requested.
-    const [pendingSupplyRequests, setPendingSupplyRequests] = useState(0);
 
     useEffect(() => {
         if (!firestore) {
@@ -63,18 +59,9 @@ export function AdminDashboard() {
             setIsLoading(false);
         });
 
-        // Listener for supply requests (kept for future features if needed)
-        const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
-        const unsubscribeSupplies = onSnapshot(supplyRequestsQuery, (snapshot) => {
-            setPendingSupplyRequests(snapshot.size);
-        }, (error) => {
-            console.error("Error fetching supply requests:", error);
-        });
-
 
         return () => {
             unsubscribeOperators();
-            unsubscribeSupplies();
         };
     }, [firestore]);
     
