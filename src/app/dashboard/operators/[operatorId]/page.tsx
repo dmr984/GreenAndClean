@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, parse, set, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, parse, set, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter } from 'next/navigation';
@@ -770,7 +770,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
-    const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
+    const [itemToModify, setItemToModify] = useState<{ request: Request, day: Date } | null>(null);
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -875,24 +875,71 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
         setDetailView({ type, title, items: approvedRequests });
     };
 
-    const handleCancelRequest = async () => {
-        if (!firestore || !itemToDelete) return;
-        const docRef = doc(firestore, `app-users/${operatorId}/requests`, itemToDelete.id);
+    const handleCancelSingleDayOfLeave = async () => {
+        if (!firestore || !itemToModify) return;
+
+        const { request, day } = itemToModify;
+        const requestRef = doc(firestore, `app-users/${operatorId}/requests`, request.id);
+        const requestsCollectionRef = collection(firestore, `app-users/${operatorId}/requests`);
+
+        const startDate = request.startDate.toDate();
+        const endDate = request.endDate.toDate();
+        const dayToCancel = day;
+
         try {
-            await deleteDoc(docRef);
-            toast({ title: 'Successo', description: 'La richiesta di assenza è stata annullata.' });
-            setDetailView(prev => {
+            await runTransaction(firestore, async (transaction) => {
+                // Case 1: The request is for a single day. Delete it.
+                if (isSameDay(startDate, endDate)) {
+                    transaction.delete(requestRef);
+                    return;
+                }
+
+                // Case 2: The day to cancel is the start date. Update start date.
+                if (isSameDay(dayToCancel, startDate)) {
+                    const newStartDate = addDays(startDate, 1);
+                    transaction.update(requestRef, { startDate: Timestamp.fromDate(newStartDate) });
+                    return;
+                }
+                
+                // Case 3: The day to cancel is the end date. Update end date.
+                if (isSameDay(dayToCancel, endDate)) {
+                    const newEndDate = subDays(endDate, 1);
+                    transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate) });
+                    return;
+                }
+
+                // Case 4: The day is in the middle. Split the request.
+                // Update original request to end the day before the cancelled day.
+                const newEndDate1 = subDays(dayToCancel, 1);
+                transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
+
+                // Create a new request for the period after the cancelled day.
+                const newStartDate2 = addDays(dayToCancel, 1);
+                const newRequestData = {
+                    ...request, // copy original data
+                    id: undefined, // remove old id
+                    startDate: Timestamp.fromDate(newStartDate2),
+                    endDate: request.endDate, // original end date
+                };
+                // Since we are inside a transaction, we need to use `transaction.set` on a new doc ref
+                const newDocRef = doc(requestsCollectionRef);
+                transaction.set(newDocRef, newRequestData);
+            });
+            toast({ title: 'Successo', description: 'Giorno di assenza annullato.' });
+             setDetailView(prev => {
                 if (!prev) return null;
-                return {
+                // Force a re-evaluation by removing the old request and letting the listener fetch the new state
+                 return {
                     ...prev,
-                    items: prev.items.filter(item => item.id !== itemToDelete.id)
+                    items: prev.items.filter(item => item.id !== request.id)
                 };
             });
+
         } catch (err) {
             console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile annullare la richiesta.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile annullare il giorno di assenza.', variant: 'destructive' });
         } finally {
-            setItemToDelete(null);
+            setItemToModify(null);
         }
     };
 
@@ -939,7 +986,7 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
                                 <TableRow key={index}>
                                     <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => setItemToDelete(request)}>
+                                        <Button variant="ghost" size="icon" onClick={() => setItemToModify({ request, day })}>
                                             <Trash2 className="h-4 w-4 text-destructive" />
                                         </Button>
                                     </TableCell>
@@ -1035,17 +1082,17 @@ const MonthlySummary = ({ operatorId, operator }: { operatorId: string, operator
             </ResponsiveDialogContent>
         </ResponsiveDialog>
 
-         <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+         <AlertDialog open={!!itemToModify} onOpenChange={(open) => !open && setItemToModify(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Annullare la richiesta?</AlertDialogTitle>
+                    <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
                     <AlertDialogDescription>
-                       Questa azione annullerà l'intera richiesta di assenza associata a questo giorno. L'operatore dovrà timbrare normalmente.
+                       Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normalmente.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Chiudi</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleCancelRequest}>Annulla Richiesta</AlertDialogAction>
+                    <AlertDialogAction onClick={handleCancelSingleDayOfLeave}>Annulla Giorno di Assenza</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
