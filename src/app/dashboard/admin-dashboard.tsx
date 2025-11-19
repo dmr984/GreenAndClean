@@ -19,6 +19,9 @@ export function AdminDashboard() {
     const [operators, setOperators] = useState<Operator[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number}>>({});
+    
+    // The state for supply requests is kept for potential future use (e.g. a global notification icon)
+    // but the card itself is removed as requested.
     const [pendingSupplyRequests, setPendingSupplyRequests] = useState(0);
 
     useEffect(() => {
@@ -60,7 +63,7 @@ export function AdminDashboard() {
             setIsLoading(false);
         });
 
-        // Listener for supply requests
+        // Listener for supply requests (kept for future features if needed)
         const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
         const unsubscribeSupplies = onSnapshot(supplyRequestsQuery, (snapshot) => {
             setPendingSupplyRequests(snapshot.size);
@@ -77,30 +80,6 @@ export function AdminDashboard() {
     
     return (
         <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <div className='flex items-center gap-3'>
-                        <ClipboardList className="h-6 w-6 text-primary" />
-                        <CardTitle className="text-2xl">Accesso Rapido Amministrazione</CardTitle>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                     <Link href={`/dashboard/supply-requests`} passHref>
-                        <Button variant="outline" className="w-full sm:w-auto justify-start p-4 text-left relative min-w-[200px]">
-                            <div className='flex items-center gap-3'>
-                                <ClipboardList className='h-5 w-5 flex-shrink-0'/>
-                                <span className='truncate font-semibold'>Richieste Forniture</span>
-                            </div>
-                                {pendingSupplyRequests > 0 && (
-                                <Badge variant="destructive" className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full p-0">
-                                    {pendingSupplyRequests > 9 ? '9+' : pendingSupplyRequests}
-                                </Badge>
-                            )}
-                        </Button>
-                    </Link>
-                </CardContent>
-            </Card>
-
             <Card>
                 <CardHeader>
                     <div className='flex items-center gap-3'>
