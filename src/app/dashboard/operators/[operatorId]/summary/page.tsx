@@ -338,13 +338,28 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     
     const openCleanDialog = () => setCleanConfirmStep(1);
     const closeCleanDialog = () => setCleanConfirmStep(0);
-    const advanceCleanDialog = () => setCleanConfirmStep(prev => prev + 1);
-
-    useEffect(() => {
-        if(cleanConfirmStep === 4) {
+    const advanceCleanDialog = () => {
+        if (cleanConfirmStep === 3) {
             handleCleanMonth();
+        } else {
+            setCleanConfirmStep(prev => prev + 1);
         }
-    }, [cleanConfirmStep]);
+    };
+    
+    const cleanDialogContent = {
+        1: {
+            title: "Sei assolutamente sicuro?",
+            description: `Passaggio 1/3: Questa azione eliminerà tutti i dati per ${operator.username} nel mese di ${format(currentDate, 'MMMM yyyy', { locale: it })}.`
+        },
+        2: {
+            title: "Sei davvero sicuro?",
+            description: "Passaggio 2/3: L'azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste."
+        },
+        3: {
+            title: "Ultima conferma",
+            description: `Passaggio 3/3: Cliccando "Conferma ed Elimina" i dati verranno eliminati per sempre.`
+        }
+    }
 
 
     const renderDetailTable = () => {
@@ -512,47 +527,19 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
             </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={cleanConfirmStep === 1} onOpenChange={(open) => !open && closeCleanDialog()}>
+        <AlertDialog open={cleanConfirmStep > 0} onOpenChange={(open) => !open && closeCleanDialog()}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                    <AlertDialogTitle>{cleanDialogContent[cleanConfirmStep as keyof typeof cleanDialogContent]?.title}</AlertDialogTitle>
                     <AlertDialogDescription>
-                       Passaggio 1/3: Questa azione eliminerà tutti i dati per {operator.username} nel mese di {format(currentDate, 'MMMM yyyy', { locale: it })}.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={advanceCleanDialog}>Conferma</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog open={cleanConfirmStep === 2} onOpenChange={(open) => !open && closeCleanDialog()}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Sei davvero sicuro?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                       Passaggio 2/3: L'azione è irreversibile. Verranno eliminati tutti i turni, le timbrature e le richieste.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={advanceCleanDialog}>Conferma Ancora</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog open={cleanConfirmStep === 3} onOpenChange={(open) => !open && closeCleanDialog()}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Ultima conferma</AlertDialogTitle>
-                    <AlertDialogDescription>
-                       Passaggio 3/3: Cliccando "Conferma ed Elimina" i dati verranno eliminati per sempre.
+                       {cleanDialogContent[cleanConfirmStep as keyof typeof cleanDialogContent]?.description}
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Annulla</AlertDialogCancel>
                     <AlertDialogAction onClick={advanceCleanDialog} disabled={isCleaningMonth}>
-                         {isCleaningMonth ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Conferma ed Elimina
+                        {isCleaningMonth && cleanConfirmStep === 3 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        {cleanConfirmStep === 3 ? "Conferma ed Elimina" : "Conferma"}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
@@ -1081,5 +1068,3 @@ export default function OperatorSummaryPage() {
         </Suspense>
     );
 }
-
-    
