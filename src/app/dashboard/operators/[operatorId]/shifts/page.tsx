@@ -37,7 +37,7 @@ type Timbratura = {
     id: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    status: 'sospesa' | 'confermata';
+    status: 'sospesa' | 'confermata' | 'rifiutata';
     latitude?: number;
     longitude?: number;
 };
@@ -216,11 +216,13 @@ export default function ShiftApprovalPage() {
         if (!firestore || !operator) return;
         const batch = writeBatch(firestore);
         shiftToReject.events.forEach(event => {
-            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-            batch.delete(docRef);
+             if (event.status === 'sospesa') {
+                const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+                batch.update(docRef, { status: 'rifiutata', viewedByOperator: false });
+            }
         });
         await batch.commit().then(() => {
-            toast({ title: 'Successo', description: 'Turno rifiutato ed eliminato.' });
+            toast({ title: 'Successo', description: 'Turno rifiutato.' });
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile rifiutare il turno.', variant: 'destructive' });
@@ -502,7 +504,7 @@ export default function ShiftApprovalPage() {
                                     <TableRow key={t.id}>
                                         <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
                                         <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
-                                        <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : 'default'}>{t.status}</Badge></TableCell>
+                                        <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
                                         <TableCell className="whitespace-nowrap">
                                            {t.latitude && t.longitude ? (
                                                 <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">

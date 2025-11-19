@@ -105,7 +105,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["sospesa", "confermata"],
+          "enum": ["sospesa", "confermata", "rifiutata"],
           "description": "The approval status of the clocking event."
         },
         "viewedByOperator": {

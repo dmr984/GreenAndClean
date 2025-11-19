@@ -38,7 +38,7 @@ type ClockingEvent = {
     timestamp: Timestamp;
     latitude: number;
     longitude: number;
-    status: 'sospesa' | 'confermata';
+    status: 'sospesa' | 'confermata' | 'rifiutata';
     viewedByOperator?: boolean;
 };
 
@@ -182,8 +182,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     let unread = false;
     const groupedShifts: Shift[] = [];
     let currentShift: Partial<Shift> & { hasUnread?: boolean } = {};
+    const validEvents = clockings.filter(e => e.status !== 'rifiutata');
 
-    for (const event of clockings) {
+    for (const event of validEvents) {
         if (event.type === 'entrata') {
             if (currentShift.startTime) {
                 groupedShifts.push({
@@ -245,14 +246,19 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
-      const lastEvent = clockings[clockings.length - 1];
-      if (lastEvent.type === 'entrata' || lastEvent.type === 'fine_pausa') {
+      const lastValidEvent = [...clockings].filter(e => e.status !== 'rifiutata').pop();
+      if (!lastValidEvent) {
+          setIsClockedIn(false);
+          setIsOnBreak(false);
+          return;
+      }
+      if (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa') {
         setIsClockedIn(true);
         setIsOnBreak(false);
-      } else if (lastEvent.type === 'pausa') {
+      } else if (lastValidEvent.type === 'pausa') {
         setIsClockedIn(true);
         setIsOnBreak(true);
-      } else if (lastEvent.type === 'uscita') {
+      } else if (lastValidEvent.type === 'uscita') {
         setIsClockedIn(false);
         setIsOnBreak(false);
       }
@@ -562,7 +568,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                                         <TableCell className="font-medium">{formatTime(e.timestamp)}</TableCell>
                                         <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
                                         <TableCell>
-                                            <Badge variant={e.status === 'confermata' ? 'secondary' : 'default'}>
+                                            <Badge variant={e.status === 'confermata' ? 'secondary' : e.status === 'rifiutata' ? 'destructive' : 'default'}>
                                                 {e.status}
                                             </Badge>
                                         </TableCell>
