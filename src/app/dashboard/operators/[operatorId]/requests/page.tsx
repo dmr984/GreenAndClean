@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -18,6 +18,8 @@ import { useParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { RequestForm } from '@/components/request-form';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, formatISO } from 'date-fns';
+import { it } from 'date-fns/locale';
 
 type Operator = {
     id: string;
@@ -43,6 +45,12 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     const [hours, setHours] = useState(request.hours?.toString() || '');
     const [reason, setReason] = useState(request.reason || '');
 
+    const monthDates = useMemo(() => {
+        const start = startOfMonth(startDate);
+        const end = endOfMonth(startDate);
+        return eachDayOfInterval({ start, end });
+    }, [startDate]);
+
     const handleSave = () => {
         const editedData: Partial<Request> = {
             type,
@@ -64,8 +72,48 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                 <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Richiesta</ResponsiveDialogTitle></ResponsiveDialogHeader>
                 <div className="space-y-4 py-4">
                      <div><Label>Tipo</Label><Select value={type} onValueChange={(v) => setType(v as any)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="ferie">Ferie</SelectItem><SelectItem value="permesso">Permesso</SelectItem><SelectItem value="malattia">Malattia</SelectItem><SelectItem value="straordinario">Straordinario</SelectItem></SelectContent></Select></div>
-                     <div><Label>Data Inizio</Label><Calendar mode="single" selected={startDate} onSelect={(d) => d && setStartDate(d)} className="rounded-md border"/></div>
-                     <div><Label>Data Fine</Label><Calendar mode="single" selected={endDate} onSelect={(d) => d && setEndDate(d)} fromDate={startDate} className="rounded-md border"/></div>
+                     
+                     <div className='grid grid-cols-2 gap-4'>
+                        <div>
+                            <Label>Data Inizio</Label>
+                            <Select
+                                value={formatISO(startDate, { representation: 'date' })}
+                                onValueChange={(val) => {
+                                    const newStartDate = new Date(val);
+                                    setStartDate(newStartDate);
+                                    if (newStartDate > endDate) {
+                                        setEndDate(newStartDate); 
+                                    }
+                                }}
+                            >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {monthDates.map(date => (
+                                        <SelectItem key={date.toISOString()} value={formatISO(date, { representation: 'date' })}>
+                                            {format(date, 'PPP', { locale: it })}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label>Data Fine</Label>
+                             <Select
+                                value={formatISO(endDate, { representation: 'date' })}
+                                onValueChange={(val) => setEndDate(new Date(val))}
+                            >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                     {monthDates.filter(d => d >= startDate).map(date => (
+                                        <SelectItem key={date.toISOString()} value={formatISO(date, { representation: 'date' })}>
+                                            {format(date, 'PPP', { locale: it })}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                     </div>
+
                     {(type === 'permesso' || type === 'straordinario') && <div><Label>Ore</Label><Input type="number" value={hours} onChange={(e) => setHours(e.target.value)} /></div>}
                     <div><Label>Motivazione</Label><Textarea value={reason} onChange={(e) => setReason(e.target.value)} /></div>
                 </div>
