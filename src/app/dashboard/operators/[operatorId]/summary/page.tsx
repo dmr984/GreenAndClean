@@ -119,49 +119,39 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
 
 
     const summary = useMemo(() => {
-        let totalWorkedMillis = 0;
+        let workedDaysCount = 0;
+        let totalWorkedHours = 0;
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
-
+    
         const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
-            const day = t.timestamp.toDate().toDateString();
-            if (!acc[day]) acc[day] = [];
-            acc[day].push(t);
+            const dayString = t.timestamp.toDate().toDateString();
+            if (!acc[dayString]) {
+                acc[dayString] = [];
+            }
+            acc[dayString].push(t);
             return acc;
         }, {} as Record<string, Timbratura[]>);
-
-        let workedDaysCount = 0;
-        Object.values(dailyTimbrature).forEach(dayEvents => {
-            const entrate = dayEvents.filter(e => e.type === 'entrata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            const uscite = dayEvents.filter(e => e.type === 'uscita').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-            entrate.forEach((entrata, i) => {
-                const uscita = uscite[i];
-                if (uscita) {
+    
+        if (operator?.workSchedule) {
+            for (const dayString in dailyTimbrature) {
+                const dayEvents = dailyTimbrature[dayString];
+                const hasEntrata = dayEvents.some(e => e.type === 'entrata');
+                const hasUscita = dayEvents.some(e => e.type === 'uscita');
+    
+                if (hasEntrata && hasUscita) {
                     workedDaysCount++;
-                    let shiftMillis = uscita.timestamp.toMillis() - entrata.timestamp.toMillis();
-                    
-                    const breaksInShift = dayEvents
-                        .filter(e => e.timestamp.toMillis() > entrata.timestamp.toMillis() && e.timestamp.toMillis() < uscita.timestamp.toMillis())
-                        .sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-                    let breakStart: Timestamp | null = null;
-                    breaksInShift.forEach(event => {
-                        if (event.type === 'pausa') {
-                            breakStart = event.timestamp;
-                        } else if (event.type === 'fine_pausa' && breakStart) {
-                            shiftMillis -= (event.timestamp.toMillis() - breakStart.toMillis());
-                            breakStart = null;
-                        }
-                    });
-                    totalWorkedMillis += shiftMillis;
+                    const day = new Date(dayString);
+                    const dayName = dayIndexToName[getDay(day)];
+                    const contractualHours = operator.workSchedule[dayName] || 0;
+                    totalWorkedHours += contractualHours;
                 }
-            });
-        });
-
+            }
+        }
+    
         const approvedRequests = requests.filter(r => r.status === 'approvato');
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
-
+    
         const periodStart = startOfMonth(currentDate);
         const periodEnd = endOfMonth(currentDate);
         
@@ -181,9 +171,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                 }
             });
         }
-        
-        const totalWorkedHours = Math.floor(totalWorkedMillis / (1000 * 60 * 60));
-
+    
         return {
             workedDays: workedDaysCount,
             workedHours: totalWorkedHours,

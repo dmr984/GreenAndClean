@@ -138,47 +138,33 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, monthStart, monthEnd, toast]);
     
     const summary = useMemo(() => {
-        let totalWorkedMillis = 0;
+        let workedDaysCount = 0;
+        let totalWorkedHours = 0;
 
         const dailyTimbrature = timbrature.reduce((acc, t) => {
-            const day = t.timestamp.toDate().toDateString();
-            if (!acc[day]) {
-                acc[day] = [];
+            const dayString = t.timestamp.toDate().toDateString();
+            if (!acc[dayString]) {
+                acc[dayString] = [];
             }
-            acc[day].push(t);
+            acc[dayString].push(t);
             return acc;
         }, {} as Record<string, Timbratura[]>);
 
-        let workedDaysCount = 0;
+        if (operatorData?.workSchedule) {
+            for (const dayString in dailyTimbrature) {
+                const dayEvents = dailyTimbrature[dayString];
+                const hasEntrata = dayEvents.some(e => e.type === 'entrata');
+                const hasUscita = dayEvents.some(e => e.type === 'uscita');
 
-        Object.values(dailyTimbrature).forEach(dayEvents => {
-            const entrate = dayEvents.filter(e => e.type === 'entrata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            const uscite = dayEvents.filter(e => e.type === 'uscita').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-            // Processa ogni turno (coppia entrata/uscita)
-            entrate.forEach((entrata, i) => {
-                const uscita = uscite[i];
-                if (uscita) {
+                if (hasEntrata && hasUscita) {
                     workedDaysCount++;
-                    let shiftMillis = uscita.timestamp.toMillis() - entrata.timestamp.toMillis();
-                    
-                    const breaksInShift = dayEvents
-                        .filter(e => e.timestamp.toMillis() > entrata.timestamp.toMillis() && e.timestamp.toMillis() < uscita.timestamp.toMillis())
-                        .sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-                    let breakStart: Timestamp | null = null;
-                    breaksInShift.forEach(event => {
-                        if (event.type === 'pausa') {
-                            breakStart = event.timestamp;
-                        } else if (event.type === 'fine_pausa' && breakStart) {
-                            shiftMillis -= (event.timestamp.toMillis() - breakStart.toMillis());
-                            breakStart = null;
-                        }
-                    });
-                    totalWorkedMillis += shiftMillis;
+                    const day = new Date(dayString);
+                    const dayName = dayIndexToName[getDay(day)];
+                    const contractualHours = operatorData.workSchedule[dayName] || 0;
+                    totalWorkedHours += contractualHours;
                 }
-            });
-        });
+            }
+        }
 
         const approvedRequests = requests.filter(r => r.status === 'approvato');
         
@@ -205,8 +191,6 @@ export default function MonthlySummaryPage() {
             });
         }
         
-        const totalWorkedHours = Math.floor(totalWorkedMillis / (1000 * 60 * 60));
-
         return {
             workedDays: workedDaysCount,
             workedHours: totalWorkedHours,
