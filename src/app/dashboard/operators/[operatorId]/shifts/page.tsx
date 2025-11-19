@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,9 +45,11 @@ type Timbratura = {
 
 type Shift = {
     events: Timbratura[];
-    status: 'in_sospeso' | 'in_corso' | 'confermato';
+    status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     workDuration: number; // total work minutes
 };
+
+const ITEMS_PER_PAGE = 5;
 
 export default function ShiftApprovalPage() {
     const firestore = useFirestore();
@@ -56,7 +58,9 @@ export default function ShiftApprovalPage() {
     const operatorId = params.operatorId as string;
     const [operator, setOperator] = useState<Operator | null>(null);
 
-    const [shifts, setShifts] = useState<Shift[]>([]);
+    const [pendingShifts, setPendingShifts] = useState<Shift[]>([]);
+    const [approvedShifts, setApprovedShifts] = useState<Shift[]>([]);
+
     const [isLoading, setIsLoading] = useState(true);
     
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
@@ -80,7 +84,8 @@ export default function ShiftApprovalPage() {
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
-
+    
+    const [currentPage, setCurrentPage] = useState(0);
 
      useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -95,54 +100,42 @@ export default function ShiftApprovalPage() {
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
-        const q = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('status', '==', 'sospesa'));
         
-        const unsubscribe = onSnapshot(q, snapshot => {
-            const fetchAllClockingsForPendingDays = async () => {
-                if (snapshot.docs.length === 0) {
-                    setShifts([]);
-                    setIsLoading(false);
-                    return;
-                }
-                
-                const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
-                const allClockingsSnapshot = await getDocs(allClockingsQuery);
-                const allClockings = allClockingsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+        const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
+        
+        const unsubscribe = onSnapshot(allClockingsQuery, snapshot => {
+            const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
 
-                const groupedShifts: Shift[] = [];
-                let currentShiftEvents: Timbratura[] = [];
+            const groupedShifts: Shift[] = [];
+            let currentShiftEvents: Timbratura[] = [];
 
-                for (const event of allClockings) {
-                    if (event.type === 'entrata' && currentShiftEvents.length > 0) {
-                        const { status, workDuration } = processShift(currentShiftEvents);
-                        if (status !== 'confermato') {
-                           groupedShifts.push({ events: currentShiftEvents, status, workDuration });
-                        }
-                        currentShiftEvents = [event];
-                    } else {
-                        currentShiftEvents.push(event);
-                        if (event.type === 'uscita') {
-                            const { status, workDuration } = processShift(currentShiftEvents);
-                             if (status !== 'confermato') {
-                                groupedShifts.push({ events: currentShiftEvents, status, workDuration });
-                            }
-                            currentShiftEvents = [];
-                        }
+            for (const event of allClockings) {
+                if (event.type === 'entrata' && currentShiftEvents.length > 0) {
+                    const processed = processShift(currentShiftEvents);
+                    groupedShifts.push({ events: currentShiftEvents, ...processed });
+                    currentShiftEvents = [event];
+                } else {
+                    currentShiftEvents.push(event);
+                    if (event.type === 'uscita') {
+                        const processed = processShift(currentShiftEvents);
+                        groupedShifts.push({ events: currentShiftEvents, ...processed });
+                        currentShiftEvents = [];
                     }
                 }
+            }
 
-                if (currentShiftEvents.length > 0) {
-                     const { status, workDuration } = processShift(currentShiftEvents);
-                     if (status !== 'confermato') {
-                        groupedShifts.push({ events: currentShiftEvents, status, workDuration });
-                     }
-                }
+            if (currentShiftEvents.length > 0) {
+                const processed = processShift(currentShiftEvents);
+                groupedShifts.push({ events: currentShiftEvents, ...processed });
+            }
 
-                setShifts(groupedShifts.reverse());
-                setIsLoading(false);
-            };
+            const pending = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
+            const approved = groupedShifts.filter(s => s.status === 'confermato' || s.status === 'rifiutato');
+            
+            setPendingShifts(pending.reverse());
+            setApprovedShifts(approved.reverse());
 
-            fetchAllClockingsForPendingDays();
+            setIsLoading(false);
 
         }, error => {
             console.error(error);
@@ -154,8 +147,19 @@ export default function ShiftApprovalPage() {
 
     const processShift = (events: Timbratura[]): { status: Shift['status'], workDuration: number } => {
         const hasPending = events.some(e => e.status === 'sospesa');
+        const hasRejected = events.some(e => e.status === 'rifiutata');
         const isComplete = events.some(e => e.type === 'uscita');
-        const status: Shift['status'] = !isComplete ? 'in_corso' : hasPending ? 'in_sospeso' : 'confermato';
+        
+        let status: Shift['status'];
+        if (hasRejected) {
+            status = 'rifiutato';
+        } else if (!isComplete) {
+            status = 'in_corso';
+        } else if (hasPending) {
+            status = 'in_sospeso';
+        } else {
+            status = 'confermato';
+        }
 
         let workDuration = 0;
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
@@ -474,9 +478,16 @@ export default function ShiftApprovalPage() {
     
     const formatTime = (date: Timestamp | undefined) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
     const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
+    
+    const totalPages = Math.ceil(approvedShifts.length / ITEMS_PER_PAGE);
+    const paginatedApprovedShifts = approvedShifts.slice(
+        currentPage * ITEMS_PER_PAGE,
+        (currentPage + 1) * ITEMS_PER_PAGE
+    );
+
 
     return (
-        <>
+        <div className="space-y-6">
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
@@ -488,7 +499,7 @@ export default function ShiftApprovalPage() {
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    {shifts.length === 0 ? (
+                    {pendingShifts.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-8">Nessun turno in attesa di approvazione.</p>
                     ) : (
                         <div className="border rounded-lg overflow-x-auto">
@@ -504,7 +515,7 @@ export default function ShiftApprovalPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {shifts.map((shift, index) => {
+                                    {pendingShifts.map((shift, index) => {
                                         const startTime = shift.events[0]?.timestamp;
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
                                         return (
@@ -535,6 +546,82 @@ export default function ShiftApprovalPage() {
                         </div>
                     )}
                 </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Riepilogo Turni Approvati</CardTitle>
+                    <CardDescription>Visualizza e modifica i turni già confermati.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                     {approvedShifts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno approvato.</p>
+                    ) : (
+                        <div className="border rounded-lg overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Data</TableHead>
+                                        <TableHead>Inizio</TableHead>
+                                        <TableHead>Fine</TableHead>
+                                        <TableHead>Durata</TableHead>
+                                        <TableHead>Stato</TableHead>
+                                        <TableHead className="text-right">Azioni</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {paginatedApprovedShifts.map((shift, index) => {
+                                        const startTime = shift.events[0]?.timestamp;
+                                        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+                                        return (
+                                            <TableRow key={index}>
+                                                <TableCell>{formatDate(startTime)}</TableCell>
+                                                <TableCell>{formatTime(startTime)}</TableCell>
+                                                <TableCell>{formatTime(endTime)}</TableCell>
+                                                <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
+                                                        {shift.status.charAt(0).toUpperCase() + shift.status.slice(1)}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(shift)}>
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+                </CardContent>
+                {totalPages > 1 && (
+                     <CardFooter className="flex justify-end items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                            disabled={currentPage === 0}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                            Prec.
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                           Pagina {currentPage + 1} di {totalPages}
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                            disabled={currentPage === totalPages - 1}
+                        >
+                            Succ.
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </CardFooter>
+                )}
             </Card>
 
             <ResponsiveDialog open={isAddShiftOpen} onOpenChange={setIsAddShiftOpen}>
@@ -745,6 +832,6 @@ export default function ShiftApprovalPage() {
                     <AlertDialogFooter><AlertDialogCancel onClick={() => setDeletingTimbratura(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleConfirmDeleteTimbratura}>Elimina</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </>
+        </div>
     );
 };
