@@ -257,45 +257,53 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
     const handleCleanMonth = async () => {
         if (!firestore) return;
         setIsCleaningMonth(true);
-
+        closeCleanDialog();
+    
         const monthStart = startOfMonth(currentDate);
         const monthEnd = endOfMonth(currentDate);
-
+    
         try {
-            // 1. Fetch documents to delete outside of the transaction
+            // 1. Fetch all documents to be deleted outside the transaction
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', monthStart),
                 where('timestamp', '<=', monthEnd)
             );
             const timbratureSnapshot = await getDocs(timbratureQuery);
-
+    
             const requestsQuery = query(
                 collection(firestore, `app-users/${operatorId}/requests`),
                 where('startDate', '>=', monthStart),
-                where('endDate', '<=', monthEnd)
+                where('startDate', '<=', monthEnd)
             );
             const requestsSnapshot = await getDocs(requestsQuery);
-
-            // 2. Run the deletions in a single transaction
+    
+            // 2. Perform deletions in a single transaction
             await runTransaction(firestore, async (transaction) => {
                 timbratureSnapshot.forEach(doc => transaction.delete(doc.ref));
                 requestsSnapshot.forEach(doc => transaction.delete(doc.ref));
             });
-
-            toast({ title: 'Operazione Completata', description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
-
+    
+            toast({
+                title: 'Operazione Completata',
+                description: `Tutti i dati per ${format(currentDate, 'MMMM yyyy', { locale: it })} sono stati eliminati.`
+            });
         } catch (error) {
             console.error("Error cleaning month:", error);
-            toast({ title: 'Errore', description: 'Impossibile completare la pulizia del mese.', variant: 'destructive' });
+            toast({
+                title: 'Errore',
+                description: 'Impossibile completare la pulizia del mese.',
+                variant: 'destructive'
+            });
         } finally {
             setIsCleaningMonth(false);
-            setCleanConfirmStep(0); // Reset dialog state
         }
     };
     
+    
     const openCleanDialog = () => setCleanConfirmStep(1);
     const closeCleanDialog = () => setCleanConfirmStep(0);
+    
     const advanceCleanDialog = () => {
         if (cleanConfirmStep === 3) {
             handleCleanMonth();
@@ -304,7 +312,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
         }
     };
     
-    const cleanDialogContent = {
+    const cleanDialogs = {
         1: {
             title: "Sei assolutamente sicuro?",
             description: `Passaggio 1/3: Questa azione eliminerà tutti i dati per ${operator.username} nel mese di ${format(currentDate, 'MMMM yyyy', { locale: it })}.`
@@ -317,7 +325,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
             title: "Ultima conferma",
             description: `Passaggio 3/3: Cliccando "Conferma ed Elimina" i dati verranno eliminati per sempre.`
         }
-    }
+    };
 
 
     const renderDetailTable = () => {
@@ -488,9 +496,9 @@ const MonthlySummary = ({ operatorId, operator, onDateClick }: { operatorId: str
         <AlertDialog open={cleanConfirmStep > 0} onOpenChange={(open) => !open && closeCleanDialog()}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>{cleanDialogContent[cleanConfirmStep as keyof typeof cleanDialogContent]?.title}</AlertDialogTitle>
+                    <AlertDialogTitle>{cleanDialogs[cleanConfirmStep as keyof typeof cleanDialogs]?.title}</AlertDialogTitle>
                     <AlertDialogDescription>
-                       {cleanDialogContent[cleanConfirmStep as keyof typeof cleanDialogContent]?.description}
+                       {cleanDialogs[cleanConfirmStep as keyof typeof cleanDialogs]?.description}
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
