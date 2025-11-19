@@ -48,9 +48,7 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     const [hours, setHours] = useState(request.hours?.toString() || '');
     const [reason, setReason] = useState(request.reason || '');
 
-    const [startMonth, setStartMonth] = useState(request.startDate.toDate());
-    const [endMonth, setEndMonth] = useState(request.endDate.toDate());
-
+    const currentYear = new Date().getFullYear();
 
     const handleSave = () => {
         const editedData: Partial<Request> = {
@@ -99,8 +97,10 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                                 }
                                             }
                                         }}
-                                        month={startMonth}
-                                        onMonthChange={setStartMonth}
+                                        captionLayout="dropdown-buttons"
+                                        fromYear={currentYear - 1}
+                                        toYear={currentYear + 5}
+                                        numberOfMonths={1}
                                         initialFocus
                                     />
                                 </PopoverContent>
@@ -126,8 +126,10 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                             if(date) setEndDate(date);
                                         }}
                                         disabled={{ before: startDate }}
-                                        month={endMonth}
-                                        onMonthChange={setEndMonth}
+                                        captionLayout="dropdown-buttons"
+                                        fromYear={currentYear - 1}
+                                        toYear={currentYear + 5}
+                                        numberOfMonths={1}
                                         initialFocus
                                     />
                                 </PopoverContent>
