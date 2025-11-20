@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format, set, getDay as getDayFns, isSameDay, addDays, subDays } from 'date-fns';
+import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -74,6 +74,11 @@ type ApprovalData = {
     leaveHours: string;
 };
 
+type DeleteOptions = {
+    shift: Shift | null;
+    includeRequests: boolean;
+}
+
 const ITEMS_PER_PAGE = 5;
 
 export default function ShiftApprovalPage() {
@@ -93,6 +98,7 @@ export default function ShiftApprovalPage() {
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+    const [isDeleteOptionsOpen, setIsDeleteOptionsOpen] = useState(false);
     const [editingShift, setEditingShift] = useState<Shift | null>(null);
     const [isEditShiftOpen, setIsEditShiftOpen] = useState(false);
 
@@ -103,7 +109,7 @@ export default function ShiftApprovalPage() {
     const [editingOvertimeShift, setEditingOvertimeShift] = useState<StraordinarioShift | null>(null);
     const [isEditOvertimeOpen, setIsEditOvertimeOpen] = useState(false);
 
-    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+    const [isConfirmingOvertimeDelete, setIsConfirmingOvertimeDelete] = useState(false);
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
@@ -342,22 +348,53 @@ export default function ShiftApprovalPage() {
         });
     };
 
-    const handleDeleteShift = async () => {
+    const handleDeleteShift = async (includeRequests: boolean) => {
         if (!firestore || !shiftToDelete || !operator) return;
+        
         const batch = writeBatch(firestore);
+
+        // Delete all timbratura events for the shift
         shiftToDelete.events.forEach(event => {
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             batch.delete(docRef);
         });
-        await batch.commit().then(() => {
+
+        // If requested, also delete associated requests for that day
+        if (includeRequests) {
+            const shiftDate = shiftToDelete.events[0].timestamp.toDate();
+            const startOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
+            const endOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate() + 1);
+
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operator.id}/requests`),
+                where('startDate', '>=', Timestamp.fromDate(startOfDay)),
+                where('startDate', '<', Timestamp.fromDate(endOfDay)),
+                where('type', 'in', ['permesso', 'straordinario'])
+            );
+
+            try {
+                const requestsSnapshot = await getDocs(requestsQuery);
+                requestsSnapshot.forEach(requestDoc => {
+                    batch.delete(requestDoc.ref);
+                });
+            } catch (error) {
+                console.error("Error finding associated requests to delete:", error);
+                toast({ title: 'Errore', description: 'Impossibile trovare le ore associate da eliminare.', variant: 'destructive' });
+                return; // Stop the deletion process
+            }
+        }
+
+        try {
+            await batch.commit();
             toast({ title: 'Successo', description: 'Turno eliminato.' });
-            setIsDetailOpen(false);
-        }).catch(err => {
+        } catch (err) {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
-        });
-        setIsConfirmingDelete(false);
-        setShiftToDelete(null);
+        } finally {
+            setIsDetailOpen(false);
+            setShiftToDelete(null);
+            setIsDeleteOptionsOpen(false);
+        }
     };
 
     const handleOpenEditDialog = (shift: Shift) => {
@@ -743,7 +780,7 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         });
         
-        setIsConfirmingDelete(false);
+        setIsConfirmingOvertimeDelete(false);
         setOvertimeShiftToDelete(null);
         setIsDetailOvertimeOpen(false);
     };
@@ -1052,10 +1089,30 @@ export default function ShiftApprovalPage() {
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
 
-            <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
+            <AlertDialog open={isDeleteOptionsOpen} onOpenChange={setIsDeleteOptionsOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel onClick={() => { setShiftToDelete(null); setOvertimeShiftToDelete(null); }}>Annulla</AlertDialogCancel><AlertDialogAction onClick={shiftToDelete ? handleDeleteShift : handleDeleteOvertimeShift}>Elimina Turno</AlertDialogAction></AlertDialogFooter>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Elimina Turno Approvato</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Scegli come eliminare questo turno. Puoi eliminare solo le timbrature, oppure anche le ore di straordinario/permesso associate nel riepilogo mensile.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                        <Button variant="outline" onClick={() => setIsDeleteOptionsOpen(false)}>Annulla</Button>
+                        <Button variant="destructive" onClick={() => handleDeleteShift(false)}>
+                            Elimina solo Timbrature
+                        </Button>
+                        <AlertDialogAction onClick={() => handleDeleteShift(true)}>
+                            Elimina Turno e Ore
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={isConfirmingOvertimeDelete} onOpenChange={setIsConfirmingOvertimeDelete}>
+                <AlertDialogContent>
+                    <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione eliminerà questo turno straordinario in modo permanente. L'azione non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel onClick={() => setOvertimeShiftToDelete(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleDeleteOvertimeShift}>Elimina Turno</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
             
@@ -1140,9 +1197,9 @@ export default function ShiftApprovalPage() {
                             </Button>
                           </>
                         )}
-                        {detailShift && (
+                        {detailShift && detailShift.status !== 'in_sospeso' && (
                           <>
-                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteOptionsOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                             <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                           </>
                         )}
@@ -1200,7 +1257,7 @@ export default function ShiftApprovalPage() {
                          )}
                          {detailOvertimeShift && (
                             <>
-                                <Button variant="destructive" onClick={() => { setOvertimeShiftToDelete(detailOvertimeShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                                <Button variant="destructive" onClick={() => { setOvertimeShiftToDelete(detailOvertimeShift); setIsConfirmingOvertimeDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                                 <Button variant="outline" onClick={() => handleOpenEditOvertimeDialog(detailOvertimeShift)}><Pencil className="mr-2 h-4 w-4"/> Modifica</Button>
                             </>
                          )}
