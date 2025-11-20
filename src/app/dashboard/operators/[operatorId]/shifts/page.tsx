@@ -482,15 +482,15 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName] || 0;
     };
     
-    const roundOrdinaryHours = (minutes: number) => {
+    const roundOrdinaryHours = (minutes: number): number => {
         if (minutes < 0) return 0;
         const totalHalfHours = Math.floor(minutes / 30);
         const remainingMinutes = minutes % 30;
         return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
     };
 
-    const roundOvertimeHours = (minutes: number) => {
-        if (minutes < 0) return 0;
+    const roundOvertimeHours = (minutes: number): number => {
+        if (minutes <= 0) return 0;
         const totalHours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
         return totalHours + (remainingMinutes >= 55 ? 1 : 0);
@@ -511,11 +511,12 @@ export default function ShiftApprovalPage() {
                 leave: 0 
             };
         } else {
+            const ordinaryMinutes = totalMinutesWorked;
             const leaveMinutes = contractualMinutes - totalMinutesWorked;
             return { 
-                ordinary: roundOrdinaryHours(totalMinutesWorked), 
+                ordinary: roundOrdinaryHours(ordinaryMinutes), 
                 overtime: 0, 
-                leave: roundOvertimeHours(leaveMinutes) // Same logic as overtime for deficit
+                leave: roundOrdinaryHours(leaveMinutes) // Ammanco calcolato con la stessa logica delle ore ordinarie
             };
         }
     };
