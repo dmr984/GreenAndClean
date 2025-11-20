@@ -47,6 +47,7 @@ type Shift = {
     events: Timbratura[];
     status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     workDuration: number; // total work minutes
+    isOnLeaveDay?: boolean; // Flag for shifts on leave days
 };
 
 type ApprovalData = {
@@ -64,8 +65,7 @@ export default function ShiftApprovalPage() {
     const operatorId = params.operatorId as string;
     const [operator, setOperator] = useState<Operator | null>(null);
 
-    const [pendingShifts, setPendingShifts] = useState<Shift[]>([]);
-    const [approvedShifts, setApprovedShifts] = useState<Shift[]>([]);
+    const [allShifts, setAllShifts] = useState<Shift[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     
@@ -107,22 +107,35 @@ export default function ShiftApprovalPage() {
         if (!firestore || !operatorId) return;
         
         const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
-        
-        const unsubscribe = onSnapshot(allClockingsQuery, snapshot => {
-            const allClockings = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('status', '==', 'approvato'));
+
+        const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
+            const allClockings = clockingSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            
+            const requestSnapshot = await getDocs(requestsQuery);
+            const leaveDays = new Set<string>();
+            requestSnapshot.forEach(doc => {
+                const req = doc.data();
+                if (req.type === 'ferie' || req.type === 'malattia') {
+                    for(let d = req.startDate.toDate(); d <= req.endDate.toDate(); d.setDate(d.getDate() + 1)) {
+                        leaveDays.add(format(d, 'yyyy-MM-dd'));
+                    }
+                }
+            });
+
 
             const groupedShifts: Shift[] = [];
             let currentShiftEvents: Timbratura[] = [];
 
             for (const event of allClockings) {
                 if (event.type === 'entrata' && currentShiftEvents.length > 0) {
-                    const processed = processShift(currentShiftEvents);
+                    const processed = processShift(currentShiftEvents, leaveDays);
                     groupedShifts.push({ events: currentShiftEvents, ...processed });
                     currentShiftEvents = [event];
                 } else {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
-                        const processed = processShift(currentShiftEvents);
+                        const processed = processShift(currentShiftEvents, leaveDays);
                         groupedShifts.push({ events: currentShiftEvents, ...processed });
                         currentShiftEvents = [];
                     }
@@ -130,16 +143,11 @@ export default function ShiftApprovalPage() {
             }
 
             if (currentShiftEvents.length > 0) {
-                const processed = processShift(currentShiftEvents);
+                const processed = processShift(currentShiftEvents, leaveDays);
                 groupedShifts.push({ events: currentShiftEvents, ...processed });
             }
-
-            const pending = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
-            const approved = groupedShifts.filter(s => s.status === 'confermato' || s.status === 'rifiutato');
             
-            setPendingShifts(pending.reverse());
-            setApprovedShifts(approved.reverse());
-
+            setAllShifts(groupedShifts.reverse());
             setIsLoading(false);
 
         }, error => {
@@ -147,10 +155,17 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile caricare le timbrature.', variant: 'destructive' });
             setIsLoading(false);
         });
-        return unsubscribe;
+
+        return () => unsubClockings();
     }, [firestore, operatorId, toast]);
 
-    const processShift = (events: Timbratura[]): { status: Shift['status'], workDuration: number } => {
+    const { pendingShifts, approvedShifts } = useMemo(() => {
+        const pending = allShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
+        const approved = allShifts.filter(s => s.status === 'confermato' || s.status === 'rifiutato');
+        return { pendingShifts: pending, approvedShifts: approved };
+    }, [allShifts]);
+
+    const processShift = (events: Timbratura[], leaveDays: Set<string>): { status: Shift['status'], workDuration: number, isOnLeaveDay: boolean } => {
         const hasPending = events.some(e => e.status === 'sospesa');
         const hasRejected = events.some(e => e.status === 'rifiutata');
         const isComplete = events.some(e => e.type === 'uscita');
@@ -182,7 +197,11 @@ export default function ShiftApprovalPage() {
             });
             workDuration = totalMillis / (1000 * 60); // duration in minutes
         }
-        return { status, workDuration };
+        
+        const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
+        const isOnLeaveDay = leaveDays.has(shiftDateStr);
+
+        return { status, workDuration, isOnLeaveDay };
     };
 
     const handleConfirmApprove = async () => {
@@ -385,14 +404,15 @@ export default function ShiftApprovalPage() {
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
         
         const totalMinutes = shift.workDuration;
-        const hoursWorked = Math.floor(totalMinutes / 60);
-        const minutesWorked = totalMinutes % 60;
-        const totalRoundedHours = hoursWorked + (minutesWorked >= 50 ? 1 : 0);
-
-        if (totalRoundedHours > (contractualMinutes / 60)) {
+        
+        if (totalMinutes > contractualMinutes) {
             // Overtime
-            const overtimeHours = totalRoundedHours - (contractualMinutes / 60);
-            return { overtime: overtimeHours, leave: 0 };
+            const overtimeMinutes = totalMinutes - contractualMinutes;
+            const overtimeHours = Math.floor(overtimeMinutes / 60);
+            const remainingMinutes = overtimeMinutes % 60;
+            const calculatedOvertime = overtimeHours + (remainingMinutes >= 50 ? 1 : 0);
+            return { overtime: calculatedOvertime, leave: 0 };
+
         } else if (totalMinutes < contractualMinutes) {
             // Leave
             const leaveMinutes = contractualMinutes - totalMinutes;
@@ -541,7 +561,10 @@ export default function ShiftApprovalPage() {
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
                                         return (
                                             <TableRow key={index}>
-                                                <TableCell>{formatDate(startTime)}</TableCell>
+                                                <TableCell className='flex items-center gap-2'>
+                                                  {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
+                                                  {formatDate(startTime)}
+                                                </TableCell>
                                                 <TableCell>{formatTime(startTime)}</TableCell>
                                                 <TableCell>{formatTime(endTime)}</TableCell>
                                                 <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
@@ -720,6 +743,12 @@ export default function ShiftApprovalPage() {
                                 <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
                                 {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                             </div>
+                             {detailShift?.isOnLeaveDay && (
+                                <div className='flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded-md'>
+                                    <AlertCircle className="h-5 w-5" />
+                                    <span className="text-sm font-medium">Timbrato in giorno di assenza</span>
+                                </div>
+                             )}
                         </div>
                     </ResponsiveDialogHeader>
 

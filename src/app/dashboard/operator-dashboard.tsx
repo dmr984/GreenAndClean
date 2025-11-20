@@ -94,6 +94,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
   const [hasUnreadShifts, setHasUnreadShifts] = useState(false);
   const [isShiftDetailsOpen, setIsShiftDetailsOpen] = useState(false);
+  const [clockingTypeToConfirm, setClockingTypeToConfirm] = useState<'entrata' | 'uscita' | 'pausa' | 'fine_pausa' | null>(null);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -310,29 +311,28 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
 
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
-    if (!firestore || !operator || isProcessing || leaveStatus.onLeave) return;
+    if (!firestore || !operator || isProcessing) return;
     
+    setClockingTypeToConfirm(type);
+
     if (type === 'entrata') {
         const today = new Date();
         const dayName = dayIndexToName[getDay(today)];
         const contractualHours = operator.workSchedule?.[dayName] || 0;
-        if (contractualHours <= 0) {
-            // Check if user has already confirmed through the dialog
-            // We use a state flag to avoid showing the dialog again if they confirm
+        
+        if (contractualHours <= 0 || leaveStatus.onLeave) {
             setIsNonWorkDayConfirmOpen(true);
             return;
         }
     }
 
-    // This part of the code will now only run if it's a workday,
-    // or if the user confirms the dialog for a non-workday
     await proceedWithClocking(type);
   };
   
-  const proceedWithClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
-      if (!firestore || !operator) return;
+  const proceedWithClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita' | null) => {
+      if (!firestore || !operator || !type) return;
 
-      setIsNonWorkDayConfirmOpen(false); // Close dialog if it was open
+      setIsNonWorkDayConfirmOpen(false);
 
       try {
         const currentLoc = await getLocation();
@@ -352,7 +352,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             .then(() => {
                 toast({
                     title: "Successo!",
-                    description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente.`,
+                    description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente. In attesa di approvazione.`,
                 });
             })
             .catch(err => {
@@ -380,6 +380,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         });
     } finally {
         setIsProcessing(false);
+        setClockingTypeToConfirm(null);
     }
   }
   
@@ -390,7 +391,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
   
   const handleBreakToggle = (isToggled: boolean) => {
-      proceedWithClocking(isToggled ? 'pausa' : 'fine_pausa');
+      handleClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
 
   const markShiftsAsRead = async () => {
@@ -430,9 +431,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardHeader>
             <CardContent>
                 <p className="text-yellow-600 text-center">
-                    Oggi sei in {leaveStatus.type}. Non è possibile timbrare.
+                    Oggi sei in {leaveStatus.type}. Non puoi timbrare normalmente.
                 </p>
             </CardContent>
+             <CardFooter>
+                 <Button 
+                    className="w-full" 
+                    size="lg"
+                    disabled={isProcessing} 
+                    onClick={() => handleClocking('entrata')}
+                    variant="outline"
+                >
+                    {isProcessing ? <Loader2 className="animate-spin" /> : <AlertCircle className="mr-2 h-5 w-5"/>}
+                    Timbra per Emergenza
+                </Button>
+            </CardFooter>
         </Card>
     );
   }
@@ -440,6 +453,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   if (isUserLoading || !operator) {
       return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
   }
+  
+  const getAlertDialogDescription = () => {
+    if (leaveStatus.onLeave) {
+        return `Oggi risulta un giorno di ${leaveStatus.type}. Sei sicuro di voler timbrare? La timbratura verrà inviata come richiesta di emergenza.`
+    }
+    return "Questo non è un giorno lavorativo assegnato. Vuoi davvero timbrare?"
+  }
+
 
   return (
     <>
@@ -448,7 +469,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>
 
-       { leaveStatus.onLeave ? renderLeaveCard() : (
+       { leaveStatus.onLeave && !isClockedIn ? renderLeaveCard() : (
        <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -470,9 +491,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         size="lg" 
                         variant="destructive"
                         disabled={isProcessing || isOnBreak} 
-                        onClick={() => proceedWithClocking('uscita')}
+                        onClick={() => handleClocking('uscita')}
                     >
-                         {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
+                         {isProcessing && clockingTypeToConfirm === 'uscita' ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
                          Termina Turno
                     </Button>
                     <div className="flex items-center space-x-2 justify-center pt-2">
@@ -494,7 +515,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     onClick={() => handleClocking('entrata')}
                     style={{backgroundColor: '#22c55e', color: 'white'}}
                 >
-                    {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
+                    {isProcessing && clockingTypeToConfirm === 'entrata' ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
                     Inizia Turno
                 </Button>
             )}
@@ -590,15 +611,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <AlertDialogHeader>
                 <div className='flex items-center gap-2'>
                     <AlertCircle className="h-6 w-6 text-yellow-500" />
-                    <AlertDialogTitle>Giorno non lavorativo</AlertDialogTitle>
+                    <AlertDialogTitle>Timbratura in Giorno Non Lavorativo</AlertDialogTitle>
                 </div>
                 <AlertDialogDescription>
-                    Questo non è un giorno lavorativo assegnato. Vuoi davvero timbrare?
+                   {getAlertDialogDescription()}
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setIsProcessing(false)}>Annulla</AlertDialogCancel>
-                <AlertDialogAction onClick={() => proceedWithClocking('entrata')}>Conferma</AlertDialogAction>
+                <AlertDialogCancel onClick={() => { setIsProcessing(false); setClockingTypeToConfirm(null); }}>Annulla</AlertDialogCancel>
+                <AlertDialogAction onClick={() => proceedWithClocking(clockingTypeToConfirm)}>Conferma</AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>
     </AlertDialog>
