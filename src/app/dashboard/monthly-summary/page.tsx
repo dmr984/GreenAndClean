@@ -218,6 +218,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
                     else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
                     else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
+                    else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = 'straordinario';
                     setSelectedDayInfo(dayInfo);
                 } else {
                     setSelectedDayInfo(null);
@@ -262,11 +263,12 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
         };
     };
 
-    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
+    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' | 'straordinario' }) => {
         const details = {
             ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
             malattia: { Icon: Stethoscope, text: 'Giorno di Malattia', color: 'text-red-600' },
             permesso: { Icon: UserCheck, text: 'Giorno di Permesso', color: 'text-yellow-600' },
+            straordinario: { Icon: Plus, text: 'Giorno di Straordinario', color: 'text-amber-600' },
         };
         const { Icon, text, color } = details[type];
         return (
@@ -280,8 +282,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
 
     const isDateDisabled = (date: Date): boolean => {
         const today = startOfDay(new Date());
+        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
         if (date > today && !isSameDay(date, today)) {
-          const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
           return !isLeaveOrSickDay;
         }
         return false;

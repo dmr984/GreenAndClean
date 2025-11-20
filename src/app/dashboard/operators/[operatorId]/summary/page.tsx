@@ -83,7 +83,7 @@ type DetailView = {
 } | null;
 
 type SelectedDayInfo = {
-    type: 'ferie' | 'malattia' | 'permesso';
+    type: 'ferie' | 'malattia' | 'permesso' | 'straordinario';
 } | null;
 
 
@@ -582,12 +582,12 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         const end = endOfDay(selectedDate);
 
         const fetchDailyData = async () => {
-             let dayInfo: SelectedDayInfo = null;
+            let dayInfo: SelectedDayInfo = null;
             if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
             else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
             else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
-            setSelectedDayInfo(dayInfo);
-
+            else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'straordinario' };
+            
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', Timestamp.fromDate(start)),
@@ -616,6 +616,12 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 }
 
                 setDailyShifts(shifts);
+                
+                if(shifts.length === 0) {
+                    setSelectedDayInfo(dayInfo);
+                } else {
+                    setSelectedDayInfo(null);
+                }
 
             } catch (error) {
                 console.error("Error fetching daily data:", error);
@@ -833,25 +839,27 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
     const isDateDisabled = (date: Date): boolean => {
         const today = startOfDay(new Date());
+        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+        
         if (date > today && !isSameDay(date, today)) {
-          const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
           return !isLeaveOrSickDay;
         }
         return false;
       };
 
-    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
+    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' | 'straordinario' }) => {
         const details = {
             ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
             malattia: { Icon: Stethoscope, text: 'Giorno di Malattia', color: 'text-red-600' },
             permesso: { Icon: UserCheck, text: 'Giorno di Permesso', color: 'text-yellow-600' },
+            straordinario: { Icon: Plus, text: 'Giorno di Straordinario', color: 'text-amber-600' },
         };
         const { Icon, text, color } = details[type];
         return (
             <div className="text-center h-40 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Icon className={cn("h-12 w-12", color)} />
                 <p className="text-lg font-medium">{text}</p>
-                <p>Nessun turno di lavoro registrato.</p>
+                <p>Nessun turno di lavoro registrato per oggi.</p>
             </div>
         )
     };
@@ -908,14 +916,14 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                         {isLoading ? (
                             <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                         ) : dailyShifts.length > 0 ? (
-                            <>
+                           <>
                                 {dailyShifts.map((shift, index) => (
                                     <div key={index} className="border rounded-md mb-4 last:mb-0">
                                         <div className='p-4'>
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                     {leaveDays.straordinario.some(d => isSameDay(d, selectedDate!)) && <Badge variant="outline">Straordinario</Badge>}
+                                                    {leaveDays.straordinario.some(d => isSameDay(d, selectedDate!)) && <Badge variant="outline" className="border-amber-500 text-amber-600">Straordinario</Badge>}
                                                 </div>
                                                 <Button variant="ghost" size="icon" onClick={() => { setDetailShift(shift); setIsDetailOpen(true); }}><Eye className="h-5 w-5" /></Button>
                                             </div>
@@ -1122,7 +1130,7 @@ export default function OperatorSummaryPage() {
 
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery),
+                getDocs(requestsSnapshot),
             ]);
 
             if (timbratureSnapshot.empty && requestsSnapshot.empty) {

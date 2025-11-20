@@ -669,22 +669,22 @@ export default function ShiftApprovalPage() {
     
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
         if (!firestore || !operatorId || !operator) return;
-
+    
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
-        
+    
         if (action === 'reject') {
             await updateDoc(shiftRef, { status: 'rifiutato' });
             toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
             setIsDetailOvertimeOpen(false);
             return;
         }
-
+    
         // Action === 'approve'
         const workMinutes = calculateOvertimeShiftMinutes(shift);
         const overtimeHours = Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
-
+    
         const batch = writeBatch(firestore);
-
+    
         // Copy events to timbrature collection
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         shift.events.forEach(event => {
@@ -694,10 +694,12 @@ export default function ShiftApprovalPage() {
                 type: event.type,
                 timestamp: event.timestamp,
                 status: 'confermata',
-                viewedByOperator: false
+                viewedByOperator: false,
+                latitude: null, // Manual entry has no location
+                longitude: null,
             });
         });
-
+    
         // Create overtime request
         if (overtimeHours > 0) {
              const overtimeRequest = {
@@ -707,17 +709,17 @@ export default function ShiftApprovalPage() {
                 startDate: shift.date,
                 endDate: shift.date,
                 hours: overtimeHours,
-                reason: 'Straordinario da giorno non lavorativo',
+                reason: 'Straordinario da giorno non lavorativo approvato',
                 createdAt: serverTimestamp(),
                 viewedByOperator: false,
             };
             const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
             batch.set(newRequestRef, overtimeRequest);
         }
-        
+    
         // Delete the original overtime shift document
         batch.delete(shiftRef);
-
+    
         try {
             await batch.commit();
             toast({ title: 'Successo', description: `Turno straordinario approvato e registrato.` });
