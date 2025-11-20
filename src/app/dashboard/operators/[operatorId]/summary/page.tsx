@@ -833,12 +833,11 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
       const today = startOfDay(new Date());
       const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
       
-      // A future date is enabled only if it's a leave or sick day.
-      if (date > today) {
+      if (date > today && !isSameDay(date, today)) {
         return !isLeaveOrSickDay;
       }
       
-      return false; // All past and present days are enabled.
+      return false;
     };
 
     const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
@@ -1111,43 +1110,84 @@ export default function OperatorSummaryPage() {
     const handleCleanMonth = async () => {
         if (!firestore || !operatorId || !monthToClean) return;
         setIsCleaning(true);
-
+    
         const monthStart = startOfMonth(monthToClean);
         const monthEnd = endOfMonth(monthToClean);
-
+    
         try {
+            const batch = writeBatch(firestore);
+    
+            // 1. Delete timbrature within the month
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', monthStart),
                 where('timestamp', '<=', monthEnd)
             );
-            
+            const timbratureSnapshot = await getDocs(timbratureQuery);
+            timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
+    
+            // 2. Handle requests that overlap with the month
             const requestsQuery = query(
                 collection(firestore, `app-users/${operatorId}/requests`),
-                where('startDate', '>=', monthStart),
-                where('startDate', '<=', monthEnd)
+                where('endDate', '>=', monthStart)
             );
-
-            const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
-                getDocs(timbratureQuery),
-                getDocs(requestsQuery),
-            ]);
-
-            if (timbratureSnapshot.empty && requestsSnapshot.empty) {
-                toast({ title: 'Nessun dato', description: 'Non ci sono dati da eliminare per questo mese.' });
-                setIsCleaning(false);
-                setMonthToClean(null);
-                return;
+            const requestsSnapshot = await getDocs(requestsQuery);
+    
+            for (const requestDoc of requestsSnapshot.docs) {
+                const request = requestDoc.data() as Request;
+                const reqStart = request.startDate.toDate();
+                const reqEnd = request.endDate.toDate();
+    
+                // Skip if request is completely outside the month
+                if (reqStart > monthEnd) continue;
+    
+                const ref = requestDoc.ref;
+    
+                // Case 1: Request is fully contained within the month
+                if (reqStart >= monthStart && reqEnd <= monthEnd) {
+                    batch.delete(ref);
+                    continue;
+                }
+    
+                // Case 2: Request starts before and ends after the month
+                if (reqStart < monthStart && reqEnd > monthEnd) {
+                    // Split into two requests
+                    // First part: before the cleaned month
+                    batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
+                    // Second part: after the cleaned month
+                    const { id, ...restOfRequest } = request;
+                    const newRequestData = {
+                        ...restOfRequest,
+                        startDate: Timestamp.fromDate(addDays(monthEnd, 1)),
+                        endDate: request.endDate,
+                        createdAt: serverTimestamp(),
+                        viewedByOperator: false,
+                    };
+                    const newDocRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
+                    batch.set(newDocRef, newRequestData);
+                    continue;
+                }
+    
+                // Case 3: Request starts in the month and ends after
+                if (reqStart >= monthStart && reqStart <= monthEnd && reqEnd > monthEnd) {
+                    batch.update(ref, { startDate: Timestamp.fromDate(addDays(monthEnd, 1)) });
+                    continue;
+                }
+    
+                // Case 4: Request starts before and ends in the month
+                if (reqStart < monthStart && reqEnd >= monthStart && reqEnd <= monthEnd) {
+                    batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
+                    continue;
+                }
             }
-
-            const batch = writeBatch(firestore);
-            timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
-            requestsSnapshot.forEach(doc => batch.delete(doc.ref));
-
-            await batch.commit();
-
-            toast({ title: 'Successo!', description: `I dati di ${format(monthToClean, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
-
+    
+            if (timbratureSnapshot.empty && requestsSnapshot.docs.every(d => d.data().startDate.toDate() > monthEnd)) {
+                 toast({ title: 'Nessun dato', description: 'Non ci sono dati da eliminare per questo mese.' });
+            } else {
+                await batch.commit();
+                toast({ title: 'Successo!', description: `I dati di ${format(monthToClean, 'MMMM yyyy', { locale: it })} sono stati elaborati.` });
+            }
+    
         } catch (error) {
             console.error("Errore durante la pulizia del mese:", error);
             toast({ title: 'Errore', description: 'Impossibile completare la pulizia.', variant: 'destructive' });
@@ -1197,15 +1237,15 @@ export default function OperatorSummaryPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Questa azione è irreversibile. Verranno eliminate tutte le timbrature e le richieste che iniziano nel mese di{' '}
-                            <span className="font-bold">{monthToClean ? format(monthToClean, 'MMMM yyyy', { locale: it }) : ''}</span>.
+                            Questa azione è irreversibile. Verranno eliminate tutte le timbrature e le porzioni di richieste che cadono nel mese di{' '}
+                            <span className="font-bold">{monthToClean ? format(monthToClean, 'MMMM yyyy', { locale: it }) : ''}</span>. Le richieste a cavallo dei mesi verranno modificate.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaning}>
                             {isCleaning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Conferma ed Elimina
+                            Conferma ed Elabora
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
