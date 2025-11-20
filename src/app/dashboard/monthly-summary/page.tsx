@@ -5,7 +5,7 @@ import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { collection, query, where, Timestamp, onSnapshot, doc, getDoc, getDocs, writeBatch, addDoc, serverTimestamp, runTransaction, deleteDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X, Eye, Trash2, Pencil, Archive, PackageSearch } from 'lucide-react';
+import { Calendar as CalendarIcon, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X, Eye, Trash2, Pencil, Archive, PackageSearch } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Calendar as DayPickerCalendar } from '@/components/ui/calendar';
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -260,7 +261,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     <Card>
                         <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                         <CardContent className="flex justify-center">
-                            <Calendar
+                            <DayPickerCalendar
                                 mode="single"
                                 selected={selectedDate}
                                 onSelect={setSelectedDate}
