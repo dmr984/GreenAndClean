@@ -18,6 +18,8 @@ import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -111,6 +113,9 @@ export default function ShiftApprovalPage() {
 
     const [approvalData, setApprovalData] = useState<ApprovalData>({ shiftToApprove: null, ordinaryHours: "0", overtimeHours: "0", leaveHours: "0"});
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+    const [includeLeaveHours, setIncludeLeaveHours] = useState(false);
+    const [isLeaveWarningOpen, setIsLeaveWarningOpen] = useState(false);
+
 
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
@@ -261,12 +266,25 @@ export default function ShiftApprovalPage() {
         return { status, workDuration, isOnLeaveDay };
     };
 
-    const handleConfirmApprove = async () => {
+    const handleApprovalClick = () => {
+        if (parseFloat(approvalData.leaveHours) > 0 && !includeLeaveHours) {
+            setIsLeaveWarningOpen(true);
+        } else {
+            handleConfirmApprove();
+        }
+    };
+    
+    const handleConfirmLeaveWarning = () => {
+        setIsLeaveWarningOpen(false);
+        handleConfirmApprove(false); // Proceed without creating leave request
+    };
+
+    const handleConfirmApprove = async (createLeaveRequest = includeLeaveHours) => {
         const { shiftToApprove, ordinaryHours, overtimeHours, leaveHours } = approvalData;
         if (!firestore || !shiftToApprove || !operator) return;
     
         const approvedOvertime = parseFloat(overtimeHours) || 0;
-        const approvedLeave = parseFloat(leaveHours) || 0;
+        const approvedLeave = createLeaveRequest ? (parseFloat(leaveHours) || 0) : 0;
 
         const batch = writeBatch(firestore);
         
@@ -464,19 +482,18 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName] || 0;
     };
     
-     const roundOrdinaryHours = (minutes: number) => {
+    const roundOrdinaryHours = (minutes: number) => {
+        if (minutes < 0) return 0;
         const totalHalfHours = Math.floor(minutes / 30);
         const remainingMinutes = minutes % 30;
-        const additionalHalfHour = remainingMinutes >= 25 ? 0.5 : 0;
-        return (totalHalfHours / 2) + additionalHalfHour;
+        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
     };
 
     const roundOvertimeHours = (minutes: number) => {
         if (minutes < 0) return 0;
         const totalHours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
-        const additionalHour = remainingMinutes >= 55 ? 1 : 0;
-        return totalHours + additionalHour;
+        return totalHours + (remainingMinutes >= 55 ? 1 : 0);
     };
 
 
@@ -488,18 +505,18 @@ export default function ShiftApprovalPage() {
 
         if (totalMinutesWorked > contractualMinutes) {
             const overtimeMinutes = totalMinutesWorked - contractualMinutes;
-            const calculatedOvertimeHours = roundOvertimeHours(overtimeMinutes);
-            return { ordinary: getContractualHoursForShift(shift), overtime: calculatedOvertimeHours, leave: 0 };
+            return { 
+                ordinary: getContractualHoursForShift(shift), 
+                overtime: roundOvertimeHours(overtimeMinutes), 
+                leave: 0 
+            };
         } else {
             const leaveMinutes = contractualMinutes - totalMinutesWorked;
-            const calculatedLeaveHours = roundOvertimeHours(leaveMinutes); // Use the same rounding for deficit
-            const ordinaryMinutesWorked = totalMinutesWorked - (calculatedLeaveHours > 0 ? (leaveMinutes) : 0);
-
-            // This logic might be complex. Let's simplify.
-            // If there's a deficit, ordinary hours are what was worked, and leave hours cover the rest.
-             const ordinaryHours = roundOrdinaryHours(totalMinutesWorked);
-
-            return { ordinary: ordinaryHours, overtime: 0, leave: calculatedLeaveHours };
+            return { 
+                ordinary: roundOrdinaryHours(totalMinutesWorked), 
+                overtime: 0, 
+                leave: roundOvertimeHours(leaveMinutes) // Same logic as overtime for deficit
+            };
         }
     };
 
@@ -512,6 +529,7 @@ export default function ShiftApprovalPage() {
             overtimeHours: String(overtime),
             leaveHours: String(leave),
         });
+        setIncludeLeaveHours(false); // Reset checkbox
         setIsApproveDialogOpen(true);
     }
     
@@ -1285,22 +1303,45 @@ export default function ShiftApprovalPage() {
                             <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                         </div>
                         <div>
-                            <Label htmlFor="overtime-hours">Ore di Straordinario Calcolate</Label>
+                            <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
                             <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="1" min="0" />
                             <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 55° minuto. Modifica se necessario.</p>
                         </div>
-                        <div>
-                             <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
-                             <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="1" min="0" />
-                             <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 55° minuto. Modifica se necessario.</p>
-                        </div>
+                        {parseFloat(approvalData.leaveHours) > 0 && (
+                            <div>
+                                <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
+                                <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="1" min="0" />
+                                <div className="flex items-center space-x-2 mt-2">
+                                    <Checkbox id="include-leave" checked={includeLeaveHours} onCheckedChange={(checked) => setIncludeLeaveHours(checked as boolean)} />
+                                    <Label htmlFor="include-leave" className="text-sm font-normal">
+                                        Crea richiesta di permesso per queste ore
+                                    </Label>
+                                </div>
+                            </div>
+                        )}
                     </div>
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmApprove}>Approva e Registra</AlertDialogAction>
+                        <AlertDialogAction onClick={handleApprovalClick}>Approva e Registra</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            
+            <AlertDialog open={isLeaveWarningOpen} onOpenChange={setIsLeaveWarningOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Attenzione</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Non hai selezionato l'ammanco delle ore mancanti. Vuoi continuare senza creare una richiesta di permesso?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmLeaveWarning}>Continua</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
 
             <AlertDialog open={isDeleteTimbraturaDialogOpen} onOpenChange={setIsDeleteTimbraturaDialogOpen}>
                 <AlertDialogContent>
