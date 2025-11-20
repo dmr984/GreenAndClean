@@ -180,13 +180,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             return;
         }
         setIsLoading(true);
-        let dayInfo: 'ferie' | 'malattia' | 'permesso' | 'straordinario' | null = null;
-        if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
-        else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
-        else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
-        
-        setSelectedDayInfo(dayInfo);
-
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
@@ -219,6 +212,18 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                 }
 
                 setDailyShifts(shifts);
+                
+                if (shifts.length === 0) {
+                    let dayInfo: 'ferie' | 'malattia' | 'permesso' | 'straordinario' | null = null;
+                    if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
+                    else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
+                    else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
+                    setSelectedDayInfo(dayInfo);
+                } else {
+                    setSelectedDayInfo(null);
+                }
+
+
             } catch (error) {
                 console.error("Error fetching daily data:", error);
                 toast({title: "Errore", description: "Impossibile caricare i dati del giorno."});
@@ -274,12 +279,13 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     };
 
     const isDateDisabled = (date: Date): boolean => {
-        const today = new Date();
-        const isFutureDate = date > today && !isSameDay(date, today);
-        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
-        
-        return isFutureDate && !isLeaveOrSickDay;
-    };
+        const today = startOfDay(new Date());
+        if (date > today && !isSameDay(date, today)) {
+          const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+          return !isLeaveOrSickDay;
+        }
+        return false;
+      };
 
 
     return (
