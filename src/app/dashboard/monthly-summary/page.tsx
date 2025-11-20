@@ -177,7 +177,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             return;
         }
         setIsLoading(true);
-        setSelectedDayInfo(null);
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
@@ -217,6 +216,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
                     else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
                     setSelectedDayInfo(dayInfo);
+                } else {
+                     setSelectedDayInfo(null);
                 }
 
 
@@ -294,13 +295,13 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                         <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                         <CardContent className="flex justify-center">
                             <DayPickerCalendar
+                                locale={it}
                                 mode="single"
                                 selected={selectedDate}
                                 onSelect={setSelectedDate}
                                 month={currentMonth}
                                 onMonthChange={setCurrentMonth}
                                 className="p-0"
-                                locale={it}
                                 disabled={isDateDisabled}
                                 modifiers={{ 
                                     worked: workedDays, 

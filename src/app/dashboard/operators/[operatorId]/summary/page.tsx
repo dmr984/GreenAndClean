@@ -620,12 +620,11 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         }
 
         setIsLoading(true);
-        setSelectedDayInfo(null);
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
         const fetchDailyData = async () => {
-            const timbratureQuery = query(
+             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', Timestamp.fromDate(start)),
                 where('timestamp', '<=', Timestamp.fromDate(end))
@@ -633,7 +632,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
             try {
                 const timbratureSnapshot = await getDocs(timbratureQuery);
-
                 const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
                 timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
@@ -654,12 +652,15 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
                 setDailyShifts(shifts);
                 
+                // ONLY if no shifts are found, check for leave days
                 if (shifts.length === 0) {
                     let dayInfo: SelectedDayInfo = null;
                     if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
                     else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
                     else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
                     setSelectedDayInfo(dayInfo);
+                } else {
+                    setSelectedDayInfo(null);
                 }
 
             } catch (error) {
@@ -877,15 +878,15 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     };
 
     const isDateDisabled = (date: Date): boolean => {
-      const today = startOfDay(new Date());
-      const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
-      
-      if (date > today && !isSameDay(date, today)) {
-        return !isLeaveOrSickDay;
-      }
-      
-      return false;
-    };
+        const today = startOfDay(new Date());
+        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+        
+        if (date > today && !isSameDay(date, today)) {
+          return !isLeaveOrSickDay;
+        }
+        
+        return false;
+      };
 
     const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
         const details = {
@@ -913,13 +914,13 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                     <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
                     <CardContent className="flex justify-center">
                          <Calendar
+                            locale={it}
                             mode="single"
                             selected={selectedDate}
                             onSelect={setSelectedDate}
                             month={currentMonth}
                             onMonthChange={setCurrentMonth}
                             className="p-0"
-                            locale={it}
                             disabled={isDateDisabled}
                             modifiers={{ 
                                 worked: workedDays, 
