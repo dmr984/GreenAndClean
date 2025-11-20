@@ -89,6 +89,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
 
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
+    const [missedWorkDays, setMissedWorkDays] = useState<Date[]>([]);
     const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
     const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | null>(null);
 
@@ -113,9 +114,11 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             where('timestamp', '>=', startOfPeriod),
             where('timestamp', '<=', endOfPeriod),
         );
+        
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
 
-        const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, (snapshot) => {
-            const allTimbrature = snapshot.docs.map(doc => doc.data() as {type: string, timestamp: Timestamp, status: string});
+        const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, (timbratureSnapshot) => {
+            const allTimbrature = timbratureSnapshot.docs.map(doc => doc.data() as {type: string, timestamp: Timestamp, status: string});
             const confirmedTimbrature = allTimbrature.filter(data => data.status === 'confermata');
             
             const dailyEvents = confirmedTimbrature.reduce((acc, t) => {
@@ -135,22 +138,18 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             setWorkedDays(validWorkedDays);
         });
 
-        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
 
-        const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
+        const unsubRequests = onSnapshot(requestsQuery, (requestsSnapshot) => {
             const monthStart = startOfMonth(currentMonth);
             const monthEnd = endOfMonth(currentMonth);
             const ferie: Date[] = [];
             const malattia: Date[] = [];
             const permesso: Date[] = [];
 
-            const approvedRequests = snapshot.docs.map(doc => doc.data() as Request).filter(req => req.status === 'approvato');
+            const approvedRequests = requestsSnapshot.docs.map(doc => doc.data() as Request).filter(req => req.status === 'approvato');
 
             approvedRequests.forEach(req => {
-                const startReq = req.startDate.toDate();
-                const endReq = req.endDate.toDate();
-
-                for (let day = new Date(startReq); day <= endReq; day.setDate(day.getDate() + 1)) {
+                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
                      const isWithinViewingMonth = day >= startOfMonth(currentMonth) && day <= endOfMonth(currentMonth);
                     
                     const dayOfWeekIndex = getDay(day);
@@ -165,13 +164,34 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                 }
             });
             setLeaveDays({ ferie, malattia, permesso });
+
+            // Calculate missed days
+            const workedOrLeaveDays = new Set([
+                ...workedDays.map(d => format(d, 'yyyy-MM-dd')),
+                ...ferie.map(d => format(d, 'yyyy-MM-dd')),
+                ...malattia.map(d => format(d, 'yyyy-MM-dd')),
+            ]);
+
+            const missed: Date[] = [];
+            for (let day = new Date(monthStart); day <= monthEnd; day.setDate(day.getDate() + 1)) {
+                 if (day > new Date()) continue; // Don't flag future days
+
+                const dayName = dayIndexToName[getDay(day)];
+                const contractualHours = operator.workSchedule[dayName] || 0;
+                const dayStr = format(day, 'yyyy-MM-dd');
+
+                if (contractualHours > 0 && !workedOrLeaveDays.has(dayStr)) {
+                    missed.push(new Date(day));
+                }
+            }
+            setMissedWorkDays(missed);
         });
 
         return () => {
             unsubTimbrature();
             unsubRequests();
         };
-    }, [firestore, operatorId, startOfPeriod, endOfPeriod, currentMonth, operator]);
+    }, [firestore, operatorId, currentMonth, operator, workedDays]);
 
     useEffect(() => {
         if (!firestore || !operatorId || !selectedDate) {
@@ -336,6 +356,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                     ferie: leaveDays.ferie, 
                                     malattia: leaveDays.malattia, 
                                     permesso: leaveDays.permesso, 
+                                    missed: missedWorkDays,
                                     straordinario: workedDays.filter(workDay => {
                                         const dayName = dayIndexToName[getDay(workDay)];
                                         return (operator.workSchedule[dayName] || 0) === 0;
@@ -346,7 +367,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                     ferie: 'bg-green-500/30 text-green-800', 
                                     malattia: 'bg-red-500/30 text-red-800', 
                                     permesso: 'bg-yellow-500/30 text-yellow-800',
-                                    straordinario: 'bg-amber-500/30 text-amber-800'
+                                    straordinario: 'bg-amber-500/30 text-amber-800',
+                                    missed: 'border-2 border-destructive'
                                 }}
                             />
                         </CardContent>
@@ -356,6 +378,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                             <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
                             <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
                             <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-amber-500/30 border"></div> Straordinario</div>
+                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full border-2 border-destructive"></div> Turno Mancante</div>
                         </CardFooter>
                     </Card>
                 </div>
@@ -670,7 +693,7 @@ export default function MonthlySummaryPage() {
         
         try {
             await deleteDoc(requestRef);
-            toast({ title: 'Successo', description: 'Richiesta di straordinario eliminata.' });
+            toast({ title: 'Successo', description: 'Richiesta eliminata.' });
             // Refresh the detail view
             setDetailView(prev => {
                 if (!prev) return null;
@@ -769,7 +792,7 @@ export default function MonthlySummaryPage() {
                             <TableHead>Dal</TableHead>
                             <TableHead>Al</TableHead>
                             <TableHead>Ore</TableHead>
-                            {detailView.type === 'straordinario' && <TableHead className="text-right">Azione</TableHead>}
+                            <TableHead className="text-right">Azione</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -778,13 +801,11 @@ export default function MonthlySummaryPage() {
                                 <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{item.hours}</TableCell>
-                                {detailView.type === 'straordinario' && (
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                    </TableCell>
-                                )}
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -820,7 +841,7 @@ export default function MonthlySummaryPage() {
                         <CardTitle className="text-sm font-medium">Ore Ordinarie</CardTitle>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.workedHours}</div></CardContent>
+                    <CardContent><div className="text-2xl font-bold">{summary.workedHours.toLocaleString('it-IT')}</div></CardContent>
                 </Card>
                 <Card
                     onClick={() => handleSummaryCardClick('straordinario', 'Dettaglio Straordinari')}
@@ -830,7 +851,7 @@ export default function MonthlySummaryPage() {
                         <CardTitle className="text-sm font-medium">Ore Straordinarie</CardTitle>
                         <Plus className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent>
+                    <CardContent><div className="text-2xl font-bold">{summary.overtimeHours.toLocaleString('it-IT')}</div></CardContent>
                 </Card>
                 <Card
                     onClick={() => handleSummaryCardClick('ferie', 'Dettaglio Ferie')}
@@ -916,7 +937,7 @@ export default function MonthlySummaryPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
                         <AlertDialogDescription>
-                           Sei sicuro di voler eliminare questa richiesta di straordinario? L'azione è permanente.
+                           Sei sicuro di voler eliminare questa richiesta? L'azione è permanente.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
