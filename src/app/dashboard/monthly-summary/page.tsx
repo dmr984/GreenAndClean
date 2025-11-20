@@ -75,8 +75,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
 
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
-    const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
-    const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | null>(null);
+    const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[], straordinario: Date[]}>({ ferie: [], malattia: [], permesso: [], straordinario: [] });
+    const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | 'straordinario' | null>(null);
 
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
         const start = startOfMonth(currentMonth);
@@ -125,6 +125,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             const ferie: Date[] = [];
             const malattia: Date[] = [];
             const permesso: Date[] = [];
+            const straordinario: Date[] = [];
 
             const approvedRequests = snapshot.docs.map(doc => doc.data() as Request).filter(req => req.status === 'approvato');
 
@@ -145,10 +146,13 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                          if (req.type === 'permesso') {
                              permesso.push(new Date(day));
                          }
+                         if (req.type === 'straordinario') {
+                             straordinario.push(new Date(day));
+                         }
                     }
                 }
             });
-            setLeaveDays({ ferie, malattia, permesso });
+            setLeaveDays({ ferie, malattia, permesso, straordinario });
         });
 
         return () => {
@@ -165,13 +169,14 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             return;
         }
         setIsLoading(true);
-        let dayInfo: 'ferie' | 'malattia' | 'permesso' | null = null;
+        let dayInfo: 'ferie' | 'malattia' | 'permesso' | 'straordinario' | null = null;
         if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
         else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
         else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
+        else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = 'straordinario';
         setSelectedDayInfo(dayInfo);
 
-        if (dayInfo) {
+        if (dayInfo && dayInfo !== 'straordinario') {
             setDailyShifts([]);
             setIsLoading(false);
             return;
@@ -270,8 +275,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                 className="p-0"
                                 locale={it}
                                 disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
-                                modifiers={{ worked: workedDays, ferie: leaveDays.ferie, malattia: leaveDays.malattia, permesso: leaveDays.permesso }}
-                                modifiersClassNames={{ worked: 'bg-primary/20', ferie: 'bg-green-500/30 text-green-800', malattia: 'bg-red-500/30 text-red-800', permesso: 'bg-yellow-500/30 text-yellow-800' }}
+                                modifiers={{ worked: workedDays, ferie: leaveDays.ferie, malattia: leaveDays.malattia, permesso: leaveDays.permesso, straordinario: leaveDays.straordinario }}
+                                modifiersClassNames={{ worked: 'bg-primary/20', ferie: 'bg-green-500/30 text-green-800', malattia: 'bg-red-500/30 text-red-800', permesso: 'bg-yellow-500/30 text-yellow-800', straordinario: 'bg-amber-500/30 text-amber-800' }}
                             />
                         </CardContent>
                         <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground pt-4">
@@ -279,6 +284,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                             <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-green-500/30 border"></div> Ferie</div>
                             <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
                             <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
+                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-amber-500/30 border"></div> Straordinario</div>
                         </CardFooter>
                     </Card>
                 </div>
@@ -291,7 +297,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                         <CardContent>
                             {isLoading ? (
                                 <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                            ) : selectedDayInfo ? (
+                            ) : selectedDayInfo && selectedDayInfo !== 'straordinario' ? (
                                 <LeaveDayCard type={selectedDayInfo} />
                             ) : (
                                 <div className="border rounded-md">
@@ -300,7 +306,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                             <div key={index} className="border-b last:border-b-0">
                                                 <div className='p-4'>
                                                     <div className="flex justify-between items-center mb-2">
-                                                        <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                        <h4 className="font-semibold">Turno {index + 1} {selectedDayInfo === 'straordinario' && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
                                                         <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
                                                     </div>
                                                     <Table>
