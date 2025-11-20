@@ -830,14 +830,16 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     };
 
     const isDateDisabled = (date: Date): boolean => {
-        const today = startOfDay(new Date());
-        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
-        
-        if (date > today && !isSameDay(date, today)) {
-          return !isLeaveOrSickDay;
-        }
-        return false;
-      };
+      const today = startOfDay(new Date());
+      const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+      
+      // A future date is enabled only if it's a leave or sick day.
+      if (date > today) {
+        return !isLeaveOrSickDay;
+      }
+      
+      return false; // All past and present days are enabled.
+    };
 
     const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
         const details = {
@@ -1128,7 +1130,7 @@ export default function OperatorSummaryPage() {
 
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsSnapshot),
+                getDocs(requestsQuery),
             ]);
 
             if (timbratureSnapshot.empty && requestsSnapshot.empty) {
