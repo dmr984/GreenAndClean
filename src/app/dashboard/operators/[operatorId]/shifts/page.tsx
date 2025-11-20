@@ -805,43 +805,6 @@ export default function ShiftApprovalPage() {
                 </Card>
             )}
 
-            {pendingOvertimeShifts.length > 0 && (
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>Turni Straordinari da Approvare</CardTitle>
-                        <CardDescription>Approva o rifiuta i turni svolti in giorni non lavorativi.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="border rounded-lg overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Inizio</TableHead>
-                                        <TableHead>Fine</TableHead>
-                                        <TableHead className="text-right">Azioni</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {pendingOvertimeShifts.map((shift) => (
-                                        <TableRow key={shift.id}>
-                                            <TableCell>{formatDate(shift.date)}</TableCell>
-                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
-                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => { setDetailOvertimeShift(shift); setIsDetailOvertimeOpen(true);}}>
-                                                    <Eye className="h-5 w-5" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
@@ -904,6 +867,43 @@ export default function ShiftApprovalPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {pendingOvertimeShifts.length > 0 && (
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Turni Straordinari da Approvare</CardTitle>
+                        <CardDescription>Approva o rifiuta i turni svolti in giorni non lavorativi.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="border rounded-lg overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Data</TableHead>
+                                        <TableHead>Inizio</TableHead>
+                                        <TableHead>Fine</TableHead>
+                                        <TableHead className="text-right">Azioni</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {pendingOvertimeShifts.map((shift) => (
+                                        <TableRow key={shift.id}>
+                                            <TableCell>{formatDate(shift.date)}</TableCell>
+                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
+                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" onClick={() => { setDetailOvertimeShift(shift); setIsDetailOvertimeOpen(true);}}>
+                                                    <Eye className="h-5 w-5" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <Card>
                 <CardHeader>
