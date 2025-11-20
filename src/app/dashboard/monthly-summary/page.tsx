@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X } from 'lucide-react';
+import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/hooks/use-user';
 import { format, getDay, isWithinInterval, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -63,6 +63,7 @@ const OperatorDailySummary = ({ userId, date, onClose }: { userId: string, date:
     const firestore = useFirestore();
     const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [detailShift, setDetailShift] = useState<Shift | null>(null);
 
     useEffect(() => {
         if (!firestore) return;
@@ -77,7 +78,6 @@ const OperatorDailySummary = ({ userId, date, onClose }: { userId: string, date:
             collection(firestore, `app-users/${userId}/timbrature`),
             where('timestamp', '>=', startTs),
             where('timestamp', '<=', endTs),
-            where('status', '==', 'confermata')
         );
 
         const unsubscribe = onSnapshot(timbratureQuery, snapshot => {
@@ -132,55 +132,75 @@ const OperatorDailySummary = ({ userId, date, onClose }: { userId: string, date:
         };
     };
 
-    const formatMinutes = (minutes: number) => {
-        if (isNaN(minutes) || minutes < 0) return '00:00';
-        const h = Math.floor(minutes / 60);
-        const m = Math.round(minutes % 60);
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    };
-
     return (
+      <>
         <ResponsiveDialog open={true} onOpenChange={onClose}>
             <ResponsiveDialogContent>
                 <ResponsiveDialogHeader>
                     <ResponsiveDialogTitle>Riepilogo del {format(date, 'PPP', { locale: it })}</ResponsiveDialogTitle>
                      <ResponsiveDialogDescription>
-                        Dettaglio dei turni confermati per questo giorno.
+                        Dettaglio dei turni per questo giorno.
                     </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
                 <div className="py-4">
                     {isLoading ? (
                          <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                     ) : dailyShifts.length > 0 ? (
-                        dailyShifts.map((shift, index) => (
-                             <div key={index} className="border-b last:border-b-0 py-2">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="font-semibold">Turno {index + 1}</h4>
-                                    <span className="text-sm text-muted-foreground">Durata: {formatMinutes(shift.workDuration)}</span>
-                                </div>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Orario</TableHead><TableHead>Evento</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {shift.events.map(t => (
-                                            <TableRow key={t.id}>
-                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        ))
+                       <div className="border rounded-md">
+                        {dailyShifts.map((shift, index) => (
+                           <div key={index} className="flex items-center justify-between p-4 border-b last:border-b-0">
+                                <h4 className="font-semibold">Turno {index + 1}</h4>
+                                <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}>
+                                    <Eye className="h-5 w-5" />
+                                </Button>
+                           </div>
+                        ))}
+                       </div>
                     ) : (
-                        <div className="text-center h-24 flex items-center justify-center">Nessun turno confermato per questo giorno.</div>
+                        <div className="text-center h-24 flex items-center justify-center">Nessun turno trovato per questo giorno.</div>
                     )}
                 </div>
+                 <ResponsiveDialogFooter>
+                    <Button variant="outline" onClick={onClose}>Chiudi</Button>
+                </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
+
+        {detailShift && (
+             <ResponsiveDialog open={true} onOpenChange={() => setDetailShift(null)}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Dettaglio Turno {format(date, 'PPP', { locale: it })}</ResponsiveDialogTitle>
+                    </ResponsiveDialogHeader>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Orario</TableHead>
+                                <TableHead>Evento</TableHead>
+                                <TableHead>Stato</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {detailShift.events.map(t => (
+                                <TableRow key={t.id}>
+                                    <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                    <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                     <TableCell>
+                                        <Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>
+                                            {t.status}
+                                        </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                     <ResponsiveDialogFooter>
+                        <Button variant="outline" onClick={() => setDetailShift(null)}>Chiudi</Button>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+             </ResponsiveDialog>
+        )}
+      </>
     )
 };
 
@@ -272,7 +292,6 @@ export default function MonthlySummaryPage() {
     }, [firestore, user, isUserLoading, monthStart, monthEnd, toast]);
     
     const summary = useMemo(() => {
-        let workedDaysCount = 0;
         let totalWorkedMillis = 0;
 
         const dailyTimbrature = timbrature.reduce((acc, t) => {
@@ -289,8 +308,7 @@ export default function MonthlySummaryPage() {
             
             let entrata: Timestamp | null = null;
             let currentBreakStart: Timestamp | null = null;
-            let dayWorked = false;
-
+            
             dayEvents.forEach(event => {
                 if (event.type === 'entrata') {
                     if (!entrata) entrata = event.timestamp;
@@ -300,10 +318,6 @@ export default function MonthlySummaryPage() {
                      totalWorkedMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
                      currentBreakStart = null;
                 } else if (event.type === 'uscita' && entrata) {
-                    if (!dayWorked) {
-                        workedDaysCount++;
-                        dayWorked = true;
-                    }
                     totalWorkedMillis += (event.timestamp.toMillis() - entrata.toMillis());
                     entrata = null; // Reset for next shift on same day
                 }
@@ -321,6 +335,8 @@ export default function MonthlySummaryPage() {
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
         const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
         const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
+
+        const workedDaysCount = Object.keys(dailyTimbrature).length;
 
 
         let ferieDaysCount = 0;
@@ -356,19 +372,6 @@ export default function MonthlySummaryPage() {
     const handleMonthChange = (offset: number) => {
         setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
-    
-    const handleWorkedDaysClick = () => {
-        const workedDaysInMonth = timbrature
-            .map(t => t.timestamp.toDate())
-            .filter(d => isWithinInterval(d, { start: startOfMonth(currentDate), end: endOfMonth(currentDate) }));
-        
-        if (workedDaysInMonth.length > 0) {
-            setDailyDetailDate(workedDaysInMonth[0]);
-        } else {
-            toast({ title: "Nessun giorno lavorato", description: "Non ci sono turni confermati per questo mese.", variant: "default" });
-        }
-    };
-
 
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
         if (!type) return;
@@ -642,14 +645,7 @@ export default function MonthlySummaryPage() {
         </div>
 
         {dailyDetailDate && user && (
-            <ResponsiveDialog open={true} onOpenChange={() => setDailyDetailDate(null)}>
-                <ResponsiveDialogContent className="max-w-4xl">
-                     <ResponsiveDialogHeader>
-                        <ResponsiveDialogTitle>Riepilogo Giornaliero</ResponsiveDialogTitle>
-                    </ResponsiveDialogHeader>
-                    <OperatorDailySummary userId={user.id} date={dailyDetailDate} onClose={() => setDailyDetailDate(null)}/>
-                </ResponsiveDialogContent>
-            </ResponsiveDialog>
+            <OperatorDailySummary userId={user.id} date={dailyDetailDate} onClose={() => setDailyDetailDate(null)}/>
         )}
 
 
