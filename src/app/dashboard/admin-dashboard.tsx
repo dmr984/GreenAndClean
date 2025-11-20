@@ -18,7 +18,7 @@ export function AdminDashboard() {
     const firestore = useFirestore();
     const [operators, setOperators] = useState<Operator[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number}>>({});
+    const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number, overtime: number}>>({});
 
     useEffect(() => {
         if (!firestore) {
@@ -36,20 +36,31 @@ export function AdminDashboard() {
 
             // For each operator, set up listeners for pending items
             usersData.forEach(op => {
+                // Pending Shifts
                 const shiftsQuery = query(collection(firestore, `app-users/${op.id}/timbrature`), where('status', '==', 'sospesa'));
                 onSnapshot(shiftsQuery, (shiftSnapshot) => {
                     const pendingDays = new Set(shiftSnapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
                     setPendingCounts(prev => ({
                         ...prev,
-                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0}), shifts: pendingDays.size }
+                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingDays.size }
                     }));
                 });
 
+                // Pending Leave Requests
                 const leavesQuery = query(collection(firestore, `app-users/${op.id}/requests`), where('status', '==', 'in_attesa'));
                 onSnapshot(leavesQuery, (leaveSnapshot) => {
                      setPendingCounts(prev => ({
                         ...prev,
-                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0}), leaves: leaveSnapshot.size }
+                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), leaves: leaveSnapshot.size }
+                    }));
+                });
+
+                // Pending Overtime Shifts
+                const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', '==', 'in_attesa_di_approvazione'));
+                onSnapshot(overtimeQuery, (overtimeSnapshot) => {
+                    setPendingCounts(prev => ({
+                        ...prev,
+                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), overtime: overtimeSnapshot.size }
                     }));
                 });
             });
@@ -83,7 +94,7 @@ export function AdminDashboard() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {operators.map(operator => {
                                 const pending = pendingCounts[operator.id];
-                                const totalPending = (pending?.shifts || 0) + (pending?.leaves || 0);
+                                const totalPending = (pending?.shifts || 0) + (pending?.leaves || 0) + (pending?.overtime || 0);
                                 return (
                                 <Link key={operator.id} href={`/dashboard/operators/${operator.id}`} passHref>
                                     <Button variant="outline" className="w-full h-20 justify-start p-4 text-left relative">

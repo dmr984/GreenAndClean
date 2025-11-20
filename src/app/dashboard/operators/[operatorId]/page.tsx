@@ -35,6 +35,8 @@ export default function OperatorDetailPage() {
 
     const [pendingShiftsCount, setPendingShiftsCount] = useState(0);
     const [pendingLeaveCount, setPendingLeaveCount] = useState(0);
+    const [pendingOvertimeCount, setPendingOvertimeCount] = useState(0);
+
 
     const operatorDocRef = useMemo(() => {
         if (!firestore || !operatorId) return null;
@@ -55,21 +57,30 @@ export default function OperatorDetailPage() {
     useEffect(() => {
         if (!firestore || !operatorId) return;
 
+        // Pending Shifts
         const shiftsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('status', '==', 'sospesa'));
-        const leavesQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('status', '==', 'in_attesa'));
-
         const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
              const pendingDays = new Set(snapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
              setPendingShiftsCount(pendingDays.size);
         });
 
+        // Pending Leave Requests
+        const leavesQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('status', '==', 'in_attesa'));
         const unsubLeaves = onSnapshot(leavesQuery, snapshot => {
             setPendingLeaveCount(snapshot.size);
         });
 
+        // Pending Overtime Shifts
+        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', '==', 'in_attesa_di_approvazione'));
+        const unsubOvertime = onSnapshot(overtimeQuery, snapshot => {
+            setPendingOvertimeCount(snapshot.size);
+        });
+
+
         return () => {
             unsubShifts();
             unsubLeaves();
+            unsubOvertime();
         }
     }, [firestore, operatorId]);
 
@@ -137,7 +148,7 @@ export default function OperatorDetailPage() {
                     description="Approva turni e straordinari." 
                     icon={ListChecks} 
                     link={`/dashboard/operators/${operatorId}/shifts`} 
-                    badgeCount={pendingShiftsCount}
+                    badgeCount={pendingShiftsCount + pendingOvertimeCount}
                 />
                  <NavCard 
                     title="Gestione Richieste" 
