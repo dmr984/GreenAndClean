@@ -29,7 +29,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval } from 'date-fns';
 
 type ClockingEvent = {
     id: string;
