@@ -56,11 +56,24 @@ type Timbratura = {
     longitude?: number;
 };
 
+type StraordinarioEvent = {
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+};
+
+type StraordinarioShift = {
+    id: string;
+    events: StraordinarioEvent[];
+    status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
+    date: Timestamp;
+};
+
 type Shift = {
     events: Timbratura[];
     startTime: Timestamp;
     endTime: Timestamp | null;
     workDuration: number; // in minutes
+    isOvertime?: boolean;
 };
 
 type DetailView = {
@@ -545,15 +558,14 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                              permesso.push(new Date(day));
                          }
                          if (req.type === 'straordinario') {
-                            // Only mark as overtime day if it's NOT a regular workday
-                           if (contractualHours <= 0) {
-                               straordinario.push(new Date(day));
-                           }
+                            if (contractualHours <= 0) {
+                                straordinario.push(new Date(day));
+                            }
                        }
                     }
                 }
             });
-            setLeaveDays({ ferie, malattia, permesso, straordinario });
+             setLeaveDays({ ferie, malattia, permesso, straordinario });
         });
 
         return () => {
@@ -586,40 +598,70 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
-        const startOfDayTs = Timestamp.fromDate(start);
-        const endOfDayTs = Timestamp.fromDate(end);
-        
-        const timbratureQuery = query(
-            collection(firestore, `app-users/${operatorId}/timbrature`),
-            where('timestamp', '>=', startOfDayTs),
-            where('timestamp', '<=', endOfDayTs)
-        );
 
-        const unsubscribeTimbrature = onSnapshot(timbratureQuery, (snapshot) => {
-            const timbratureDelGiorno = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-            timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        const fetchDailyData = async () => {
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operatorId}/timbrature`),
+                where('timestamp', '>=', Timestamp.fromDate(start)),
+                where('timestamp', '<=', Timestamp.fromDate(end))
+            );
+
+            const straordinariQuery = query(
+                collection(firestore, `app-users/${operatorId}/straordinari`),
+                where('date', '>=', Timestamp.fromDate(start)),
+                where('date', '<=', Timestamp.fromDate(end)),
+                where('status', '==', 'approvato')
+            );
             
-            const shifts: Shift[] = [];
-            let currentShiftEvents: Timbratura[] = [];
+            try {
+                const [timbratureSnapshot, straordinariSnapshot] = await Promise.all([
+                    getDocs(timbratureQuery),
+                    getDocs(straordinariQuery)
+                ]);
 
-            timbratureDelGiorno.forEach(t => {
-                currentShiftEvents.push(t);
-                if (t.type === 'uscita') {
-                    shifts.push(calculateShiftDetails(currentShiftEvents));
-                    currentShiftEvents = [];
+                const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
+                timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                
+                const shifts: Shift[] = [];
+                let currentShiftEvents: Timbratura[] = [];
+
+                timbratureDelGiorno.forEach(t => {
+                    currentShiftEvents.push(t);
+                    if (t.type === 'uscita') {
+                        shifts.push(calculateShiftDetails(currentShiftEvents));
+                        currentShiftEvents = [];
+                    }
+                });
+                
+                if (currentShiftEvents.length > 0) {
+                     shifts.push(calculateShiftDetails(currentShiftEvents));
                 }
-            });
-            
-            if (currentShiftEvents.length > 0) {
-                 shifts.push(calculateShiftDetails(currentShiftEvents));
-            }
-            
-            setDailyShifts(shifts);
-            setIsLoading(false);
-        });
 
-        return () => unsubscribeTimbrature();
-    }, [firestore, operatorId, selectedDate, leaveDays]);
+                straordinariSnapshot.forEach(doc => {
+                    const straordinarioShift = doc.data() as StraordinarioShift;
+                    const shiftEvents: Timbratura[] = straordinarioShift.events.map((e, i) => ({
+                        id: `${doc.id}-${i}`,
+                        type: e.type,
+                        timestamp: e.timestamp,
+                        status: 'confermata', // Overtime is already approved
+                    }));
+                    const processedShift = calculateShiftDetails(shiftEvents);
+                    shifts.push({ ...processedShift, isOvertime: true });
+                });
+
+                setDailyShifts(shifts);
+
+            } catch (error) {
+                console.error("Error fetching daily data:", error);
+                toast({title: "Errore", description: "Impossibile caricare i dati del giorno."});
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchDailyData();
+
+    }, [firestore, operatorId, selectedDate, leaveDays, toast]);
 
     const calculateShiftDetails = (events: Timbratura[]): Shift => {
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
@@ -888,7 +930,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                         <div key={index} className="border-b last:border-b-0">
                                             <div className='p-4'>
                                                 <div className="flex justify-between items-center mb-2">
-                                                    <h4 className="font-semibold">Turno {index + 1} {selectedDayInfo?.type === 'straordinario' && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
+                                                    <h4 className="font-semibold">Turno {index + 1} {shift.isOvertime && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
                                                     <Button variant="ghost" size="icon" onClick={() => { setDetailShift(shift); setIsDetailOpen(true); }}><Eye className="h-5 w-5" /></Button>
                                                 </div>
                                                 <Table>
@@ -1012,7 +1054,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
                 <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
                     <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                    {detailShift && (
+                    {detailShift && !detailShift.isOvertime && (
                       <>
                         <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteDialogOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                         <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
@@ -1184,5 +1226,3 @@ export default function OperatorSummaryPage() {
         </Suspense>
     );
 }
-
-    

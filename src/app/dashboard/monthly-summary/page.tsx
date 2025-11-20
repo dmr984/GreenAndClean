@@ -51,11 +51,24 @@ type Timbratura = {
     status: 'sospesa' | 'confermata' | 'rifiutata';
 };
 
+type StraordinarioEvent = {
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+};
+
+type StraordinarioShift = {
+    id: string;
+    events: StraordinarioEvent[];
+    status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
+    date: Timestamp;
+};
+
 type Shift = {
     events: Timbratura[];
     startTime: Timestamp;
     endTime: Timestamp | null;
     workDuration: number; // in minutes
+    isOvertime?: boolean;
 };
 
 
@@ -68,6 +81,7 @@ type DetailView = {
 
 const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { operatorId: string, initialDate: Date, operator: Operator }) => {
     const firestore = useFirestore();
+    const { toast } = useToast();
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate);
     const [currentMonth, setCurrentMonth] = useState(initialDate);
     const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
@@ -147,7 +161,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                              permesso.push(new Date(day));
                          }
                          if (req.type === 'straordinario') {
-                             // Only mark as overtime day if it's NOT a regular workday
                             if (contractualHours <= 0) {
                                 straordinario.push(new Date(day));
                             }
@@ -187,37 +200,70 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
 
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
-        const timbratureQuery = query(
-            collection(firestore, `app-users/${operatorId}/timbrature`),
-            where('timestamp', '>=', Timestamp.fromDate(start)),
-            where('timestamp', '<=', Timestamp.fromDate(end))
-        );
 
-        const unsubscribe = onSnapshot(timbratureQuery, snapshot => {
-            const timbratureDelGiorno = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
-            timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-            const shifts: Shift[] = [];
-            let currentShiftEvents: Timbratura[] = [];
-
-            timbratureDelGiorno.forEach(t => {
-                currentShiftEvents.push(t);
-                if (t.type === 'uscita') {
-                    shifts.push(calculateShiftDetails(currentShiftEvents));
-                    currentShiftEvents = [];
-                }
-            });
-
-            if (currentShiftEvents.length > 0) {
-                shifts.push(calculateShiftDetails(currentShiftEvents));
-            }
+        const fetchDailyData = async () => {
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operatorId}/timbrature`),
+                where('timestamp', '>=', Timestamp.fromDate(start)),
+                where('timestamp', '<=', Timestamp.fromDate(end))
+            );
             
-            setDailyShifts(shifts);
-            setIsLoading(false);
-        });
+            const straordinariQuery = query(
+                collection(firestore, `app-users/${operatorId}/straordinari`),
+                where('date', '>=', Timestamp.fromDate(start)),
+                where('date', '<=', Timestamp.fromDate(end)),
+                where('status', '==', 'approvato')
+            );
+            
+            try {
+                const [timbratureSnapshot, straordinariSnapshot] = await Promise.all([
+                    getDocs(timbratureQuery),
+                    getDocs(straordinariQuery)
+                ]);
 
-        return () => unsubscribe();
-    }, [firestore, operatorId, selectedDate, leaveDays]);
+                const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
+                timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+                const shifts: Shift[] = [];
+                let currentShiftEvents: Timbratura[] = [];
+
+                timbratureDelGiorno.forEach(t => {
+                    currentShiftEvents.push(t);
+                    if (t.type === 'uscita') {
+                        shifts.push(calculateShiftDetails(currentShiftEvents));
+                        currentShiftEvents = [];
+                    }
+                });
+
+                if (currentShiftEvents.length > 0) {
+                    shifts.push(calculateShiftDetails(currentShiftEvents));
+                }
+
+                straordinariSnapshot.forEach(doc => {
+                    const straordinarioShift = doc.data() as StraordinarioShift;
+                    const shiftEvents: Timbratura[] = straordinarioShift.events.map((e, i) => ({
+                        id: `${doc.id}-${i}`,
+                        userId: operatorId,
+                        type: e.type,
+                        timestamp: e.timestamp,
+                        status: 'confermata',
+                    }));
+                    const processedShift = calculateShiftDetails(shiftEvents);
+                    shifts.push({ ...processedShift, isOvertime: true });
+                });
+                
+                setDailyShifts(shifts);
+            } catch (error) {
+                console.error("Error fetching daily data:", error);
+                toast({title: "Errore", description: "Impossibile caricare i dati del giorno."});
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchDailyData();
+
+    }, [firestore, operatorId, selectedDate, leaveDays, toast]);
 
     const calculateShiftDetails = (events: Timbratura[]): Shift => {
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
@@ -309,7 +355,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                             <div key={index} className="border-b last:border-b-0">
                                                 <div className='p-4'>
                                                     <div className="flex justify-between items-center mb-2">
-                                                        <h4 className="font-semibold">Turno {index + 1} {selectedDayInfo === 'straordinario' && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
+                                                        <h4 className="font-semibold">Turno {index + 1} {shift.isOvertime && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
                                                         <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
                                                     </div>
                                                     <Table>
@@ -521,7 +567,6 @@ export default function MonthlySummaryPage() {
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        // THIS IS THE FIX: Subtract overtime from total worked minutes to get ordinary hours
         const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
         const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
