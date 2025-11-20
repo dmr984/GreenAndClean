@@ -83,7 +83,7 @@ type DetailView = {
 } | null;
 
 type SelectedDayInfo = {
-    type: 'ferie' | 'malattia' | 'permesso' | 'straordinario';
+    type: 'ferie' | 'malattia' | 'permesso';
 } | null;
 
 
@@ -545,13 +545,16 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 const endReq = req.endDate.toDate();
 
                 for (let day = new Date(startReq); day <= endReq; day.setDate(day.getDate() + 1)) {
-                     if (isWithinInterval(day, { start: monthStart, end: monthEnd })) {
-                        const dayOfWeekIndex = getDay(day);
-                        const dayName = dayIndexToName[dayOfWeekIndex];
-                        const contractualHours = operator.workSchedule[dayName] || 0;
+                    const isWithinViewingMonth = day >= startOfMonth(currentMonth) && day <= endOfMonth(currentMonth);
 
-                        if (req.type === 'ferie' && contractualHours > 0) ferie.push(new Date(day));
-                        if (req.type === 'malattia' && contractualHours > 0) malattia.push(new Date(day));
+                    const dayOfWeekIndex = getDay(day);
+                    const dayName = dayIndexToName[dayOfWeekIndex];
+                    const contractualHours = operator.workSchedule[dayName] || 0;
+
+                    if (req.type === 'ferie' && contractualHours > 0) ferie.push(new Date(day));
+                    if (req.type === 'malattia' && contractualHours > 0) malattia.push(new Date(day));
+
+                    if (isWithinViewingMonth) {
                         if (req.type === 'permesso') permesso.push(new Date(day));
                         if (req.type === 'straordinario') straordinario.push(new Date(day));
                     }
@@ -580,12 +583,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
         else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
         
-        const isExtraDay = leaveDays.straordinario.some(d => isSameDay(d, selectedDate));
-        const isWorkedDay = workedDays.some(d => isSameDay(d, selectedDate));
-        if (isExtraDay && !isWorkedDay) {
-           dayInfo = { type: 'straordinario' };
-        }
-
         setSelectedDayInfo(dayInfo);
         
         const start = startOfDay(selectedDate);
@@ -631,7 +628,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
         fetchDailyData();
 
-    }, [firestore, operatorId, selectedDate, leaveDays, toast, workedDays]);
+    }, [firestore, operatorId, selectedDate, leaveDays, toast]);
 
     const calculateShiftDetails = (events: Timbratura[]): Shift => {
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
@@ -835,6 +832,13 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         return hours;
     };
 
+    const isDateDisabled = (date: Date): boolean => {
+        const today = new Date();
+        const isFutureDate = date > today && !isSameDay(date, today);
+        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+        
+        return isFutureDate && !isLeaveOrSickDay;
+    };
 
     const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
         const details = {
@@ -867,7 +871,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                             onMonthChange={setCurrentMonth}
                             className="p-0"
                             locale={it}
-                            disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
+                            disabled={isDateDisabled}
                             modifiers={{ 
                                 worked: workedDays, 
                                 ferie: leaveDays.ferie, 
@@ -935,7 +939,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                     </div>
                                 ))}
                             </>
-                        ) : selectedDayInfo && selectedDayInfo.type !== 'straordinario' ? (
+                        ) : selectedDayInfo ? (
                             <LeaveDayCard type={selectedDayInfo.type} />
                         ): (
                             <div className="text-center h-24 flex items-center justify-center text-muted-foreground">Nessun turno trovato per questo giorno.</div>
