@@ -464,36 +464,45 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName] || 0;
     };
     
+     const roundOrdinaryHours = (minutes: number) => {
+        const totalHalfHours = Math.floor(minutes / 30);
+        const remainingMinutes = minutes % 30;
+        const additionalHalfHour = remainingMinutes >= 25 ? 0.5 : 0;
+        return (totalHalfHours / 2) + additionalHalfHour;
+    };
+
+    const roundOvertimeHours = (minutes: number) => {
+        if (minutes < 0) return 0;
+        const totalHours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        const additionalHour = remainingMinutes >= 55 ? 1 : 0;
+        return totalHours + additionalHour;
+    };
+
+
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
     
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
-        const totalMinutes = Math.round(shift.workDuration);
-    
-        if (totalMinutes > contractualMinutes) {
-            const overtimeMinutes = totalMinutes - contractualMinutes;
-            const overtimeHours = Math.floor(overtimeMinutes / 60);
-            const overtimeRemainderMinutes = overtimeMinutes % 60;
-    
-            if (overtimeRemainderMinutes >= 50) {
-                return { ordinary: getContractualHoursForShift(shift), overtime: overtimeHours + 1, leave: 0 };
-            } else {
-                return { ordinary: getContractualHoursForShift(shift), overtime: overtimeHours, leave: 0 };
-            }
-        } else if (totalMinutes < contractualMinutes) {
-            const leaveMinutes = contractualMinutes - totalMinutes;
-            const leaveHours = Math.floor(leaveMinutes / 60);
-            const leaveRemainderMinutes = leaveMinutes % 60;
-    
-            if (leaveRemainderMinutes >= 50) {
-                return { ordinary: Math.floor(totalMinutes / 60), overtime: 0, leave: leaveHours + 1 };
-            } else {
-                return { ordinary: Math.floor(totalMinutes / 60), overtime: 0, leave: leaveHours };
-            }
+        const totalMinutesWorked = Math.round(shift.workDuration);
+
+        if (totalMinutesWorked > contractualMinutes) {
+            const overtimeMinutes = totalMinutesWorked - contractualMinutes;
+            const calculatedOvertimeHours = roundOvertimeHours(overtimeMinutes);
+            return { ordinary: getContractualHoursForShift(shift), overtime: calculatedOvertimeHours, leave: 0 };
+        } else {
+            const leaveMinutes = contractualMinutes - totalMinutesWorked;
+            const calculatedLeaveHours = roundOvertimeHours(leaveMinutes); // Use the same rounding for deficit
+            const ordinaryMinutesWorked = totalMinutesWorked - (calculatedLeaveHours > 0 ? (leaveMinutes) : 0);
+
+            // This logic might be complex. Let's simplify.
+            // If there's a deficit, ordinary hours are what was worked, and leave hours cover the rest.
+             const ordinaryHours = roundOrdinaryHours(totalMinutesWorked);
+
+            return { ordinary: ordinaryHours, overtime: 0, leave: calculatedLeaveHours };
         }
-    
-        return { ordinary: getContractualHoursForShift(shift), overtime: 0, leave: 0 };
     };
+
 
     const handleOpenApproveDialog = (shift: Shift) => {
         const { ordinary, overtime, leave } = calculateHours(shift);
@@ -505,13 +514,6 @@ export default function ShiftApprovalPage() {
         });
         setIsApproveDialogOpen(true);
     }
-    
-    const calculateHoursWithTolerance = (minutes: number) => {
-        if (isNaN(minutes) || minutes < 0) return 0;
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        return remainingMinutes >= 50 ? hours + 1 : hours;
-    };
     
     const handleApproveUnlock = async (unlockRequest: UnlockRequest) => {
         if (!firestore || !operatorId) return;
@@ -671,7 +673,7 @@ export default function ShiftApprovalPage() {
         }
     
         const workMinutes = calculateOvertimeShiftMinutes(shift);
-        const overtimeHours = calculateHoursWithTolerance(workMinutes);
+        const overtimeHours = roundOvertimeHours(workMinutes);
     
         const batch = writeBatch(firestore);
     
@@ -739,7 +741,7 @@ export default function ShiftApprovalPage() {
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift) => {
         const workMinutes = calculateOvertimeShiftMinutes(shift);
-        return calculateHoursWithTolerance(workMinutes);
+        return roundOvertimeHours(workMinutes);
     }
     
     const handleDeleteOvertimeShift = async () => {
@@ -1118,7 +1120,7 @@ export default function ShiftApprovalPage() {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                                <p className="text-2xl font-bold">{calculateHoursWithTolerance(detailShift.workDuration - (getContractualHoursForShift(detailShift) * 60))}h</p>
+                                <p className="text-2xl font-bold">{roundOvertimeHours(detailShift.workDuration - (getContractualHoursForShift(detailShift) * 60))}h</p>
                             </div>
                         </div>
                     )}
@@ -1277,20 +1279,20 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Verifica e modifica le ore calcolate prima di approvare il turno. Le ore verranno registrate come richieste separate.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-4 space-y-4">
-                        <div>
+                         <div>
                             <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
-                            <Input id="ordinary-hours" type="number" value={approvalData.ordinaryHours} onChange={(e) => setApprovalData(p => ({...p, ordinaryHours: e.target.value}))} step="1" min="0" />
+                            <Input id="ordinary-hours" type="number" value={approvalData.ordinaryHours} onChange={(e) => setApprovalData(p => ({...p, ordinaryHours: e.target.value}))} step="0.5" min="0" />
                             <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                         </div>
                         <div>
                             <Label htmlFor="overtime-hours">Ore di Straordinario Calcolate</Label>
                             <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="1" min="0" />
-                            <p className="text-xs text-muted-foreground mt-1">Calcolato con la regola dei 50min. Modifica se necessario.</p>
+                            <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 55° minuto. Modifica se necessario.</p>
                         </div>
                         <div>
                              <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
                              <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="1" min="0" />
-                             <p className="text-xs text-muted-foreground mt-1">Calcolato in base alle ore mancanti. Modifica se necessario.</p>
+                             <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 55° minuto. Modifica se necessario.</p>
                         </div>
                     </div>
                      <AlertDialogFooter>
