@@ -89,8 +89,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
 
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
-    const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[], straordinario: Date[]}>({ ferie: [], malattia: [], permesso: [], straordinario: [] });
-    const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | 'straordinario' | null>(null);
+    const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
+    const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | null>(null);
 
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
         const start = startOfMonth(currentMonth);
@@ -139,7 +139,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             const ferie: Date[] = [];
             const malattia: Date[] = [];
             const permesso: Date[] = [];
-            const straordinario: Date[] = [];
 
             const approvedRequests = snapshot.docs.map(doc => doc.data() as Request).filter(req => req.status === 'approvato');
 
@@ -148,8 +147,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                 const endReq = req.endDate.toDate();
 
                 for (let day = new Date(startReq); day <= endReq; day.setDate(day.getDate() + 1)) {
-                     // Check if day is within the current viewing month for calendar styling
-                    const isWithinViewingMonth = day >= startOfMonth(currentMonth) && day <= endOfMonth(currentMonth);
+                     const isWithinViewingMonth = day >= startOfMonth(currentMonth) && day <= endOfMonth(currentMonth);
                     
                     const dayOfWeekIndex = getDay(day);
                     const dayName = dayIndexToName[dayOfWeekIndex];
@@ -159,11 +157,10 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     if (req.type === 'malattia' && contractualHours > 0) malattia.push(new Date(day));
                     if (isWithinViewingMonth) {
                         if (req.type === 'permesso') permesso.push(new Date(day));
-                        if (req.type === 'straordinario') straordinario.push(new Date(day));
                     }
                 }
             });
-            setLeaveDays({ ferie, malattia, permesso, straordinario });
+            setLeaveDays({ ferie, malattia, permesso });
         });
 
         return () => {
@@ -180,7 +177,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             return;
         }
         setIsLoading(true);
-        setSelectedDayInfo(null); // Reset day info on new date selection
+        setSelectedDayInfo(null);
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
@@ -214,13 +211,11 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
 
                 setDailyShifts(shifts);
                 
-                // Only set leave info if there are NO shifts for the day
                 if (shifts.length === 0) {
-                    let dayInfo: 'ferie' | 'malattia' | 'permesso' | 'straordinario' | null = null;
+                    let dayInfo: 'ferie' | 'malattia' | 'permesso' | null = null;
                     if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
                     else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
                     else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
-                    else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = 'straordinario';
                     setSelectedDayInfo(dayInfo);
                 }
 
@@ -263,12 +258,11 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
         };
     };
 
-    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' | 'straordinario' }) => {
+    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
         const details = {
             ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
             malattia: { Icon: Stethoscope, text: 'Giorno di Malattia', color: 'text-red-600' },
             permesso: { Icon: UserCheck, text: 'Giorno di Permesso', color: 'text-yellow-600' },
-            straordinario: { Icon: Plus, text: 'Giorno di Straordinario', color: 'text-amber-600' },
         };
         const { Icon, text, color } = details[type];
         return (
@@ -290,6 +284,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
         return false;
       };
 
+    const isWorkDay = selectedDate ? (operator.workSchedule[dayIndexToName[getDay(selectedDate)]] || 0) > 0 : false;
 
     return (
         <>
@@ -312,7 +307,10 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                     ferie: leaveDays.ferie, 
                                     malattia: leaveDays.malattia, 
                                     permesso: leaveDays.permesso, 
-                                    straordinario: leaveDays.straordinario.filter(extraDay => !workedDays.some(workDay => isSameDay(extraDay, workDay)))
+                                    straordinario: workedDays.filter(workDay => {
+                                        const dayName = dayIndexToName[getDay(workDay)];
+                                        return (operator.workSchedule[dayName] || 0) === 0;
+                                    })
                                 }}
                                 modifiersClassNames={{ 
                                     worked: 'bg-primary/20', 
@@ -349,7 +347,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                                 <div className="flex justify-between items-center mb-2">
                                                     <div className='flex items-center gap-2'>
                                                         <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                         {leaveDays.straordinario.some(d => isSameDay(d, selectedDate!)) && (
+                                                        {!isWorkDay && (
                                                             <Badge variant="outline" className='border-amber-500 text-amber-600'>Straordinario</Badge>
                                                         )}
                                                     </div>

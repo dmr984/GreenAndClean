@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/componentsui/alert-dialog";
 import { format, set, getDay as getDayFns, isSameDay, addDays, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
@@ -647,6 +647,65 @@ export default function ShiftApprovalPage() {
         (currentPage + 1) * ITEMS_PER_PAGE
     );
     
+    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
+        if (!firestore || !operatorId || !operator) return;
+    
+        const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
+    
+        if (action === 'reject') {
+            await updateDoc(shiftRef, { status: 'rifiutato' });
+            toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
+            setIsDetailOvertimeOpen(false);
+            return;
+        }
+    
+        const workMinutes = calculateOvertimeShiftMinutes(shift);
+        const overtimeHours = Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
+    
+        const batch = writeBatch(firestore);
+    
+        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        shift.events.forEach(event => {
+            const newTimbraturaRef = doc(timbratureCollectionRef);
+            batch.set(newTimbraturaRef, {
+                userId: operatorId,
+                type: event.type,
+                timestamp: event.timestamp,
+                status: 'confermata',
+                viewedByOperator: false,
+                latitude: null,
+                longitude: null,
+            });
+        });
+    
+        if (overtimeHours > 0) {
+             const overtimeRequest = {
+                userId: operator.id,
+                type: 'straordinario' as const,
+                status: 'approvato' as const,
+                startDate: shift.date,
+                endDate: shift.date,
+                hours: overtimeHours,
+                reason: 'Straordinario da giorno non lavorativo approvato',
+                createdAt: serverTimestamp(),
+                viewedByOperator: false,
+            };
+            const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
+            batch.set(newRequestRef, overtimeRequest);
+        }
+    
+        batch.delete(shiftRef);
+    
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: `Turno straordinario approvato e registrato.` });
+        } catch (error) {
+             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
+        } finally {
+            setIsDetailOvertimeOpen(false);
+        }
+    };
+    
     const calculateOvertimeShiftMinutes = (shift: StraordinarioShift) => {
         let workDuration = 0;
         const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
@@ -665,69 +724,6 @@ export default function ShiftApprovalPage() {
             workDuration = totalMillis / (1000 * 60);
         }
         return workDuration;
-    };
-    
-    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
-        if (!firestore || !operatorId || !operator) return;
-    
-        const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
-    
-        if (action === 'reject') {
-            await updateDoc(shiftRef, { status: 'rifiutato' });
-            toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
-            setIsDetailOvertimeOpen(false);
-            return;
-        }
-    
-        // Action === 'approve'
-        const workMinutes = calculateOvertimeShiftMinutes(shift);
-        const overtimeHours = Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
-    
-        const batch = writeBatch(firestore);
-    
-        // Copy events to timbrature collection
-        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
-        shift.events.forEach(event => {
-            const newTimbraturaRef = doc(timbratureCollectionRef);
-            batch.set(newTimbraturaRef, {
-                userId: operatorId,
-                type: event.type,
-                timestamp: event.timestamp,
-                status: 'confermata',
-                viewedByOperator: false,
-                latitude: null, // Manual entry has no location
-                longitude: null,
-            });
-        });
-    
-        // Create overtime request
-        if (overtimeHours > 0) {
-             const overtimeRequest = {
-                userId: operator.id,
-                type: 'straordinario' as const,
-                status: 'approvato' as const,
-                startDate: shift.date,
-                endDate: shift.date,
-                hours: overtimeHours,
-                reason: 'Straordinario da giorno non lavorativo approvato',
-                createdAt: serverTimestamp(),
-                viewedByOperator: false,
-            };
-            const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
-            batch.set(newRequestRef, overtimeRequest);
-        }
-    
-        // Delete the original overtime shift document
-        batch.delete(shiftRef);
-    
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: `Turno straordinario approvato e registrato.` });
-        } catch (error) {
-             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
-        } finally {
-            setIsDetailOvertimeOpen(false);
-        }
     };
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift) => {
@@ -1158,7 +1154,7 @@ export default function ShiftApprovalPage() {
                         <ResponsiveDialogTitle>Dettaglio Turno Straordinario</ResponsiveDialogTitle>
                         {detailOvertimeShift?.date && <ResponsiveDialogDescription>Turno del {formatDate(detailOvertimeShift.date)}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
-                     {detailOvertimeShift && (
+                    {detailOvertimeShift && (
                         <div className="grid grid-cols-2 gap-4 text-center my-4">
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Ore Totali Lavorate</p>
