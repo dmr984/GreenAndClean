@@ -1,5 +1,5 @@
 'use client';
-import React, 'useState', useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -185,7 +185,7 @@ export default function MonthlySummaryPage() {
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes;
         const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
 
