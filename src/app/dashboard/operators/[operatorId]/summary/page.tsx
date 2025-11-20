@@ -132,6 +132,13 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         };
     }, [firestore, operatorId, currentDate]);
 
+    const calculateHoursWithTolerance = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return 0;
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return remainingMinutes >= 50 ? hours + 1 : hours;
+    };
+
 
     const summary = useMemo(() => {
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
@@ -178,12 +185,12 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         const periodStart = startOfMonth(currentDate);
         const periodEnd = endOfMonth(currentDate);
 
-        const overtimeTotal = approvedRequests
+        const overtimeTotalInHours = approvedRequests
             .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotalInHours * 60);
         const ordinaryWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
     
@@ -210,10 +217,10 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         return {
             workedDays: workedDaysCount,
             workedHours: ordinaryWorkedHours,
-            overtimeHours: overtimeTotal,
-            ferieDays: ferieDaysCount,
+            overtimeHours: overtimeTotalInHours,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
             malattiaDays: malattiaDaysCount,
+            ferieDays: ferieDaysCount,
         };
     }, [timbrature, requests, operator, currentDate]);
 
@@ -906,7 +913,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     const isWorkDay = selectedDate ? (operator.workSchedule[dayIndexToName[getDay(selectedDate)]] || 0) > 0 : false;
 
     return (
-        <>
         <div className="flex flex-col xl:flex-row gap-6">
              <div className="flex flex-col w-full xl:max-w-sm mx-auto">
                  <Card>
@@ -1001,8 +1007,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                     </CardContent>
                 </Card>
             </div>
-        </div>
-
+       
         <ResponsiveDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <ResponsiveDialogContent>
                 <ResponsiveDialogHeader><ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle></ResponsiveDialogHeader>
@@ -1114,8 +1119,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
-
-        </>
+        </div>
     );
 }
 

@@ -453,6 +453,13 @@ export default function ShiftApprovalPage() {
         setDetailShift(shift);
         setIsDetailOpen(true);
     }
+
+    const calculateHoursWithTolerance = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return 0;
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return remainingMinutes >= 50 ? hours + 1 : hours;
+    };
     
     const calculateHours = (shift: Shift | null): { overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { overtime: 0, leave: 0 };
@@ -461,17 +468,13 @@ export default function ShiftApprovalPage() {
         const totalMinutes = shift.workDuration;
     
         if (contractualMinutes === 0 && totalMinutes > 0) {
-            const overtimeHours = Math.floor(totalMinutes / 60);
-            const remainingMinutes = totalMinutes % 60;
-            const calculatedOvertime = overtimeHours + (remainingMinutes >= 50 ? 1 : 0);
-            return { overtime: calculatedOvertime, leave: 0 };
+            const overtimeHours = calculateHoursWithTolerance(totalMinutes);
+            return { overtime: overtimeHours, leave: 0 };
         }
     
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
-            const overtimeHours = Math.floor(overtimeMinutes / 60);
-            const remainingMinutes = overtimeMinutes % 60;
-            const calculatedOvertime = overtimeHours + (remainingMinutes >= 50 ? 1 : 0);
+            const calculatedOvertime = calculateHoursWithTolerance(overtimeMinutes);
             return { overtime: calculatedOvertime, leave: 0 };
     
         } else if (totalMinutes < contractualMinutes) {
@@ -659,7 +662,7 @@ export default function ShiftApprovalPage() {
         }
     
         const workMinutes = calculateOvertimeShiftMinutes(shift);
-        const overtimeHours = Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
+        const overtimeHours = calculateHoursWithTolerance(workMinutes);
     
         const batch = writeBatch(firestore);
     
@@ -727,7 +730,7 @@ export default function ShiftApprovalPage() {
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift) => {
         const workMinutes = calculateOvertimeShiftMinutes(shift);
-        return Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
+        return calculateHoursWithTolerance(workMinutes);
     }
     
     const handleDeleteOvertimeShift = async () => {
