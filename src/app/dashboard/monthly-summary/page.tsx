@@ -3,14 +3,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock } from 'lucide-react';
+import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/use-user';
-import { format, getDay, isWithinInterval, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, getDay, isWithinInterval, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 
@@ -42,8 +41,16 @@ type Timbratura = {
     userId: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    status: 'sospesa' | 'confermata';
+    status: 'sospesa' | 'confermata' | 'rifiutata';
 };
+
+type Shift = {
+    events: Timbratura[];
+    startTime: Timestamp;
+    endTime: Timestamp | null;
+    workDuration: number; // in minutes
+};
+
 
 type DetailView = {
     type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
@@ -52,10 +59,135 @@ type DetailView = {
 } | null;
 
 
+const OperatorDailySummary = ({ userId, date, onClose }: { userId: string, date: Date, onClose: () => void }) => {
+    const firestore = useFirestore();
+    const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!firestore) return;
+        setIsLoading(true);
+
+        const start = startOfDay(date);
+        const end = endOfDay(date);
+        const startTs = Timestamp.fromDate(start);
+        const endTs = Timestamp.fromDate(end);
+
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${userId}/timbrature`),
+            where('timestamp', '>=', startTs),
+            where('timestamp', '<=', endTs),
+            where('status', '==', 'confermata')
+        );
+
+        const unsubscribe = onSnapshot(timbratureQuery, snapshot => {
+            const timbratureDelGiorno = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
+            timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+            const shifts: Shift[] = [];
+            let currentShiftEvents: Timbratura[] = [];
+
+            timbratureDelGiorno.forEach(t => {
+                currentShiftEvents.push(t);
+                if (t.type === 'uscita') {
+                    shifts.push(calculateShiftDetails(currentShiftEvents));
+                    currentShiftEvents = [];
+                }
+            });
+
+            if (currentShiftEvents.length > 0) {
+                shifts.push(calculateShiftDetails(currentShiftEvents));
+            }
+            
+            setDailyShifts(shifts);
+            setIsLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [firestore, userId, date]);
+
+    const calculateShiftDetails = (events: Timbratura[]): Shift => {
+        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+        const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+
+        let workDuration = 0;
+        if (startTime && endTime) {
+             let totalMillis = endTime.toMillis() - startTime.toMillis();
+             let breakStart: Timestamp | null = null;
+             events.forEach(e => {
+                if (e.type === 'pausa') breakStart = e.timestamp;
+                if (e.type === 'fine_pausa' && breakStart) {
+                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                    breakStart = null;
+                }
+             });
+             workDuration = totalMillis / (1000 * 60);
+        }
+
+        return {
+            events: events,
+            startTime: startTime || events[0].timestamp,
+            endTime: endTime || null,
+            workDuration: workDuration
+        };
+    };
+
+    const formatMinutes = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return '00:00';
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    return (
+        <ResponsiveDialog open={true} onOpenChange={onClose}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Riepilogo del {format(date, 'PPP', { locale: it })}</ResponsiveDialogTitle>
+                     <ResponsiveDialogDescription>
+                        Dettaglio dei turni confermati per questo giorno.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                <div className="py-4">
+                    {isLoading ? (
+                         <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                    ) : dailyShifts.length > 0 ? (
+                        dailyShifts.map((shift, index) => (
+                             <div key={index} className="border-b last:border-b-0 py-2">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h4 className="font-semibold">Turno {index + 1}</h4>
+                                    <span className="text-sm text-muted-foreground">Durata: {formatMinutes(shift.workDuration)}</span>
+                                </div>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Orario</TableHead><TableHead>Evento</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {shift.events.map(t => (
+                                            <TableRow key={t.id}>
+                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-center h-24 flex items-center justify-center">Nessun turno confermato per questo giorno.</div>
+                    )}
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+    )
+};
+
+
 export default function MonthlySummaryPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
-    const router = useRouter();
     const { toast } = useToast();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [requests, setRequests] = useState<Request[]>([]);
@@ -63,6 +195,8 @@ export default function MonthlySummaryPage() {
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [operatorData, setOperatorData] = useState<Operator | null>(null);
+    const [dailyDetailDate, setDailyDetailDate] = useState<Date | null>(null);
+
 
     useEffect(() => {
         if (!firestore || !user?.id) return;
@@ -224,12 +358,17 @@ export default function MonthlySummaryPage() {
     };
     
     const handleWorkedDaysClick = () => {
-        if (!user) return;
-        const month = currentDate.getMonth() + 1;
-        const year = currentDate.getFullYear();
-        // The admin page for operator summary handles the view state
-        router.push(`/dashboard/operators/${user.id}/summary?view=daily&month=${month}&year=${year}`);
+        const workedDaysInMonth = timbrature
+            .map(t => t.timestamp.toDate())
+            .filter(d => isWithinInterval(d, { start: startOfMonth(currentDate), end: endOfMonth(currentDate) }));
+        
+        if (workedDaysInMonth.length > 0) {
+            setDailyDetailDate(workedDaysInMonth[0]);
+        } else {
+            toast({ title: "Nessun giorno lavorato", description: "Non ci sono turni confermati per questo mese.", variant: "default" });
+        }
     };
+
 
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
         if (!type) return;
@@ -353,7 +492,14 @@ export default function MonthlySummaryPage() {
 
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
                 <Card
-                    onClick={handleWorkedDaysClick}
+                    onClick={() => {
+                        const workedDaysInMonth = [...new Set(timbrature.map(t => t.timestamp.toDate().toDateString()))];
+                         if (workedDaysInMonth.length > 0) {
+                             setDailyDetailDate(new Date(workedDaysInMonth[0]));
+                         } else {
+                            toast({ title: "Nessun giorno lavorato", description: "Non ci sono turni confermati per questo mese.", variant: "default" });
+                         }
+                    }}
                     className="cursor-pointer transition-all hover:bg-muted/50"
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -365,7 +511,14 @@ export default function MonthlySummaryPage() {
                     </CardContent>
                 </Card>
                  <Card
-                    onClick={handleWorkedDaysClick}
+                    onClick={() => {
+                        const workedDaysInMonth = [...new Set(timbrature.map(t => t.timestamp.toDate().toDateString()))];
+                         if (workedDaysInMonth.length > 0) {
+                             setDailyDetailDate(new Date(workedDaysInMonth[0]));
+                         } else {
+                            toast({ title: "Nessun giorno lavorato", description: "Non ci sono turni confermati per questo mese.", variant: "default" });
+                         }
+                    }}
                     className="cursor-pointer transition-all hover:bg-muted/50"
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -426,8 +579,20 @@ export default function MonthlySummaryPage() {
                 </Card>
             </div>
              <div className="flex justify-center">
-                 <Button onClick={() => router.push('/dashboard/requests')} size="lg">
-                    <Plus className="mr-2 h-4 w-4" /> Nuova Richiesta
+                <Button onClick={() => {
+                    if (user) {
+                        const workedDaysInMonth = [...new Set(timbrature.map(t => t.timestamp.toDate().toDateString()))];
+                        const requestsInMonth = requests.filter(r => isWithinInterval(r.createdAt.toDate(), { start: startOfMonth(currentDate), end: endOfMonth(currentDate) }));
+                         if (workedDaysInMonth.length > 0) {
+                             setDailyDetailDate(new Date(workedDaysInMonth[0]));
+                         } else if (requestsInMonth.length > 0) {
+                             setDailyDetailDate(requestsInMonth[0].createdAt.toDate());
+                         } else {
+                            setDailyDetailDate(currentDate);
+                         }
+                    }
+                }} size="lg">
+                    <Calendar className="mr-2 h-4 w-4" /> Visualizza Calendario
                 </Button>
             </div>
             
@@ -451,7 +616,7 @@ export default function MonthlySummaryPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {requests.length > 0 ? requests.map((req) => (
+                                {requests.filter(r => isWithinInterval(r.createdAt.toDate(), { start: startOfMonth(currentDate), end: endOfMonth(currentDate) })).length > 0 ? requests.map((req) => (
                                     <TableRow key={req.id}>
                                         <TableCell className="font-medium capitalize">{req.type.replace('_', ' ')}</TableCell>
                                         <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
@@ -475,6 +640,19 @@ export default function MonthlySummaryPage() {
             </Card>
 
         </div>
+
+        {dailyDetailDate && user && (
+            <ResponsiveDialog open={true} onOpenChange={() => setDailyDetailDate(null)}>
+                <ResponsiveDialogContent className="max-w-4xl">
+                     <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Riepilogo Giornaliero</ResponsiveDialogTitle>
+                    </ResponsiveDialogHeader>
+                    <OperatorDailySummary userId={user.id} date={dailyDetailDate} onClose={() => setDailyDetailDate(null)}/>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+        )}
+
+
         <ResponsiveDialog open={!!detailView} onOpenChange={() => setDetailView(null)}>
             <ResponsiveDialogContent>
                 <ResponsiveDialogHeader>
