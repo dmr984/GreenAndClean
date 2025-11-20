@@ -317,3 +317,5 @@
     "reasoning": "Updated the Operator entity to use a flexible workSchedule object, allowing different hours to be assigned to each day of the week. This replaces the previous workHours and workDays fields."
   }
 }
+
+    

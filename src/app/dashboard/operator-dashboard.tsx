@@ -146,17 +146,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     useEffect(() => {
         if (!firestore || !operator?.id) return;
 
-        const checkLeaveAndUnlockStatus = async () => {
+        // Use onSnapshot to listen for real-time changes
+        const requestsQuery = query(
+            collection(firestore, `app-users/${operator.id}/requests`),
+            where('status', 'in', ['approvato', 'in_attesa'])
+        );
+        
+        const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
             const today = new Date();
-            const startOfToday = startOfDay(today);
-            const endOfToday = endOfDay(today);
-            
-            const requestsQuery = query(
-                collection(firestore, `app-users/${operator.id}/requests`),
-                where('status', 'in', ['approvato', 'in_attesa'])
-            );
-            
-            const snapshot = await getDocs(requestsQuery);
             let onLeaveToday = false;
             let leaveType: LeaveStatus['type'] = null;
             let unlockRequestExists = false;
@@ -166,7 +163,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 const startDate = request.startDate.toDate();
                 const endDate = request.endDate.toDate();
 
-                if (isWithinInterval(today, { start: startDate, end: endDate })) {
+                if (isWithinInterval(today, { start: startOfDay(startDate), end: endOfDay(endDate) })) {
                     if (request.type === 'ferie' || request.type === 'malattia') {
                       onLeaveToday = true;
                       leaveType = request.type;
@@ -178,8 +175,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             });
             setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
             setUnlockRequestSent(unlockRequestExists);
-        };
-        checkLeaveAndUnlockStatus();
+        });
+
+        return () => unsubscribe(); // Cleanup listener on unmount
     }, [firestore, operator]);
 
 
@@ -423,7 +421,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         await addDoc(requestsCollection, unlockRequestData);
         toast({
             title: 'Richiesta Inviata',
-            description: 'La tua richiesta di sblocco è stata inviata all\'amministratore.',
+            description: "La tua richiesta di sblocco è stata inviata all'amministratore.",
         });
         setUnlockRequestSent(true);
     } catch (error: any) {
@@ -473,17 +471,22 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
+    const leaveTypeText = leaveStatus.type === 'ferie' ? 'Ferie' : 'Malattia';
+
     return (
-        <Card className="border-yellow-500 bg-yellow-500/10">
+        <Card className="border-yellow-500 bg-yellow-500/10 text-center">
             <CardHeader className="pb-4">
-                <div className="flex items-center gap-3">
-                    <Icon className="h-6 w-6 text-yellow-600" />
-                    <CardTitle className="text-2xl text-yellow-700 capitalize">In {leaveStatus.type}</CardTitle>
+                <div className="flex items-center justify-center gap-3">
+                    <Icon className="h-7 w-7 text-yellow-600" />
+                    <CardTitle className="text-2xl text-yellow-700">Oggi sei in {leaveTypeText}</CardTitle>
                 </div>
             </CardHeader>
             <CardContent>
-                <p className="text-yellow-600 text-center">
-                    Oggi sei in {leaveStatus.type}. Il sistema di timbratura è bloccato.
+                <p className="text-yellow-600">
+                    Il sistema di timbratura è bloccato.
+                </p>
+                <p className="text-sm text-yellow-700/80 mt-4">
+                  Se vuoi timbrare, annullerai il giorno di {leaveTypeText.toLowerCase()}. Fai la richiesta all'amministratore.
                 </p>
             </CardContent>
              <CardFooter>
@@ -674,3 +677,5 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     </>
   );
 }
+
+    
