@@ -412,25 +412,31 @@ export default function ShiftApprovalPage() {
     
     const calculateHours = (shift: Shift | null): { overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { overtime: 0, leave: 0 };
-
+    
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
-        
         const totalMinutes = shift.workDuration;
-        
+    
+        // If it's a non-working day, all hours are overtime.
+        if (contractualMinutes === 0 && totalMinutes > 0) {
+            const overtimeHours = Math.floor(totalMinutes / 60);
+            const remainingMinutes = totalMinutes % 60;
+            const calculatedOvertime = overtimeHours + (remainingMinutes >= 50 ? 1 : 0);
+            return { overtime: calculatedOvertime, leave: 0 };
+        }
+    
+        // If it's a working day, calculate normally.
         if (totalMinutes > contractualMinutes) {
-            // Overtime
             const overtimeMinutes = totalMinutes - contractualMinutes;
             const overtimeHours = Math.floor(overtimeMinutes / 60);
             const remainingMinutes = overtimeMinutes % 60;
             const calculatedOvertime = overtimeHours + (remainingMinutes >= 50 ? 1 : 0);
             return { overtime: calculatedOvertime, leave: 0 };
-
+    
         } else if (totalMinutes < contractualMinutes) {
-            // Leave
             const leaveMinutes = contractualMinutes - totalMinutes;
             return { overtime: 0, leave: parseFloat((leaveMinutes / 60).toFixed(2)) };
         }
-
+    
         return { overtime: 0, leave: 0 };
     };
 
@@ -992,5 +998,3 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
-
-    
