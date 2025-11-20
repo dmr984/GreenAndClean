@@ -191,11 +191,13 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
 
         setSelectedDayInfo(dayInfo);
 
-        if (dayInfo && dayInfo !== 'straordinario') {
-            setDailyShifts([]);
-            setIsLoading(false);
-            return;
-        }
+        // This check was too aggressive. Even if it's a leave or overtime day,
+        // we should still try to fetch shifts in case there's an approved overtime shift.
+        // if (dayInfo) {
+        //     setDailyShifts([]);
+        //     setIsLoading(false);
+        //     return;
+        // }
 
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
@@ -334,41 +336,39 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                         <CardContent>
                             {isLoading ? (
                                 <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                            ) : dailyShifts.length > 0 ? (
+                                <div className="border rounded-md">
+                                    {dailyShifts.map((shift, index) => (
+                                        <div key={index} className="border-b last:border-b-0">
+                                            <div className='p-4'>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                    <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
+                                                </div>
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {shift.events.map(t => (
+                                                            <TableRow key={t.id}>
+                                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                                <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             ) : selectedDayInfo && selectedDayInfo !== 'straordinario' ? (
                                 <LeaveDayCard type={selectedDayInfo} />
                             ) : (
-                                <div className="border rounded-md">
-                                    {dailyShifts.length > 0 ? (
-                                        dailyShifts.map((shift, index) => (
-                                            <div key={index} className="border-b last:border-b-0">
-                                                <div className='p-4'>
-                                                    <div className="flex justify-between items-center mb-2">
-                                                        <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                        <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
-                                                    </div>
-                                                    <Table>
-                                                        <TableHeader>
-                                                            <TableRow>
-                                                                <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
-                                                            </TableRow>
-                                                        </TableHeader>
-                                                        <TableBody>
-                                                            {shift.events.map(t => (
-                                                                <TableRow key={t.id}>
-                                                                    <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                                    <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                                    <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="text-center h-24 flex items-center justify-center">Nessun turno trovato per questo giorno.</div>
-                                    )}
-                                </div>
+                                <div className="text-center h-24 flex items-center justify-center text-muted-foreground">Nessun turno trovato per questo giorno.</div>
                             )}
                         </CardContent>
                     </Card>

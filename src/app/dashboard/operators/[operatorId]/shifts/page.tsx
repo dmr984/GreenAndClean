@@ -210,25 +210,15 @@ export default function ShiftApprovalPage() {
         return { pendingOvertimeShifts: pending };
     }, [overtimeShifts]);
 
-    const combinedHistoricalShifts = useMemo(() => {
-        const regularHistorical = allShifts
+    const historicalShifts = useMemo(() => {
+        return allShifts
             .filter(s => s.status === 'confermato' || s.status === 'rifiutato')
-            .map(s => ({ ...s, isOvertime: false, date: s.events[0]?.timestamp }));
-    
-        const overtimeHistorical = overtimeShifts
-            .filter(s => s.status === 'approvato' || s.status === 'rifiutato')
-            .map(s => ({ ...s, isOvertime: true }));
-    
-        const combined = [...regularHistorical, ...overtimeHistorical];
-    
-        combined.sort((a, b) => {
-            const dateA = a.date?.toMillis() || 0;
-            const dateB = b.date?.toMillis() || 0;
-            return dateB - dateA;
-        });
-    
-        return combined;
-    }, [allShifts, overtimeShifts]);
+            .sort((a, b) => {
+                const dateA = a.events[0]?.timestamp.toMillis() || 0;
+                const dateB = b.events[0]?.timestamp.toMillis() || 0;
+                return dateB - dateA;
+            });
+    }, [allShifts]);
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): { status: Shift['status'], workDuration: number, isOnLeaveDay: boolean } => {
         const hasPending = events.some(e => e.status === 'sospesa');
@@ -651,8 +641,8 @@ export default function ShiftApprovalPage() {
     const formatTime = (date: Timestamp | undefined) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
     const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
     
-    const totalPages = Math.ceil(combinedHistoricalShifts.length / ITEMS_PER_PAGE);
-    const paginatedApprovedShifts = combinedHistoricalShifts.slice(
+    const totalPages = Math.ceil(historicalShifts.length / ITEMS_PER_PAGE);
+    const paginatedApprovedShifts = historicalShifts.slice(
         currentPage * ITEMS_PER_PAGE,
         (currentPage + 1) * ITEMS_PER_PAGE
     );
@@ -947,7 +937,7 @@ export default function ShiftApprovalPage() {
                     <CardDescription>Visualizza e modifica i turni già confermati.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                     {combinedHistoricalShifts.length === 0 ? (
+                     {historicalShifts.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-8">Nessun turno approvato.</p>
                     ) : (
                         <div className="border rounded-lg overflow-x-auto">
@@ -964,32 +954,21 @@ export default function ShiftApprovalPage() {
                                 </TableHeader>
                                 <TableBody>
                                     {paginatedApprovedShifts.map((shift, index) => {
-                                        const startTime = shift.isOvertime ? (shift as StraordinarioShift).events.find(e => e.type === 'entrata')?.timestamp : (shift as Shift).events[0]?.timestamp;
-                                        const endTime = shift.isOvertime ? (shift as StraordinarioShift).events.find(e => e.type === 'uscita')?.timestamp : (shift as Shift).events.find(e => e.type === 'uscita')?.timestamp;
-                                        const workDuration = shift.isOvertime ? calculateOvertimeShiftMinutes(shift as StraordinarioShift) : (shift as Shift).workDuration;
+                                        const startTime = shift.events[0]?.timestamp;
+                                        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
                                         return (
                                             <TableRow key={index}>
-                                                <TableCell className="flex items-center gap-2">
-                                                    <span>{formatDate(shift.date)}</span>
-                                                    {shift.isOvertime && <Badge>Straordinario</Badge>}
-                                                </TableCell>
+                                                <TableCell>{formatDate(startTime)}</TableCell>
                                                 <TableCell>{formatTime(startTime)}</TableCell>
                                                 <TableCell>{formatTime(endTime)}</TableCell>
-                                                <TableCell>{formatMinutes(workDuration)}</TableCell>
+                                                <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell>
-                                                    <Badge variant={shift.status === 'confermato' || shift.status === 'approvato' ? 'secondary' : 'destructive'}>
+                                                    <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
                                                         {shift.status.charAt(0).toUpperCase() + shift.status.slice(1).replace('_', ' ')}
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" onClick={() => {
-                                                        if(shift.isOvertime) {
-                                                            setDetailOvertimeShift(shift as StraordinarioShift);
-                                                            setIsDetailOvertimeOpen(true);
-                                                        } else {
-                                                            handleOpenDetailDialog(shift as Shift)
-                                                        }
-                                                    }}>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                                         <Eye className="h-5 w-5" />
                                                     </Button>
                                                 </TableCell>
