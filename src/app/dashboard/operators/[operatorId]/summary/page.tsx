@@ -530,12 +530,10 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
-    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
-
-    const [isDeleteOptionsOpen, setIsDeleteOptionsOpen] = useState(false);
 
 
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
@@ -654,7 +652,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
                 setDailyShifts(shifts);
                 
-                // ONLY if no shifts are found, check for leave days
                 if (shifts.length === 0) {
                     let dayInfo: SelectedDayInfo = null;
                     if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
@@ -820,37 +817,13 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         }
     };
     
-    const handleDeleteShift = async (includeRequests: boolean) => {
+    const handleDeleteShift = async () => {
         if (!firestore || !shiftToDelete || !operatorId) return;
         const batch = writeBatch(firestore);
         shiftToDelete.events.forEach(event => {
             const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
             batch.delete(docRef);
         });
-
-        if (includeRequests) {
-            const shiftDate = shiftToDelete.events[0].timestamp.toDate();
-            const startOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
-            const endOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate() + 1);
-
-            const requestsQuery = query(
-                collection(firestore, `app-users/${operatorId}/requests`),
-                where('startDate', '>=', Timestamp.fromDate(startOfDay)),
-                where('startDate', '<', Timestamp.fromDate(endOfDay)),
-                where('type', 'in', ['permesso', 'straordinario'])
-            );
-
-            try {
-                const requestsSnapshot = await getDocs(requestsQuery);
-                requestsSnapshot.forEach(requestDoc => {
-                    batch.delete(requestDoc.ref);
-                });
-            } catch (error) {
-                console.error("Error finding associated requests to delete:", error);
-                toast({ title: 'Errore', description: 'Impossibile trovare le ore associate da eliminare.', variant: 'destructive' });
-                return;
-            }
-        }
         
         try {
             await batch.commit();
@@ -858,7 +831,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         } catch (error) {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         } finally {
-            setIsDeleteOptionsOpen(false);
+            setIsConfirmingDelete(false);
             setShiftToDelete(null);
             setIsDetailOpen(false);
         }
@@ -1064,21 +1037,18 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
             </ResponsiveDialogContent>
         </ResponsiveDialog>
 
-        <AlertDialog open={isDeleteOptionsOpen} onOpenChange={setIsDeleteOptionsOpen}>
+        <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Elimina Turno</AlertDialogTitle>
+                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Scegli come eliminare questo turno.
+                        Questa azione eliminerà le timbrature per questo turno in modo permanente. L'azione non può essere annullata.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                    <Button variant="outline" onClick={() => setIsDeleteOptionsOpen(false)}>Annulla</Button>
-                    <Button variant="destructive" onClick={() => handleDeleteShift(false)}>
-                       Cancella solo qui
-                    </Button>
-                    <AlertDialogAction onClick={() => handleDeleteShift(true)}>
-                        Cancella ovunque
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteShift}>
+                        Elimina
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
@@ -1137,7 +1107,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                     <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
                     {detailShift && (
                       <>
-                        <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteOptionsOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                        <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                         <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                       </>
                     )}
@@ -1204,7 +1174,6 @@ export default function OperatorSummaryPage() {
         try {
             const batch = writeBatch(firestore);
     
-            // 1. Delete timbrature within the month
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', monthStart),
@@ -1213,7 +1182,6 @@ export default function OperatorSummaryPage() {
             const timbratureSnapshot = await getDocs(timbratureQuery);
             timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
     
-            // 2. Handle requests that overlap with the month
             const requestsQuery = query(
                 collection(firestore, `app-users/${operatorId}/requests`),
                  where('endDate', '>=', monthStart)
@@ -1225,24 +1193,18 @@ export default function OperatorSummaryPage() {
                 const reqStart = request.startDate.toDate();
                 const reqEnd = request.endDate.toDate();
     
-                // Skip if request is completely outside the month's potential overlap
                 if (reqStart > monthEnd) continue;
     
                 const ref = requestDoc.ref;
     
-                // Case 1: Request is fully contained within the month
                 if (reqStart >= monthStart && reqEnd <= monthEnd) {
                     batch.delete(ref);
                     continue;
                 }
     
-                // Case 2: Request starts before and ends after the month (spans across)
                 if (reqStart < monthStart && reqEnd > monthEnd) {
-                    // Split into two requests
-                    // First part: update original to end before the cleaned month
                     batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
                     
-                    // Second part: create a new request for the period after the cleaned month
                     const { id, ...restOfRequest } = request;
                     const newRequestData = {
                         ...restOfRequest,
@@ -1256,13 +1218,11 @@ export default function OperatorSummaryPage() {
                     continue;
                 }
     
-                // Case 3: Request starts in the month and ends after
                 if (reqStart >= monthStart && reqStart <= monthEnd && reqEnd > monthEnd) {
                     batch.update(ref, { startDate: Timestamp.fromDate(addDays(monthEnd, 1)) });
                     continue;
                 }
     
-                // Case 4: Request starts before and ends in the month
                 if (reqStart < monthStart && reqEnd >= monthStart && reqEnd <= monthEnd) {
                     batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
                     continue;
@@ -1291,7 +1251,7 @@ export default function OperatorSummaryPage() {
     }
 
     return (
-        <>
+        <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
             <div className="space-y-6">
                 <Card>
                      <CardHeader>
@@ -1338,6 +1298,6 @@ export default function OperatorSummaryPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </>
+        </Suspense>
     );
 }

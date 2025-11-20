@@ -74,11 +74,6 @@ type ApprovalData = {
     leaveHours: string;
 };
 
-type DeleteOptions = {
-    shift: Shift | null;
-    includeRequests: boolean;
-}
-
 const ITEMS_PER_PAGE = 5;
 
 export default function ShiftApprovalPage() {
@@ -94,15 +89,13 @@ export default function ShiftApprovalPage() {
 
     const [isLoading, setIsLoading] = useState(true);
     
-    // State for regular shifts
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
-    const [isDeleteOptionsOpen, setIsDeleteOptionsOpen] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [editingShift, setEditingShift] = useState<Shift | null>(null);
     const [isEditShiftOpen, setIsEditShiftOpen] = useState(false);
 
-    // State for overtime shifts
     const [detailOvertimeShift, setDetailOvertimeShift] = useState<StraordinarioShift | null>(null);
     const [isDetailOvertimeOpen, setIsDetailOvertimeOpen] = useState(false);
     const [overtimeShiftToDelete, setOvertimeShiftToDelete] = useState<StraordinarioShift | null>(null);
@@ -348,41 +341,15 @@ export default function ShiftApprovalPage() {
         });
     };
 
-    const handleDeleteShift = async (includeRequests: boolean) => {
+    const handleDeleteShift = async () => {
         if (!firestore || !shiftToDelete || !operator) return;
         
         const batch = writeBatch(firestore);
 
-        // Delete all timbratura events for the shift
         shiftToDelete.events.forEach(event => {
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             batch.delete(docRef);
         });
-
-        // If requested, also delete associated requests for that day
-        if (includeRequests) {
-            const shiftDate = shiftToDelete.events[0].timestamp.toDate();
-            const startOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
-            const endOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate() + 1);
-
-            const requestsQuery = query(
-                collection(firestore, `app-users/${operator.id}/requests`),
-                where('startDate', '>=', Timestamp.fromDate(startOfDay)),
-                where('startDate', '<', Timestamp.fromDate(endOfDay)),
-                where('type', 'in', ['permesso', 'straordinario'])
-            );
-
-            try {
-                const requestsSnapshot = await getDocs(requestsQuery);
-                requestsSnapshot.forEach(requestDoc => {
-                    batch.delete(requestDoc.ref);
-                });
-            } catch (error) {
-                console.error("Error finding associated requests to delete:", error);
-                toast({ title: 'Errore', description: 'Impossibile trovare le ore associate da eliminare.', variant: 'destructive' });
-                return; // Stop the deletion process
-            }
-        }
 
         try {
             await batch.commit();
@@ -393,7 +360,7 @@ export default function ShiftApprovalPage() {
         } finally {
             setIsDetailOpen(false);
             setShiftToDelete(null);
-            setIsDeleteOptionsOpen(false);
+            setIsConfirmingDelete(false);
         }
     };
 
@@ -436,7 +403,6 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        // Update or delete existing events
         for (const event of editingShift.events) {
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             if (newEventsMap[event.type]) {
@@ -447,7 +413,6 @@ export default function ShiftApprovalPage() {
             }
         }
 
-        // Add new events (e.g. adding a break to a shift that didn't have one)
         for (const type in newEventsMap) {
             const eventType = type as Timbratura['type'];
             const newDocRef = doc(collection(firestore, `app-users/${operator.id}/timbrature`));
@@ -464,7 +429,6 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Successo', description: 'Turno aggiornato con successo.' });
             setIsEditShiftOpen(false);
             setEditingShift(null);
-            // Close detail view as well, as data is now stale.
             setIsDetailOpen(false);
         }).catch(err => {
             console.error(err);
@@ -479,8 +443,6 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Successo', description: 'Timbratura eliminata.' });
             setIsDeleteTimbraturaDialogOpen(false);
             setDeletingTimbratura(null);
-            // After deleting a part of the shift, we close the detail dialog
-            // because the parent component will re-calculate the shift groups.
             setIsDetailOpen(false); 
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
@@ -620,7 +582,6 @@ export default function ShiftApprovalPage() {
         const isWorkDay = (operator.workSchedule[dayName] || 0) > 0;
 
         if (isWorkDay) {
-            // Regular Shift
             const batch = writeBatch(firestore);
             const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
             const events: { type: Timbratura['type'], time: string }[] = [
@@ -647,7 +608,6 @@ export default function ShiftApprovalPage() {
             }
 
         } else {
-            // Overtime Shift
             const overtimeCollectionRef = collection(firestore, `app-users/${operatorId}/straordinari`);
             const newEvents: StraordinarioEvent[] = [];
             if (newShiftTimes.entrata) newEvents.push({ type: 'entrata', timestamp: createTimestamp(newShiftTimes.entrata) });
@@ -1088,22 +1048,19 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
-
-            <AlertDialog open={isDeleteOptionsOpen} onOpenChange={setIsDeleteOptionsOpen}>
+            
+            <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Elimina Turno Approvato</AlertDialogTitle>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Scegli come eliminare questo turno. Puoi eliminare solo le timbrature, oppure anche le ore di straordinario/permesso associate nel riepilogo mensile.
+                            Questa azione eliminerà le timbrature per questo turno in modo permanente. L'azione non può essere annullata.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                        <Button variant="outline" onClick={() => setIsDeleteOptionsOpen(false)}>Annulla</Button>
-                        <Button variant="destructive" onClick={() => handleDeleteShift(false)}>
-                            Elimina solo Timbrature
-                        </Button>
-                        <AlertDialogAction onClick={() => handleDeleteShift(true)}>
-                            Elimina Turno e Ore
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteShift}>
+                            Elimina
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -1199,7 +1156,7 @@ export default function ShiftApprovalPage() {
                         )}
                         {detailShift && detailShift.status !== 'in_sospeso' && (
                           <>
-                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteOptionsOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                             <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                           </>
                         )}

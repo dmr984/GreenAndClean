@@ -93,7 +93,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | null>(null);
 
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
-    const [isDeleteOptionsOpen, setIsDeleteOptionsOpen] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
 
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
@@ -263,7 +263,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
         };
     };
 
-    const handleDeleteShift = async (includeRequests: boolean) => {
+    const handleDeleteShift = async () => {
         if (!firestore || !shiftToDelete || !operatorId) return;
         
         const batch = writeBatch(firestore);
@@ -272,30 +272,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
             batch.delete(docRef);
         });
-
-        if (includeRequests) {
-            const shiftDate = shiftToDelete.events[0].timestamp.toDate();
-            const startOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
-            const endOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate() + 1);
-
-            const requestsQuery = query(
-                collection(firestore, `app-users/${operatorId}/requests`),
-                where('startDate', '>=', Timestamp.fromDate(startOfDay)),
-                where('startDate', '<', Timestamp.fromDate(endOfDay)),
-                where('type', 'in', ['permesso', 'straordinario'])
-            );
-
-            try {
-                const requestsSnapshot = await getDocs(requestsQuery);
-                requestsSnapshot.forEach(requestDoc => {
-                    batch.delete(requestDoc.ref);
-                });
-            } catch (error) {
-                console.error("Error finding associated requests to delete:", error);
-                toast({ title: 'Errore', description: 'Impossibile trovare le ore associate da eliminare.', variant: 'destructive' });
-                return;
-            }
-        }
 
         try {
             await batch.commit();
@@ -306,7 +282,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
         } finally {
             setDetailShift(null);
             setShiftToDelete(null);
-            setIsDeleteOptionsOpen(false);
+            setIsConfirmingDelete(false);
         }
     };
 
@@ -466,27 +442,24 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                         </Table>
                         <ResponsiveDialogFooter className="pt-4">
                             <Button variant="outline" onClick={() => setDetailShift(null)}>Chiudi</Button>
-                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteOptionsOpen(true); }}><Trash2 className="mr-2 h-4 w-4" /> Elimina</Button>
+                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4" /> Elimina</Button>
                         </ResponsiveDialogFooter>
                     </ResponsiveDialogContent>
                 </ResponsiveDialog>
             )}
 
-            <AlertDialog open={isDeleteOptionsOpen} onOpenChange={setIsDeleteOptionsOpen}>
+            <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Elimina Turno Approvato</AlertDialogTitle>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Scegli come eliminare questo turno.
+                            Questa azione eliminerà le timbrature per questo turno in modo permanente. L'azione non può essere annullata.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                        <Button variant="outline" onClick={() => setIsDeleteOptionsOpen(false)}>Annulla</Button>
-                        <Button variant="destructive" onClick={() => handleDeleteShift(false)}>
-                            Cancella solo qui
-                        </Button>
-                        <AlertDialogAction onClick={() => handleDeleteShift(true)}>
-                            Cancella ovunque
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteShift}>
+                            Elimina
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
