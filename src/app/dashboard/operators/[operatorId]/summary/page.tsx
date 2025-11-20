@@ -74,7 +74,7 @@ type Shift = {
     startTime: Timestamp;
     endTime: Timestamp | null;
     workDuration: number; // in minutes
-    isOvertime?: boolean;
+    isOvertime: boolean;
 };
 
 type DetailView = {
@@ -154,7 +154,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         
         let workedDaysCount = 0;
         let totalOrdinaryMinutes = 0;
-        let totalOvertimeMinutes = 0;
+        let totalOvertimeMinutesFromShifts = 0;
     
         const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const dayString = t.timestamp.toDate().toDateString();
@@ -189,7 +189,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             const dayTotalMinutes = dayTotalMillis / (1000 * 60);
 
             if (isOvertimeDay) {
-                totalOvertimeMinutes += dayTotalMinutes;
+                totalOvertimeMinutesFromShifts += dayTotalMinutes;
             } else {
                 totalOrdinaryMinutes += dayTotalMinutes;
             }
@@ -198,16 +198,16 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         const periodStart = startOfMonth(currentDate);
         const periodEnd = endOfMonth(currentDate);
 
+        // This counts only manually added overtime requests, not those generated from shifts.
         const manuallyAddedOvertimeHours = approvedRequests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
+            .filter(r => r.type === 'straordinario' && r.reason !== 'Straordinario da giorno non lavorativo approvato' && r.reason !== 'Straordinario approvato da turno' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
-        // Split ordinary minutes into ordinary and overtime based on contract
         const contractualHours = (operator?.workSchedule?.[dayIndexToName[getDay(periodStart)]] || 0) * workedDaysCount; // simplified
         const contractualMinutes = contractualHours * 60;
         
         let finalOrdinaryMinutes = totalOrdinaryMinutes;
-        let finalOvertimeMinutes = totalOvertimeMinutes;
+        let finalOvertimeMinutes = totalOvertimeMinutesFromShifts;
 
         if (totalOrdinaryMinutes > contractualMinutes) {
              finalOvertimeMinutes += (totalOrdinaryMinutes - contractualMinutes);
@@ -553,7 +553,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     const [selectedDayInfo, setSelectedDayInfo] = useState<SelectedDayInfo>(null);
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-    const [newShift, setNewShift] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     
     const [editingShift, setEditingShift] = useState<Shift | null>(null);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -754,11 +753,8 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     };
 
     const handleAddManualShift = async () => {
-        if (!firestore || !operatorId || !selectedDate || !newShift.entrata || !newShift.uscita || !operator) {
-            toast({ title: 'Dati mancanti', description: 'Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
-            return;
-        }
-
+        if (!firestore || !operatorId || !selectedDate || !editingShift) return;
+        
         const dayName = dayIndexToName[getDayFns(selectedDate)];
         const isWorkDay = (operator.workSchedule[dayName] || 0) > 0;
         const isOvertime = !isWorkDay;
@@ -774,10 +770,10 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
 
         const events: { type: Timbratura['type'], time: string }[] = [
-            { type: 'entrata', time: newShift.entrata },
-            { type: 'uscita', time: newShift.uscita },
-            { type: 'pausa', time: newShift.pausa },
-            { type: 'fine_pausa', time: newShift.fine_pausa },
+            { type: 'entrata', time: editShiftTimes.entrata },
+            { type: 'uscita', time: editShiftTimes.uscita },
+            { type: 'pausa', time: editShiftTimes.pausa },
+            { type: 'fine_pausa', time: editShiftTimes.fine_pausa },
         ];
 
         for (const event of events) {
@@ -803,7 +799,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
             await batch.commit();
             toast({ title: 'Successo', description: 'Turno manuale aggiunto con successo. In attesa di approvazione.' });
             setIsAddDialogOpen(false);
-            setNewShift({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
         } catch (error) {
             toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
         }
@@ -893,7 +888,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         }
     };
 
-    const handleInputChange = (field: keyof typeof newShift, value: string) => setNewShift(prev => ({ ...prev, [field]: value }));
     const handleEditInputChange = (field: keyof typeof editShiftTimes, value: string) => setEditShiftTimes(prev => ({ ...prev, [field]: value }));
     
     const formatMinutes = (minutes: number) => {
@@ -977,10 +971,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                             className="p-0"
                             disabled={isDateDisabled}
                             modifiers={{ 
-                                worked: workedDays.filter(d => {
-                                    const shift = dailyShifts.find(s => isSameDay(s.startTime.toDate(), d));
-                                    return shift ? !shift.isOvertime : true;
-                                }), 
+                                worked: workedDays, 
                                 ferie: leaveDays.ferie, 
                                 malattia: leaveDays.malattia, 
                                 permesso: leaveDays.permesso,
@@ -990,12 +981,12 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                     return shift ? shift.isOvertime : false;
                                 })
                             }}
-                            modifiersClassNames={{ 
-                                worked: 'bg-primary/20', 
-                                ferie: 'bg-green-500/30 text-green-800', 
-                                malattia: 'bg-red-500/30 text-red-800', 
-                                permesso: 'bg-yellow-500/30 text-yellow-800',
+                             modifiersClassNames={{
+                                worked: 'bg-primary/20',
                                 straordinario: 'bg-amber-500/30 text-amber-800',
+                                ferie: 'bg-green-500/30 text-green-800',
+                                malattia: 'bg-red-500/30 text-red-800',
+                                permesso: 'bg-yellow-500/30 text-yellow-800',
                                 missed: 'border-2 border-destructive',
                             }}
                         />
@@ -1007,7 +998,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-amber-500/30 border"></div> Straordinario</div>
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full border-2 border-destructive"></div> Turno Mancante</div>
-                         <Button className="w-full mt-4" onClick={() => setIsAddDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
+                         <Button className="w-full mt-4" onClick={() => { setEditingShift(null); setIsAddDialogOpen(true);}}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
                     </CardFooter>
                 </Card>
             </div>
@@ -1068,12 +1059,12 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 <ResponsiveDialogHeader><ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle></ResponsiveDialogHeader>
                 <div className="grid gap-4 py-4">
                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label htmlFor="manual-entrata">Entrata*</Label><Input id="manual-entrata" type="time" value={newShift.entrata} onChange={e => handleInputChange('entrata', e.target.value)} required /></div>
-                        <div className="space-y-2"><Label htmlFor="manual-uscita">Uscita*</Label><Input id="manual-uscita" type="time" value={newShift.uscita} onChange={e => handleInputChange('uscita', e.target.value)} required /></div>
+                        <div className="space-y-2"><Label htmlFor="manual-entrata">Entrata*</Label><Input id="manual-entrata" type="time" value={editShiftTimes.entrata} onChange={e => handleEditInputChange('entrata', e.target.value)} required /></div>
+                        <div className="space-y-2"><Label htmlFor="manual-uscita">Uscita*</Label><Input id="manual-uscita" type="time" value={editShiftTimes.uscita} onChange={e => handleEditInputChange('uscita', e.target.value)} required /></div>
                      </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label htmlFor="manual-pausa">Inizio Pausa (Opz.)</Label><Input id="manual-pausa" type="time" value={newShift.pausa} onChange={e => handleInputChange('pausa', e.target.value)} /></div>
-                        <div className="space-y-2"><Label htmlFor="manual-fine-pausa">Fine Pausa (Opz.)</Label><Input id="manual-fine-pausa" type="time" value={newShift.fine_pausa} onChange={e => handleInputChange('fine_pausa', e.target.value)} /></div>
+                        <div className="space-y-2"><Label htmlFor="manual-pausa">Inizio Pausa (Opz.)</Label><Input id="manual-pausa" type="time" value={editShiftTimes.pausa} onChange={e => handleEditInputChange('pausa', e.target.value)} /></div>
+                        <div className="space-y-2"><Label htmlFor="manual-fine-pausa">Fine Pausa (Opz.)</Label><Input id="manual-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => handleEditInputChange('fine_pausa', e.target.value)} /></div>
                      </div>
                 </div>
                 <ResponsiveDialogFooter><Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Annulla</Button><Button onClick={handleAddManualShift}>Salva Turno</Button></ResponsiveDialogFooter>
