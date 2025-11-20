@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch } from 'firebase/firestore';
@@ -89,11 +89,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  
+  const [isWorkDay, setIsWorkDay] = useState(true);
   const [leaveStatus, setLeaveStatus] = useState<LeaveStatus>({ onLeave: false, type: null });
-  const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
+
   const [hasUnreadShifts, setHasUnreadShifts] = useState(false);
   const [isShiftDetailsOpen, setIsShiftDetailsOpen] = useState(false);
-  const [clockingTypeToConfirm, setClockingTypeToConfirm] = useState<'entrata' | 'uscita' | 'pausa' | 'fine_pausa' | null>(null);
+  
   const [unlockRequestSent, setUnlockRequestSent] = useState(false);
   const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
@@ -110,9 +112,18 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         const operatorDocRef = doc(firestore, 'app-users', authUser.id);
         const unsubscribe = onSnapshot(operatorDocRef, (docSnap) => {
             if (docSnap.exists()) {
-                setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
+                const operatorData = { id: docSnap.id, ...docSnap.data() } as Operator;
+                setOperator(operatorData);
+                
+                // Check if today is a workday
+                const today = new Date();
+                const dayName = dayIndexToName[getDay(today)];
+                const contractualHours = operatorData.workSchedule?.[dayName] || 0;
+                setIsWorkDay(contractualHours > 0);
+
             } else {
                 setOperator(null);
+                setIsWorkDay(false); // Default to not a workday if operator data is missing
             }
         });
 
@@ -319,28 +330,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
     if (!firestore || !operator || isProcessing) return;
     
-    setClockingTypeToConfirm(type);
-
-    if (type === 'entrata') {
-        const today = new Date();
-        const dayName = dayIndexToName[getDay(today)];
-        const contractualHours = operator.workSchedule?.[dayName] || 0;
-        
-        if (contractualHours <= 0) {
-            setIsNonWorkDayConfirmOpen(true);
-            return;
-        }
-    }
-
-    await proceedWithClocking(type);
-  };
-  
-  const proceedWithClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita' | null) => {
-      if (!firestore || !operator || !type) return;
-
-      setIsNonWorkDayConfirmOpen(false);
-
-      try {
+    try {
         const currentLoc = await getLocation();
         
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
@@ -386,7 +376,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         });
     } finally {
         setIsProcessing(false);
-        setClockingTypeToConfirm(null);
     }
   }
   
@@ -467,7 +456,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     if (isShiftDetailsOpen) {
       markShiftsAsRead();
     }
-  }, [isShiftDetailsOpen]);
+  }, [isShiftDetailsOpen, firestore, operator, shifts, hasUnreadShifts]);
   
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
@@ -504,14 +493,108 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }
 
-  if (isUserLoading || !operator) {
-      return <div className="flex items-center justify-center h-full">Caricamento utente...</div>;
-  }
-  
-  const getAlertDialogDescription = () => {
-    return "Questo non è un giorno lavorativo assegnato. Vuoi davvero timbrare?"
+  const renderNonWorkDayCard = () => {
+    return (
+        <Card className="border-blue-500 bg-blue-500/10 text-center">
+            <CardHeader className="pb-4">
+                <div className="flex items-center justify-center gap-3">
+                    <Briefcase className="h-7 w-7 text-blue-600" />
+                    <CardTitle className="text-2xl text-blue-700">Oggi non è un giorno lavorativo</CardTitle>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <p className="text-blue-600">
+                    Il sistema di timbratura è bloccato per i giorni non lavorativi.
+                </p>
+                 <p className="text-sm text-blue-700/80 mt-4">
+                  Se hai bisogno di lavorare oggi, puoi inviare una richiesta di sblocco al tuo amministratore.
+                </p>
+            </CardContent>
+             <CardFooter>
+                 <Button 
+                    className="w-full" 
+                    size="lg"
+                    disabled={unlockRequestSent || isSubmittingUnlock} 
+                    onClick={handleUnlockRequest}
+                >
+                    {isSubmittingUnlock ? <Loader2 className="animate-spin" /> : <Send className="mr-2 h-5 w-5"/>}
+                    {unlockRequestSent ? 'Richiesta Inviata' : 'Richiedi Sblocco Timbratura'}
+                </Button>
+            </CardFooter>
+        </Card>
+    );
   }
 
+  if (isUserLoading || !operator) {
+      return <div className="flex items-center justify-center h-full">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p className="text-muted-foreground">Caricamento...</p>
+          </div>
+        </div>;
+  }
+
+  const renderClockingInterface = () => {
+      if (!isClockedIn && leaveStatus.onLeave) {
+          return renderLeaveCard();
+      }
+      if (!isClockedIn && !isWorkDay) {
+          return renderNonWorkDayCard();
+      }
+      return (
+         <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <Clock className="h-6 w-6 text-primary" />
+                <CardTitle className="text-2xl">Gestione Turno</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center justify-center gap-4">
+              <div className="text-7xl lg:text-8xl font-bold font-mono tracking-tight text-foreground">
+                {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+              {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
+            </CardContent>
+            <CardFooter className="flex flex-col gap-4">
+                 {isClockedIn ? (
+                    <>
+                        <Button 
+                            className="w-full" 
+                            size="lg" 
+                            variant="destructive"
+                            disabled={isProcessing || isOnBreak} 
+                            onClick={() => handleClocking('uscita')}
+                        >
+                             {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
+                             Termina Turno
+                        </Button>
+                        <div className="flex items-center space-x-2 justify-center pt-2">
+                            <PauseCircle className="h-5 w-5 text-muted-foreground"/>
+                            <Label htmlFor="break-toggle" className={isOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
+                            <Switch 
+                                id="break-toggle" 
+                                checked={isOnBreak}
+                                onCheckedChange={handleBreakToggle}
+                                disabled={isProcessing}
+                            />
+                        </div>
+                    </>
+                ) : (
+                    <Button 
+                        className="w-full" 
+                        size="lg"
+                        disabled={isProcessing} 
+                        onClick={() => handleClocking('entrata')}
+                        style={{backgroundColor: '#22c55e', color: 'white'}}
+                    >
+                        {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
+                        Inizia Turno
+                    </Button>
+                )}
+            </CardFooter>
+          </Card>
+      );
+  }
 
   return (
     <>
@@ -520,59 +603,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>
 
-       { leaveStatus.onLeave && !isClockedIn ? renderLeaveCard() : (
-       <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center gap-3">
-            <Clock className="h-6 w-6 text-primary" />
-            <CardTitle className="text-2xl">Gestione Turno</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center gap-4">
-          <div className="text-7xl lg:text-8xl font-bold font-mono tracking-tight text-foreground">
-            {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-          {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
-        </CardContent>
-        <CardFooter className="flex flex-col gap-4">
-             {isClockedIn ? (
-                <>
-                    <Button 
-                        className="w-full" 
-                        size="lg" 
-                        variant="destructive"
-                        disabled={isProcessing || isOnBreak} 
-                        onClick={() => handleClocking('uscita')}
-                    >
-                         {isProcessing && clockingTypeToConfirm === 'uscita' ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
-                         Termina Turno
-                    </Button>
-                    <div className="flex items-center space-x-2 justify-center pt-2">
-                        <PauseCircle className="h-5 w-5 text-muted-foreground"/>
-                        <Label htmlFor="break-toggle" className={isOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
-                        <Switch 
-                            id="break-toggle" 
-                            checked={isOnBreak}
-                            onCheckedChange={handleBreakToggle}
-                            disabled={isProcessing}
-                        />
-                    </div>
-                </>
-            ) : (
-                <Button 
-                    className="w-full" 
-                    size="lg"
-                    disabled={isProcessing} 
-                    onClick={() => handleClocking('entrata')}
-                    style={{backgroundColor: '#22c55e', color: 'white'}}
-                >
-                    {isProcessing && clockingTypeToConfirm === 'entrata' ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
-                    Inizia Turno
-                </Button>
-            )}
-        </CardFooter>
-      </Card>
-      )}
+       {renderClockingInterface()}
       
       <Card>
         <CardHeader>
@@ -657,25 +688,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         </CardContent>
       </Card>
     </div>
-    <AlertDialog open={isNonWorkDayConfirmOpen} onOpenChange={setIsNonWorkDayConfirmOpen}>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-                <div className='flex items-center gap-2'>
-                    <AlertCircle className="h-6 w-6 text-yellow-500" />
-                    <AlertDialogTitle>Timbratura in Giorno Non Lavorativo</AlertDialogTitle>
-                </div>
-                <AlertDialogDescription>
-                   {getAlertDialogDescription()}
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => { setIsProcessing(false); setClockingTypeToConfirm(null); }}>Annulla</AlertDialogCancel>
-                <AlertDialogAction onClick={() => proceedWithClocking(clockingTypeToConfirm)}>Conferma</AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-    </AlertDialog>
     </>
   );
 }
-
-    
