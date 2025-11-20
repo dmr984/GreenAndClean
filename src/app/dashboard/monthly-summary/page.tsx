@@ -92,6 +92,10 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
     const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | null>(null);
 
+    const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+    const [isDeleteOptionsOpen, setIsDeleteOptionsOpen] = useState(false);
+
+
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
         const start = startOfMonth(currentMonth);
         const end = endOfMonth(currentMonth);
@@ -259,6 +263,54 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
         };
     };
 
+    const handleDeleteShift = async (includeRequests: boolean) => {
+        if (!firestore || !shiftToDelete || !operatorId) return;
+        
+        const batch = writeBatch(firestore);
+
+        shiftToDelete.events.forEach(event => {
+            const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
+            batch.delete(docRef);
+        });
+
+        if (includeRequests) {
+            const shiftDate = shiftToDelete.events[0].timestamp.toDate();
+            const startOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
+            const endOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate() + 1);
+
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operatorId}/requests`),
+                where('startDate', '>=', Timestamp.fromDate(startOfDay)),
+                where('startDate', '<', Timestamp.fromDate(endOfDay)),
+                where('type', 'in', ['permesso', 'straordinario'])
+            );
+
+            try {
+                const requestsSnapshot = await getDocs(requestsQuery);
+                requestsSnapshot.forEach(requestDoc => {
+                    batch.delete(requestDoc.ref);
+                });
+            } catch (error) {
+                console.error("Error finding associated requests to delete:", error);
+                toast({ title: 'Errore', description: 'Impossibile trovare le ore associate da eliminare.', variant: 'destructive' });
+                return;
+            }
+        }
+
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Turno eliminato.' });
+        } catch (err) {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
+        } finally {
+            setDetailShift(null);
+            setShiftToDelete(null);
+            setIsDeleteOptionsOpen(false);
+        }
+    };
+
+
     const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
         const details = {
             ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
@@ -412,12 +464,33 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                 ))}
                             </TableBody>
                         </Table>
-                        <ResponsiveDialogFooter>
+                        <ResponsiveDialogFooter className="pt-4">
                             <Button variant="outline" onClick={() => setDetailShift(null)}>Chiudi</Button>
+                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteOptionsOpen(true); }}><Trash2 className="mr-2 h-4 w-4" /> Elimina</Button>
                         </ResponsiveDialogFooter>
                     </ResponsiveDialogContent>
                 </ResponsiveDialog>
             )}
+
+            <AlertDialog open={isDeleteOptionsOpen} onOpenChange={setIsDeleteOptionsOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Elimina Turno Approvato</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Scegli come eliminare questo turno.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                        <Button variant="outline" onClick={() => setIsDeleteOptionsOpen(false)}>Annulla</Button>
+                        <Button variant="destructive" onClick={() => handleDeleteShift(false)}>
+                            Cancella solo qui
+                        </Button>
+                        <AlertDialogAction onClick={() => handleDeleteShift(true)}>
+                            Cancella ovunque
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 };
@@ -565,8 +638,8 @@ export default function MonthlySummaryPage() {
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes; // totalWorkedMinutes already excludes crystallized overtime
-        const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const ordinaryWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
         const workedDaysCount = Object.keys(dailyTimbrature).length;
 
@@ -593,7 +666,7 @@ export default function MonthlySummaryPage() {
         
         return {
             workedDays: workedDaysCount,
-            workedHours: totalWorkedHours,
+            workedHours: ordinaryWorkedHours,
             overtimeHours: overtimeTotal,
             ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -764,7 +837,7 @@ export default function MonthlySummaryPage() {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Ore Lavorate</CardTitle>
+                        <CardTitle className="text-sm font-medium">Ore Ordinarie</CardTitle>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent><div className="text-2xl font-bold">{summary.workedHours}</div></CardContent>
@@ -774,7 +847,7 @@ export default function MonthlySummaryPage() {
                     className="cursor-pointer transition-all hover:bg-muted/50"
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Straordinari (ore)</CardTitle>
+                        <CardTitle className="text-sm font-medium">Ore Straordinarie</CardTitle>
                         <Plus className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent>

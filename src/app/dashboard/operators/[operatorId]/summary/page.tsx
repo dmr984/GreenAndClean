@@ -183,8 +183,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes; // totalWorkedMinutes already excludes crystallized overtime
-        const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const ordinaryWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
     
         let ferieDaysCount = 0;
@@ -209,7 +209,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
     
         return {
             workedDays: workedDaysCount,
-            workedHours: totalWorkedHours,
+            workedHours: ordinaryWorkedHours,
             overtimeHours: overtimeTotal,
             ferieDays: ferieDaysCount,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -442,12 +442,12 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                   onClick={() => onDateClick(currentDate)}
                   className="cursor-pointer transition-all hover:bg-muted/50"
                 >
-                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ore Lavorate</CardTitle><Clock className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedHours}</div></CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ore Ordinarie</CardTitle><Clock className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedHours}</div></CardContent>
                 </Card>
                 <Card
                   onClick={() => handleSummaryCardClick('straordinario', 'Dettaglio Straordinari')}
                   className="cursor-pointer transition-all hover:bg-muted/50"
-                ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Straordinari (ore)</CardTitle><Plus className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent></Card>
+                ><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ore Straordinarie</CardTitle><Plus className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.overtimeHours}</div></CardContent></Card>
                 <Card
                   onClick={() => handleSummaryCardClick('ferie', 'Dettaglio Ferie')}
                   className="cursor-pointer transition-all hover:bg-muted/50"
@@ -534,6 +534,8 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+    const [isDeleteOptionsOpen, setIsDeleteOptionsOpen] = useState(false);
 
 
     const { startOfPeriod, endOfPeriod } = useMemo(() => {
@@ -818,13 +820,37 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         }
     };
     
-    const handleDeleteShift = async () => {
+    const handleDeleteShift = async (includeRequests: boolean) => {
         if (!firestore || !shiftToDelete || !operatorId) return;
         const batch = writeBatch(firestore);
         shiftToDelete.events.forEach(event => {
             const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
             batch.delete(docRef);
         });
+
+        if (includeRequests) {
+            const shiftDate = shiftToDelete.events[0].timestamp.toDate();
+            const startOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate());
+            const endOfDay = new Date(shiftDate.getFullYear(), shiftDate.getMonth(), shiftDate.getDate() + 1);
+
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operatorId}/requests`),
+                where('startDate', '>=', Timestamp.fromDate(startOfDay)),
+                where('startDate', '<', Timestamp.fromDate(endOfDay)),
+                where('type', 'in', ['permesso', 'straordinario'])
+            );
+
+            try {
+                const requestsSnapshot = await getDocs(requestsQuery);
+                requestsSnapshot.forEach(requestDoc => {
+                    batch.delete(requestDoc.ref);
+                });
+            } catch (error) {
+                console.error("Error finding associated requests to delete:", error);
+                toast({ title: 'Errore', description: 'Impossibile trovare le ore associate da eliminare.', variant: 'destructive' });
+                return;
+            }
+        }
         
         try {
             await batch.commit();
@@ -832,7 +858,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         } catch (error) {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         } finally {
-            setIsDeleteDialogOpen(false);
+            setIsDeleteOptionsOpen(false);
             setShiftToDelete(null);
             setIsDetailOpen(false);
         }
@@ -1038,10 +1064,23 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
             </ResponsiveDialogContent>
         </ResponsiveDialog>
 
-         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialog open={isDeleteOptionsOpen} onOpenChange={setIsDeleteOptionsOpen}>
             <AlertDialogContent>
-                <AlertDialogHeader><AlertDialogTitle>Sei sicuro di voler eliminare questo turno?</AlertDialogTitle><AlertDialogDescription>Questa azione è permanente e non può essere annullata. Tutte le timbrature associate a questo turno verranno eliminate.</AlertDialogDescription></AlertDialogHeader>
-                <AlertDialogFooter><AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleDeleteShift}>Elimina</AlertDialogAction></AlertDialogFooter>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Elimina Turno</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Scegli come eliminare questo turno.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                    <Button variant="outline" onClick={() => setIsDeleteOptionsOpen(false)}>Annulla</Button>
+                    <Button variant="destructive" onClick={() => handleDeleteShift(false)}>
+                       Cancella solo qui
+                    </Button>
+                    <AlertDialogAction onClick={() => handleDeleteShift(true)}>
+                        Cancella ovunque
+                    </AlertDialogAction>
+                </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
 
@@ -1096,9 +1135,9 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
                 <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
                     <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                    {detailShift && !detailShift.isOvertime && (
+                    {detailShift && (
                       <>
-                        <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteDialogOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                        <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsDeleteOptionsOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                         <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                       </>
                     )}
@@ -1177,7 +1216,7 @@ export default function OperatorSummaryPage() {
             // 2. Handle requests that overlap with the month
             const requestsQuery = query(
                 collection(firestore, `app-users/${operatorId}/requests`),
-                where('endDate', '>=', monthStart)
+                 where('endDate', '>=', monthStart)
             );
             const requestsSnapshot = await getDocs(requestsQuery);
     
