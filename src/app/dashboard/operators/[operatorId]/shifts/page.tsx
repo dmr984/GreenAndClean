@@ -50,6 +50,18 @@ type Shift = {
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
 };
 
+type StraordinarioEvent = {
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+};
+
+type StraordinarioShift = {
+    id: string;
+    events: StraordinarioEvent[];
+    status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
+    date: Timestamp;
+};
+
 type UnlockRequest = {
     id: string;
     startDate: Timestamp;
@@ -72,6 +84,7 @@ export default function ShiftApprovalPage() {
     const [operator, setOperator] = useState<Operator | null>(null);
 
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
+    const [overtimeShifts, setOvertimeShifts] = useState<StraordinarioShift[]>([]);
     const [unlockRequests, setUnlockRequests] = useState<UnlockRequest[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
@@ -115,6 +128,7 @@ export default function ShiftApprovalPage() {
         
         const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
+        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), orderBy('date', 'desc'));
 
         const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
             const allClockings = clockingSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
@@ -134,7 +148,6 @@ export default function ShiftApprovalPage() {
                 }
             });
             setUnlockRequests(pendingUnlockRequests);
-
 
             const groupedShifts: Shift[] = [];
             let currentShiftEvents: Timbratura[] = [];
@@ -167,8 +180,18 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile caricare le timbrature.', variant: 'destructive' });
             setIsLoading(false);
         });
+        
+        const unsubOvertime = onSnapshot(overtimeQuery, (snapshot) => {
+            const shifts = snapshot.docs.map(d => ({id: d.id, ...d.data() } as StraordinarioShift));
+            setOvertimeShifts(shifts);
+        }, error => {
+             console.error("Error fetching overtime shifts: ", error);
+        });
 
-        return () => unsubClockings();
+        return () => {
+            unsubClockings();
+            unsubOvertime();
+        }
     }, [firestore, operatorId, toast]);
 
     const { pendingShifts, approvedShifts } = useMemo(() => {
@@ -176,6 +199,10 @@ export default function ShiftApprovalPage() {
         const approved = allShifts.filter(s => s.status === 'confermato' || s.status === 'rifiutato');
         return { pendingShifts: pending, approvedShifts: approved };
     }, [allShifts]);
+
+    const pendingOvertimeShifts = useMemo(() => {
+        return overtimeShifts.filter(s => s.status === 'in_attesa_di_approvazione');
+    }, [overtimeShifts]);
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): { status: Shift['status'], workDuration: number, isOnLeaveDay: boolean } => {
         const hasPending = events.some(e => e.status === 'sospesa');
@@ -416,7 +443,6 @@ export default function ShiftApprovalPage() {
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
         const totalMinutes = shift.workDuration;
     
-        // If it's a non-working day, all hours are overtime.
         if (contractualMinutes === 0 && totalMinutes > 0) {
             const overtimeHours = Math.floor(totalMinutes / 60);
             const remainingMinutes = totalMinutes % 60;
@@ -424,7 +450,6 @@ export default function ShiftApprovalPage() {
             return { overtime: calculatedOvertime, leave: 0 };
         }
     
-        // If it's a working day, calculate normally.
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
             const overtimeHours = Math.floor(overtimeMinutes / 60);
@@ -475,7 +500,6 @@ export default function ShiftApprovalPage() {
                     } else if (isSameDay(dayToUnlock, endDate.toDate())) {
                         transaction.update(leaveReqRef, { endDate: Timestamp.fromDate(subDays(endDate.toDate(), 1)) });
                     } else {
-                        // Split the request
                         transaction.update(leaveReqRef, { endDate: Timestamp.fromDate(subDays(dayToUnlock, 1)) });
                         const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
                         const { id, ...restOfRequest } = leaveRequestToModify.data;
@@ -602,6 +626,55 @@ export default function ShiftApprovalPage() {
         currentPage * ITEMS_PER_PAGE,
         (currentPage + 1) * ITEMS_PER_PAGE
     );
+    
+    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
+        if (!firestore || !operatorId) return;
+
+        const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
+        const newStatus = action === 'approve' ? 'approvato' : 'rifiutato';
+        
+        try {
+            await updateDoc(shiftRef, { status: newStatus });
+            
+            if (action === 'approve') {
+                let workDuration = 0;
+                const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
+                const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+
+                if (startTime && endTime) {
+                    let totalMillis = endTime.toMillis() - startTime.toMillis();
+                    let breakStart: Timestamp | null = null;
+                    shift.events.forEach(e => {
+                        if (e.type === 'pausa') breakStart = e.timestamp;
+                        if (e.type === 'fine_pausa' && breakStart) {
+                            totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                            breakStart = null;
+                        }
+                    });
+                    workDuration = totalMillis / (1000 * 60);
+                }
+                const overtimeHours = Math.floor(workDuration / 60) + ((workDuration % 60) >= 50 ? 1 : 0);
+
+                if (overtimeHours > 0) {
+                     const overtimeRequest = {
+                        userId: operator.id,
+                        type: 'straordinario' as const,
+                        status: 'approvato' as const,
+                        startDate: shift.date,
+                        endDate: shift.date,
+                        hours: overtimeHours,
+                        reason: 'Straordinario da giorno non lavorativo',
+                        createdAt: serverTimestamp(),
+                        viewedByOperator: false,
+                    };
+                    await addDoc(collection(firestore, `app-users/${operator.id}/requests`), overtimeRequest);
+                }
+            }
+            toast({ title: 'Successo', description: `Turno straordinario ${newStatus}.` });
+        } catch (error) {
+             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
+        }
+    };
 
 
     return (
@@ -625,6 +698,42 @@ export default function ShiftApprovalPage() {
                                             <TableCell className="font-medium">{format(req.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button size="sm" onClick={() => handleApproveUnlock(req)}>Approva Sblocco</Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {pendingOvertimeShifts.length > 0 && (
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Turni Straordinari da Approvare</CardTitle>
+                        <CardDescription>Approva o rifiuta i turni svolti in giorni non lavorativi.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="border rounded-lg overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Data</TableHead>
+                                        <TableHead>Inizio</TableHead>
+                                        <TableHead>Fine</TableHead>
+                                        <TableHead className="text-right">Azioni</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {pendingOvertimeShifts.map((shift) => (
+                                        <TableRow key={shift.id}>
+                                            <TableCell>{formatDate(shift.date)}</TableCell>
+                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
+                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" onClick={() => handleOvertimeShiftAction(shift, 'approve')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => handleOvertimeShiftAction(shift, 'reject')}><XCircle className="h-5 w-5 text-red-500" /></Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}

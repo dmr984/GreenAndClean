@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -71,12 +71,24 @@ type UserData = {
 };
 
 interface OperatorDashboardProps {
-  user: UserData | null; // This prop is now coming from the layout, but we will transition to the hook
+  user: UserData | null;
 }
 
 type LeaveStatus = {
     onLeave: boolean;
     type: 'ferie' | 'malattia' | null;
+}
+
+type StraordinarioEvent = {
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+}
+
+type StraordinarioShift = {
+    id?: string;
+    events: StraordinarioEvent[];
+    status: 'in_corso' | 'in_attesa_di_approvazione';
+    date: Timestamp;
 }
 
 export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
@@ -99,10 +111,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [unlockRequestSent, setUnlockRequestSent] = useState(false);
   const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
+  const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
+  const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
+
   const { toast } = useToast();
   const firestore = useFirestore();
   
-  // Fetch full operator data including workSchedule
     useEffect(() => {
         if (!firestore || !authUser?.id) {
             setOperator(null);
@@ -115,7 +129,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 const operatorData = { id: docSnap.id, ...docSnap.data() } as Operator;
                 setOperator(operatorData);
                 
-                // Check if today is a workday
                 const today = new Date();
                 const dayName = dayIndexToName[getDay(today)];
                 const contractualHours = operatorData.workSchedule?.[dayName] || 0;
@@ -123,7 +136,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
             } else {
                 setOperator(null);
-                setIsWorkDay(false); // Default to not a workday if operator data is missing
+                setIsWorkDay(false); 
             }
         });
 
@@ -153,11 +166,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }, [firestore, operator, todayTimestamp, tomorrowTimestamp]);
   
-  // Check for leave and unlock requests
     useEffect(() => {
         if (!firestore || !operator?.id) return;
 
-        // Use onSnapshot to listen for real-time changes
         const requestsQuery = query(
             collection(firestore, `app-users/${operator.id}/requests`),
             where('status', 'in', ['approvato', 'in_attesa'])
@@ -188,7 +199,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             setUnlockRequestSent(unlockRequestExists);
         });
 
-        return () => unsubscribe(); // Cleanup listener on unmount
+        return () => unsubscribe(); 
     }, [firestore, operator]);
 
 
@@ -458,6 +469,52 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
   }, [isShiftDetailsOpen, firestore, operator, shifts, hasUnreadShifts]);
   
+  const handleOvertimeClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
+        if (!firestore || !operator) return;
+
+        const newEvent: StraordinarioEvent = { type, timestamp: Timestamp.now() };
+
+        let updatedShift: StraordinarioShift;
+
+        if (currentOvertimeShift) {
+            updatedShift = { ...currentOvertimeShift, events: [...currentOvertimeShift.events, newEvent] };
+        } else {
+            updatedShift = {
+                events: [newEvent],
+                status: 'in_corso',
+                date: Timestamp.fromDate(startOfDay(new Date())),
+            };
+        }
+
+        if (type === 'uscita') {
+            updatedShift.status = 'in_attesa_di_approvazione';
+        }
+
+        const collectionRef = collection(firestore, `app-users/${operator.id}/straordinari`);
+        
+        try {
+            if (updatedShift.id) {
+                const docRef = doc(collectionRef, updatedShift.id);
+                await updateDoc(docRef, updatedShift);
+            } else {
+                const docRef = await addDoc(collectionRef, updatedShift);
+                updatedShift.id = docRef.id;
+            }
+            
+            setCurrentOvertimeShift(updatedShift);
+            
+            if (updatedShift.status === 'in_attesa_di_approvazione') {
+                toast({ title: "Turno Straordinario Inviato", description: "Il tuo turno è stato inviato per l'approvazione."});
+                setIsOvertimeModalOpen(false);
+                setCurrentOvertimeShift(null);
+            }
+
+        } catch (error) {
+            console.error("Error saving overtime shift:", error);
+            toast({ title: 'Errore', description: 'Impossibile salvare il turno straordinario.', variant: 'destructive'});
+        }
+    };
+
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
     const leaveTypeText = leaveStatus.type === 'ferie' ? 'Ferie' : 'Malattia';
@@ -494,6 +551,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const renderNonWorkDayCard = () => {
+    const isOvertimeClockedIn = currentOvertimeShift?.events.some(e => e.type === 'entrata') && !currentOvertimeShift?.events.some(e => e.type === 'uscita');
+    const isOvertimeOnBreak = currentOvertimeShift?.events[currentOvertimeShift.events.length - 1]?.type === 'pausa';
+    
     return (
         <Card className="border-blue-500 bg-blue-500/10 text-center">
             <CardHeader className="pb-4">
@@ -504,22 +564,52 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardHeader>
             <CardContent>
                 <p className="text-blue-600">
-                    Il sistema di timbratura è bloccato per i giorni non lavorativi.
-                </p>
-                 <p className="text-sm text-blue-700/80 mt-4">
-                  Se hai bisogno di lavorare oggi, puoi inviare una richiesta di sblocco al tuo amministratore.
+                    Puoi registrare un turno di lavoro straordinario.
                 </p>
             </CardContent>
              <CardFooter>
-                 <Button 
-                    className="w-full" 
-                    size="lg"
-                    disabled={unlockRequestSent || isSubmittingUnlock} 
-                    onClick={handleUnlockRequest}
-                >
-                    {isSubmittingUnlock ? <Loader2 className="animate-spin" /> : <Send className="mr-2 h-5 w-5"/>}
-                    {unlockRequestSent ? 'Richiesta Inviata' : 'Richiedi Sblocco Timbratura'}
-                </Button>
+                <Dialog open={isOvertimeModalOpen} onOpenChange={setIsOvertimeModalOpen}>
+                    <DialogTrigger asChild>
+                        <Button className="w-full" size="lg">
+                            <PlusCircle className="mr-2 h-5 w-5" /> Avvia Turno Straordinario
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Registrazione Turno Straordinario</DialogTitle>
+                             <DialogDescription>
+                                Esegui le timbrature per il tuo turno. Al termine, verrà inviato per l'approvazione.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col items-center justify-center gap-4 py-8">
+                             <div className="text-5xl font-bold font-mono tracking-tight text-foreground">
+                                {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            <div className="flex flex-col gap-4 w-full mt-4">
+                                {isOvertimeClockedIn ? (
+                                    <>
+                                        <Button className="w-full" size="lg" variant="destructive" disabled={isOvertimeOnBreak} onClick={() => handleOvertimeClocking('uscita')}>
+                                            <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
+                                        </Button>
+                                        <div className="flex items-center space-x-2 justify-center pt-2">
+                                            <PauseCircle className="h-5 w-5 text-muted-foreground"/>
+                                            <Label htmlFor="overtime-break-toggle" className={isOvertimeOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
+                                            <Switch 
+                                                id="overtime-break-toggle" 
+                                                checked={isOvertimeOnBreak}
+                                                onCheckedChange={(checked) => handleOvertimeClocking(checked ? 'pausa' : 'fine_pausa')}
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <Button className="w-full" size="lg" style={{backgroundColor: '#22c55e', color: 'white'}} onClick={() => handleOvertimeClocking('entrata')}>
+                                        <Play className="mr-2 h-5 w-5" /> Inizia Turno Straordinario
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </CardFooter>
         </Card>
     );

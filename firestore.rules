@@ -22,6 +22,9 @@ service cloud.firestore {
         // Allow anyone to read or write clocking events.
         allow read, write: if true;
       }
+       match /straordinari/{straordinarioId} {
+        allow read, write: if true;
+      }
 
       match /requests/{requestId} {
         // Allow anyone to read or write requests.

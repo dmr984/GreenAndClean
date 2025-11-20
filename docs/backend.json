@@ -115,6 +115,29 @@
       },
       "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
     },
+    "Straordinario": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Straordinario",
+        "type": "object",
+        "description": "Represents a single overtime shift performed on a non-working day.",
+        "properties": {
+            "userId": { "type": "string" },
+            "date": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "enum": ["in_corso", "in_attesa_di_approvazione", "approvato", "rifiutato"] },
+            "events": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": { "type": "string", "enum": ["entrata", "pausa", "fine_pausa", "uscita"] },
+                        "timestamp": { "type": "string", "format": "date-time" }
+                    },
+                    "required": ["type", "timestamp"]
+                }
+            }
+        },
+        "required": ["userId", "date", "status", "events"]
+    },
      "Request": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Request",
@@ -280,6 +303,18 @@
         }
       },
       {
+            "path": "/app-users/{userId}/straordinari/{straordinarioId}",
+            "definition": {
+                "entityName": "Straordinario",
+                "schema": { "$ref": "#/backend/entities/Straordinario" },
+                "description": "Stores overtime shifts for a specific user.",
+                "params": [
+                    { "name": "userId", "description": "The user's unique ID." },
+                    { "name": "straordinarioId", "description": "The overtime shift's unique ID." }
+                ]
+            }
+      },
+      {
         "path": "/app-users/{userId}/requests/{requestId}",
         "definition": {
           "entityName": "Request",
@@ -317,5 +352,3 @@
     "reasoning": "Updated the Operator entity to use a flexible workSchedule object, allowing different hours to be assigned to each day of the week. This replaces the previous workHours and workDays fields."
   }
 }
-
-    
