@@ -468,35 +468,31 @@ export default function ShiftApprovalPage() {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
     
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
-        const totalMinutes = shift.workDuration;
+        const totalMinutes = Math.round(shift.workDuration);
     
-        const workedHours = Math.floor(totalMinutes / 60);
-        const workedRemainderMinutes = totalMinutes % 60;
-
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
-            const overtimeTotalHours = Math.floor(overtimeMinutes / 60);
+            const overtimeHours = Math.floor(overtimeMinutes / 60);
             const overtimeRemainderMinutes = overtimeMinutes % 60;
-            
+    
             if (overtimeRemainderMinutes >= 50) {
-                return { ordinary: getContractualHoursForShift(shift), overtime: overtimeTotalHours + 1, leave: 0 };
+                return { ordinary: getContractualHoursForShift(shift), overtime: overtimeHours + 1, leave: 0 };
             } else {
-                 return { ordinary: workedHours, overtime: 0, leave: 0 };
+                return { ordinary: getContractualHoursForShift(shift), overtime: overtimeHours, leave: 0 };
             }
-
         } else if (totalMinutes < contractualMinutes) {
             const leaveMinutes = contractualMinutes - totalMinutes;
-            const leaveTotalHours = Math.floor(leaveMinutes / 60);
+            const leaveHours = Math.floor(leaveMinutes / 60);
             const leaveRemainderMinutes = leaveMinutes % 60;
-
+    
             if (leaveRemainderMinutes >= 50) {
-                 return { ordinary: workedHours, overtime: 0, leave: leaveTotalHours + 1 };
+                return { ordinary: Math.floor(totalMinutes / 60), overtime: 0, leave: leaveHours + 1 };
             } else {
-                 return { ordinary: workedHours, overtime: 0, leave: leaveTotalHours };
+                return { ordinary: Math.floor(totalMinutes / 60), overtime: 0, leave: leaveHours };
             }
         }
     
-        return { ordinary: workedHours, overtime: 0, leave: 0 };
+        return { ordinary: getContractualHoursForShift(shift), overtime: 0, leave: 0 };
     };
 
     const handleOpenApproveDialog = (shift: Shift) => {
@@ -634,7 +630,7 @@ export default function ShiftApprovalPage() {
             newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const newOvertimeShift = {
-                date: Timestamp.fromDate(newShiftDate),
+                date: Timestamp.fromDate(startOfDay(newShiftDate)),
                 events: newEvents,
                 status: 'in_attesa_di_approvazione' as const,
                 userId: operatorId,
