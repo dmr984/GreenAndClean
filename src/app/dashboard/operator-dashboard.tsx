@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch } from 'firebase/firestore';
@@ -74,7 +74,6 @@ interface OperatorDashboardProps {
   user: UserData | null; // This prop is now coming from the layout, but we will transition to the hook
 }
 
-
 type LeaveStatus = {
     onLeave: boolean;
     type: 'ferie' | 'malattia' | null;
@@ -95,6 +94,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [hasUnreadShifts, setHasUnreadShifts] = useState(false);
   const [isShiftDetailsOpen, setIsShiftDetailsOpen] = useState(false);
   const [clockingTypeToConfirm, setClockingTypeToConfirm] = useState<'entrata' | 'uscita' | 'pausa' | 'fine_pausa' | null>(null);
+  const [unlockRequestSent, setUnlockRequestSent] = useState(false);
+  const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -141,37 +142,44 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }, [firestore, operator, todayTimestamp, tomorrowTimestamp]);
   
-  // Check for leave
+  // Check for leave and unlock requests
     useEffect(() => {
         if (!firestore || !operator?.id) return;
 
-        const checkLeaveStatus = async () => {
+        const checkLeaveAndUnlockStatus = async () => {
             const today = new Date();
+            const startOfToday = startOfDay(today);
+            const endOfToday = endOfDay(today);
+            
             const requestsQuery = query(
-                collection(firestore, `app-users/${operator.id}/requests`)
+                collection(firestore, `app-users/${operator.id}/requests`),
+                where('status', 'in', ['approvato', 'in_attesa'])
             );
             
             const snapshot = await getDocs(requestsQuery);
             let onLeaveToday = false;
             let leaveType: LeaveStatus['type'] = null;
+            let unlockRequestExists = false;
 
             snapshot.forEach(doc => {
                 const request = doc.data();
-                 if (request.status !== 'approvato') return;
-
                 const startDate = request.startDate.toDate();
                 const endDate = request.endDate.toDate();
 
-                if (isSameDay(today, startDate) || isSameDay(today, endDate) || (today > startDate && today < endDate)) {
-                    if(request.type === 'ferie' || request.type === 'malattia') {
+                if (isWithinInterval(today, { start: startDate, end: endDate })) {
+                    if (request.type === 'ferie' || request.type === 'malattia') {
                       onLeaveToday = true;
                       leaveType = request.type;
+                    }
+                    if (request.type === 'sblocco_timbratura' && request.status === 'in_attesa') {
+                       unlockRequestExists = true;
                     }
                 }
             });
             setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
+            setUnlockRequestSent(unlockRequestExists);
         };
-        checkLeaveStatus();
+        checkLeaveAndUnlockStatus();
     }, [firestore, operator]);
 
 
@@ -320,7 +328,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         const dayName = dayIndexToName[getDay(today)];
         const contractualHours = operator.workSchedule?.[dayName] || 0;
         
-        if (contractualHours <= 0 || leaveStatus.onLeave) {
+        if (contractualHours <= 0) {
             setIsNonWorkDayConfirmOpen(true);
             return;
         }
@@ -394,6 +402,50 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       handleClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
 
+  const handleUnlockRequest = async () => {
+    if (!firestore || !operator) return;
+
+    setIsSubmittingUnlock(true);
+    const today = new Date();
+    const unlockRequestData = {
+        userId: operator.id,
+        type: 'sblocco_timbratura' as const,
+        status: 'in_attesa' as const,
+        startDate: Timestamp.fromDate(startOfDay(today)),
+        endDate: Timestamp.fromDate(endOfDay(today)),
+        createdAt: serverTimestamp(),
+        viewedByOperator: true,
+    };
+    
+    const requestsCollection = collection(firestore, `app-users/${operator.id}/requests`);
+    
+    try {
+        await addDoc(requestsCollection, unlockRequestData);
+        toast({
+            title: 'Richiesta Inviata',
+            description: 'La tua richiesta di sblocco è stata inviata all\'amministratore.',
+        });
+        setUnlockRequestSent(true);
+    } catch (error: any) {
+         if (error.code === 'permission-denied') {
+            const contextualError = new FirestorePermissionError({
+                operation: 'create',
+                path: requestsCollection.path,
+                requestResourceData: unlockRequestData
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        } else {
+            toast({
+                title: 'Errore',
+                description: 'Impossibile inviare la richiesta di sblocco.',
+                variant: 'destructive',
+            });
+        }
+    } finally {
+        setIsSubmittingUnlock(false);
+    }
+  };
+
   const markShiftsAsRead = async () => {
     if (!firestore || !operator?.id || !hasUnreadShifts) return;
 
@@ -431,19 +483,18 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardHeader>
             <CardContent>
                 <p className="text-yellow-600 text-center">
-                    Oggi sei in {leaveStatus.type}. Non puoi timbrare normalmente.
+                    Oggi sei in {leaveStatus.type}. Il sistema di timbratura è bloccato.
                 </p>
             </CardContent>
              <CardFooter>
                  <Button 
                     className="w-full" 
                     size="lg"
-                    disabled={isProcessing} 
-                    onClick={() => handleClocking('entrata')}
-                    variant="outline"
+                    disabled={unlockRequestSent || isSubmittingUnlock} 
+                    onClick={handleUnlockRequest}
                 >
-                    {isProcessing ? <Loader2 className="animate-spin" /> : <AlertCircle className="mr-2 h-5 w-5"/>}
-                    Timbra per Emergenza
+                    {isSubmittingUnlock ? <Loader2 className="animate-spin" /> : <Send className="mr-2 h-5 w-5"/>}
+                    {unlockRequestSent ? 'Richiesta Inviata' : 'Richiedi Sblocco Timbratura'}
                 </Button>
             </CardFooter>
         </Card>
@@ -455,9 +506,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
   
   const getAlertDialogDescription = () => {
-    if (leaveStatus.onLeave) {
-        return `Oggi risulta un giorno di ${leaveStatus.type}. Sei sicuro di voler timbrare? La timbratura verrà inviata come richiesta di emergenza.`
-    }
     return "Questo non è un giorno lavorativo assegnato. Vuoi davvero timbrare?"
   }
 

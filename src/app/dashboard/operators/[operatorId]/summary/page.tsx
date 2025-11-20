@@ -248,6 +248,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                     return;
                 }
 
+                // Split the request
                 const newEndDate1 = subDays(dayToCancel, 1);
                 transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
 

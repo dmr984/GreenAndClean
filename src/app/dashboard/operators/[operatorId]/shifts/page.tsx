@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format, set, getDay as getDayFns, isSameDay } from 'date-fns';
+import { format, set, getDay as getDayFns, isSameDay, addDays, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -50,6 +50,12 @@ type Shift = {
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
 };
 
+type UnlockRequest = {
+    id: string;
+    startDate: Timestamp;
+    type: 'sblocco_timbratura';
+}
+
 type ApprovalData = {
     shiftToApprove: Shift | null;
     overtimeHours: string;
@@ -66,6 +72,7 @@ export default function ShiftApprovalPage() {
     const [operator, setOperator] = useState<Operator | null>(null);
 
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
+    const [unlockRequests, setUnlockRequests] = useState<UnlockRequest[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     
@@ -107,21 +114,26 @@ export default function ShiftApprovalPage() {
         if (!firestore || !operatorId) return;
         
         const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
-        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('status', '==', 'approvato'));
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
 
         const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
             const allClockings = clockingSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             
             const requestSnapshot = await getDocs(requestsQuery);
             const leaveDays = new Set<string>();
+            const pendingUnlockRequests: UnlockRequest[] = [];
             requestSnapshot.forEach(doc => {
                 const req = doc.data();
-                if (req.type === 'ferie' || req.type === 'malattia') {
+                if (req.type === 'ferie' || req.type === 'malattia' && req.status === 'approvato') {
                     for(let d = req.startDate.toDate(); d <= req.endDate.toDate(); d.setDate(d.getDate() + 1)) {
                         leaveDays.add(format(d, 'yyyy-MM-dd'));
                     }
                 }
+                if (req.type === 'sblocco_timbratura' && req.status === 'in_attesa') {
+                    pendingUnlockRequests.push({id: doc.id, ...req} as UnlockRequest);
+                }
             });
+            setUnlockRequests(pendingUnlockRequests);
 
 
             const groupedShifts: Shift[] = [];
@@ -422,6 +434,65 @@ export default function ShiftApprovalPage() {
         return { overtime: 0, leave: 0 };
     };
 
+    const handleApproveUnlock = async (unlockRequest: UnlockRequest) => {
+        if (!firestore || !operatorId) return;
+
+        const dayToUnlock = unlockRequest.startDate.toDate();
+
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                const requestsQuery = query(
+                    collection(firestore, `app-users/${operatorId}/requests`),
+                    where('status', '==', 'approvato'),
+                    where('type', 'in', ['ferie', 'malattia'])
+                );
+                const requestsSnapshot = await getDocs(requestsQuery);
+
+                let leaveRequestToModify: {id: string, data: any} | null = null;
+                requestsSnapshot.forEach(doc => {
+                    const req = doc.data();
+                    const startDate = req.startDate.toDate();
+                    const endDate = req.endDate.toDate();
+                    if (isSameDay(dayToUnlock, startDate) || isSameDay(dayToUnlock, endDate) || (dayToUnlock > startDate && dayToUnlock < endDate)) {
+                        leaveRequestToModify = { id: doc.id, data: req };
+                    }
+                });
+
+                if (leaveRequestToModify) {
+                    const leaveReqRef = doc(firestore, `app-users/${operatorId}/requests`, leaveRequestToModify.id);
+                    const { startDate, endDate } = leaveRequestToModify.data;
+
+                    if (isSameDay(startDate.toDate(), endDate.toDate())) {
+                        transaction.delete(leaveReqRef);
+                    } else if (isSameDay(dayToUnlock, startDate.toDate())) {
+                        transaction.update(leaveReqRef, { startDate: Timestamp.fromDate(addDays(startDate.toDate(), 1)) });
+                    } else if (isSameDay(dayToUnlock, endDate.toDate())) {
+                        transaction.update(leaveReqRef, { endDate: Timestamp.fromDate(subDays(endDate.toDate(), 1)) });
+                    } else {
+                        // Split the request
+                        transaction.update(leaveReqRef, { endDate: Timestamp.fromDate(subDays(dayToUnlock, 1)) });
+                        const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
+                        const { id, ...restOfRequest } = leaveRequestToModify.data;
+                        transaction.set(newRequestRef, {
+                            ...restOfRequest,
+                            startDate: Timestamp.fromDate(addDays(dayToUnlock, 1)),
+                            endDate: endDate,
+                            createdAt: serverTimestamp(),
+                            viewedByOperator: false,
+                        });
+                    }
+                }
+                
+                const unlockRequestRef = doc(firestore, `app-users/${operatorId}/requests`, unlockRequest.id);
+                transaction.update(unlockRequestRef, { status: 'approvato', viewedByOperator: false });
+            });
+            toast({ title: 'Successo', description: "Sblocco approvato. L'operatore ora può timbrare." });
+        } catch (error) {
+            console.error("Error approving unlock request:", error);
+            toast({ title: 'Errore', description: 'Impossibile approvare lo sblocco.', variant: 'destructive' });
+        }
+    };
+
 
     const formatMinutes = (minutes: number) => {
         if (isNaN(minutes) || minutes < 0) return '00:00';
@@ -529,6 +600,35 @@ export default function ShiftApprovalPage() {
 
     return (
         <div className="space-y-6">
+            
+            {unlockRequests.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-3">
+                            <Unlock className="h-6 w-6 text-primary" />
+                            <CardTitle>Richieste Sblocco Timbratura</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="border rounded-lg overflow-x-auto">
+                            <Table>
+                                <TableHeader><TableRow><TableHead>Data</TableHead><TableHead className="text-right">Azione</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {unlockRequests.map(req => (
+                                        <TableRow key={req.id}>
+                                            <TableCell className="font-medium">{format(req.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button size="sm" onClick={() => handleApproveUnlock(req)}>Approva Sblocco</Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>

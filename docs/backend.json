@@ -127,7 +127,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["ferie", "permesso", "malattia", "straordinario"],
+          "enum": ["ferie", "permesso", "malattia", "straordinario", "sblocco_timbratura"],
           "description": "The type of request."
         },
         "status": {
