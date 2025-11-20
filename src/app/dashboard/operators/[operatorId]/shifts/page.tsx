@@ -1180,6 +1180,7 @@ export default function ShiftApprovalPage() {
 
                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
                         <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                        <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                         {detailShift && detailShift.status === 'in_sospeso' && (
                           <>
                             <Button variant="destructive" onClick={() => handleRejectShift(detailShift)}>
@@ -1193,7 +1194,6 @@ export default function ShiftApprovalPage() {
                         {detailShift && detailShift.status !== 'in_sospeso' && (
                           <>
                             <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
-                            <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                           </>
                         )}
                     </ResponsiveDialogFooter>
