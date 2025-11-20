@@ -496,27 +496,39 @@ export default function ShiftApprovalPage() {
         return totalHours + (remainingMinutes >= 55 ? 1 : 0);
     };
 
-
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
     
-        const contractualMinutes = getContractualHoursForShift(shift) * 60;
+        const contractualHours = getContractualHoursForShift(shift);
         const totalMinutesWorked = Math.round(shift.workDuration);
 
+        // Scenario 1: Non-working day (pure overtime)
+        if (contractualHours === 0) {
+            return {
+                ordinary: 0,
+                overtime: roundOvertimeHours(totalMinutesWorked),
+                leave: 0
+            };
+        }
+
+        // Scenario 2: Working day
+        const contractualMinutes = contractualHours * 60;
         if (totalMinutesWorked > contractualMinutes) {
+            // Overtime occurred
             const overtimeMinutes = totalMinutesWorked - contractualMinutes;
             return { 
-                ordinary: getContractualHoursForShift(shift), 
+                ordinary: contractualHours, 
                 overtime: roundOvertimeHours(overtimeMinutes), 
                 leave: 0 
             };
         } else {
+            // Less than or equal to contractual hours
             const ordinaryMinutes = totalMinutesWorked;
             const leaveMinutes = contractualMinutes - totalMinutesWorked;
             return { 
                 ordinary: roundOrdinaryHours(ordinaryMinutes), 
                 overtime: 0, 
-                leave: roundOrdinaryHours(leaveMinutes) // Ammanco calcolato con la stessa logica delle ore ordinarie
+                leave: roundOrdinaryHours(leaveMinutes)
             };
         }
     };
@@ -1139,7 +1151,7 @@ export default function ShiftApprovalPage() {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                                <p className="text-2xl font-bold">{roundOvertimeHours(detailShift.workDuration - (getContractualHoursForShift(detailShift) * 60))}h</p>
+                                <p className="text-2xl font-bold">{calculateHours(detailShift).overtime}h</p>
                             </div>
                         </div>
                     )}
