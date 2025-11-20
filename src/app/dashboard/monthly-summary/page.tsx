@@ -159,8 +159,8 @@ export default function MonthlySummaryPage() {
 
             dayEvents.forEach(event => {
                 if (event.type === 'entrata') {
-                    entrata = event.timestamp;
-                } else if (event.type === 'pausa' && entrata) {
+                    if (!entrata) entrata = event.timestamp;
+                } else if (event.type === 'pausa' && entrata && !currentBreakStart) {
                     currentBreakStart = event.timestamp;
                 } else if (event.type === 'fine_pausa' && entrata && currentBreakStart) {
                      totalWorkedMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
@@ -185,7 +185,7 @@ export default function MonthlySummaryPage() {
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes;
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
         const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
 
