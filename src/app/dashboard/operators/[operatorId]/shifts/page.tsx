@@ -115,7 +115,6 @@ export default function ShiftApprovalPage() {
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
-    const [isNonWorkDayConfirmOpen, setIsNonWorkDayConfirmOpen] = useState(false);
     
     const [currentPage, setCurrentPage] = useState(0);
 
@@ -578,69 +577,73 @@ export default function ShiftApprovalPage() {
     };
     
     const handleAddManualShift = async () => {
-        if (!operator || !newShiftDate) return;
-        
-        const dayName = dayIndexToName[getDayFns(newShiftDate)];
-        const contractualHours = operator.workSchedule[dayName] || 0;
-
-        if (contractualHours <= 0) {
-            setIsNonWorkDayConfirmOpen(true);
-            return;
-        }
-        await proceedWithAddManualShift();
-    }
-
-    const proceedWithAddManualShift = async () => {
-        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita) {
+        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita || !operator) {
             toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
             return;
         }
 
-        setIsNonWorkDayConfirmOpen(false);
-
-        const createTimestamp = (time: string): Timestamp | null => {
-            if (!time) return null;
+        const createTimestamp = (time: string): Timestamp => {
             const [hours, minutes] = time.split(':').map(Number);
-            if(isNaN(hours) || isNaN(minutes)) return null;
             return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
+        
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
+        const isWorkDay = (operator.workSchedule[dayName] || 0) > 0;
 
-        const batch = writeBatch(firestore);
-        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        if (isWorkDay) {
+            // Regular Shift
+            const batch = writeBatch(firestore);
+            const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+            const events: { type: Timbratura['type'], time: string }[] = [
+                { type: 'entrata', time: newShiftTimes.entrata },
+                { type: 'uscita', time: newShiftTimes.uscita },
+                { type: 'pausa', time: newShiftTimes.pausa },
+                { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
+            ];
 
-        const events: { type: Timbratura['type'], time: string }[] = [
-            { type: 'entrata', time: newShiftTimes.entrata },
-            { type: 'uscita', time: newShiftTimes.uscita },
-            { type: 'pausa', time: newShiftTimes.pausa },
-            { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
-        ];
-
-        for (const event of events) {
-            if (event.time) {
-                const timestamp = createTimestamp(event.time);
-                if (!timestamp) {
-                    toast({ title: `Orario non valido per ${event.type}`, variant: 'destructive'});
-                    return;
+            for (const event of events) {
+                if (event.time) {
+                    const newDocRef = doc(timbratureCollectionRef);
+                    batch.set(newDocRef, {
+                        userId: operatorId, type: event.type, timestamp: createTimestamp(event.time),
+                        status: 'sospesa' as const, viewedByOperator: false,
+                    });
                 }
-                const newDocRef = doc(timbratureCollectionRef);
-                batch.set(newDocRef, {
-                    userId: operatorId,
-                    type: event.type,
-                    timestamp: timestamp,
-                    status: 'sospesa' as const,
-                    viewedByOperator: false,
-                });
+            }
+            try {
+                await batch.commit();
+                toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
+            } catch (error) {
+                toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
+            }
+
+        } else {
+            // Overtime Shift
+            const overtimeCollectionRef = collection(firestore, `app-users/${operatorId}/straordinari`);
+            const newEvents: StraordinarioEvent[] = [];
+            if (newShiftTimes.entrata) newEvents.push({ type: 'entrata', timestamp: createTimestamp(newShiftTimes.entrata) });
+            if (newShiftTimes.pausa) newEvents.push({ type: 'pausa', timestamp: createTimestamp(newShiftTimes.pausa) });
+            if (newShiftTimes.fine_pausa) newEvents.push({ type: 'fine_pausa', timestamp: createTimestamp(newShiftTimes.fine_pausa) });
+            if (newShiftTimes.uscita) newEvents.push({ type: 'uscita', timestamp: createTimestamp(newShiftTimes.uscita) });
+            
+            newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+            const newOvertimeShift = {
+                date: Timestamp.fromDate(newShiftDate),
+                events: newEvents,
+                status: 'in_attesa_di_approvazione' as const,
+                userId: operatorId,
+            };
+            try {
+                await addDoc(overtimeCollectionRef, newOvertimeShift);
+                toast({ title: 'Successo', description: 'Turno straordinario manuale aggiunto. Ora è in attesa di approvazione.' });
+            } catch (error) {
+                toast({ title: 'Errore', description: 'Impossibile aggiungere il turno straordinario.', variant: 'destructive'});
             }
         }
         
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
-            setIsAddShiftOpen(false);
-            setNewShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
-        } catch (error) {
-            toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
-        }
+        setIsAddShiftOpen(false);
+        setNewShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     };
     
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
@@ -868,13 +871,15 @@ export default function ShiftApprovalPage() {
                 </CardContent>
             </Card>
 
-            {pendingOvertimeShifts.length > 0 && (
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>Turni Straordinari da Approvare</CardTitle>
-                        <CardDescription>Approva o rifiuta i turni svolti in giorni non lavorativi.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Turni Straordinari da Approvare</CardTitle>
+                    <CardDescription>Approva o rifiuta i turni svolti in giorni non lavorativi.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                     {pendingOvertimeShifts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno straordinario in attesa di approvazione.</p>
+                     ) : (
                         <div className="border rounded-lg overflow-x-auto">
                             <Table>
                                 <TableHeader>
@@ -901,9 +906,9 @@ export default function ShiftApprovalPage() {
                                 </TableBody>
                             </Table>
                         </div>
-                    </CardContent>
-                </Card>
-            )}
+                    )}
+                </CardContent>
+            </Card>
 
             <Card>
                 <CardHeader>
@@ -996,7 +1001,7 @@ export default function ShiftApprovalPage() {
                 <ResponsiveDialogContent>
                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle>
-                        <ResponsiveDialogDescription>Seleziona il giorno e inserisci gli orari del turno.</ResponsiveDialogDescription>
+                        <ResponsiveDialogDescription>Seleziona il giorno e inserisci gli orari del turno. Se inserito in un giorno non lavorativo, verrà creato come straordinario.</ResponsiveDialogDescription>
                     </ResponsiveDialogHeader>
                      <div className="grid gap-4 py-4">
                         <div className="space-y-2">
@@ -1036,21 +1041,6 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
-
-            <AlertDialog open={isNonWorkDayConfirmOpen} onOpenChange={setIsNonWorkDayConfirmOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Giorno Non Lavorativo</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Questo non è un giorno lavorativo assegnato. Sei sicuro di voler creare questo turno?
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={proceedWithAddManualShift}>Conferma</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
 
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>

@@ -182,7 +182,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
+        const ordinaryWorkedMinutes = totalWorkedMinutes; // totalWorkedMinutes already excludes crystallized overtime
         const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
     
@@ -550,18 +550,10 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                         const dayName = dayIndexToName[dayOfWeekIndex];
                         const contractualHours = operator.workSchedule[dayName] || 0;
 
-                        if (contractualHours > 0) {
-                            if (req.type === 'ferie') ferie.push(new Date(day));
-                            if (req.type === 'malattia') malattia.push(new Date(day));
-                        }
-                         if (req.type === 'permesso') {
-                             permesso.push(new Date(day));
-                         }
-                         if (req.type === 'straordinario') {
-                            if (contractualHours <= 0) {
-                                straordinario.push(new Date(day));
-                            }
-                       }
+                        if (req.type === 'ferie' && contractualHours > 0) ferie.push(new Date(day));
+                        if (req.type === 'malattia' && contractualHours > 0) malattia.push(new Date(day));
+                        if (req.type === 'permesso') permesso.push(new Date(day));
+                        if (req.type === 'straordinario') straordinario.push(new Date(day));
                     }
                 }
             });
@@ -587,9 +579,15 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
         else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
         else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
-        else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'straordinario' };
-        setSelectedDayInfo(dayInfo);
+        
+        const isExtraDay = leaveDays.straordinario.some(d => isSameDay(d, selectedDate));
+        const isWorkedDay = workedDays.some(d => isSameDay(d, selectedDate));
+        if (isExtraDay && !isWorkedDay) {
+           dayInfo = { type: 'straordinario' };
+        }
 
+        setSelectedDayInfo(dayInfo);
+        
         if (dayInfo && dayInfo.type !== 'straordinario') {
             setDailyShifts([]);
             setIsLoading(false);
@@ -661,7 +659,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
         fetchDailyData();
 
-    }, [firestore, operatorId, selectedDate, leaveDays, toast]);
+    }, [firestore, operatorId, selectedDate, leaveDays, toast, workedDays]);
 
     const calculateShiftDetails = (events: Timbratura[]): Shift => {
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
@@ -898,8 +896,20 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                             className="p-0"
                             locale={it}
                             disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
-                            modifiers={{ worked: workedDays, ferie: leaveDays.ferie, malattia: leaveDays.malattia, permesso: leaveDays.permesso, straordinario: leaveDays.straordinario }}
-                            modifiersClassNames={{ worked: 'bg-primary/20', ferie: 'bg-green-500/30 text-green-800', malattia: 'bg-red-500/30 text-red-800', permesso: 'bg-yellow-500/30 text-yellow-800', straordinario: 'bg-amber-500/30 text-amber-800' }}
+                            modifiers={{ 
+                                worked: workedDays, 
+                                ferie: leaveDays.ferie, 
+                                malattia: leaveDays.malattia, 
+                                permesso: leaveDays.permesso, 
+                                straordinario: leaveDays.straordinario.filter(extraDay => !workedDays.some(workDay => isSameDay(extraDay, workDay)))
+                            }}
+                            modifiersClassNames={{ 
+                                worked: 'bg-primary/20', 
+                                ferie: 'bg-green-500/30 text-green-800', 
+                                malattia: 'bg-red-500/30 text-red-800', 
+                                permesso: 'bg-yellow-500/30 text-yellow-800',
+                                straordinario: 'bg-amber-500/30 text-amber-800'
+                            }}
                         />
                     </CardContent>
                      <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground pt-4">
@@ -1068,7 +1078,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     );
 }
 
-function OperatorSummaryPageInternal() {
+export default function OperatorSummaryPage() {
     const params = useParams();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -1216,13 +1226,5 @@ function OperatorSummaryPageInternal() {
                 </AlertDialogContent>
             </AlertDialog>
         </>
-    );
-}
-
-export default function OperatorSummaryPage() {
-    return (
-        <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
-            <OperatorSummaryPageInternal />
-        </Suspense>
     );
 }
