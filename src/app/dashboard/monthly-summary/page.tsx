@@ -180,6 +180,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             return;
         }
         setIsLoading(true);
+        setSelectedDayInfo(null); // Reset day info on new date selection
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
@@ -213,6 +214,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
 
                 setDailyShifts(shifts);
                 
+                // Only set leave info if there are NO shifts for the day
                 if (shifts.length === 0) {
                     let dayInfo: 'ferie' | 'malattia' | 'permesso' | 'straordinario' | null = null;
                     if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
@@ -220,8 +222,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
                     else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = 'straordinario';
                     setSelectedDayInfo(dayInfo);
-                } else {
-                    setSelectedDayInfo(null);
                 }
 
 
@@ -283,6 +283,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     const isDateDisabled = (date: Date): boolean => {
         const today = startOfDay(new Date());
         const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+        
         if (date > today && !isSameDay(date, today)) {
           return !isLeaveOrSickDay;
         }
@@ -346,7 +347,12 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                         <div key={index} className="border-b last:border-b-0">
                                             <div className='p-4'>
                                                 <div className="flex justify-between items-center mb-2">
-                                                    <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                    <div className='flex items-center gap-2'>
+                                                        <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                         {leaveDays.straordinario.some(d => isSameDay(d, selectedDate!)) && (
+                                                            <Badge variant="outline" className='border-amber-500 text-amber-600'>Straordinario</Badge>
+                                                        )}
+                                                    </div>
                                                     <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
                                                 </div>
                                                 <Table>

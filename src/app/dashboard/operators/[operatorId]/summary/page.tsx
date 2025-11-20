@@ -578,16 +578,11 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         }
 
         setIsLoading(true);
+        setSelectedDayInfo(null); // Reset day info on new date selection
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
         const fetchDailyData = async () => {
-            let dayInfo: SelectedDayInfo = null;
-            if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
-            else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
-            else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
-            else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'straordinario' };
-            
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', Timestamp.fromDate(start)),
@@ -617,10 +612,14 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
                 setDailyShifts(shifts);
                 
-                if(shifts.length === 0) {
+                // Only set leave info if there are NO shifts for the day
+                if (shifts.length === 0) {
+                    let dayInfo: SelectedDayInfo = null;
+                    if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
+                    else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
+                    else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
+                    else if (leaveDays.straordinario.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'straordinario' };
                     setSelectedDayInfo(dayInfo);
-                } else {
-                    setSelectedDayInfo(null);
                 }
 
             } catch (error) {
@@ -923,7 +922,9 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                    {leaveDays.straordinario.some(d => isSameDay(d, selectedDate!)) && <Badge variant="outline" className="border-amber-500 text-amber-600">Straordinario</Badge>}
+                                                    {leaveDays.straordinario.some(d => isSameDay(d, selectedDate!)) && (
+                                                        <Badge variant="outline" className="border-amber-500 text-amber-600">Straordinario</Badge>
+                                                    )}
                                                 </div>
                                                 <Button variant="ghost" size="icon" onClick={() => { setDetailShift(shift); setIsDetailOpen(true); }}><Eye className="h-5 w-5" /></Button>
                                             </div>
