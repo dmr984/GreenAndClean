@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/componentsui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format, set, getDay as getDayFns, isSameDay, addDays, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
@@ -211,13 +211,15 @@ export default function ShiftApprovalPage() {
     }, [overtimeShifts]);
 
     const historicalShifts = useMemo(() => {
-        return allShifts
+        const approvedShifts = allShifts
             .filter(s => s.status === 'confermato' || s.status === 'rifiutato')
             .sort((a, b) => {
                 const dateA = a.events[0]?.timestamp.toMillis() || 0;
                 const dateB = b.events[0]?.timestamp.toMillis() || 0;
                 return dateB - dateA;
             });
+    
+        return approvedShifts;
     }, [allShifts]);
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): { status: Shift['status'], workDuration: number, isOnLeaveDay: boolean } => {
