@@ -262,7 +262,7 @@ export default function ShiftApprovalPage() {
     };
 
     const handleConfirmApprove = async () => {
-        const { shiftToApprove, overtimeHours, leaveHours } = approvalData;
+        const { shiftToApprove, ordinaryHours, overtimeHours, leaveHours } = approvalData;
         if (!firestore || !shiftToApprove || !operator) return;
     
         const approvedOvertime = parseFloat(overtimeHours) || 0;
@@ -454,12 +454,14 @@ export default function ShiftApprovalPage() {
         setDetailShift(shift);
         setIsDetailOpen(true);
     }
-
-    const calculateHoursWithTolerance = (minutes: number) => {
-        if (isNaN(minutes) || minutes < 0) return 0;
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        return remainingMinutes >= 50 ? hours + 1 : hours;
+    
+    const getContractualHoursForShift = (shift: Shift | null): number => {
+        if (!shift || !operator?.workSchedule) return 0;
+        const shiftDate = shift.events[0]?.timestamp.toDate();
+        if (!shiftDate) return 0;
+        const dayOfWeek = getDayFns(shiftDate);
+        const dayName = dayIndexToName[dayOfWeek];
+        return operator.workSchedule[dayName] || 0;
     };
     
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
@@ -468,19 +470,53 @@ export default function ShiftApprovalPage() {
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
         const totalMinutes = shift.workDuration;
     
+        const workedHours = Math.floor(totalMinutes / 60);
+        const workedRemainderMinutes = totalMinutes % 60;
+
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
-            const calculatedOvertime = calculateHoursWithTolerance(overtimeMinutes);
-            const ordinaryMinutes = totalMinutes - (calculatedOvertime * 60);
-            return { ordinary: parseFloat((ordinaryMinutes / 60).toFixed(2)), overtime: calculatedOvertime, leave: 0 };
+            const overtimeTotalHours = Math.floor(overtimeMinutes / 60);
+            const overtimeRemainderMinutes = overtimeMinutes % 60;
+            
+            if (overtimeRemainderMinutes >= 50) {
+                return { ordinary: getContractualHoursForShift(shift), overtime: overtimeTotalHours + 1, leave: 0 };
+            } else {
+                 return { ordinary: workedHours, overtime: 0, leave: 0 };
+            }
+
         } else if (totalMinutes < contractualMinutes) {
             const leaveMinutes = contractualMinutes - totalMinutes;
-            return { ordinary: parseFloat((totalMinutes / 60).toFixed(2)), overtime: 0, leave: parseFloat((leaveMinutes / 60).toFixed(2)) };
+            const leaveTotalHours = Math.floor(leaveMinutes / 60);
+            const leaveRemainderMinutes = leaveMinutes % 60;
+
+            if (leaveRemainderMinutes >= 50) {
+                 return { ordinary: workedHours, overtime: 0, leave: leaveTotalHours + 1 };
+            } else {
+                 return { ordinary: workedHours, overtime: 0, leave: leaveTotalHours };
+            }
         }
     
-        return { ordinary: parseFloat((totalMinutes / 60).toFixed(2)), overtime: 0, leave: 0 };
+        return { ordinary: workedHours, overtime: 0, leave: 0 };
     };
 
+    const handleOpenApproveDialog = (shift: Shift) => {
+        const { ordinary, overtime, leave } = calculateHours(shift);
+        setApprovalData({
+            shiftToApprove: shift,
+            ordinaryHours: String(ordinary),
+            overtimeHours: String(overtime),
+            leaveHours: String(leave),
+        });
+        setIsApproveDialogOpen(true);
+    }
+    
+    const calculateHoursWithTolerance = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return 0;
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return remainingMinutes >= 50 ? hours + 1 : hours;
+    };
+    
     const handleApproveUnlock = async (unlockRequest: UnlockRequest) => {
         if (!firestore || !operatorId) return;
 
@@ -547,26 +583,6 @@ export default function ShiftApprovalPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const handleOpenApproveDialog = (shift: Shift) => {
-        const { ordinary, overtime, leave } = calculateHours(shift);
-        setApprovalData({
-            shiftToApprove: shift,
-            ordinaryHours: String(ordinary),
-            overtimeHours: String(overtime),
-            leaveHours: String(leave),
-        });
-        setIsApproveDialogOpen(true);
-    }
-    
-    const getContractualHoursForShift = (shift: Shift | null): number => {
-        if (!shift || !operator?.workSchedule) return 0;
-        const shiftDate = shift.events[0]?.timestamp.toDate();
-        if (!shiftDate) return 0;
-        const dayOfWeek = getDayFns(shiftDate);
-        const dayName = dayIndexToName[dayOfWeek];
-        return operator.workSchedule[dayName] || 0;
-    };
-    
     const handleAddManualShift = async () => {
         if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita || !operator) {
             toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
@@ -1267,17 +1283,17 @@ export default function ShiftApprovalPage() {
                     <div className="py-4 space-y-4">
                         <div>
                             <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
-                            <Input id="ordinary-hours" type="number" value={approvalData.ordinaryHours} onChange={(e) => setApprovalData(p => ({...p, ordinaryHours: e.target.value}))} step="0.5" min="0" />
+                            <Input id="ordinary-hours" type="number" value={approvalData.ordinaryHours} onChange={(e) => setApprovalData(p => ({...p, ordinaryHours: e.target.value}))} step="1" min="0" />
                             <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                         </div>
                         <div>
                             <Label htmlFor="overtime-hours">Ore di Straordinario Calcolate</Label>
-                            <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="0.5" min="0" />
+                            <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="1" min="0" />
                             <p className="text-xs text-muted-foreground mt-1">Calcolato con la regola dei 50min. Modifica se necessario.</p>
                         </div>
                         <div>
                              <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
-                             <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="0.5" min="0" />
+                             <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="1" min="0" />
                              <p className="text-xs text-muted-foreground mt-1">Calcolato in base alle ore mancanti. Modifica se necessario.</p>
                         </div>
                     </div>
