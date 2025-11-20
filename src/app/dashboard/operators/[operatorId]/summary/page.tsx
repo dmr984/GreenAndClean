@@ -95,6 +95,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
     const [isLoading, setIsLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [itemToModify, setItemToModify] = useState<{ request: Request, day: Date } | null>(null);
+    const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
     
     const {toast} = useToast();
 
@@ -298,6 +299,29 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         }
     };
 
+    const handleDeleteRequest = async () => {
+        if (!firestore || !requestToDelete) return;
+        const requestRef = doc(firestore, `app-users/${operatorId}/requests`, requestToDelete.id);
+        
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Successo', description: 'Richiesta di straordinario eliminata.' });
+            // Refresh the detail view
+            setDetailView(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    items: prev.items.filter(item => item.id !== requestToDelete.id)
+                };
+            });
+        } catch (error) {
+            console.error("Error deleting request:", error);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        } finally {
+            setRequestToDelete(null);
+        }
+    };
+
     const renderDetailTable = () => {
         if (!detailView || detailView.items.length === 0) {
             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
@@ -369,7 +393,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                         <TableRow>
                             <TableHead>Dal</TableHead>
                             <TableHead>Al</TableHead>
-                            {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead>}
+                            <TableHead>Ore</TableHead>
+                             {detailView.type === 'straordinario' && <TableHead className="text-right">Azione</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -377,7 +402,14 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                              <TableRow key={item.id}>
                                 <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                                {(detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell>}
+                                <TableCell>{item.hours}</TableCell>
+                                {detailView.type === 'straordinario' && (
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
+                                )}
                             </TableRow>
                         ))}
                     </TableBody>
@@ -456,6 +488,21 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                 <AlertDialogFooter>
                     <AlertDialogCancel>Chiudi</AlertDialogCancel>
                     <AlertDialogAction onClick={handleCancelSingleDayOfLeave}>Annulla Giorno di Assenza</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        
+         <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Sei sicuro di voler eliminare questa richiesta di straordinario? L'azione è permanente.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteRequest}>Elimina</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
@@ -1138,7 +1185,7 @@ export default function OperatorSummaryPage() {
                 const reqStart = request.startDate.toDate();
                 const reqEnd = request.endDate.toDate();
     
-                // Skip if request is completely outside the month
+                // Skip if request is completely outside the month's potential overlap
                 if (reqStart > monthEnd) continue;
     
                 const ref = requestDoc.ref;
@@ -1149,12 +1196,13 @@ export default function OperatorSummaryPage() {
                     continue;
                 }
     
-                // Case 2: Request starts before and ends after the month
+                // Case 2: Request starts before and ends after the month (spans across)
                 if (reqStart < monthStart && reqEnd > monthEnd) {
                     // Split into two requests
-                    // First part: before the cleaned month
+                    // First part: update original to end before the cleaned month
                     batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
-                    // Second part: after the cleaned month
+                    
+                    // Second part: create a new request for the period after the cleaned month
                     const { id, ...restOfRequest } = request;
                     const newRequestData = {
                         ...restOfRequest,

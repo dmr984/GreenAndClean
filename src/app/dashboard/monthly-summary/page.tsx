@@ -340,9 +340,9 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                             {isLoading ? (
                                 <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                             ) : dailyShifts.length > 0 ? (
-                                <div className="border rounded-md">
+                                <>
                                     {dailyShifts.map((shift, index) => (
-                                        <div key={index} className="border-b last:border-b-0">
+                                        <div key={index} className="border rounded-md mb-4 last:mb-0">
                                             <div className='p-4'>
                                                 <div className="flex justify-between items-center mb-2">
                                                     <div className='flex items-center gap-2'>
@@ -372,7 +372,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                             </div>
                                         </div>
                                     ))}
-                                </div>
+                                </>
                             ) : selectedDayInfo ? (
                                 <LeaveDayCard type={selectedDayInfo} />
                             ) : (
@@ -432,6 +432,7 @@ export default function MonthlySummaryPage() {
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [operatorData, setOperatorData] = useState<Operator | null>(null);
+    const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
 
     const searchParams = useSearchParams();
     const initialView = searchParams.get('view') === 'daily' ? 'daily' : 'monthly';
@@ -609,6 +610,29 @@ export default function MonthlySummaryPage() {
         setDetailView({ type, title, items: approvedRequests });
     };
 
+    const handleDeleteRequest = async () => {
+        if (!firestore || !requestToDelete || !user) return;
+        const requestRef = doc(firestore, `app-users/${user.id}/requests`, requestToDelete.id);
+        
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Successo', description: 'Richiesta di straordinario eliminata.' });
+            // Refresh the detail view
+            setDetailView(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    items: prev.items.filter(item => item.id !== requestToDelete.id)
+                };
+            });
+        } catch (error) {
+            console.error("Error deleting request:", error);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        } finally {
+            setRequestToDelete(null);
+        }
+    };
+
     if (isUserLoading || isDataLoading || !operatorData) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -690,7 +714,8 @@ export default function MonthlySummaryPage() {
                         <TableRow>
                             <TableHead>Dal</TableHead>
                             <TableHead>Al</TableHead>
-                            { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableHead>Ore</TableHead> }
+                            <TableHead>Ore</TableHead>
+                            {detailView.type === 'straordinario' && <TableHead className="text-right">Azione</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -698,7 +723,14 @@ export default function MonthlySummaryPage() {
                              <TableRow key={item.id}>
                                 <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                                { (detailView.type === 'permesso' || detailView.type === 'straordinario') && <TableCell>{item.hours}</TableCell> }
+                                <TableCell>{item.hours}</TableCell>
+                                {detailView.type === 'straordinario' && (
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
+                                )}
                             </TableRow>
                         ))}
                     </TableBody>
@@ -824,6 +856,21 @@ export default function MonthlySummaryPage() {
                     </div>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
+
+            <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                           Sei sicuro di voler eliminare questa richiesta di straordinario? L'azione è permanente.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteRequest}>Elimina</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Suspense>
     );
 }
