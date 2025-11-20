@@ -247,7 +247,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                       }}
                                       initialFocus
                                       modifiers={{ booked: bookedDays }}
-                                      modifiersClassNames={{ booked: "bg-destructive/20 text-destructive-foreground" }}
+                                      modifiersClassNames={{ booked: "bg-destructive text-destructive-foreground" }}
                                     />
                                 </DialogContent>
                             </Dialog>
@@ -291,7 +291,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         disabled={{ before: startDateValue! }} 
                                         initialFocus 
                                         modifiers={{ booked: bookedDays }}
-                                        modifiersClassNames={{ booked: "bg-destructive/20 text-destructive-foreground" }}
+                                        modifiersClassNames={{ booked: "bg-destructive text-destructive-foreground" }}
                                     />
                                 </DialogContent>
                             </Dialog>
