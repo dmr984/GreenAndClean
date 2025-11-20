@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { collection, query, where, Timestamp, onSnapshot, doc, getDoc, getDocs, writeBatch, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, startOfDay, endOfDay, addDoc, serverTimestamp, runTransaction, addDays, subDays, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, doc, getDoc, getDocs, writeBatch, addDoc, serverTimestamp, runTransaction, deleteDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Calendar, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X, Eye, Trash2, Pencil, Archive, PackageSearch } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format, getDay, set } from 'date-fns';
+import { format, getDay, set, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, startOfDay, endOfDay, addDays, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -659,7 +659,7 @@ export default function MonthlySummaryPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className='flex items-center gap-3'>
-                    <Calendar className="h-8 w-8 text-primary" />
+                    <CalendarIcon className="h-8 w-8 text-primary" />
                     <h2 className="text-3xl font-bold tracking-tight">Riepilogo Mensile</h2>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -727,7 +727,7 @@ export default function MonthlySummaryPage() {
             </div>
              <div className="flex justify-center">
                 <Button onClick={() => setCurrentView('daily')} size="lg">
-                    <Calendar className="mr-2 h-4 w-4" /> Visualizza Calendario
+                    <CalendarIcon className="mr-2 h-4 w-4" /> Visualizza Calendario
                 </Button>
             </div>
         </div>
