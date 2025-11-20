@@ -89,14 +89,21 @@ export default function ShiftApprovalPage() {
 
     const [isLoading, setIsLoading] = useState(true);
     
+    // State for regular shifts
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
-    
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
-    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-    
     const [editingShift, setEditingShift] = useState<Shift | null>(null);
     const [isEditShiftOpen, setIsEditShiftOpen] = useState(false);
+
+    // State for overtime shifts
+    const [detailOvertimeShift, setDetailOvertimeShift] = useState<StraordinarioShift | null>(null);
+    const [isDetailOvertimeOpen, setIsDetailOvertimeOpen] = useState(false);
+    const [overtimeShiftToDelete, setOvertimeShiftToDelete] = useState<StraordinarioShift | null>(null);
+    const [editingOvertimeShift, setEditingOvertimeShift] = useState<StraordinarioShift | null>(null);
+    const [isEditOvertimeOpen, setIsEditOvertimeOpen] = useState(false);
+
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
@@ -200,8 +207,10 @@ export default function ShiftApprovalPage() {
         return { pendingShifts: pending, approvedShifts: approved };
     }, [allShifts]);
 
-    const pendingOvertimeShifts = useMemo(() => {
-        return overtimeShifts.filter(s => s.status === 'in_attesa_di_approvazione');
+    const { pendingOvertimeShifts, historicalOvertimeShifts } = useMemo(() => {
+        const pending = overtimeShifts.filter(s => s.status === 'in_attesa_di_approvazione');
+        const historical = overtimeShifts.filter(s => s.status !== 'in_attesa_di_approvazione');
+        return { pendingOvertimeShifts: pending, historicalOvertimeShifts: historical };
     }, [overtimeShifts]);
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): { status: Shift['status'], workDuration: number, isOnLeaveDay: boolean } => {
@@ -637,23 +646,7 @@ export default function ShiftApprovalPage() {
             await updateDoc(shiftRef, { status: newStatus });
             
             if (action === 'approve') {
-                let workDuration = 0;
-                const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
-                const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-
-                if (startTime && endTime) {
-                    let totalMillis = endTime.toMillis() - startTime.toMillis();
-                    let breakStart: Timestamp | null = null;
-                    shift.events.forEach(e => {
-                        if (e.type === 'pausa') breakStart = e.timestamp;
-                        if (e.type === 'fine_pausa' && breakStart) {
-                            totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                            breakStart = null;
-                        }
-                    });
-                    workDuration = totalMillis / (1000 * 60);
-                }
-                const overtimeHours = Math.floor(workDuration / 60) + ((workDuration % 60) >= 50 ? 1 : 0);
+                const overtimeHours = calculateOvertimeShiftHours(shift);
 
                 if (overtimeHours > 0) {
                      const overtimeRequest = {
@@ -673,9 +666,95 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Successo', description: `Turno straordinario ${newStatus}.` });
         } catch (error) {
              toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
+        } finally {
+            setIsDetailOvertimeOpen(false);
         }
     };
+    
+    const calculateOvertimeShiftHours = (shift: StraordinarioShift) => {
+        let workDuration = 0;
+        const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
+        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
 
+        if (startTime && endTime) {
+            let totalMillis = endTime.toMillis() - startTime.toMillis();
+            let breakStart: Timestamp | null = null;
+            shift.events.forEach(e => {
+                if (e.type === 'pausa') breakStart = e.timestamp;
+                if (e.type === 'fine_pausa' && breakStart) {
+                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                    breakStart = null;
+                }
+            });
+            workDuration = totalMillis / (1000 * 60);
+        }
+        return Math.floor(workDuration / 60) + ((workDuration % 60) >= 50 ? 1 : 0);
+    }
+    
+    const handleDeleteOvertimeShift = async () => {
+        if (!firestore || !overtimeShiftToDelete || !operator) return;
+        const docRef = doc(firestore, `app-users/${operator.id}/straordinari`, overtimeShiftToDelete.id);
+        
+        await deleteDoc(docRef).then(() => {
+            toast({ title: 'Successo', description: 'Turno straordinario eliminato.' });
+        }).catch(err => {
+            toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
+        });
+        
+        setIsConfirmingDelete(false);
+        setOvertimeShiftToDelete(null);
+        setIsDetailOvertimeOpen(false);
+    };
+
+    const handleOpenEditOvertimeDialog = (shift: StraordinarioShift) => {
+        setEditingOvertimeShift(shift);
+        const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
+        shift.events.forEach(e => {
+            times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
+        });
+        setEditShiftTimes(times);
+        setIsEditOvertimeOpen(true);
+    };
+
+    const handleEditOvertimeShift = async () => {
+        if (!firestore || !editingOvertimeShift || !editShiftTimes.entrata || !editShiftTimes.uscita || !operator) {
+            toast({ title: 'Dati mancanti', description: 'Entrata e Uscita sono obbligatorie.', variant: 'destructive' });
+            return;
+        }
+
+        const shiftDate = editingOvertimeShift.date.toDate();
+        const createTimestamp = (time: string): Timestamp | null => {
+            if (!time) return null;
+            const [hours, minutes] = time.split(':').map(Number);
+            if (isNaN(hours) || isNaN(minutes)) return null;
+            return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+        };
+
+        const newEvents: StraordinarioEvent[] = [];
+        for (const type of ['entrata', 'pausa', 'fine_pausa', 'uscita'] as const) {
+            const time = editShiftTimes[type];
+            if (time) {
+                const timestamp = createTimestamp(time);
+                if (!timestamp) {
+                    toast({ title: 'Orario non valido', description: `L'orario per '${type}' non è valido.`, variant: 'destructive' });
+                    return;
+                }
+                newEvents.push({ type, timestamp });
+            }
+        }
+        
+        newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        
+        const docRef = doc(firestore, `app-users/${operator.id}/straordinari`, editingOvertimeShift.id);
+        await updateDoc(docRef, { events: newEvents }).then(() => {
+            toast({ title: 'Successo', description: 'Turno straordinario aggiornato.' });
+            setIsEditOvertimeOpen(false);
+            setEditingOvertimeShift(null);
+            setIsDetailOvertimeOpen(false);
+        }).catch(err => {
+            toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
+        });
+    }
 
     return (
         <div className="space-y-6">
@@ -732,8 +811,9 @@ export default function ShiftApprovalPage() {
                                             <TableCell>{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
                                             <TableCell>{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => handleOvertimeShiftAction(shift, 'approve')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleOvertimeShiftAction(shift, 'reject')}><XCircle className="h-5 w-5 text-red-500" /></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => { setDetailOvertimeShift(shift); setIsDetailOvertimeOpen(true);}}>
+                                                    <Eye className="h-5 w-5" />
+                                                </Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -946,7 +1026,7 @@ export default function ShiftApprovalPage() {
             <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
                 <AlertDialogContent>
                     <AlertDialogHeader><AlertDialogTitle>Sei sicuro?</AlertDialogTitle><AlertDialogDescription>Questa azione eliminerà tutte le timbrature di questo turno in modo permanente. L'azione non può essere annullata.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleDeleteShift}>Elimina Turno</AlertDialogAction></AlertDialogFooter>
+                    <AlertDialogFooter><AlertDialogCancel onClick={() => { setShiftToDelete(null); setOvertimeShiftToDelete(null); }}>Annulla</AlertDialogCancel><AlertDialogAction onClick={shiftToDelete ? handleDeleteShift : handleDeleteOvertimeShift}>Elimina Turno</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
             
@@ -1040,8 +1120,66 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
+            
+            <ResponsiveDialog open={isDetailOvertimeOpen} onOpenChange={setIsDetailOvertimeOpen}>
+                <ResponsiveDialogContent className="sm:max-w-3xl">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Dettaglio Turno Straordinario</ResponsiveDialogTitle>
+                        {detailOvertimeShift?.date && <ResponsiveDialogDescription>Turno del {formatDate(detailOvertimeShift.date)}</ResponsiveDialogDescription>}
+                    </ResponsiveDialogHeader>
+                     {detailOvertimeShift && (
+                        <div className="grid grid-cols-2 gap-4 text-center my-4">
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Totali</p>
+                                <p className="text-2xl font-bold">{formatMinutes(calculateOvertimeShiftHours(detailOvertimeShift) * 60)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Straordinario Calcolato</p>
+                                <p className="text-2xl font-bold">{calculateOvertimeShiftHours(detailOvertimeShift)}h</p>
+                            </div>
+                        </div>
+                    )}
+                    <div className="overflow-x-auto mt-2 max-h-80 overflow-y-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Orario</TableHead>
+                                    <TableHead>Evento</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {detailOvertimeShift?.events.map((e, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell>{formatTime(e.timestamp)}</TableCell>
+                                        <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
+                        <Button variant="outline" onClick={() => setIsDetailOvertimeOpen(false)}>Chiudi</Button>
+                         {detailOvertimeShift && detailOvertimeShift.status === 'in_attesa_di_approvazione' && (
+                            <>
+                               <Button variant="destructive" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject')}>
+                                  <XCircle className="mr-2 h-4 w-4"/> Rifiuta
+                               </Button>
+                               <Button onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'approve')}>
+                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva
+                               </Button>
+                            </>
+                         )}
+                         {detailOvertimeShift && (
+                            <>
+                                <Button variant="destructive" onClick={() => { setOvertimeShiftToDelete(detailOvertimeShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                                <Button variant="outline" onClick={() => handleOpenEditOvertimeDialog(detailOvertimeShift)}><Pencil className="mr-2 h-4 w-4"/> Modifica</Button>
+                            </>
+                         )}
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
 
-            <ResponsiveDialog open={isEditShiftOpen} onOpenChange={setIsEditShiftOpen}>
+            <ResponsiveDialog open={isEditShiftOpen || isEditOvertimeOpen} onOpenChange={isEditShiftOpen ? setIsEditShiftOpen : setIsEditOvertimeOpen}>
                 <ResponsiveDialogContent>
                     <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Turno</ResponsiveDialogTitle></ResponsiveDialogHeader>
                     <div className="grid gap-4 py-4">
@@ -1067,8 +1205,8 @@ export default function ShiftApprovalPage() {
                         </div>
                     </div>
                     <ResponsiveDialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditShiftOpen(false)}>Annulla</Button>
-                        <Button onClick={handleEditShift}>Salva Modifiche</Button>
+                        <Button variant="outline" onClick={() => { setIsEditShiftOpen(false); setIsEditOvertimeOpen(false); }}>Annulla</Button>
+                        <Button onClick={isEditShiftOpen ? handleEditShift : handleEditOvertimeShift}>Salva Modifiche</Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
