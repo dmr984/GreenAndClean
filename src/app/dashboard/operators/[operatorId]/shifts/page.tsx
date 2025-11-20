@@ -657,6 +657,26 @@ export default function ShiftApprovalPage() {
         (currentPage + 1) * ITEMS_PER_PAGE
     );
     
+    const calculateOvertimeShiftMinutes = (shift: StraordinarioShift) => {
+        let workDuration = 0;
+        const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
+        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+
+        if (startTime && endTime) {
+            let totalMillis = endTime.toMillis() - startTime.toMillis();
+            let breakStart: Timestamp | null = null;
+            shift.events.forEach(e => {
+                if (e.type === 'pausa') breakStart = e.timestamp;
+                if (e.type === 'fine_pausa' && breakStart) {
+                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                    breakStart = null;
+                }
+            });
+            workDuration = totalMillis / (1000 * 60);
+        }
+        return workDuration;
+    };
+    
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
         if (!firestore || !operatorId) return;
 
@@ -667,7 +687,8 @@ export default function ShiftApprovalPage() {
             await updateDoc(shiftRef, { status: newStatus });
             
             if (action === 'approve') {
-                const overtimeHours = calculateOvertimeShiftHours(shift);
+                const workMinutes = calculateOvertimeShiftMinutes(shift);
+                const overtimeHours = Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
 
                 if (overtimeHours > 0) {
                      const overtimeRequest = {
@@ -693,23 +714,8 @@ export default function ShiftApprovalPage() {
     };
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift) => {
-        let workDuration = 0;
-        const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-
-        if (startTime && endTime) {
-            let totalMillis = endTime.toMillis() - startTime.toMillis();
-            let breakStart: Timestamp | null = null;
-            shift.events.forEach(e => {
-                if (e.type === 'pausa') breakStart = e.timestamp;
-                if (e.type === 'fine_pausa' && breakStart) {
-                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                    breakStart = null;
-                }
-            });
-            workDuration = totalMillis / (1000 * 60);
-        }
-        return Math.floor(workDuration / 60) + ((workDuration % 60) >= 50 ? 1 : 0);
+        const workMinutes = calculateOvertimeShiftMinutes(shift);
+        return Math.floor(workMinutes / 60) + ((workMinutes % 60) >= 50 ? 1 : 0);
     }
     
     const handleDeleteOvertimeShift = async () => {
@@ -935,7 +941,7 @@ export default function ShiftApprovalPage() {
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const startTime = shift.isOvertime ? (shift as StraordinarioShift).events.find(e => e.type === 'entrata')?.timestamp : (shift as Shift).events[0]?.timestamp;
                                         const endTime = shift.isOvertime ? (shift as StraordinarioShift).events.find(e => e.type === 'uscita')?.timestamp : (shift as Shift).events.find(e => e.type === 'uscita')?.timestamp;
-                                        const workDuration = shift.isOvertime ? calculateOvertimeShiftHours(shift as StraordinarioShift) * 60 : (shift as Shift).workDuration;
+                                        const workDuration = shift.isOvertime ? calculateOvertimeShiftMinutes(shift as StraordinarioShift) : (shift as Shift).workDuration;
                                         return (
                                             <TableRow key={index}>
                                                 <TableCell className="flex items-center gap-2">
@@ -1149,8 +1155,8 @@ export default function ShiftApprovalPage() {
                      {detailOvertimeShift && (
                         <div className="grid grid-cols-2 gap-4 text-center my-4">
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Totali</p>
-                                <p className="text-2xl font-bold">{formatMinutes(calculateOvertimeShiftHours(detailOvertimeShift) * 60)}</p>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Totali Lavorate</p>
+                                <p className="text-2xl font-bold">{formatMinutes(calculateOvertimeShiftMinutes(detailOvertimeShift))}</p>
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Straordinario Calcolato</p>
