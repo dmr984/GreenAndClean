@@ -147,7 +147,10 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                              permesso.push(new Date(day));
                          }
                          if (req.type === 'straordinario') {
-                             straordinario.push(new Date(day));
+                             // Only mark as overtime day if it's NOT a regular workday
+                            if (contractualHours <= 0) {
+                                straordinario.push(new Date(day));
+                            }
                          }
                     }
                 }
