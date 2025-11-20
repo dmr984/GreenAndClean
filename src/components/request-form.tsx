@@ -50,7 +50,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     const [isStartPickerOpen, setIsStartPickerOpen] = useState(false);
     const [isEndPickerOpen, setIsEndPickerOpen] = useState(false);
     const [existingRequests, setExistingRequests] = useState<ExistingRequest[]>([]);
-    const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+    const [bookedDays, setBookedDays] = useState<Date[]>([]);
 
     useEffect(() => {
         if (!firestore || !userId) return;
@@ -61,7 +61,19 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             where('type', 'in', ['ferie', 'malattia'])
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setExistingRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExistingRequest)));
+            const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExistingRequest));
+            setExistingRequests(requests);
+
+            const days: Date[] = [];
+            requests.forEach(req => {
+                const interval = {
+                    start: req.startDate.toDate(),
+                    end: req.endDate.toDate()
+                };
+                const daysInInterval = eachDayOfInterval(interval);
+                days.push(...daysInInterval);
+            });
+            setBookedDays(days);
         });
 
         return () => unsubscribe();
@@ -233,7 +245,9 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         field.onChange(date);
                                         setIsStartPickerOpen(false);
                                       }}
-                                      initialFocus 
+                                      initialFocus
+                                      modifiers={{ booked: bookedDays }}
+                                      modifiersClassNames={{ booked: "bg-destructive/20 text-destructive-foreground" }}
                                     />
                                 </DialogContent>
                             </Dialog>
@@ -276,6 +290,8 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         }}
                                         disabled={{ before: startDateValue! }} 
                                         initialFocus 
+                                        modifiers={{ booked: bookedDays }}
+                                        modifiersClassNames={{ booked: "bg-destructive/20 text-destructive-foreground" }}
                                     />
                                 </DialogContent>
                             </Dialog>
