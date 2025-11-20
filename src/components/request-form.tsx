@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,8 +15,16 @@ import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, eachDayOfInterval, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
+
+type ExistingRequest = {
+    id: string;
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    status: 'in_attesa' | 'approvato' | 'rifiutato';
+    startDate: Timestamp;
+    endDate: Timestamp;
+}
 
 // 1. Define Zod schema
 const requestSchema = z.object({
@@ -25,25 +33,6 @@ const requestSchema = z.object({
   endDate: z.date().optional(),
   hours: z.string().optional(),
   reason: z.string().optional(),
-}).refine(data => {
-    // End date must be after start date if it exists
-    if (data.startDate && data.endDate) {
-        return data.endDate >= data.startDate;
-    }
-    return true;
-}, {
-    message: "La data di fine non può essere precedente a quella di inizio.",
-    path: ['endDate'],
-}).refine(data => {
-    // Hours are required for 'permesso' or 'straordinario'
-    if ((data.requestType === 'permesso' || data.requestType === 'straordinario')) {
-        const hours = data.hours ? parseFloat(data.hours) : 0;
-        return hours > 0;
-    }
-    return true;
-}, {
-    message: "Il numero di ore è obbligatorio e deve essere maggiore di 0.",
-    path: ['hours'],
 });
 
 
@@ -60,9 +49,76 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     const { toast } = useToast();
     const [isStartPickerOpen, setIsStartPickerOpen] = useState(false);
     const [isEndPickerOpen, setIsEndPickerOpen] = useState(false);
+    const [existingRequests, setExistingRequests] = useState<ExistingRequest[]>([]);
+    const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+
+    useEffect(() => {
+        if (!firestore || !userId) return;
+
+        const q = query(
+            collection(firestore, `app-users/${userId}/requests`),
+            where('status', 'in', ['in_attesa', 'approvato']),
+            where('type', 'in', ['ferie', 'malattia'])
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setExistingRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExistingRequest)));
+        });
+
+        return () => unsubscribe();
+    }, [firestore, userId]);
     
+    const refinedRequestSchema = requestSchema.refine(data => {
+        if (data.startDate && data.endDate) return data.endDate >= data.startDate;
+        return true;
+    }, {
+        message: "La data di fine non può essere precedente a quella di inizio.",
+        path: ['endDate'],
+    }).refine(data => {
+        if ((data.requestType === 'permesso' || data.requestType === 'straordinario')) {
+            const hours = data.hours ? parseFloat(data.hours) : 0;
+            return hours > 0;
+        }
+        return true;
+    }, {
+        message: "Il numero di ore è obbligatorio e deve essere maggiore di 0.",
+        path: ['hours'],
+    }).superRefine((data, ctx) => {
+         if ((data.requestType === 'ferie' || data.requestType === 'malattia') && data.startDate) {
+            const selectedInterval = {
+                start: data.startDate,
+                end: data.endDate || data.startDate
+            };
+
+            const isOverlapping = existingRequests.some(existing => {
+                 const existingInterval = {
+                    start: existing.startDate.toDate(),
+                    end: existing.endDate.toDate()
+                };
+                
+                const dayRange = eachDayOfInterval(selectedInterval);
+
+                return dayRange.some(day => 
+                    (isSameDay(day, existingInterval.start) || isSameDay(day, existingInterval.end) || (day > existingInterval.start && day < existingInterval.end))
+                );
+            });
+
+            if (isOverlapping) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Uno o più giorni selezionati sono già occupati da un'altra richiesta.",
+                    path: ['startDate'], 
+                });
+                 ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Uno o più giorni selezionati sono già occupati da un'altra richiesta.",
+                    path: ['endDate'], 
+                });
+            }
+        }
+    });
+
     const { control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<RequestFormValues>({
-        resolver: zodResolver(requestSchema),
+        resolver: zodResolver(refinedRequestSchema),
         defaultValues: {
             requestType: undefined,
             startDate: undefined,
@@ -74,11 +130,10 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
 
     const selectedType = watch('requestType');
     const startDateValue = watch('startDate');
-
+    
     const onSubmit = async (data: RequestFormValues) => {
         if (!firestore) return;
 
-        // Use end date if provided, otherwise default to start date
         const finalEndDate = data.endDate || data.startDate;
 
         const newRequestData: any = {
@@ -100,7 +155,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
 
         addDoc(requestCollectionRef, newRequestData).then(() => {
             toast({ title: "Successo", description: "La tua richiesta è stata inviata." });
-            onFinished(); // Close the dialog
+            onFinished();
         }).catch((error: any) => {
             console.error("Error creating request:", error);
             if (error.code === 'permission-denied' && firestore) {
