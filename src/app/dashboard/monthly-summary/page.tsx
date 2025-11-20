@@ -441,8 +441,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                             </TableBody>
                         </Table>
                         <ResponsiveDialogFooter className="pt-4">
-                            <Button variant="outline" onClick={() => setDetailShift(null)}>Chiudi</Button>
-                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4" /> Elimina</Button>
+                             <Button variant="outline" onClick={() => setDetailShift(null)}>Chiudi</Button>
+                             <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4" /> Elimina</Button>
                         </ResponsiveDialogFooter>
                     </ResponsiveDialogContent>
                 </ResponsiveDialog>
@@ -457,7 +457,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteShift}>
                             Elimina
                         </AlertDialogAction>
@@ -569,6 +569,13 @@ export default function MonthlySummaryPage() {
         };
     }, [firestore, user, isUserLoading, monthStart, monthEnd, toast]);
     
+    const calculateOrdinaryHoursWithTolerance = (minutes: number): number => {
+        if (isNaN(minutes) || minutes <= 0) return 0;
+        const totalHalfHours = Math.floor(minutes / 30);
+        const remainingMinutes = minutes % 30;
+        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+    };
+
     const summary = useMemo(() => {
         let totalWorkedMillis = 0;
 
@@ -612,7 +619,7 @@ export default function MonthlySummaryPage() {
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
         const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
-        const ordinaryWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
+        const ordinaryWorkedHours = calculateOrdinaryHoursWithTolerance(ordinaryWorkedMinutes);
 
         const workedDaysCount = Object.keys(dailyTimbrature).length;
 

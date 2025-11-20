@@ -132,11 +132,18 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         };
     }, [firestore, operatorId, currentDate]);
 
-    const calculateHoursWithTolerance = (minutes: number) => {
-        if (isNaN(minutes) || minutes < 0) return 0;
+    const calculateOrdinaryHoursWithTolerance = (minutes: number): number => {
+        if (isNaN(minutes) || minutes <= 0) return 0;
+        const totalHalfHours = Math.floor(minutes / 30);
+        const remainingMinutes = minutes % 30;
+        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+    };
+    
+    const calculateOvertimeHoursWithTolerance = (minutes: number): number => {
+        if (isNaN(minutes) || minutes <= 0) return 0;
         const hours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
-        return remainingMinutes >= 50 ? hours + 1 : hours;
+        return hours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
 
@@ -145,7 +152,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         const approvedRequests = requests.filter(r => r.status === 'approvato');
         
         let workedDaysCount = 0;
-        let totalWorkedMillis = 0;
+        let totalWorkedMinutes = 0;
 
         const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const dayString = t.timestamp.toDate().toDateString();
@@ -160,6 +167,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             let entrata: Timestamp | null = null;
             let currentBreakStart: Timestamp | null = null;
             let dayWorked = false;
+            let dayTotalMillis = 0;
 
             for (const event of dayEvents) {
                 if (event.type === 'entrata') {
@@ -167,19 +175,20 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                 } else if (event.type === 'pausa' && entrata && !currentBreakStart) {
                     currentBreakStart = event.timestamp;
                 } else if (event.type === 'fine_pausa' && entrata && currentBreakStart) {
-                     totalWorkedMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
+                     dayTotalMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
                      currentBreakStart = null;
                 } else if (event.type === 'uscita' && entrata) {
                     if (!dayWorked) {
                         workedDaysCount++;
                         dayWorked = true;
                     }
-                    totalWorkedMillis += (event.timestamp.toMillis() - entrata.toMillis());
+                    dayTotalMillis += (event.timestamp.toMillis() - entrata.toMillis());
                     // Reset for potential second shift on same day
                     entrata = null; 
                     currentBreakStart = null;
                 }
             }
+             totalWorkedMinutes += (dayTotalMillis / (1000 * 60));
         }
         
         const periodStart = startOfMonth(currentDate);
@@ -189,10 +198,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
-        const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
         const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotalInHours * 60);
-        const ordinaryWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
-
+        const ordinaryWorkedHours = calculateOrdinaryHoursWithTolerance(ordinaryWorkedMinutes);
     
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
@@ -1051,7 +1058,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
                     <AlertDialogAction onClick={handleDeleteShift}>
                         Elimina
                     </AlertDialogAction>
