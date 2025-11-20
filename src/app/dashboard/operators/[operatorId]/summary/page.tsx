@@ -588,10 +588,11 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
         setSelectedDayInfo(dayInfo);
         
-        if (dayInfo && dayInfo.type !== 'straordinario') {
+        if (dayInfo) {
             setDailyShifts([]);
             setIsLoading(false);
-            return;
+            // We allow fetching data for 'straordinario' days
+            if (dayInfo.type !== 'straordinario') return;
         }
 
         const start = startOfDay(selectedDate);
@@ -604,18 +605,8 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 where('timestamp', '<=', Timestamp.fromDate(end))
             );
 
-            const straordinariQuery = query(
-                collection(firestore, `app-users/${operatorId}/straordinari`),
-                where('date', '>=', Timestamp.fromDate(start)),
-                where('date', '<=', Timestamp.fromDate(end)),
-                where('status', '==', 'approvato')
-            );
-            
             try {
-                const [timbratureSnapshot, straordinariSnapshot] = await Promise.all([
-                    getDocs(timbratureQuery),
-                    getDocs(straordinariQuery)
-                ]);
+                const timbratureSnapshot = await getDocs(timbratureQuery);
 
                 const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
                 timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -634,18 +625,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 if (currentShiftEvents.length > 0) {
                      shifts.push(calculateShiftDetails(currentShiftEvents));
                 }
-
-                straordinariSnapshot.forEach(doc => {
-                    const straordinarioShift = doc.data() as StraordinarioShift;
-                    const shiftEvents: Timbratura[] = straordinarioShift.events.map((e, i) => ({
-                        id: `${doc.id}-${i}`,
-                        type: e.type,
-                        timestamp: e.timestamp,
-                        status: 'confermata', // Overtime is already approved
-                    }));
-                    const processedShift = calculateShiftDetails(shiftEvents);
-                    shifts.push({ ...processedShift, isOvertime: true });
-                });
 
                 setDailyShifts(shifts);
 
@@ -940,7 +919,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                         <div key={index} className="border-b last:border-b-0">
                                             <div className='p-4'>
                                                 <div className="flex justify-between items-center mb-2">
-                                                    <h4 className="font-semibold">Turno {index + 1} {shift.isOvertime && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
+                                                    <h4 className="font-semibold">Turno {index + 1}</h4>
                                                     <Button variant="ghost" size="icon" onClick={() => { setDetailShift(shift); setIsDetailOpen(true); }}><Eye className="h-5 w-5" /></Button>
                                                 </div>
                                                 <Table>

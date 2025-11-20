@@ -207,18 +207,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                 where('timestamp', '<=', Timestamp.fromDate(end))
             );
             
-            const straordinariQuery = query(
-                collection(firestore, `app-users/${operatorId}/straordinari`),
-                where('date', '>=', Timestamp.fromDate(start)),
-                where('date', '<=', Timestamp.fromDate(end)),
-                where('status', '==', 'approvato')
-            );
-            
             try {
-                const [timbratureSnapshot, straordinariSnapshot] = await Promise.all([
-                    getDocs(timbratureQuery),
-                    getDocs(straordinariQuery)
-                ]);
+                const timbratureSnapshot = await getDocs(timbratureQuery);
 
                 const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
                 timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -238,19 +228,6 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     shifts.push(calculateShiftDetails(currentShiftEvents));
                 }
 
-                straordinariSnapshot.forEach(doc => {
-                    const straordinarioShift = doc.data() as StraordinarioShift;
-                    const shiftEvents: Timbratura[] = straordinarioShift.events.map((e, i) => ({
-                        id: `${doc.id}-${i}`,
-                        userId: operatorId,
-                        type: e.type,
-                        timestamp: e.timestamp,
-                        status: 'confermata',
-                    }));
-                    const processedShift = calculateShiftDetails(shiftEvents);
-                    shifts.push({ ...processedShift, isOvertime: true });
-                });
-                
                 setDailyShifts(shifts);
             } catch (error) {
                 console.error("Error fetching daily data:", error);
@@ -366,7 +343,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                                             <div key={index} className="border-b last:border-b-0">
                                                 <div className='p-4'>
                                                     <div className="flex justify-between items-center mb-2">
-                                                        <h4 className="font-semibold">Turno {index + 1} {shift.isOvertime && <Badge className="bg-amber-500 text-white">Straordinario</Badge>}</h4>
+                                                        <h4 className="font-semibold">Turno {index + 1}</h4>
                                                         <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
                                                     </div>
                                                     <Table>
