@@ -512,7 +512,8 @@ export default function MonthlySummaryPage() {
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes;
+        // THIS IS THE FIX: Subtract overtime from total worked minutes to get ordinary hours
+        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
         const totalWorkedHours = Math.round(ordinaryWorkedMinutes / 60);
 
         const workedDaysCount = Object.keys(dailyTimbrature).length;
