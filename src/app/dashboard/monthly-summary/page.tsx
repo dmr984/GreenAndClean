@@ -109,6 +109,8 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
     useEffect(() => {
         if (!firestore || !operatorId || !operator) return;
 
+        let localWorkedDays: Date[] = [];
+
         const monthlyTimbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', startOfPeriod),
@@ -135,6 +137,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
                     validWorkedDays.push(new Date(dayStr + 'T12:00:00'));
                 }
             }
+            localWorkedDays = validWorkedDays;
             setWorkedDays(validWorkedDays);
         });
 
@@ -167,7 +170,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
 
             // Calculate missed days
             const workedOrLeaveDays = new Set([
-                ...workedDays.map(d => format(d, 'yyyy-MM-dd')),
+                ...localWorkedDays.map(d => format(d, 'yyyy-MM-dd')),
                 ...ferie.map(d => format(d, 'yyyy-MM-dd')),
                 ...malattia.map(d => format(d, 'yyyy-MM-dd')),
             ]);
@@ -191,7 +194,7 @@ const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { op
             unsubTimbrature();
             unsubRequests();
         };
-    }, [firestore, operatorId, currentMonth, operator, workedDays]);
+    }, [firestore, operatorId, currentMonth, operator]);
 
     useEffect(() => {
         if (!firestore || !operatorId || !selectedDate) {
