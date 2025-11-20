@@ -70,6 +70,7 @@ type UnlockRequest = {
 
 type ApprovalData = {
     shiftToApprove: Shift | null;
+    ordinaryHours: string;
     overtimeHours: string;
     leaveHours: string;
 };
@@ -108,7 +109,7 @@ export default function ShiftApprovalPage() {
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
 
-    const [approvalData, setApprovalData] = useState<ApprovalData>({ shiftToApprove: null, overtimeHours: "0", leaveHours: "0"});
+    const [approvalData, setApprovalData] = useState<ApprovalData>({ shiftToApprove: null, ordinaryHours: "0", overtimeHours: "0", leaveHours: "0"});
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
 
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
@@ -318,7 +319,7 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         } finally {
             setIsApproveDialogOpen(false);
-            setApprovalData({ shiftToApprove: null, overtimeHours: "0", leaveHours: "0"});
+            setApprovalData({ shiftToApprove: null, ordinaryHours: "0", overtimeHours: "0", leaveHours: "0"});
             setIsDetailOpen(false);
         }
     };
@@ -461,28 +462,23 @@ export default function ShiftApprovalPage() {
         return remainingMinutes >= 50 ? hours + 1 : hours;
     };
     
-    const calculateHours = (shift: Shift | null): { overtime: number, leave: number } => {
-        if (!shift || !operator?.workSchedule) return { overtime: 0, leave: 0 };
+    const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
+        if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
     
         const contractualMinutes = getContractualHoursForShift(shift) * 60;
         const totalMinutes = shift.workDuration;
     
-        if (contractualMinutes === 0 && totalMinutes > 0) {
-            const overtimeHours = calculateHoursWithTolerance(totalMinutes);
-            return { overtime: overtimeHours, leave: 0 };
-        }
-    
         if (totalMinutes > contractualMinutes) {
             const overtimeMinutes = totalMinutes - contractualMinutes;
             const calculatedOvertime = calculateHoursWithTolerance(overtimeMinutes);
-            return { overtime: calculatedOvertime, leave: 0 };
-    
+            const ordinaryMinutes = totalMinutes - (calculatedOvertime * 60);
+            return { ordinary: parseFloat((ordinaryMinutes / 60).toFixed(2)), overtime: calculatedOvertime, leave: 0 };
         } else if (totalMinutes < contractualMinutes) {
             const leaveMinutes = contractualMinutes - totalMinutes;
-            return { overtime: 0, leave: parseFloat((leaveMinutes / 60).toFixed(2)) };
+            return { ordinary: parseFloat((totalMinutes / 60).toFixed(2)), overtime: 0, leave: parseFloat((leaveMinutes / 60).toFixed(2)) };
         }
     
-        return { overtime: 0, leave: 0 };
+        return { ordinary: parseFloat((totalMinutes / 60).toFixed(2)), overtime: 0, leave: 0 };
     };
 
     const handleApproveUnlock = async (unlockRequest: UnlockRequest) => {
@@ -552,9 +548,10 @@ export default function ShiftApprovalPage() {
     };
 
     const handleOpenApproveDialog = (shift: Shift) => {
-        const { overtime, leave } = calculateHours(shift);
+        const { ordinary, overtime, leave } = calculateHours(shift);
         setApprovalData({
             shiftToApprove: shift,
+            ordinaryHours: String(ordinary),
             overtimeHours: String(overtime),
             leaveHours: String(leave),
         });
@@ -1019,7 +1016,11 @@ export default function ShiftApprovalPage() {
                            <Calendar 
                                 mode="single" 
                                 selected={newShiftDate} 
-                                onSelect={setNewShiftDate} 
+                                onSelect={(date) => {
+                                  if (date) {
+                                      setNewShiftDate(date);
+                                  }
+                                }}
                                 className="rounded-md border" 
                                 disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
                            />
@@ -1105,7 +1106,7 @@ export default function ShiftApprovalPage() {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                                <p className="text-2xl font-bold">{calculateHours(detailShift).overtime}h</p>
+                                <p className="text-2xl font-bold">{calculateHoursWithTolerance(detailShift.workDuration - (getContractualHoursForShift(detailShift) * 60))}h</p>
                             </div>
                         </div>
                     )}
@@ -1264,6 +1265,11 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Verifica e modifica le ore calcolate prima di approvare il turno. Le ore verranno registrate come richieste separate.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-4 space-y-4">
+                        <div>
+                            <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
+                            <Input id="ordinary-hours" type="number" value={approvalData.ordinaryHours} onChange={(e) => setApprovalData(p => ({...p, ordinaryHours: e.target.value}))} step="0.5" min="0" />
+                            <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
+                        </div>
                         <div>
                             <Label htmlFor="overtime-hours">Ore di Straordinario Calcolate</Label>
                             <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="0.5" min="0" />
