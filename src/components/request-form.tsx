@@ -15,7 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { format, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 type ExistingRequest = {
@@ -55,28 +55,66 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     useEffect(() => {
         if (!firestore || !userId) return;
 
-        const q = query(
+        const allBookedDays = new Set<string>();
+        const unsubs: (() => void)[] = [];
+
+        // 1. Fetch approved leave/sickness requests
+        const requestsQuery = query(
             collection(firestore, `app-users/${userId}/requests`),
-            where('status', 'in', ['in_attesa', 'approvato']),
-            where('type', 'in', ['ferie', 'malattia'])
+            where('status', '==', 'approvato')
         );
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
+            snapshot.docs.forEach(doc => {
+                const req = doc.data() as ExistingRequest;
+                const interval = { start: req.startDate.toDate(), end: req.endDate.toDate() };
+                eachDayOfInterval(interval).forEach(day => {
+                    allBookedDays.add(startOfDay(day).toISOString());
+                });
+            });
+            setBookedDays(Array.from(allBookedDays).map(d => new Date(d)));
+        });
+        unsubs.push(unsubRequests);
+
+
+        // 2. Fetch confirmed clock-in/out days
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${userId}/timbrature`),
+            where('status', '==', 'confermata')
+        );
+        const unsubTimbrature = onSnapshot(timbratureQuery, (snapshot) => {
+            snapshot.docs.forEach(doc => {
+                const timbratura = doc.data() as { timestamp: Timestamp };
+                allBookedDays.add(startOfDay(timbratura.timestamp.toDate()).toISOString());
+            });
+            setBookedDays(Array.from(allBookedDays).map(d => new Date(d)));
+        });
+        unsubs.push(unsubTimbrature);
+
+        // 3. Fetch approved overtime shifts
+        const straordinariQuery = query(
+            collection(firestore, `app-users/${userId}/straordinari`),
+            where('status', '==', 'approvato')
+        );
+        const unsubStraordinari = onSnapshot(straordinariQuery, (snapshot) => {
+            snapshot.docs.forEach(doc => {
+                const straordinario = doc.data() as { date: Timestamp };
+                allBookedDays.add(startOfDay(straordinario.date.toDate()).toISOString());
+            });
+            setBookedDays(Array.from(allBookedDays).map(d => new Date(d)));
+        });
+        unsubs.push(unsubStraordinari);
+        
+        const allRequestsQuery = query(
+            collection(firestore, `app-users/${userId}/requests`),
+            where('status', 'in', ['in_attesa', 'approvato'])
+        );
+         const unsubAllRequests = onSnapshot(allRequestsQuery, (snapshot) => {
             const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExistingRequest));
             setExistingRequests(requests);
-
-            const days: Date[] = [];
-            requests.forEach(req => {
-                const interval = {
-                    start: req.startDate.toDate(),
-                    end: req.endDate.toDate()
-                };
-                const daysInInterval = eachDayOfInterval(interval);
-                days.push(...daysInInterval);
-            });
-            setBookedDays(days);
         });
+        unsubs.push(unsubAllRequests);
 
-        return () => unsubscribe();
+        return () => unsubs.forEach(unsub => unsub());
     }, [firestore, userId]);
     
     const refinedRequestSchema = requestSchema.refine(data => {
@@ -247,8 +285,9 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                       }}
                                       initialFocus
                                       locale={it}
+                                      disabled={bookedDays}
                                       modifiers={{ booked: bookedDays }}
-                                      modifiersClassNames={{ booked: "bg-destructive text-destructive-foreground" }}
+                                      modifiersClassNames={{ booked: "bg-destructive/80 text-destructive-foreground opacity-100" }}
                                     />
                                 </DialogContent>
                             </Dialog>
@@ -289,11 +328,11 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                           field.onChange(date);
                                           setIsEndPickerOpen(false);
                                         }}
-                                        disabled={{ before: startDateValue! }} 
+                                        disabled={[{ before: startDateValue! }, ...bookedDays]} 
                                         initialFocus 
                                         locale={it}
                                         modifiers={{ booked: bookedDays }}
-                                        modifiersClassNames={{ booked: "bg-destructive text-destructive-foreground" }}
+                                        modifiersClassNames={{ booked: "bg-destructive/80 text-destructive-foreground opacity-100" }}
                                     />
                                 </DialogContent>
                             </Dialog>
