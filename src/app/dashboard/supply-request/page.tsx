@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PackageSearch, Loader2, Send, Circle, Trash2 } from 'lucide-react';
+import { PackageSearch, Loader2, Send, Circle, Trash2, AlertCircle } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +28,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 type Product = {
     id: string;
     name: string;
-    // Quantity is intentionally omitted for operators
+    quantity: number;
 };
 
 type SupplyRequest = {
@@ -56,6 +56,7 @@ export default function SupplyRequestPage() {
 
     const [selectedProductId, setSelectedProductId] = useState('');
     const [quantity, setQuantity] = useState('');
+    const [selectedProductStock, setSelectedProductStock] = useState<number | null>(null);
 
     // Fetch products for the dropdown
     useEffect(() => {
@@ -132,6 +133,16 @@ export default function SupplyRequestPage() {
         return () => unsubscribe();
 
     }, [firestore, user, toast, isUserLoading]);
+    
+     const handleProductSelect = (productId: string) => {
+        setSelectedProductId(productId);
+        const product = products.find(p => p.id === productId);
+        if (product) {
+            setSelectedProductStock(product.quantity);
+        } else {
+            setSelectedProductStock(null);
+        }
+    };
 
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -172,6 +183,7 @@ export default function SupplyRequestPage() {
                 toast({ title: "Successo", description: "Richiesta di fornitura inviata." });
                 setSelectedProductId('');
                 setQuantity('');
+                setSelectedProductStock(null);
             })
             .catch((error: any) => {
                 console.error("Error creating supply request:", error);
@@ -220,6 +232,8 @@ export default function SupplyRequestPage() {
             </div>
         );
     }
+    
+    const isProductOutOfStock = selectedProductStock === 0;
 
     return (
         <>
@@ -235,7 +249,7 @@ export default function SupplyRequestPage() {
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-2">
                             <Label htmlFor="product">Prodotto</Label>
-                             <Select onValueChange={setSelectedProductId} value={selectedProductId} required>
+                             <Select onValueChange={handleProductSelect} value={selectedProductId} required>
                                 <SelectTrigger id="product" disabled={isLoadingProducts}>
                                     <SelectValue placeholder={isLoadingProducts ? "Caricamento..." : "Seleziona un prodotto..."} />
                                 </SelectTrigger>
@@ -247,6 +261,12 @@ export default function SupplyRequestPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {isProductOutOfStock && (
+                                <div className="flex items-center gap-2 text-sm text-destructive mt-2 p-2 bg-destructive/10 rounded-md">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <span>Questo articolo è esaurito. Non è possibile richiederlo.</span>
+                                </div>
+                            )}
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="quantity">Quantità</Label>
@@ -258,9 +278,10 @@ export default function SupplyRequestPage() {
                                 onChange={e => setQuantity(e.target.value)}
                                 min="1"
                                 required
+                                disabled={isProductOutOfStock}
                             />
                         </div>
-                        <Button type="submit" className="w-full" disabled={isSubmitting}>
+                        <Button type="submit" className="w-full" disabled={isSubmitting || isProductOutOfStock}>
                             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                             Invia Richiesta
                         </Button>

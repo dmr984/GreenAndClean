@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Warehouse, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 type Product = {
     id: string;
@@ -171,6 +173,17 @@ export default function WarehousePage() {
     if (!user || user.role !== 'admin') {
         return <div className="text-center text-muted-foreground">Accesso negato.</div>;
     }
+    
+    const getStockBadge = (quantity: number) => {
+        if (quantity === 0) {
+            return <Badge variant="destructive">Esaurito</Badge>;
+        }
+        if (quantity <= 5) {
+            return <Badge className="bg-yellow-500 text-white">In esaurimento</Badge>;
+        }
+        return <Badge variant="secondary">Disponibile</Badge>;
+    }
+
 
     return (
         <>
@@ -209,6 +222,7 @@ export default function WarehousePage() {
                                 <TableRow>
                                     <TableHead>Nome Prodotto</TableHead>
                                     <TableHead>Quantità</TableHead>
+                                    <TableHead>Stato</TableHead>
                                     <TableHead className="text-right w-[120px]">Azioni</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -217,6 +231,7 @@ export default function WarehousePage() {
                                     <TableRow key={product.id}>
                                         <TableCell className="font-medium">{product.name}</TableCell>
                                         <TableCell>{product.quantity}</TableCell>
+                                        <TableCell>{getStockBadge(product.quantity)}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" onClick={() => openEditDialog(product)}>
                                                 <Pencil className="h-4 w-4" />
