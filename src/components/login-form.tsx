@@ -39,25 +39,31 @@ export default function LoginForm() {
     const fetchAndMaybeCreateUsers = async () => {
         try {
             const snapshot = await getDocs(q);
-            if (snapshot.empty) {
-                // If no users are found, create the default admin user.
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+            
+            // Check if an admin user exists and is visible
+            const adminExists = usersData.some(user => user.username === 'Amministratore');
+
+            if (!adminExists) {
+                // If no admin user is found, create the default admin user.
                 // This is a failsafe for the very first run of the application.
                 const adminId = "admin_user"; 
                 const adminDocRef = doc(firestore, 'app-users', adminId);
                 const adminData = {
                     username: "Amministratore",
                     role: "admin" as const,
-                    password: "admin",
                     visibleInLogin: true,
                     firstName: "Admin",
                     lastName: "User",
                     workSchedule: {},
                 };
-                await setDoc(adminDocRef, adminData);
-                setUsers([{id: adminId, ...adminData}]);
+                await setDoc(adminDocRef, adminData, { merge: true }); // Use merge to avoid overwriting if it exists but is not visible
+                // Re-fetch users to include the newly created admin
+                 const newSnapshot = await getDocs(q);
+                 const newUsersData = newSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+                 setUsers(newUsersData);
             } else {
-                const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-                setUsers(usersData);
+                 setUsers(usersData);
             }
         } catch (error) {
             console.error("Error fetching login users:", error);
