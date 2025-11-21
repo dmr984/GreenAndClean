@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -116,11 +115,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
             const requestsSnap = await getDocs(requestsQuery);
-            const allRequests = requestsSnap.docs.map(d => d.data() as Request);
-            const allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
+            let allRequests = requestsSnap.docs.map(d => d.data() as Request);
+            let allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
+            allTimbrature = allTimbrature.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
-            const approvedRequests = allRequests.filter(r => r.status === 'approvato');
-            const timbrature = allTimbrature.filter(t => t.status === 'confermata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const approvedRequests = allRequests;
+            const timbrature = allTimbrature.filter(t => t.status === 'confermata');
 
             const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
             const today = startOfDay(new Date());
@@ -208,7 +208,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             case 'malattia': return { badge: <Badge className="bg-red-600 text-white">Malattia</Badge>, icon: <Stethoscope className="h-5 w-5 text-red-600" />, text: "Giorno di Malattia" };
             case 'permesso': return { badge: <Badge className="bg-yellow-500 text-white">Permesso</Badge>, icon: <UserCheck className="h-5 w-5 text-yellow-500" />, text: "Permesso Orario" };
             case 'futuro': return { badge: <Badge variant="outline">-</Badge>, icon: <Clock className="h-5 w-5 text-muted-foreground" />, text: "Giorno Futuro" };
-            default: return { badge: <Badge variant="outline">-</Badge>, icon: <Bed className="h-5 w-5 text-muted-foreground" />, text: "Nessuna attività registrata" };
+            default: return { badge: <Badge variant="outline">Vuoto</Badge>, icon: <Bed className="h-5 w-5 text-muted-foreground" />, text: "Nessuna attività registrata" };
         }
     };
     
@@ -327,7 +327,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <p className="text-2xl font-bold">{calculateShiftHours(selectedDay.shift).overtime}h</p>
                                 </div>
                             </div>
-                            <ScrollArea className="max-h-64">
+                            <div className="max-h-64 overflow-y-auto">
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                     <TableBody>
@@ -339,7 +339,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                         ))}
                                     </TableBody>
                                 </Table>
-                            </ScrollArea>
+                            </div>
                            </>
                         ) : (
                             <div className="py-8 text-center text-muted-foreground">Nessun turno registrato per questo giorno.</div>
