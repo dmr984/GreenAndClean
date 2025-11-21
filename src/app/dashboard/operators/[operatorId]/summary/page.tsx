@@ -285,9 +285,13 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {monthData.map((day) => (
-                                <TableRow key={day.date.toString()}>
-                                    <TableCell className="px-2">{format(day.date, 'dd/MM/yy')}</TableCell>
+                            {monthData.map((day) => {
+                                const isSunday = getDay(day.date) === 0;
+                                return (
+                                <TableRow key={day.date.toString()} className={cn(isSunday && "text-red-500")}>
+                                     <TableCell className="px-2 font-medium">
+                                        <span className='capitalize'>{format(day.date, 'eee', { locale: it })}</span> {format(day.date, 'dd/MM')}
+                                    </TableCell>
                                     <TableCell className="px-2">{getStatusInfo(day.status).badge}</TableCell>
                                     <TableCell className="text-right px-2">
                                         <Button 
@@ -300,7 +304,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                         </Button>
                                     </TableCell>
                                 </TableRow>
-                            ))}
+                            )})}
                         </TableBody>
                     </Table>
                 )}
