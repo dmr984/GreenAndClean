@@ -26,6 +26,14 @@
       ]
     },
     {
+      "collectionGroup": "timbrature",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "requests",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
