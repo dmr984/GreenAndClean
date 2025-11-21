@@ -35,6 +35,7 @@ type Request = {
     reason?: string;
     createdAt: Timestamp;
     viewedByOperator?: boolean;
+    associatedShiftId?: string;
 }
 
 

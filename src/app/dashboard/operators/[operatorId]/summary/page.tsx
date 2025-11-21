@@ -659,11 +659,14 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     const summary = useMemo(() => {
         const confirmedTimbrature = timbrature;
         const approvedRequests = requests;
-        
+        const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
+
         let workedDaysCount = 0;
         let totalOrdinaryMinutes = 0;
         let totalOvertimeMinutesFromShifts = 0;
         let ordinaryHoursByDay: {date: Date, hours: number, shift: Shift}[] = [];
+        
+        const shiftsProcessed = new Set<string>();
     
         const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const dayString = t.timestamp.toDate().toDateString();
@@ -697,20 +700,24 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                     dayTotalMillis += (event.timestamp.toMillis() - entrata.toMillis());
                     
                     const dayTotalMinutes = dayTotalMillis / (1000 * 60);
+                    const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
 
-                    const shiftObject: Shift = {
-                        events: [...currentShiftEvents],
-                        startTime: entrata,
-                        endTime: event.timestamp,
-                        workDuration: dayTotalMinutes,
-                        isOvertime: isOvertimeDay
-                    };
+                    if (!shiftsProcessed.has(shiftId)) {
+                        const shiftObject: Shift = {
+                            events: [...currentShiftEvents],
+                            startTime: entrata,
+                            endTime: event.timestamp,
+                            workDuration: dayTotalMinutes,
+                            isOvertime: isOvertimeDay
+                        };
 
-                    const { ordinary, overtime } = calculateShiftHours(shiftObject);
-                    totalOrdinaryMinutes += ordinary * 60;
-                    totalOvertimeMinutesFromShifts += overtime * 60;
-                    if(ordinary > 0){
-                       ordinaryHoursByDay.push({date: new Date(dayString), hours: ordinary, shift: shiftObject});
+                        const { ordinary, overtime } = calculateShiftHours(shiftObject);
+                        totalOrdinaryMinutes += ordinary * 60;
+                        totalOvertimeMinutesFromShifts += overtime * 60;
+                        if(ordinary > 0){
+                           ordinaryHoursByDay.push({date: new Date(dayString), hours: ordinary, shift: shiftObject});
+                        }
+                        shiftsProcessed.add(shiftId);
                     }
 
                     // Reset for next potential shift in the same day
@@ -721,11 +728,8 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             }
         }
         
-        const periodStart = startOfMonth(currentDate);
-        const periodEnd = endOfMonth(currentDate);
-
         const manuallyAddedOvertimeHours = approvedRequests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
+            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval) && !r.associatedShiftId)
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const ordinaryWorkedHours = roundOrdinaryHours(totalOrdinaryMinutes);
@@ -739,7 +743,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             approvedRequests.forEach(req => {
                 if (req.type === 'ferie' || req.type === 'malattia') {
                     for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                        if (isWithinInterval(day, { start: periodStart, end: periodEnd })) {
+                        if (isWithinInterval(day, monthInterval)) {
                             const dayName = dayIndexToName[getDay(day)];
                             const contractualHours = operator.workSchedule[dayName] || 0;
                             if (contractualHours > 0) {
@@ -756,7 +760,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             workedDays: workedDaysCount,
             workedHours: ordinaryWorkedHours,
             overtimeHours: totalOvertimeHours,
-            permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
+            permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval)).reduce((sum, r) => sum + (r.hours || 0), 0),
             malattiaDays: malattiaDaysCount,
             ferieDays: ferieDaysCount,
             ordinaryHoursByDay: ordinaryHoursByDay
@@ -1041,7 +1045,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                 <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{item.hours}</TableCell>
                                 <TableCell className="text-right space-x-2">
-                                     {detailView.type === 'straordinario' && (
+                                     {detailView.type === 'straordinario' && item.associatedShiftId && (
                                         <Button variant="ghost" size="icon" onClick={() => findShiftForOvertimeRequest(item)}>
                                             <Eye className="h-4 w-4" />
                                         </Button>

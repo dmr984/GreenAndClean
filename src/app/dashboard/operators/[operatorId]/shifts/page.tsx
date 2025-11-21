@@ -47,6 +47,7 @@ type Timbratura = {
 };
 
 type Shift = {
+    id: string; // Composite ID based on events
     events: Timbratura[];
     status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     workDuration: number; // total work minutes
@@ -167,22 +168,25 @@ export default function ShiftApprovalPage() {
 
             for (const event of allClockings) {
                 if (event.type === 'entrata' && currentShiftEvents.length > 0) {
+                     const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
                     const processed = processShift(currentShiftEvents, leaveDays);
-                    groupedShifts.push({ events: currentShiftEvents, ...processed });
+                    groupedShifts.push({ id: shiftId, events: currentShiftEvents, ...processed });
                     currentShiftEvents = [event];
                 } else {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
+                        const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
                         const processed = processShift(currentShiftEvents, leaveDays);
-                        groupedShifts.push({ events: currentShiftEvents, ...processed });
+                        groupedShifts.push({ id: shiftId, events: currentShiftEvents, ...processed });
                         currentShiftEvents = [];
                     }
                 }
             }
 
             if (currentShiftEvents.length > 0) {
+                 const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
                 const processed = processShift(currentShiftEvents, leaveDays);
-                groupedShifts.push({ events: currentShiftEvents, ...processed });
+                groupedShifts.push({ id: shiftId, events: currentShiftEvents, ...processed });
             }
             
             setAllShifts(groupedShifts.reverse());
@@ -229,7 +233,7 @@ export default function ShiftApprovalPage() {
         return approvedShifts;
     }, [allShifts]);
 
-    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'events'> => {
+    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'events' | 'id'> => {
         const hasPending = events.some(e => e.status === 'sospesa');
         const hasRejected = events.some(e => e.status === 'rifiutata');
         const isComplete = events.some(e => e.type === 'uscita');
@@ -311,6 +315,7 @@ export default function ShiftApprovalPage() {
                 reason: 'Straordinario approvato da turno',
                 createdAt: serverTimestamp(),
                 viewedByOperator: false,
+                associatedShiftId: shiftToApprove.id, // Link to the shift
             };
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
