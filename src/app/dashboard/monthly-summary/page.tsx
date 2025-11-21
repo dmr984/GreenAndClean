@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { collection, query, where, Timestamp, onSnapshot, doc, getDoc, getDocs, writeBatch, addDoc, serverTimestamp, runTransaction, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, onSnapshot, doc, getDoc, getDocs, writeBatch, addDoc, serverTimestamp, runTransaction, deleteDoc, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Calendar as CalendarIcon, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Loader2, List, Clock, X, Eye, Trash2, Pencil, Archive, PackageSearch } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -180,13 +180,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     if (isPureOvertime) dayStatus = 'straordinario';
                     else if (hasOvertime) dayStatus = 'lavorato/straordinario';
                     else dayStatus = 'lavorato';
-                }
-                
-                 if (dayStatus === 'vuoto' && day < today) {
-                    const dayName = dayIndexToName[getDay(day)];
-                    if((operator.workSchedule[dayName] || 0) > 0) {
-                        dayStatus = 'assente';
-                    }
                 }
                 
                 const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
