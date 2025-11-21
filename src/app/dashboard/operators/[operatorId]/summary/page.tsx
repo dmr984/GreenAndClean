@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase }
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive, Clock } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive, Clock, MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,8 @@ import { cn } from '@/lib/utils';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Calendar } from '@/components/ui/calendar';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -133,7 +134,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             unsubTimbrature(); 
         };
     }, [firestore, operatorId, currentDate]);
-
+    
     const roundOrdinaryHours = (minutes: number): number => {
         if (minutes <= 0) return 0;
         const totalHalfHours = Math.floor(minutes / 30);
@@ -170,7 +171,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             const events = dailyTimbrature[dayString];
             events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             
-            const isOvertimeDay = events[0].isOvertime;
+            const isOvertimeDay = events.find(e => e.type === 'entrata')?.isOvertime || false;
+
             let dayTotalMillis = 0;
             let entrata: Timestamp | null = null;
             let currentBreakStart: Timestamp | null = null;
@@ -185,12 +187,12 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                      currentBreakStart = null;
                 } else if (event.type === 'uscita' && entrata) {
                     dayTotalMillis += (event.timestamp.toMillis() - entrata.toMillis());
-                    // Don't reset here if there can be multiple shifts per day
+                    entrata = null; // Reset for potential next shift
                 }
             }
             const dayTotalMinutes = dayTotalMillis / (1000 * 60);
             
-            const shiftObject: Shift = {
+             const shiftObject: Shift = {
                 events: events,
                 startTime: events.find(e => e.type === 'entrata')!.timestamp,
                 endTime: events.find(e => e.type === 'uscita')?.timestamp || null,
@@ -198,33 +200,33 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                 isOvertime: isOvertimeDay
             };
 
-
-            if (isOvertimeDay) {
-                totalOvertimeMinutesFromShifts += dayTotalMinutes;
+            const dayDate = new Date(dayString);
+            const dayName = dayIndexToName[getDay(dayDate)];
+            const contractualHours = operator.workSchedule[dayName] || 0;
+            
+            if (contractualHours === 0) {
+                 totalOvertimeMinutesFromShifts += dayTotalMinutes;
             } else {
-                 const dayDate = new Date(dayString);
-                const dayName = dayIndexToName[getDay(dayDate)];
-                const contractualHours = operator.workSchedule[dayName] || 0;
-                const contractualMinutes = contractualHours * 60;
-
-                let ordinaryMinutesForDay = dayTotalMinutes;
-                if (dayTotalMinutes > contractualMinutes) {
+                 const contractualMinutes = contractualHours * 60;
+                 if (dayTotalMinutes > contractualMinutes) {
                     const overtimeMinutes = dayTotalMinutes - contractualMinutes;
                     totalOvertimeMinutesFromShifts += overtimeMinutes;
-                    ordinaryMinutesForDay = contractualMinutes;
-                }
-                totalOrdinaryMinutes += ordinaryMinutesForDay;
-                const roundedOrdinaryHours = roundOrdinaryHours(ordinaryMinutesForDay);
-                if (roundedOrdinaryHours > 0) {
-                   ordinaryHoursByDay.push({date: dayDate, hours: roundedOrdinaryHours, shift: shiftObject});
-                }
+                    totalOrdinaryMinutes += contractualMinutes;
+                 } else {
+                    totalOrdinaryMinutes += dayTotalMinutes;
+                 }
+            }
+
+            const ordinaryPart = Math.min(dayTotalMinutes, contractualHours * 60);
+            const roundedOrdinaryHours = roundOrdinaryHours(ordinaryPart);
+            if (roundedOrdinaryHours > 0) {
+               ordinaryHoursByDay.push({date: dayDate, hours: roundedOrdinaryHours, shift: shiftObject});
             }
         }
         
         const periodStart = startOfMonth(currentDate);
         const periodEnd = endOfMonth(currentDate);
 
-        // This counts only manually added overtime requests, not those generated from shifts.
         const manuallyAddedOvertimeHours = approvedRequests
             .filter(r => r.type === 'straordinario' && r.reason !== 'Straordinario da giorno non lavorativo approvato' && r.reason !== 'Straordinario approvato da turno' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -619,341 +621,179 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
     );
 };
 
+type DayActivity = {
+    date: Date;
+    type: 'work' | 'overtime' | 'leave-ferie' | 'leave-malattia' | 'leave-permesso' | 'none';
+    shifts: Shift[];
+};
+
 function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId: string, operator: Operator, initialDate: Date }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     
-    const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate);
     const [currentMonth, setCurrentMonth] = useState(initialDate);
-    const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
-    const [workedDays, setWorkedDays] = useState<Date[]>([]);
-    const [overtimeDays, setOvertimeDays] = useState<Date[]>([]);
-    const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
+    const [activities, setActivities] = useState<DayActivity[]>([]);
+    const [selectedActivity, setSelectedActivity] = useState<DayActivity | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedDayInfo, setSelectedDayInfo] = useState<SelectedDayInfo>(null);
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-    
-    const [editingShift, setEditingShift] = useState<Shift | null>(null);
-    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-    const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
-    
-    const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
-    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-
-    const [detailShift, setDetailShift] = useState<Shift | null>(null);
-    const [isDetailOpen, setIsDetailOpen] = useState(false);
-
-
-    const { startOfPeriod, endOfPeriod } = useMemo(() => {
-        const start = startOfMonth(currentMonth);
-        const end = endOfMonth(currentMonth);
-        return {
-            startOfPeriod: Timestamp.fromDate(start),
-            endOfPeriod: Timestamp.fromDate(end),
-        };
-    }, [currentMonth]);
+    const [newShiftDate, setNewShiftDate] = useState<Date>(new Date());
+    const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     
     useEffect(() => {
-        if (!firestore || !operatorId || !operator) return;
+        if (!firestore || !operatorId) {
+            setIsLoading(false);
+            return;
+        }
+        setIsLoading(true);
 
-        const monthlyTimbratureQuery = query(
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+
+        const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
-            where('timestamp', '>=', startOfPeriod),
-            where('timestamp', '<=', endOfPeriod),
+            where('timestamp', '>=', monthStart),
+            where('timestamp', '<=', monthEnd),
             where('status', '==', 'confermata')
         );
-        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
 
-        const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, (timbratureSnapshot) => {
-            const confirmedTimbrature = timbratureSnapshot.docs.map(doc => doc.data() as Timbratura);
-            
-            const dailyData = confirmedTimbrature.reduce((acc, t) => {
-                const day = format(t.timestamp.toDate(), 'yyyy-MM-dd');
-                if (!acc[day]) acc[day] = { events: [], isOvertime: false };
-                acc[day].events.push(t);
-                if (t.isOvertime) acc[day].isOvertime = true;
-                return acc;
-            }, {} as Record<string, { events: Timbratura[], isOvertime: boolean }>);
+        const requestsQuery = query(
+            collection(firestore, `app-users/${operatorId}/requests`),
+            where('status', '==', 'approvato')
+        );
 
-            const validWorkedDays: Date[] = [];
-            const validOvertimeDays: Date[] = [];
-            for (const dayStr in dailyData) {
-                const { events, isOvertime } = dailyData[dayStr];
-                if (events.some(e => e.type === 'entrata') && events.some(e => e.type === 'uscita')) {
-                    if (isOvertime) {
-                        validOvertimeDays.push(new Date(dayStr + 'T12:00:00'));
-                    } else {
-                        validWorkedDays.push(new Date(dayStr + 'T12:00:00'));
+        const unsubTimbrature = onSnapshot(timbratureQuery, timbratureSnap => {
+            const unsubRequests = onSnapshot(requestsQuery, requestsSnap => {
+                const monthlyActivities: DayActivity[] = [];
+                const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+                daysInMonth.forEach(day => {
+                    const dayString = format(day, 'yyyy-MM-dd');
+                    
+                    const shifts: Shift[] = [];
+                    const dayTimbrature = timbratureSnap.docs
+                        .map(d => ({id: d.id, ...d.data()} as Timbratura))
+                        .filter(t => format(t.timestamp.toDate(), 'yyyy-MM-dd') === dayString)
+                        .sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+                    let currentShiftEvents: Timbratura[] = [];
+                    dayTimbrature.forEach(t => {
+                        currentShiftEvents.push(t);
+                        if(t.type === 'uscita') {
+                             const startTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp;
+                             const endTime = currentShiftEvents.find(e => e.type === 'uscita')?.timestamp;
+                             let workDuration = 0;
+                             if(startTime && endTime) {
+                                let totalMillis = endTime.toMillis() - startTime.toMillis();
+                                let breakStart: Timestamp | null = null;
+                                currentShiftEvents.forEach(e => {
+                                    if (e.type === 'pausa') breakStart = e.timestamp;
+                                    if (e.type === 'fine_pausa' && breakStart) {
+                                        totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                                        breakStart = null;
+                                    }
+                                });
+                                workDuration = totalMillis / (1000 * 60);
+                             }
+                            shifts.push({
+                                events: currentShiftEvents,
+                                startTime: startTime!,
+                                endTime: endTime!,
+                                workDuration,
+                                isOvertime: currentShiftEvents[0]?.isOvertime || false
+                            });
+                            currentShiftEvents = [];
+                        }
+                    });
+
+
+                    const dayRequests = requestsSnap.docs.map(d => d.data() as Request).filter(r => {
+                        const rStart = startOfDay(r.startDate.toDate());
+                        const rEnd = endOfDay(r.endDate.toDate());
+                        return day >= rStart && day <= rEnd;
+                    });
+
+                    let activityType: DayActivity['type'] = 'none';
+                    if (shifts.length > 0) {
+                        activityType = shifts[0].isOvertime ? 'overtime' : 'work';
+                    } else if (dayRequests.length > 0) {
+                        const leave = dayRequests.find(r => r.type === 'ferie');
+                        const sick = dayRequests.find(r => r.type === 'malattia');
+                        const perm = dayRequests.find(r => r.type === 'permesso');
+                        if (leave) activityType = 'leave-ferie';
+                        else if (sick) activityType = 'leave-malattia';
+                        else if (perm) activityType = 'leave-permesso';
                     }
+
+                    monthlyActivities.push({ date: day, type: activityType, shifts });
+                });
+
+                setActivities(monthlyActivities);
+                if (selectedActivity) {
+                    const updatedActivity = monthlyActivities.find(a => isSameDay(a.date, selectedActivity.date));
+                    setSelectedActivity(updatedActivity || null);
+                } else {
+                    setSelectedActivity(monthlyActivities.find(a => a.type !== 'none') || null);
                 }
-            }
-            setWorkedDays(validWorkedDays);
-            setOvertimeDays(validOvertimeDays);
-        });
-
-        const unsubRequests = onSnapshot(requestsQuery, (requestsSnapshot) => {
-            const monthStart = startOfMonth(currentMonth);
-            const monthEnd = endOfMonth(currentMonth);
-            const ferie: Date[] = [];
-            const malattia: Date[] = [];
-            const permesso: Date[] = [];
-
-            const approvedRequests = requestsSnapshot.docs.map(doc => doc.data() as Request).filter(req => req.status === 'approvato');
-
-            approvedRequests.forEach(req => {
-                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                    if (isWithinInterval(day, { start: monthStart, end: monthEnd })) {
-                        const dayOfWeekIndex = getDay(day);
-                        const dayName = dayIndexToName[dayOfWeekIndex];
-                        const contractualHours = operator.workSchedule[dayName] || 0;
-
-                        if (req.type === 'ferie' && contractualHours > 0) ferie.push(new Date(day));
-                        if (req.type === 'malattia' && contractualHours > 0) malattia.push(new Date(day));
-                        if (req.type === 'permesso') permesso.push(new Date(day));
-                    }
-                }
+                setIsLoading(false);
             });
-             setLeaveDays({ ferie, malattia, permesso });
+            return () => unsubRequests();
         });
 
-        return () => {
-            unsubTimbrature();
-            unsubRequests();
-        };
-    }, [firestore, operatorId, currentMonth, operator]);
+        return () => unsubTimbrature();
 
-    useEffect(() => {
-        if (!firestore || !operatorId || !selectedDate) {
-            setIsLoading(false);
-            setDailyShifts([]);
-            setSelectedDayInfo(null);
+    }, [firestore, operatorId, currentMonth]);
+
+
+    const handleAddManualShift = async () => {
+        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita || !operator) {
+            toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
             return;
         }
 
-        setIsLoading(true);
-        const start = startOfDay(selectedDate);
-        const end = endOfDay(selectedDate);
-
-        const fetchDailyData = async () => {
-             const timbratureQuery = query(
-                collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('timestamp', '>=', Timestamp.fromDate(start)),
-                where('timestamp', '<=', Timestamp.fromDate(end))
-            );
-
-            try {
-                const timbratureSnapshot = await getDocs(timbratureQuery);
-                const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                
-                const shifts: Shift[] = [];
-                let currentShiftEvents: Timbratura[] = [];
-
-                timbratureDelGiorno.forEach(t => {
-                    currentShiftEvents.push(t);
-                    if (t.type === 'uscita') {
-                        shifts.push(calculateShiftDetails(currentShiftEvents));
-                        currentShiftEvents = [];
-                    }
-                });
-                
-                if (currentShiftEvents.length > 0) {
-                     shifts.push(calculateShiftDetails(currentShiftEvents));
-                }
-
-                setDailyShifts(shifts);
-                
-                if (shifts.length === 0) {
-                    let dayInfo: SelectedDayInfo = null;
-                    if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'ferie' };
-                    else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'malattia' };
-                    else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = { type: 'permesso' };
-                    setSelectedDayInfo(dayInfo);
-                } else {
-                    setSelectedDayInfo(null);
-                }
-
-            } catch (error) {
-                console.error("Error fetching daily data:", error);
-                toast({title: "Errore", description: "Impossibile caricare i dati del giorno."});
-            } finally {
-                setIsLoading(false);
-            }
+        const createTimestamp = (time: string): Timestamp => {
+            const [hours, minutes] = time.split(':').map(Number);
+            return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
-
-        fetchDailyData();
-
-    }, [firestore, operatorId, selectedDate, leaveDays, toast]);
-
-    const calculateShiftDetails = (events: Timbratura[]): Shift => {
-        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = events.find(e => e.type === 'uscita')?.timestamp;
-        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime || false;
-
-        let workDuration = 0;
-        if (startTime && endTime) {
-             let totalMillis = endTime.toMillis() - startTime.toMillis();
-             let breakStart: Timestamp | null = null;
-             events.forEach(e => {
-                if (e.type === 'pausa') breakStart = e.timestamp;
-                if (e.type === 'fine_pausa' && breakStart) {
-                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                    breakStart = null;
-                }
-             });
-             workDuration = totalMillis / (1000 * 60);
-        } else if (startTime) {
-             // Handle ongoing shift if needed
-        }
-
-        return {
-            events: events,
-            startTime: startTime || events[0].timestamp,
-            endTime: endTime || null,
-            workDuration: workDuration,
-            isOvertime: isOvertime
-        };
-    };
-
-    const handleAddManualShift = async () => {
-        if (!firestore || !operatorId || !selectedDate || !editingShift) return;
         
-        const dayName = dayIndexToName[getDayFns(selectedDate)];
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
         const isWorkDay = (operator.workSchedule[dayName] || 0) > 0;
         const isOvertime = !isWorkDay;
-
-        const createTimestamp = (time: string): Timestamp | null => {
-            if (!time) return null;
-            const [hours, minutes] = time.split(':').map(Number);
-            if(isNaN(hours) || isNaN(minutes)) return null;
-            return Timestamp.fromDate(set(selectedDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
-        };
-
+        
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
-
         const events: { type: Timbratura['type'], time: string }[] = [
-            { type: 'entrata', time: editShiftTimes.entrata },
-            { type: 'uscita', time: editShiftTimes.uscita },
-            { type: 'pausa', time: editShiftTimes.pausa },
-            { type: 'fine_pausa', time: editShiftTimes.fine_pausa },
+            { type: 'entrata', time: newShiftTimes.entrata },
+            { type: 'uscita', time: newShiftTimes.uscita },
+            { type: 'pausa', time: newShiftTimes.pausa },
+            { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
         ];
 
         for (const event of events) {
             if (event.time) {
-                const timestamp = createTimestamp(event.time);
-                if (!timestamp) {
-                    toast({ title: `Orario non valido per ${event.type}`, variant: 'destructive'});
-                    return;
-                }
                 const newDocRef = doc(timbratureCollectionRef);
                 batch.set(newDocRef, {
-                    userId: operatorId,
-                    type: event.type,
-                    timestamp: timestamp,
-                    status: 'sospesa' as const,
-                    viewedByOperator: false,
-                    isOvertime: isOvertime,
+                    userId: operatorId, type: event.type, timestamp: createTimestamp(event.time),
+                    status: 'sospesa' as const, viewedByOperator: false, isOvertime
                 });
             }
         }
-        
         try {
             await batch.commit();
-            toast({ title: 'Successo', description: 'Turno manuale aggiunto con successo. In attesa di approvazione.' });
-            setIsAddDialogOpen(false);
+            toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
         } catch (error) {
             toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
         }
-    };
-    
-    const handleOpenEditDialog = (shift: Shift) => {
-        setEditingShift(shift);
-        const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
-        shift.events.forEach(e => {
-            times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
-        });
-        setEditShiftTimes(times);
-        setIsEditDialogOpen(true);
-    };
-
-    const handleEditShift = async () => {
-        if (!firestore || !editingShift || !operatorId || !selectedDate) return;
-
-        const batch = writeBatch(firestore);
-
-        const createTimestamp = (time: string): Timestamp | null => {
-            if (!time) return null;
-            const [hours, minutes] = time.split(':').map(Number);
-            if (isNaN(hours) || isNaN(minutes)) return null;
-            return Timestamp.fromDate(set(selectedDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
-        };
-
-        const newEventsMap: Partial<Record<Timbratura['type'], { timestamp: Timestamp | null }>> = {
-            entrata: { timestamp: createTimestamp(editShiftTimes.entrata) },
-            uscita: { timestamp: createTimestamp(editShiftTimes.uscita) },
-            pausa: { timestamp: createTimestamp(editShiftTimes.pausa) },
-            fine_pausa: { timestamp: createTimestamp(editShiftTimes.fine_pausa) },
-        };
         
-        const existingEventTypes = new Set(editingShift.events.map(e => e.type));
-
-        for (const event of editingShift.events) {
-            const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
-            const newTimestamp = newEventsMap[event.type]?.timestamp;
-            if (newTimestamp) {
-                batch.update(docRef, { timestamp: newTimestamp, viewedByOperator: false });
-            } else {
-                batch.delete(docRef);
-            }
-        }
-
-        for (const type in newEventsMap) {
-            const eventType = type as Timbratura['type'];
-            if (!existingEventTypes.has(eventType)) {
-                const timestamp = newEventsMap[eventType]?.timestamp;
-                if (timestamp) {
-                    const newDocRef = doc(collection(firestore, `app-users/${operatorId}/timbrature`));
-                    batch.set(newDocRef, { userId: operatorId, type: eventType, timestamp: timestamp, status: 'confermata', viewedByOperator: false, isOvertime: editingShift.isOvertime });
-                }
-            }
-        }
-
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: 'Turno aggiornato.' });
-        } catch (error) {
-            toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
-        } finally {
-            setIsEditDialogOpen(false);
-            setEditingShift(null);
-            setIsDetailOpen(false);
-        }
-    };
-    
-    const handleDeleteShift = async () => {
-        if (!firestore || !shiftToDelete || !operatorId) return;
-        const batch = writeBatch(firestore);
-        shiftToDelete.events.forEach(event => {
-            const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
-            batch.delete(docRef);
-        });
-        
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: 'Turno eliminato con successo.' });
-        } catch (error) {
-            toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
-        } finally {
-            setIsConfirmingDelete(false);
-            setShiftToDelete(null);
-            setIsDetailOpen(false);
-        }
+        setIsAddDialogOpen(false);
+        setNewShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     };
 
-    const handleEditInputChange = (field: keyof typeof editShiftTimes, value: string) => setEditShiftTimes(prev => ({ ...prev, [field]: value }));
-    
+    const handleOpenAddDialog = (date: Date) => {
+        setNewShiftDate(date);
+        setIsAddDialogOpen(true);
+    };
+
     const formatMinutes = (minutes: number) => {
         if (isNaN(minutes) || minutes < 0) return '00:00';
         const h = Math.floor(minutes / 60);
@@ -961,272 +801,145 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const getContractualHoursForShift = (shift: Shift | null): number => {
-        if (!shift || !operator?.workSchedule) return 0;
-        const shiftDate = shift.events[0]?.timestamp.toDate();
-        if (!shiftDate) return 0;
-        const dayOfWeek = getDayFns(shiftDate);
-        const dayName = dayIndexToName[dayOfWeek];
-        return operator.workSchedule[dayName] || 0;
-    };
-    
-     const calculateOvertimeWithTolerance = (shift: Shift | null): number => {
-        if (!shift || !operator?.workSchedule) return 0;
-
-        const contractualMinutes = getContractualHoursForShift(shift) * 60;
-        const totalMinutes = shift.workDuration;
-        
-        if (totalMinutes <= contractualMinutes) return 0;
-        
-        const overtimeMinutes = totalMinutes - contractualMinutes;
-        
-        const hours = Math.floor(overtimeMinutes / 60);
-        const remainingMinutes = overtimeMinutes % 60;
-
-        if (remainingMinutes >= 50) {
-            return hours + 1;
-        }
-
-        return hours;
+    const activityDetails: Record<DayActivity['type'], { icon: React.ElementType, label: string, color: string }> = {
+        'work': { icon: Briefcase, label: 'Lavorato', color: 'text-primary' },
+        'overtime': { icon: Plus, label: 'Straordinario', color: 'text-amber-500' },
+        'leave-ferie': { icon: Plane, label: 'Ferie', color: 'text-green-500' },
+        'leave-malattia': { icon: Stethoscope, label: 'Malattia', color: 'text-red-500' },
+        'leave-permesso': { icon: UserCheck, label: 'Permesso', color: 'text-yellow-500' },
+        'none': { icon: MoreHorizontal, label: 'Nessuna attività', color: 'text-muted-foreground' }
     };
 
-    const isDateDisabled = (date: Date): boolean => {
-        const today = startOfDay(new Date());
-        
-        if (date > today && !isSameDay(date, today)) {
-          return true;
-        }
-        
-        return false;
-      };
-
-    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
-        const details = {
-            ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
-            malattia: { Icon: Stethoscope, text: 'Giorno di Malattia', color: 'text-red-600' },
-            permesso: { Icon: UserCheck, text: 'Giorno di Permesso', color: 'text-yellow-600' },
-        };
-        const { Icon, text, color } = details[type];
-        return (
-            <div className="text-center h-40 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-                <Icon className={cn("h-12 w-12", color)} />
-                <p className="text-lg font-medium">{text}</p>
-                <p>Nessun turno di lavoro registrato per oggi.</p>
-            </div>
-        )
-    };
-    
     return (
+        <>
         <div className="flex flex-col xl:flex-row gap-6">
              <div className="flex flex-col w-full xl:max-w-sm mx-auto">
                  <Card>
-                    <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
-                    <CardContent className="flex justify-center">
-                         <Calendar
-                            locale={it}
-                            mode="single"
-                            selected={selectedDate}
-                            onSelect={(date) => {
-                                if (date) setSelectedDate(date)
-                            }}
-                            month={currentMonth}
-                            onMonthChange={setCurrentMonth}
-                            className="p-0"
-                            disabled={isDateDisabled}
-                            modifiers={{ 
-                                worked: workedDays, 
-                                ferie: leaveDays.ferie, 
-                                malattia: leaveDays.malattia, 
-                                permesso: leaveDays.permesso,
-                                straordinario: overtimeDays
-                            }}
-                             modifiersClassNames={{
-                                worked: 'bg-primary/20',
-                                straordinario: 'bg-amber-500/30 text-amber-800',
-                                ferie: 'bg-green-500/30 text-green-800',
-                                malattia: 'bg-red-500/30 text-red-800',
-                                permesso: 'bg-yellow-500/30 text-yellow-800'
-                            }}
-                        />
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                            <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(m => subDays(startOfMonth(m), 1))}>
+                                <CalendarIcon className="h-4 w-4" />
+                            </Button>
+                            <CardTitle className="text-lg capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</CardTitle>
+                            <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(m => addDays(startOfMonth(m), 1))}>
+                                <CalendarIcon className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? (
+                             <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                        ) : (
+                            <ScrollArea className="h-[500px] pr-3">
+                                <div className="space-y-2">
+                                    {activities.map((activity) => {
+                                        const details = activityDetails[activity.type];
+                                        return (
+                                            <div 
+                                                key={activity.date.toISOString()}
+                                                onClick={() => setSelectedActivity(activity)}
+                                                className={cn(
+                                                    "flex items-center justify-between p-3 rounded-md cursor-pointer border",
+                                                    isSameDay(activity.date, selectedActivity?.date || new Date()) ? 'bg-muted border-primary' : 'hover:bg-muted/50'
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <details.icon className={cn("h-5 w-5", details.color)} />
+                                                    <div className="flex flex-col">
+                                                        <span className="font-semibold">{format(activity.date, 'EEEE dd', { locale: it })}</span>
+                                                        <span className={cn("text-xs", details.color)}>{details.label}</span>
+                                                    </div>
+                                                </div>
+                                                {activity.type === 'none' && !isSameDay(activity.date, new Date()) && activity.date < new Date() && (
+                                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenAddDialog(activity.date); }}>
+                                                        <Plus className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </ScrollArea>
+                        )}
                     </CardContent>
-                     <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground pt-4">
-                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-primary/20 border"></div> Giorno Lavorato</div>
-                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-green-500/30 border"></div> Ferie</div>
-                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
-                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
-                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-amber-500/30 border"></div> Straordinario</div>
-                         <Button className="w-full mt-4" onClick={() => { setEditingShift(null); setEditShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' }); setIsAddDialogOpen(true);}}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
-                    </CardFooter>
                 </Card>
             </div>
             
             <div className="flex-1 min-w-0">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Dettaglio del {selectedDate ? format(selectedDate, 'PPP', { locale: it }) : '...'}</CardTitle>
+                        <CardTitle>Dettaglio del {selectedActivity ? format(selectedActivity.date, 'PPP', { locale: it }) : '...'}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {isLoading ? (
                             <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                        ) : dailyShifts.length > 0 ? (
+                        ) : selectedActivity && selectedActivity.shifts.length > 0 ? (
                            <>
-                                {dailyShifts.map((shift, index) => (
-                                    <div key={index} className="border rounded-md mb-4 last:mb-0">
-                                        <div className='p-4'>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                    {shift.isOvertime ? (
-                                                        <Badge variant="outline" className="border-amber-500 text-amber-600">Straordinario</Badge>
-                                                    ) : (
-                                                        <Badge variant="outline">Ordinario</Badge>
-                                                    )}
-                                                </div>
-                                                <Button variant="ghost" size="icon" onClick={() => { setDetailShift(shift); setIsDetailOpen(true); }}><Eye className="h-5 w-5" /></Button>
+                                {selectedActivity.shifts.map((shift, index) => (
+                                    <div key={index} className="border rounded-md mb-4 last:mb-0 p-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="font-semibold">Turno {index + 1}</h4>
+                                                {shift.isOvertime ? (
+                                                    <Badge variant="outline" className="border-amber-500 text-amber-600">Straordinario</Badge>
+                                                ) : (
+                                                    <Badge variant="outline">Ordinario</Badge>
+                                                )}
                                             </div>
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {shift.events.map(t => (
-                                                        <TableRow key={t.id}>
-                                                            <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                            <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                            <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
-                                                        </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
+                                            <p className="font-mono text-sm">Durata: {formatMinutes(shift.workDuration)}</p>
                                         </div>
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {shift.events.map(t => (
+                                                    <TableRow key={t.id}>
+                                                        <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                        <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                        <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
                                     </div>
                                 ))}
                             </>
-                        ) : selectedDayInfo ? (
-                            <LeaveDayCard type={selectedDayInfo.type} />
-                        ): (
-                            <div className="text-center h-24 flex items-center justify-center text-muted-foreground">Nessun turno trovato per questo giorno.</div>
+                        ) : (
+                            <div className="text-center h-24 flex items-center justify-center text-muted-foreground">
+                                {selectedActivity ? 'Nessun turno trovato per questo giorno.' : 'Seleziona un giorno per vedere i dettagli.'}
+                            </div>
                         )}
                     </CardContent>
                 </Card>
             </div>
        
-        <ResponsiveDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <ResponsiveDialogContent>
-                <ResponsiveDialogHeader><ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle></ResponsiveDialogHeader>
-                <div className="grid gap-4 py-4">
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label htmlFor="manual-entrata">Entrata*</Label><Input id="manual-entrata" type="time" value={editShiftTimes.entrata} onChange={e => handleEditInputChange('entrata', e.target.value)} required /></div>
-                        <div className="space-y-2"><Label htmlFor="manual-uscita">Uscita*</Label><Input id="manual-uscita" type="time" value={editShiftTimes.uscita} onChange={e => handleEditInputChange('uscita', e.target.value)} required /></div>
-                     </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label htmlFor="manual-pausa">Inizio Pausa (Opz.)</Label><Input id="manual-pausa" type="time" value={editShiftTimes.pausa} onChange={e => handleEditInputChange('pausa', e.target.value)} /></div>
-                        <div className="space-y-2"><Label htmlFor="manual-fine-pausa">Fine Pausa (Opz.)</Label><Input id="manual-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => handleEditInputChange('fine_pausa', e.target.value)} /></div>
-                     </div>
-                </div>
-                <ResponsiveDialogFooter><Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Annulla</Button><Button onClick={handleAddManualShift}>Salva Turno</Button></ResponsiveDialogFooter>
-            </ResponsiveDialogContent>
-        </ResponsiveDialog>
-        
-        <ResponsiveDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <ResponsiveDialogContent>
-                <ResponsiveDialogHeader><ResponsiveDialogTitle>Modifica Turno</ResponsiveDialogTitle></ResponsiveDialogHeader>
-                <div className="grid gap-4 py-4">
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label htmlFor="edit-entrata">Entrata*</Label><Input id="edit-entrata" type="time" value={editShiftTimes.entrata} onChange={e => handleEditInputChange('entrata', e.target.value)} required /></div>
-                        <div className="space-y-2"><Label htmlFor="edit-uscita">Uscita*</Label><Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => handleEditInputChange('uscita', e.target.value)} required /></div>
-                     </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label htmlFor="edit-pausa">Inizio Pausa (Opz.)</Label><Input id="edit-pausa" type="time" value={editShiftTimes.pausa} onChange={e => handleEditInputChange('pausa', e.target.value)} /></div>
-                        <div className="space-y-2"><Label htmlFor="edit-fine-pausa">Fine Pausa (Opz.)</Label><Input id="edit-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => handleEditInputChange('fine_pausa', e.target.value)} /></div>
-                     </div>
-                </div>
-                <ResponsiveDialogFooter><Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Annulla</Button><Button onClick={handleEditShift}>Salva Modifiche</Button></ResponsiveDialogFooter>
-            </ResponsiveDialogContent>
-        </ResponsiveDialog>
-
-        <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        Questa azione eliminerà le timbrature per questo turno in modo permanente. L'azione non può essere annullata.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteShift}>
-                        Elimina
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-
-         <ResponsiveDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-            <ResponsiveDialogContent className="sm:max-w-3xl">
-                <ResponsiveDialogHeader>
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
-                            {detailShift?.startTime && <ResponsiveDialogDescription>Turno del {format(detailShift.startTime.toDate(), 'PPP', { locale: it })}</ResponsiveDialogDescription>}
+            <ResponsiveDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>Giorno: {format(newShiftDate, "PPP", { locale: it })}</ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2"><Label htmlFor="manual-entrata">Entrata*</Label><Input id="manual-entrata" type="time" value={newShiftTimes.entrata} onChange={e => setNewShiftTimes(p => ({...p, entrata: e.target.value}))} required /></div>
+                            <div className="space-y-2"><Label htmlFor="manual-uscita">Uscita*</Label><Input id="manual-uscita" type="time" value={newShiftTimes.uscita} onChange={e => setNewShiftTimes(p => ({...p, uscita: e.target.value}))} required /></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2"><Label htmlFor="manual-pausa">Inizio Pausa (Opz.)</Label><Input id="manual-pausa" type="time" value={newShiftTimes.pausa} onChange={e => setNewShiftTimes(p => ({...p, pausa: e.target.value}))} /></div>
+                            <div className="space-y-2"><Label htmlFor="manual-fine-pausa">Fine Pausa (Opz.)</Label><Input id="manual-fine-pausa" type="time" value={newShiftTimes.fine_pausa} onChange={e => setNewShiftTimes(p => ({...p, fine_pausa: e.target.value}))} /></div>
                         </div>
                     </div>
-                </ResponsiveDialogHeader>
-
-                {detailShift && operator && (
-                    <div className="grid grid-cols-3 gap-4 text-center my-4">
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                            <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
-                            <p className="text-2xl font-bold">{formatMinutes(detailShift.workDuration)}</p>
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                            <p className="text-2xl font-bold">{calculateOvertimeWithTolerance(detailShift)}h</p>
-                        </div>
-                    </div>
-                )}
-
-                <div className="overflow-x-auto mt-2 max-h-80 overflow-y-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="whitespace-nowrap">Orario</TableHead>
-                                <TableHead className="whitespace-nowrap">Evento</TableHead>
-                                <TableHead className="whitespace-nowrap">Stato</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {detailShift?.events.map(t => (
-                                <TableRow key={t.id}>
-                                    <TableCell className="whitespace-nowrap">{format(t.timestamp.toDate(), 'p', { locale: it })}</TableCell>
-                                    <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
-                                    <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-                    <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                    {detailShift && (
-                      <>
-                        <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
-                        <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
-                      </>
-                    )}
-                </ResponsiveDialogFooter>
-            </ResponsiveDialogContent>
-        </ResponsiveDialog>
+                    <ResponsiveDialogFooter><Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Annulla</Button><Button onClick={handleAddManualShift}>Salva Turno</Button></ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
         </div>
+        </>
     );
 }
+
 
 export default function OperatorSummaryPage() {
     const params = useParams();
