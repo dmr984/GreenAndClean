@@ -113,19 +113,20 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
-            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
-            where('status', '==', 'confermata')
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd))
         );
 
         const requestsQuery = query(
-            collection(firestore, `app-users/${operatorId}/requests`),
-            where('status', '==', 'approvato')
+            collection(firestore, `app-users/${operatorId}/requests`)
         );
 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
             const requestsSnap = await getDocs(requestsQuery);
-            const approvedRequests = requestsSnap.docs.map(d => d.data() as Request);
-            const timbrature = timbratureSnap.docs.map(d => d.data() as Timbratura).sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const allRequests = requestsSnap.docs.map(d => d.data() as Request);
+            const allTimbrature = timbratureSnap.docs.map(d => d.data() as Timbratura);
+
+            const approvedRequests = allRequests.filter(r => r.status === 'approvato');
+            const timbrature = allTimbrature.filter(t => t.status === 'confermata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
             const today = startOfDay(new Date());
@@ -138,7 +139,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     dayStatus = 'futuro';
                 }
 
-                // Check for leave/sickness first
                 const leaveRequest = approvedRequests.find(req => {
                     const reqStart = startOfDay(req.startDate.toDate());
                     const reqEnd = endOfDay(req.endDate.toDate());
@@ -149,7 +149,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     dayStatus = leaveRequest.type;
                 }
 
-                // Check for clockings if not on leave
                 const dayTimbrature = timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
                 if (dayTimbrature.length > 0) {
                      let workDuration = 0;
@@ -495,7 +494,7 @@ export default function OperatorSummaryPage() {
             }
     
             if (timbratureSnapshot.empty && requestsSnapshot.docs.every(d => d.data().startDate.toDate() > monthEnd)) {
-                 toast({ title: 'Nessun dato', description: 'Non ci sono dati da eliminare per questo mese.' });
+                 toast({ title: 'Nessun dato', description: 'Non ci sono dati da elaborare per questo mese.' });
             } else {
                 await batch.commit();
                 toast({ title: 'Successo!', description: `I dati di ${format(monthToClean, 'MMMM yyyy', { locale: it })} sono stati elaborati.` });
@@ -503,7 +502,7 @@ export default function OperatorSummaryPage() {
     
         } catch (error) {
             console.error("Errore durante la pulizia del mese:", error);
-            toast({ title: 'Errore', description: 'Impossibile completare la pulizia.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile completare l\'elaborazione.', variant: 'destructive' });
         } finally {
             setIsCleaning(false);
             setMonthToClean(null);
@@ -908,7 +907,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         );
 
         const snapshot = await getDocs(timbratureQuery);
-        const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
+        const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura)).filter(t => t.status === 'confermata');
         
         if (events.length > 0) {
             events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
