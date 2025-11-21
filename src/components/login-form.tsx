@@ -36,33 +36,38 @@ export default function LoginForm() {
 
     const q = query(collection(firestore, 'app-users'), where("visibleInLogin", "==", true));
     
-    getDocs(q).then(async (snapshot) => {
-      if (snapshot.empty) {
-        // If no users are found, create the default admin user.
-        // This is a failsafe for the very first run of the application.
-        const adminId = "admin_user"; 
-        const adminDocRef = doc(firestore, 'app-users', adminId);
-        const adminData = {
-            username: "Amministratore",
-            role: "admin" as const,
-            password: "admin",
-            visibleInLogin: true,
-            firstName: "Admin",
-            lastName: "User",
-            workSchedule: {},
-        };
-        await setDoc(adminDocRef, adminData);
-        setUsers([{id: adminId, ...adminData}]);
-      } else {
-        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-        setUsers(usersData);
-      }
-      setIsUsersLoading(false);
-    }).catch(error => {
-      console.error("Error fetching login users:", error);
-      toast({ title: "Errore", description: "Impossibile caricare la lista utenti.", variant: "destructive" });
-      setIsUsersLoading(false);
-    });
+    const fetchAndMaybeCreateUsers = async () => {
+        try {
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) {
+                // If no users are found, create the default admin user.
+                // This is a failsafe for the very first run of the application.
+                const adminId = "admin_user"; 
+                const adminDocRef = doc(firestore, 'app-users', adminId);
+                const adminData = {
+                    username: "Amministratore",
+                    role: "admin" as const,
+                    password: "admin",
+                    visibleInLogin: true,
+                    firstName: "Admin",
+                    lastName: "User",
+                    workSchedule: {},
+                };
+                await setDoc(adminDocRef, adminData);
+                setUsers([{id: adminId, ...adminData}]);
+            } else {
+                const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+                setUsers(usersData);
+            }
+        } catch (error) {
+            console.error("Error fetching login users:", error);
+            toast({ title: "Errore", description: "Impossibile caricare la lista utenti.", variant: "destructive" });
+        } finally {
+            setIsUsersLoading(false);
+        }
+    };
+    
+    fetchAndMaybeCreateUsers();
 
   }, [firestore, toast]);
 
