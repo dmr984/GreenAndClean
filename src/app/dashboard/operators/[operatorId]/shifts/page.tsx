@@ -43,7 +43,7 @@ type Timbratura = {
     status: 'sospesa' | 'confermata' | 'rifiutata';
     latitude?: number;
     longitude?: number;
-    isOvertime: boolean;
+    isOvertime?: boolean;
 };
 
 type Shift = {
@@ -264,7 +264,7 @@ export default function ShiftApprovalPage() {
         
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
-        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime || false;
+        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
 
         return { status, workDuration, isOnLeaveDay, isOvertime };
     };
@@ -442,7 +442,7 @@ export default function ShiftApprovalPage() {
                 userId: operator.id,
                 type: eventType,
                 timestamp: newEventsMap[eventType]!.timestamp,
-                status: 'confermata',
+                status: 'sospesa', // New manual entries should be pending
                 viewedByOperator: false,
                 isOvertime: editingShift.isOvertime,
             });
@@ -507,7 +507,7 @@ export default function ShiftApprovalPage() {
         const totalMinutesWorked = Math.round(shift.workDuration);
 
         // Scenario 1: Non-working day (pure overtime) or explicitly marked as overtime
-        if (contractualHours === 0 || shift.isOvertime) {
+        if (shift.isOvertime) {
             return {
                 ordinary: 0,
                 overtime: roundOvertimeHours(totalMinutesWorked),

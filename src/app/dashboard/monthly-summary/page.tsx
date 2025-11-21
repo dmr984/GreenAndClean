@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calendar as DayPickerCalendar } from '@/components/ui/calendar';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -49,6 +49,7 @@ type Timbratura = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata' | 'rifiutata';
+    isOvertime?: boolean;
 };
 
 type StraordinarioEvent = {
@@ -78,434 +79,334 @@ type DetailView = {
     items: Request[];
 } | null;
 
+type DayInfo = {
+    date: Date;
+    status: 'lavorato' | 'straordinario' | 'lavorato/straordinario' | 'ferie' | 'malattia' | 'permesso' | 'assente' | 'futuro' | 'vuoto';
+    shift: Shift | null;
+}
 
-const OperatorDailySummaryContent = ({ operatorId, initialDate, operator }: { operatorId: string, initialDate: Date, operator: Operator }) => {
+const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange }: { operatorId: string, operator: Operator, initialDate: Date, onMonthChange: (date: Date) => void }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
-    const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate);
     const [currentMonth, setCurrentMonth] = useState(initialDate);
-    const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
+    const [monthData, setMonthData] = useState<DayInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [detailShift, setDetailShift] = useState<Shift | null>(null);
+    const [selectedDay, setSelectedDay] = useState<DayInfo | null>(null);
+    const [shiftDetail, setShiftDetail] = useState<Shift | null>(null);
 
-    const [workedDays, setWorkedDays] = useState<Date[]>([]);
-    const [missedWorkDays, setMissedWorkDays] = useState<Date[]>([]);
-    const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
-    const [selectedDayInfo, setSelectedDayInfo] = useState<'ferie' | 'malattia' | 'permesso' | null>(null);
-
-    const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
-    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-
-
-    const { startOfPeriod, endOfPeriod } = useMemo(() => {
-        const start = startOfMonth(currentMonth);
-        const end = endOfMonth(currentMonth);
-        return {
-            startOfPeriod: Timestamp.fromDate(start),
-            endOfPeriod: Timestamp.fromDate(end),
-        };
-    }, [currentMonth]);
 
     useEffect(() => {
-        if (!firestore || !operatorId || !operator) return;
-
-        let localWorkedDays: Date[] = [];
-
-        const monthlyTimbratureQuery = query(
-            collection(firestore, `app-users/${operatorId}/timbrature`),
-            where('timestamp', '>=', startOfPeriod),
-            where('timestamp', '<=', endOfPeriod),
-        );
-        
-        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
-
-        const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, (timbratureSnapshot) => {
-            const allTimbrature = timbratureSnapshot.docs.map(doc => doc.data() as {type: string, timestamp: Timestamp, status: string});
-            const confirmedTimbrature = allTimbrature.filter(data => data.status === 'confermata');
-            
-            const dailyEvents = confirmedTimbrature.reduce((acc, t) => {
-                const day = format(t.timestamp.toDate(), 'yyyy-MM-dd');
-                if (!acc[day]) acc[day] = [];
-                acc[day].push(t.type);
-                return acc;
-            }, {} as Record<string, string[]>);
-
-            const validWorkedDays: Date[] = [];
-            for (const dayStr in dailyEvents) {
-                const events = dailyEvents[dayStr];
-                if (events.includes('entrata') && events.includes('uscita')) {
-                    validWorkedDays.push(new Date(dayStr + 'T12:00:00'));
-                }
-            }
-            localWorkedDays = validWorkedDays;
-            setWorkedDays(validWorkedDays);
-        });
-
-
-        const unsubRequests = onSnapshot(requestsQuery, (requestsSnapshot) => {
-            const monthStart = startOfMonth(currentMonth);
-            const monthEnd = endOfMonth(currentMonth);
-            const ferie: Date[] = [];
-            const malattia: Date[] = [];
-            const permesso: Date[] = [];
-
-            const approvedRequests = requestsSnapshot.docs.map(doc => doc.data() as Request).filter(req => req.status === 'approvato');
-
-            approvedRequests.forEach(req => {
-                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                     const isWithinViewingMonth = day >= startOfMonth(currentMonth) && day <= endOfMonth(currentMonth);
-                    
-                    const dayOfWeekIndex = getDay(day);
-                    const dayName = dayIndexToName[dayOfWeekIndex];
-                    const contractualHours = operator.workSchedule[dayName] || 0;
-
-                    if (req.type === 'ferie' && contractualHours > 0) ferie.push(new Date(day));
-                    if (req.type === 'malattia' && contractualHours > 0) malattia.push(new Date(day));
-                    if (isWithinViewingMonth) {
-                        if (req.type === 'permesso') permesso.push(new Date(day));
-                    }
-                }
-            });
-            setLeaveDays({ ferie, malattia, permesso });
-
-            // Calculate missed days
-            const workedOrLeaveDays = new Set([
-                ...localWorkedDays.map(d => format(d, 'yyyy-MM-dd')),
-                ...ferie.map(d => format(d, 'yyyy-MM-dd')),
-                ...malattia.map(d => format(d, 'yyyy-MM-dd')),
-            ]);
-
-            const missed: Date[] = [];
-            for (let day = new Date(monthStart); day <= monthEnd; day.setDate(day.getDate() + 1)) {
-                 if (day > new Date()) continue; // Don't flag future days
-
-                const dayName = dayIndexToName[getDay(day)];
-                const contractualHours = operator.workSchedule[dayName] || 0;
-                const dayStr = format(day, 'yyyy-MM-dd');
-
-                if (contractualHours > 0 && !workedOrLeaveDays.has(dayStr)) {
-                    missed.push(new Date(day));
-                }
-            }
-            setMissedWorkDays(missed);
-        });
-
-        return () => {
-            unsubTimbrature();
-            unsubRequests();
-        };
-    }, [firestore, operatorId, currentMonth, operator]);
-
-    useEffect(() => {
-        if (!firestore || !operatorId || !selectedDate) {
+        if (!firestore || !operatorId || !operator) {
             setIsLoading(false);
-            setDailyShifts([]);
-            setSelectedDayInfo(null);
             return;
         }
         setIsLoading(true);
-        const start = startOfDay(selectedDate);
-        const end = endOfDay(selectedDate);
 
-        const fetchDailyData = async () => {
-            const timbratureQuery = query(
-                collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('timestamp', '>=', Timestamp.fromDate(start)),
-                where('timestamp', '<=', Timestamp.fromDate(end))
-            );
-            
-            try {
-                const timbratureSnapshot = await getDocs(timbratureQuery);
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
 
-                const timbratureDelGiorno = timbratureSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
-                timbratureDelGiorno.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${operatorId}/timbrature`),
+            where('timestamp', '>=', Timestamp.fromDate(monthStart)),
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
+            where('status', '==', 'confermata'),
+            orderBy('timestamp', 'asc')
+        );
 
-                const shifts: Shift[] = [];
-                let currentShiftEvents: Timbratura[] = [];
+        const requestsQuery = query(
+            collection(firestore, `app-users/${operatorId}/requests`),
+            where('status', '==', 'approvato')
+        );
 
-                timbratureDelGiorno.forEach(t => {
-                    currentShiftEvents.push(t);
-                    if (t.type === 'uscita') {
-                        shifts.push(calculateShiftDetails(currentShiftEvents));
-                        currentShiftEvents = [];
-                    }
-                });
+        const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
+            const requestsSnap = await getDocs(requestsQuery);
+            const approvedRequests = requestsSnap.docs.map(d => d.data() as Request);
+            const timbrature = timbratureSnap.docs.map(d => d.data() as Timbratura);
 
-                if (currentShiftEvents.length > 0) {
-                    shifts.push(calculateShiftDetails(currentShiftEvents));
-                }
+            const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+            const today = startOfDay(new Date());
 
-                setDailyShifts(shifts);
+            const processedData: DayInfo[] = daysOfMonth.map(day => {
+                let dayStatus: DayInfo['status'] = 'vuoto';
+                let dayShift: Shift | null = null;
                 
-                if (shifts.length === 0) {
-                    let dayInfo: 'ferie' | 'malattia' | 'permesso' | null = null;
-                    if (leaveDays.ferie.some(d => isSameDay(d, selectedDate))) dayInfo = 'ferie';
-                    else if (leaveDays.malattia.some(d => isSameDay(d, selectedDate))) dayInfo = 'malattia';
-                    else if (leaveDays.permesso.some(d => isSameDay(d, selectedDate))) dayInfo = 'permesso';
-                    setSelectedDayInfo(dayInfo);
-                } else {
-                     setSelectedDayInfo(null);
+                if (day > today) {
+                    dayStatus = 'futuro';
                 }
 
-
-            } catch (error) {
-                console.error("Error fetching daily data:", error);
-                toast({title: "Errore", description: "Impossibile caricare i dati del giorno."});
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchDailyData();
-
-    }, [firestore, operatorId, selectedDate, leaveDays, toast]);
-
-    const calculateShiftDetails = (events: Timbratura[]): Shift => {
-        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = events.find(e => e.type === 'uscita')?.timestamp;
-
-        let workDuration = 0;
-        if (startTime && endTime) {
-             let totalMillis = endTime.toMillis() - startTime.toMillis();
-             let breakStart: Timestamp | null = null;
-             events.forEach(e => {
-                if (e.type === 'pausa') breakStart = e.timestamp;
-                if (e.type === 'fine_pausa' && breakStart) {
-                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                    breakStart = null;
+                // Check for leave/sickness first
+                const leaveRequest = approvedRequests.find(req => {
+                    const reqStart = startOfDay(req.startDate.toDate());
+                    const reqEnd = endOfDay(req.endDate.toDate());
+                    return (req.type === 'ferie' || req.type === 'malattia') && isWithinInterval(day, { start: reqStart, end: reqEnd });
+                });
+                
+                if (leaveRequest) {
+                    dayStatus = leaveRequest.type;
                 }
-             });
-             workDuration = totalMillis / (1000 * 60);
-        }
 
-        return {
-            events: events,
-            startTime: startTime || events[0].timestamp,
-            endTime: endTime || null,
-            workDuration: workDuration
-        };
-    };
+                // Check for clockings if not on leave
+                const dayTimbrature = timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
+                if (dayTimbrature.length > 0) {
+                     let workDuration = 0;
+                     const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
+                     const endTime = dayTimbrature.find(e => e.type === 'uscita')?.timestamp;
+                     
+                     if (startTime && endTime) {
+                         let totalMillis = endTime.toMillis() - startTime.toMillis();
+                         let breakStart: Timestamp | null = null;
+                         dayTimbrature.forEach(e => {
+                             if (e.type === 'pausa') breakStart = e.timestamp;
+                             if (e.type === 'fine_pausa' && breakStart) {
+                                 totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                                 breakStart = null;
+                             }
+                         });
+                         workDuration = totalMillis / (1000 * 60);
+                     }
+                    
+                    const shift: Shift = {
+                        events: dayTimbrature,
+                        startTime: startTime!,
+                        endTime: endTime || null,
+                        workDuration,
+                        isOvertime: dayTimbrature[0]?.isOvertime
+                    };
+                    dayShift = shift;
 
-    const handleDeleteShift = async () => {
-        if (!firestore || !shiftToDelete || !operatorId) return;
-        
-        const batch = writeBatch(firestore);
+                    const hasOvertime = (calculateShiftHours(shift).overtime > 0);
+                    const isPureOvertime = shift.isOvertime || (operator.workSchedule[dayIndexToName[getDay(day)]] || 0) === 0;
 
-        shiftToDelete.events.forEach(event => {
-            const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, event.id);
-            batch.delete(docRef);
+                    if (isPureOvertime) dayStatus = 'straordinario';
+                    else if (hasOvertime) dayStatus = 'lavorato/straordinario';
+                    else dayStatus = 'lavorato';
+                }
+                
+                 if (dayStatus === 'vuoto' && day < today) {
+                    const dayName = dayIndexToName[getDay(day)];
+                    if((operator.workSchedule[dayName] || 0) > 0) {
+                        dayStatus = 'assente';
+                    }
+                }
+                
+                const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
+                if(permissionRequest) dayStatus = 'permesso';
+
+
+                return { date: day, status: dayStatus, shift: dayShift };
+            });
+            setMonthData(processedData);
+            setIsLoading(false);
         });
 
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: 'Turno eliminato.' });
-        } catch (err) {
-            console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
-        } finally {
-            setDetailShift(null);
-            setShiftToDelete(null);
-            setIsConfirmingDelete(false);
+        return () => unsub();
+    }, [firestore, operatorId, operator, currentMonth]);
+
+    const handleMonthNav = (offset: number) => {
+        const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1);
+        setCurrentMonth(newMonth);
+        onMonthChange(newMonth);
+        setSelectedDay(null);
+    };
+    
+    const getStatusBadge = (status: DayInfo['status']) => {
+        switch (status) {
+            case 'lavorato': return <Badge variant="secondary">Ordinario</Badge>;
+            case 'straordinario': return <Badge className="bg-amber-500 text-white">Straordinario</Badge>;
+            case 'lavorato/straordinario': return <Badge className="bg-blue-500 text-white">Ordinario/Straordinario</Badge>;
+            case 'ferie': return <Badge className="bg-green-500 text-white">Ferie</Badge>;
+            case 'malattia': return <Badge className="bg-red-600 text-white">Malattia</Badge>;
+            case 'permesso': return <Badge className="bg-yellow-500 text-white">Permesso</Badge>;
+            case 'assente': return <Badge variant="destructive">Assente</Badge>;
+            default: return <Badge variant="outline"> - </Badge>;
         }
     };
+    
+    const calculateShiftHours = (shift: Shift | null): { ordinary: number, overtime: number } => {
+        if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0 };
+    
+        const contractualHours = (operator.workSchedule[dayIndexToName[getDay(shift.startTime.toDate())]] || 0);
+        const totalMinutesWorked = Math.round(shift.workDuration);
 
-
-    const LeaveDayCard = ({ type }: { type: 'ferie' | 'malattia' | 'permesso' }) => {
-        const details = {
-            ferie: { Icon: Plane, text: 'Giorno di Ferie', color: 'text-green-600' },
-            malattia: { Icon: Stethoscope, text: 'Giorno di Malattia', color: 'text-red-600' },
-            permesso: { Icon: UserCheck, text: 'Giorno di Permesso', color: 'text-yellow-600' },
+        const roundOrdinaryHours = (minutes: number): number => {
+            if (minutes <= 0) return 0;
+            const totalHalfHours = Math.floor(minutes / 30);
+            const remainingMinutes = minutes % 30;
+            return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
         };
-        const { Icon, text, color } = details[type];
-        return (
-            <div className="text-center h-40 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-                <Icon className={cn("h-12 w-12", color)} />
-                <p className="text-lg font-medium">{text}</p>
-                <p>Nessun turno di lavoro registrato.</p>
-            </div>
-        )
-    };
 
-    const isDateDisabled = (date: Date): boolean => {
-        const today = startOfDay(new Date());
-        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
+        const roundOvertimeHours = (minutes: number): number => {
+            if (minutes <= 0) return 0;
+            const totalHours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+        };
         
-        if (date > today && !isSameDay(date, today)) {
-          return !isLeaveOrSickDay;
+        if (shift.isOvertime) { // Pure overtime shift
+            return { ordinary: 0, overtime: roundOvertimeHours(totalMinutesWorked) };
         }
-        return false;
-      };
 
-    const isWorkDay = selectedDate ? (operator.workSchedule[dayIndexToName[getDay(selectedDate)]] || 0) > 0 : false;
+        const contractualMinutes = contractualHours * 60;
+        if (totalMinutesWorked > contractualMinutes) {
+            const overtimeMinutes = totalMinutesWorked - contractualMinutes;
+            return { 
+                ordinary: roundOrdinaryHours(contractualMinutes),
+                overtime: roundOvertimeHours(overtimeMinutes), 
+            };
+        } else {
+            return { 
+                ordinary: roundOrdinaryHours(totalMinutesWorked), 
+                overtime: 0, 
+            };
+        }
+    };
+    
+    const formatMinutes = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return '00:00';
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
 
     return (
-        <>
-            <div className="flex flex-col xl:flex-row gap-6">
-                <div className="flex flex-col w-full xl:max-w-sm mx-auto">
-                    <Card>
-                        <CardHeader><CardTitle>Calendario</CardTitle></CardHeader>
-                        <CardContent className="flex justify-center">
-                            <DayPickerCalendar
-                                locale={it}
-                                mode="single"
-                                selected={selectedDate}
-                                onSelect={setSelectedDate}
-                                month={currentMonth}
-                                onMonthChange={setCurrentMonth}
-                                className="p-0"
-                                disabled={isDateDisabled}
-                                modifiers={{ 
-                                    worked: workedDays, 
-                                    ferie: leaveDays.ferie, 
-                                    malattia: leaveDays.malattia, 
-                                    permesso: leaveDays.permesso, 
-                                    missed: missedWorkDays,
-                                    straordinario: workedDays.filter(workDay => {
-                                        const dayName = dayIndexToName[getDay(workDay)];
-                                        return (operator.workSchedule[dayName] || 0) === 0;
-                                    })
-                                }}
-                                modifiersClassNames={{ 
-                                    worked: 'bg-primary/20', 
-                                    ferie: 'bg-green-500/30 text-green-800', 
-                                    malattia: 'bg-red-500/30 text-red-800', 
-                                    permesso: 'bg-yellow-500/30 text-yellow-800',
-                                    straordinario: 'bg-amber-500/30 text-amber-800',
-                                    missed: 'border-2 border-destructive'
-                                }}
-                            />
-                        </CardContent>
-                        <CardFooter className="flex-col items-stretch gap-2 text-sm text-muted-foreground pt-4">
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-primary/20 border"></div> Giorno Lavorato</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-green-500/30 border"></div> Ferie</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-amber-500/30 border"></div> Straordinario</div>
-                            <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full border-2 border-destructive"></div> Turno Mancante</div>
-                        </CardFooter>
-                    </Card>
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Dettaglio del {selectedDate ? format(selectedDate, 'PPP', { locale: it }) : '...'}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {isLoading ? (
-                                <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                            ) : dailyShifts.length > 0 ? (
-                                <>
-                                    {dailyShifts.map((shift, index) => (
-                                        <div key={index} className="border rounded-md mb-4 last:mb-0">
-                                            <div className='p-4'>
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <div className='flex items-center gap-2'>
-                                                        <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                        {!isWorkDay && (
-                                                            <Badge variant="outline" className='border-amber-500 text-amber-600'>Straordinario</Badge>
-                                                        )}
-                                                    </div>
-                                                    <Button variant="ghost" size="icon" onClick={() => setDetailShift(shift)}><Eye className="h-5 w-5" /></Button>
-                                                </div>
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>Orario</TableHead><TableHead>Evento</TableHead><TableHead className="text-right">Stato</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {shift.events.map(t => (
-                                                            <TableRow key={t.id}>
-                                                                <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                                                <TableCell className="text-right"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && 'bg-yellow-500 text-white')}>{t.status}</Badge></TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </>
-                            ) : selectedDayInfo ? (
-                                <LeaveDayCard type={selectedDayInfo} />
-                            ) : (
-                                <div className="text-center h-24 flex items-center justify-center text-muted-foreground">Nessun turno trovato per questo giorno.</div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
+        <div className="space-y-4">
+             <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                <Button variant="outline" size="sm" onClick={() => handleMonthNav(-1)}>Prec.</Button>
+                <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
+                <Button variant="outline" size="sm" onClick={() => handleMonthNav(1)}>Succ.</Button>
             </div>
+             <div className="flex flex-col lg:flex-row gap-6">
+                <Card className="w-full lg:w-1/3">
+                    <CardHeader><CardTitle>Giorni del Mese</CardTitle></CardHeader>
+                    <CardContent>
+                        {isLoading ? (
+                            <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
+                        ) : (
+                            <ScrollArea className="h-[500px]">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Data</TableHead>
+                                            <TableHead>Stato</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {monthData.map((day) => (
+                                            <TableRow 
+                                                key={day.date.toString()} 
+                                                onClick={() => setSelectedDay(day)}
+                                                className={cn("cursor-pointer", isSameDay(day.date, selectedDay?.date || new Date(0)) && "bg-muted")}
+                                            >
+                                                <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
+                                                <TableCell>{getStatusBadge(day.status)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </ScrollArea>
+                        )}
+                    </CardContent>
+                </Card>
+                <Card className="flex-1">
+                    <CardHeader>
+                        <CardTitle>Dettaglio Giorno</CardTitle>
+                        <CardDescription>
+                            {selectedDay ? format(selectedDay.date, 'PPP', { locale: it }) : 'Seleziona un giorno dalla lista'}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {!selectedDay ? (
+                            <div className="flex items-center justify-center h-64 text-muted-foreground">Seleziona un giorno per vedere i dettagli.</div>
+                        ) : selectedDay.shift ? (
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h4 className="font-semibold text-lg">Turno di Lavoro</h4>
+                                    <Button variant="ghost" size="icon" onClick={() => setShiftDetail(selectedDay.shift)}><Eye className="h-5 w-5"/></Button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                     <div className="p-4 bg-muted/50 rounded-md">
+                                        <p className="text-sm font-medium text-muted-foreground">Inizio</p>
+                                        <p className="text-lg font-semibold">{format(selectedDay.shift.startTime.toDate(), 'HH:mm')}</p>
+                                    </div>
+                                    <div className="p-4 bg-muted/50 rounded-md">
+                                        <p className="text-sm font-medium text-muted-foreground">Fine</p>
+                                        <p className="text-lg font-semibold">{selectedDay.shift.endTime ? format(selectedDay.shift.endTime.toDate(), 'HH:mm') : 'In corso'}</p>
+                                    </div>
+                                </div>
+                                <Table>
+                                    <TableBody>
+                                        {selectedDay.shift.events.map(event => (
+                                            <TableRow key={event.id}>
+                                                <TableCell className="capitalize font-medium">{event.type.replace('_', ' ')}</TableCell>
+                                                <TableCell>{format(event.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Badge variant={event.status === 'confermata' ? 'secondary' : 'default'}>{event.status}</Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ) : (
+                             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-4">
+                                {getStatusBadge(selectedDay.status)}
+                                <p className="font-medium text-lg text-center">Nessuna attività registrata per questo giorno.</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+             </div>
 
-            {detailShift && (
-                <ResponsiveDialog open={!!detailShift} onOpenChange={() => setDetailShift(null)}>
+              {shiftDetail && (
+                <ResponsiveDialog open={!!shiftDetail} onOpenChange={() => setShiftDetail(null)}>
                     <ResponsiveDialogContent>
                         <ResponsiveDialogHeader>
                             <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
+                            {shiftDetail.startTime && <ResponsiveDialogDescription>Turno del {format(shiftDetail.startTime.toDate(), 'PPP', {locale: it})}</ResponsiveDialogDescription>}
                         </ResponsiveDialogHeader>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Orario</TableHead>
-                                    <TableHead>Evento</TableHead>
-                                    <TableHead>Stato</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {detailShift.events.map(t => (
-                                    <TableRow key={t.id}>
-                                        <TableCell className="font-medium">{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                        <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
-                                        <TableCell>
-                                            <Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>
-                                                {t.status}
-                                            </Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                         <div className="grid grid-cols-3 gap-4 text-center my-4">
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
+                                <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(shiftDetail.startTime.toDate())]] || 0}h</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
+                                <p className="text-2xl font-bold">{formatMinutes(shiftDetail.workDuration)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
+                                <p className="text-2xl font-bold">{calculateShiftHours(shiftDetail).overtime}h</p>
+                            </div>
+                        </div>
+                        <ScrollArea className="max-h-64">
+                            <Table>
+                                <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {shiftDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
+                                        <TableRow key={t.id}>
+                                            <TableCell>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                            <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </ScrollArea>
                         <ResponsiveDialogFooter className="pt-4">
-                             <Button variant="outline" onClick={() => setDetailShift(null)}>Chiudi</Button>
-                             <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4" /> Elimina</Button>
+                            <Button variant="outline" onClick={() => setShiftDetail(null)}>Chiudi</Button>
                         </ResponsiveDialogFooter>
                     </ResponsiveDialogContent>
                 </ResponsiveDialog>
             )}
 
-            <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Questa azione eliminerà le timbrature per questo turno in modo permanente. L'azione non può essere annullata.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setShiftToDelete(null)}>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteShift}>
-                            Elimina
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </>
-    );
-};
-
+        </div>
+    )
+}
 
 export default function MonthlySummaryPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [requests, setRequests] = useState<Request[]>([]);
-    const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
-    const [isDataLoading, setIsDataLoading] = useState(true);
-    const [detailView, setDetailView] = useState<DetailView>(null);
     const [operatorData, setOperatorData] = useState<Operator | null>(null);
-    const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
 
     const searchParams = useSearchParams();
     const initialView = searchParams.get('view') === 'daily' ? 'daily' : 'monthly';
@@ -536,184 +437,8 @@ export default function MonthlySummaryPage() {
         };
         fetchOperatorData();
     }, [firestore, user, toast]);
-
-
-    const { monthStart, monthEnd } = useMemo(() => {
-        const start = startOfMonth(currentDate);
-        const end = endOfMonth(currentDate);
-        return {
-            monthStart: Timestamp.fromDate(start),
-            monthEnd: Timestamp.fromDate(end),
-        };
-    }, [currentDate]);
-
-    useEffect(() => {
-        if (!firestore || !user?.id || isUserLoading) {
-            return;
-        }
-
-        setIsDataLoading(true);
-        const requestsQuery = query(
-            collection(firestore, `app-users/${user.id}/requests`),
-        );
-        
-        const timbratureQuery = query(
-            collection(firestore, `app-users/${user.id}/timbrature`),
-            where('timestamp', '>=', monthStart),
-            where('timestamp', '<=', monthEnd)
-        );
-
-        const unsubscribeRequests = onSnapshot(requestsQuery, 
-            (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
-                setRequests(data);
-                if(!isDataLoading) setIsDataLoading(false);
-            },
-            (error) => {
-                console.error("Error fetching requests:", error);
-                toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive" });
-                setIsDataLoading(false);
-            }
-        );
-        
-        const unsubscribeTimbrature = onSnapshot(timbratureQuery, 
-            (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Timbratura[];
-                setTimbrature(data.filter(t => t.status === 'confermata'));
-                setIsDataLoading(false);
-            },
-            (error) => {
-                 console.error("Error fetching timbrature:", error);
-                 toast({ title: "Errore", description: "Impossibile caricare le timbrature confermate.", variant: "destructive" });
-                 setIsDataLoading(false);
-            }
-        );
-
-        return () => {
-            unsubscribeRequests();
-            unsubscribeTimbrature();
-        };
-    }, [firestore, user, isUserLoading, monthStart, monthEnd, toast]);
     
-    const calculateOrdinaryHoursWithTolerance = (minutes: number): number => {
-        if (isNaN(minutes) || minutes <= 0) return 0;
-        const totalHalfHours = Math.floor(minutes / 30);
-        const remainingMinutes = minutes % 30;
-        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
-    };
-
-    const summary = useMemo(() => {
-        let totalWorkedMillis = 0;
-
-        const dailyTimbrature = timbrature.reduce((acc, t) => {
-            const dayString = t.timestamp.toDate().toDateString();
-            if (!acc[dayString]) {
-                acc[dayString] = [];
-            }
-            acc[dayString].push(t);
-            return acc;
-        }, {} as Record<string, Timbratura[]>);
-
-        for (const dayString in dailyTimbrature) {
-            const dayEvents = dailyTimbrature[dayString].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            
-            let entrata: Timestamp | null = null;
-            let currentBreakStart: Timestamp | null = null;
-            
-            dayEvents.forEach(event => {
-                if (event.type === 'entrata') {
-                    if (!entrata) entrata = event.timestamp;
-                } else if (event.type === 'pausa' && entrata && !currentBreakStart) {
-                    currentBreakStart = event.timestamp;
-                } else if (event.type === 'fine_pausa' && entrata && currentBreakStart) {
-                     totalWorkedMillis -= (event.timestamp.toMillis() - currentBreakStart.toMillis());
-                     currentBreakStart = null;
-                } else if (event.type === 'uscita' && entrata) {
-                    totalWorkedMillis += (event.timestamp.toMillis() - entrata.toMillis());
-                    entrata = null; // Reset for next shift on same day
-                }
-            });
-        }
-        
-        const approvedRequests = requests.filter(r => r.status === 'approvato');
-        const periodStart = startOfMonth(currentDate);
-        const periodEnd = endOfMonth(currentDate);
-
-        const overtimeTotal = approvedRequests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
-            .reduce((sum, r) => sum + (r.hours || 0), 0);
-        
-        const totalWorkedMinutes = totalWorkedMillis / (1000 * 60);
-        const ordinaryWorkedMinutes = totalWorkedMinutes - (overtimeTotal * 60);
-        const ordinaryWorkedHours = calculateOrdinaryHoursWithTolerance(ordinaryWorkedMinutes);
-
-        const workedDaysCount = Object.keys(dailyTimbrature).length;
-
-
-        let ferieDaysCount = 0;
-        let malattiaDaysCount = 0;
-
-        if (operatorData) {
-            approvedRequests.forEach(req => {
-                if (req.type === 'ferie' || req.type === 'malattia') {
-                    for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                        if (isWithinInterval(day, { start: periodStart, end: periodEnd })) {
-                            const dayName = dayIndexToName[getDay(day)];
-                            const contractualHours = operatorData.workSchedule[dayName] || 0;
-                            if (contractualHours > 0) {
-                                if (req.type === 'ferie') ferieDaysCount++;
-                                if (req.type === 'malattia') malattiaDaysCount++;
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        return {
-            workedDays: workedDaysCount,
-            workedHours: ordinaryWorkedHours,
-            overtimeHours: overtimeTotal,
-            ferieDays: ferieDaysCount,
-            permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
-            malattiaDays: malattiaDaysCount,
-        };
-    }, [timbrature, requests, operatorData, currentDate]);
-
-    const handleMonthChange = (offset: number) => {
-        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
-    };
-
-    const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
-        if (!type) return;
-        const approvedRequests = requests.filter(r => r.status === 'approvato' && r.type === type);
-        setDetailView({ type, title, items: approvedRequests });
-    };
-
-    const handleDeleteRequest = async () => {
-        if (!firestore || !requestToDelete || !user) return;
-        const requestRef = doc(firestore, `app-users/${user.id}/requests`, requestToDelete.id);
-        
-        try {
-            await deleteDoc(requestRef);
-            toast({ title: 'Successo', description: 'Richiesta eliminata.' });
-            // Refresh the detail view
-            setDetailView(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    items: prev.items.filter(item => item.id !== requestToDelete.id)
-                };
-            });
-        } catch (error) {
-            console.error("Error deleting request:", error);
-            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
-        } finally {
-            setRequestToDelete(null);
-        }
-    };
-
-    if (isUserLoading || isDataLoading || !operatorData) {
+    if (isUserLoading || !operatorData) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -729,172 +454,11 @@ export default function MonthlySummaryPage() {
         );
     }
 
-    const renderDetailTable = () => {
-        if (!detailView || detailView.items.length === 0) {
-            return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
-        }
-        
-        const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
-
-        if (detailView.type === 'ferie' || detailView.type === 'malattia') {
-            const allDays: Date[] = [];
-            detailView.items.forEach(item => {
-                const interval = { start: item.startDate.toDate(), end: item.endDate.toDate() };
-                const daysInInterval = eachDayOfInterval(interval);
-
-                daysInInterval.forEach(day => {
-                    if (isWithinInterval(day, monthInterval)) {
-                        const dayName = dayIndexToName[getDay(day)];
-                        const contractualHours = operatorData?.workSchedule[dayName] || 0;
-                        if (contractualHours > 0) {
-                            allDays.push(day);
-                        }
-                    }
-                });
-            });
-
-            if (allDays.length === 0) {
-                return <p className="text-center text-muted-foreground py-4">Nessun giorno di {detailView.type} per questo mese.</p>;
-            }
-
-            return (
-                <div className="overflow-x-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Giorno</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {allDays.map((day, index) => (
-                                <TableRow key={index}>
-                                    <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            );
-        }
-
-        const filteredItems = detailView.items.filter(item => {
-             const start = item.startDate.toDate();
-             const end = item.endDate.toDate();
-             return isWithinInterval(start, monthInterval) || isWithinInterval(end, monthInterval) || (start < monthInterval.start && end > monthInterval.end);
-        });
-
-        if (filteredItems.length === 0) {
-             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
-        }
-
-        return (
-            <div className="overflow-x-auto">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Dal</TableHead>
-                            <TableHead>Al</TableHead>
-                            <TableHead>Ore</TableHead>
-                            <TableHead className="text-right">Azione</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {filteredItems.map(item => (
-                             <TableRow key={item.id}>
-                                <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                                <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                                <TableCell>{item.hours}</TableCell>
-                                <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
-        );
-    };
-
-    const MonthlyView = () => (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className='flex items-center gap-3'>
-                    <CalendarIcon className="h-8 w-8 text-primary" />
-                    <h2 className="text-3xl font-bold tracking-tight">Riepilogo Mensile</h2>
-                </div>
-                <div className="flex gap-2 items-center">
-                    <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                    <h3 className="text-lg font-semibold w-36 text-center capitalize">{format(currentDate, 'MMMM yyyy', { locale: it })}</h3>
-                    <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
-                </div>
-            </div>
-
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle>
-                        <Briefcase className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.workedDays}</div></CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Ore Ordinarie</CardTitle>
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.workedHours.toLocaleString('it-IT')}</div></CardContent>
-                </Card>
-                <Card
-                    onClick={() => handleSummaryCardClick('straordinario', 'Dettaglio Straordinari')}
-                    className="cursor-pointer transition-all hover:bg-muted/50"
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Ore Straordinarie</CardTitle>
-                        <Plus className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.overtimeHours.toLocaleString('it-IT')}</div></CardContent>
-                </Card>
-                <Card
-                    onClick={() => handleSummaryCardClick('ferie', 'Dettaglio Ferie')}
-                    className="cursor-pointer transition-all hover:bg-muted/50"
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Ferie (giorni)</CardTitle>
-                        <Plane className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.ferieDays}</div></CardContent>
-                </Card>
-                 <Card
-                    onClick={() => handleSummaryCardClick('permesso', 'Dettaglio Permessi')}
-                    className="cursor-pointer transition-all hover:bg-muted/50"
-                 >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Permessi (ore)</CardTitle>
-                        <UserCheck className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.permessoHours}</div></CardContent>
-                </Card>
-                <Card
-                    onClick={() => handleSummaryCardClick('malattia', 'Dettaglio Malattia')}
-                    className="cursor-pointer transition-all hover:bg-muted/50"
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Malattia (giorni)</CardTitle>
-                        <Stethoscope className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent><div className="text-2xl font-bold">{summary.malattiaDays}</div></CardContent>
-                </Card>
-            </div>
-             <div className="flex justify-center">
-                <Button onClick={() => setCurrentView('daily')} size="lg">
-                    <CalendarIcon className="mr-2 h-4 w-4" /> Visualizza Calendario
-                </Button>
-            </div>
-        </div>
-    );
-    
+    const MonthlyView = () => {
+        // This component is kept for future re-integration of monthly summary if needed.
+        // For now, it's just a placeholder or could show a simplified summary.
+        return <div>Riepilogo Mensile non ancora implementato.</div>
+    }
 
     return (
         <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
@@ -904,51 +468,19 @@ export default function MonthlySummaryPage() {
                     <div className="flex flex-col items-start gap-4">
                         <div>
                             <CardTitle>Riepilogo Attività di {operatorData.username}</CardTitle>
-                            <CardDescription>Visualizza il riepilogo mensile o giornaliero.</CardDescription>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant={currentView === 'monthly' ? 'secondary' : 'outline'} onClick={() => setCurrentView('monthly')}>Mensile</Button>
-                            <Button variant={currentView === 'daily' ? 'secondary' : 'outline'} onClick={() => setCurrentView('daily')}>Giornaliero</Button>
+                            <CardDescription>Visualizza il riepilogo giornaliero delle attività.</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {currentView === 'monthly' ? (
-                        <MonthlyView />
-                    ) : (
-                        <OperatorDailySummaryContent operatorId={user.id} operator={operatorData} initialDate={dailyViewDate} />
-                    )}
+                    <DailySummaryContent 
+                        operatorId={user.id} 
+                        operator={operatorData} 
+                        initialDate={dailyViewDate}
+                        onMonthChange={setDailyViewDate} 
+                    />
                 </CardContent>
             </Card>
-
-            <ResponsiveDialog open={!!detailView} onOpenChange={() => setDetailView(null)}>
-                <ResponsiveDialogContent>
-                    <ResponsiveDialogHeader>
-                        <ResponsiveDialogTitle>{detailView?.title}</ResponsiveDialogTitle>
-                        <ResponsiveDialogDescription>
-                            Riepilogo delle richieste approvate per il mese di {format(currentDate, 'MMMM yyyy', { locale: it })}.
-                        </ResponsiveDialogDescription>
-                    </ResponsiveDialogHeader>
-                    <div className="py-4">
-                        {renderDetailTable()}
-                    </div>
-                </ResponsiveDialogContent>
-            </ResponsiveDialog>
-
-            <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                           Sei sicuro di voler eliminare questa richiesta? L'azione è permanente.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteRequest}>Elimina</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </Suspense>
     );
 }
