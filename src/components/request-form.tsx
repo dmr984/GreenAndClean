@@ -246,6 +246,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         setIsStartPickerOpen(false);
                                       }}
                                       initialFocus
+                                      locale={it}
                                       modifiers={{ booked: bookedDays }}
                                       modifiersClassNames={{ booked: "bg-destructive text-destructive-foreground" }}
                                     />
@@ -290,6 +291,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         }}
                                         disabled={{ before: startDateValue! }} 
                                         initialFocus 
+                                        locale={it}
                                         modifiers={{ booked: bookedDays }}
                                         modifiersClassNames={{ booked: "bg-destructive text-destructive-foreground" }}
                                     />

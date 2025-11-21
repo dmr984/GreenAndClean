@@ -105,6 +105,7 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                         fromYear={currentYear - 1}
                                         toYear={currentYear + 5}
                                         initialFocus
+                                        locale={it}
                                     />
                                 </DialogContent>
                             </Dialog>
@@ -137,6 +138,7 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
                                         fromYear={currentYear - 1}
                                         toYear={currentYear + 5}
                                         initialFocus
+                                        locale={it}
                                     />
                                 </DialogContent>
                             </Dialog>
