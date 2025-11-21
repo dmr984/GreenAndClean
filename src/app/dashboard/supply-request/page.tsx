@@ -6,7 +6,6 @@ import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -41,6 +40,10 @@ type SupplyRequest = {
     viewedByOperator?: boolean;
 };
 
+type Quantities = {
+  [productId: string]: number | '';
+}
+
 export default function SupplyRequestPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
@@ -53,12 +56,8 @@ export default function SupplyRequestPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     
     const [requestToDelete, setRequestToDelete] = useState<SupplyRequest | null>(null);
+    const [quantities, setQuantities] = useState<Quantities>({});
 
-    const [selectedProductId, setSelectedProductId] = useState('');
-    const [quantity, setQuantity] = useState('');
-    const [selectedProductStock, setSelectedProductStock] = useState<number | null>(null);
-
-    // Fetch products for the dropdown
     useEffect(() => {
         if (!firestore) return;
         const productsQuery = query(collection(firestore, 'products'), orderBy('name'));
@@ -78,7 +77,6 @@ export default function SupplyRequestPage() {
         return () => unsubscribe();
     }, [firestore, toast]);
 
-    // Fetch user's past supply requests
     useEffect(() => {
         if (!firestore || !user?.id) {
             if (!isUserLoading) setIsLoadingRequests(false);
@@ -93,20 +91,18 @@ export default function SupplyRequestPage() {
 
         const unsubscribe = onSnapshot(requestsQuery, snapshot => {
             const allRequests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplyRequest));
-            // Sort client-side safely, handling potential null timestamps
             allRequests.sort((a, b) => {
                 if (a.createdAt && b.createdAt) {
                     return b.createdAt.toMillis() - a.createdAt.toMillis();
                 }
-                if (a.createdAt) return -1; // b is null, so a comes first
-                if (b.createdAt) return 1;  // a is null, so b comes first
-                return 0; // both are null
+                if (a.createdAt) return -1;
+                if (b.createdAt) return 1;
+                return 0;
             });
             
             setMyRequests(allRequests);
             setIsLoadingRequests(false);
 
-            // Mark unread requests as read
             const unread = allRequests.filter(r => r.viewedByOperator === false);
             if(unread.length > 0 && firestore && user) {
                 const batch = writeBatch(firestore);
@@ -122,7 +118,7 @@ export default function SupplyRequestPage() {
             if (error.code === 'permission-denied' && firestore) {
                 const contextualError = new FirestorePermissionError({
                     operation: 'list',
-                    path: 'supply-requests', // This is a top-level collection query
+                    path: 'supply-requests', 
                 });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
@@ -134,73 +130,62 @@ export default function SupplyRequestPage() {
 
     }, [firestore, user, toast, isUserLoading]);
     
-     const handleProductSelect = (productId: string) => {
-        setSelectedProductId(productId);
-        const product = products.find(p => p.id === productId);
-        if (product) {
-            setSelectedProductStock(product.quantity);
-        } else {
-            setSelectedProductStock(null);
+    const handleQuantityChange = (productId: string, value: string) => {
+        const numValue = value === '' ? '' : parseInt(value, 10);
+        if (numValue === '' || (numValue >= 0 && !isNaN(numValue))) {
+            setQuantities(prev => ({ ...prev, [productId]: numValue }));
         }
     };
 
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!firestore || !user || !selectedProductId || !quantity) {
-            toast({ title: "Campi Mancanti", description: "Seleziona un prodotto e inserisci una quantità.", variant: "destructive" });
+        if (!firestore || !user) return;
+        
+        const requestsToCreate = Object.entries(quantities)
+            .map(([productId, quantity]) => ({
+                product: products.find(p => p.id === productId),
+                quantity: typeof quantity === 'number' ? quantity : 0,
+            }))
+            .filter(item => item.product && item.quantity > 0);
+
+        if (requestsToCreate.length === 0) {
+            toast({ title: "Nessuna richiesta da inviare", description: "Inserisci una quantità per almeno un prodotto.", variant: "destructive" });
             return;
         }
-        
-        const requestedQuantity = parseInt(quantity, 10);
-        if (isNaN(requestedQuantity) || requestedQuantity <= 0) {
-            toast({ title: "Quantità Invalida", description: "La quantità deve essere un numero maggiore di zero.", variant: "destructive" });
-            return;
-        }
-        
+
         setIsSubmitting(true);
-        const selectedProduct = products.find(p => p.id === selectedProductId);
-        if (!selectedProduct) {
-             toast({ title: "Errore", description: "Prodotto selezionato non valido.", variant: "destructive" });
-             setIsSubmitting(false);
-             return;
-        }
-
+        const batch = writeBatch(firestore);
         const supplyRequestsCollection = collection(firestore, 'supply-requests');
-        const newRequestData = {
-            userId: user.id,
-            username: user.username,
-            productId: selectedProductId,
-            productName: selectedProduct.name,
-            requestedQuantity,
-            status: 'in_attesa' as const,
-            createdAt: serverTimestamp(),
-            viewedByOperator: true,
-        };
 
-        addDoc(supplyRequestsCollection, newRequestData)
-            .then(() => {
-                toast({ title: "Successo", description: "Richiesta di fornitura inviata." });
-                setSelectedProductId('');
-                setQuantity('');
-                setSelectedProductStock(null);
-            })
-            .catch((error: any) => {
-                console.error("Error creating supply request:", error);
-                 if (error.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'create',
-                        path: supplyRequestsCollection.path,
-                        requestResourceData: newRequestData,
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                    toast({ title: "Errore", description: "Impossibile inviare la richiesta.", variant: "destructive" });
-                }
-            })
-            .finally(() => {
-                setIsSubmitting(false);
+        requestsToCreate.forEach(({ product, quantity }) => {
+            const newRequestRef = doc(supplyRequestsCollection);
+            batch.set(newRequestRef, {
+                userId: user.id,
+                username: user.username,
+                productId: product!.id,
+                productName: product!.name,
+                requestedQuantity: quantity,
+                status: 'in_attesa' as const,
+                createdAt: serverTimestamp(),
+                viewedByOperator: true,
             });
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: "Successo", description: "Le tue richieste sono state inviate." });
+            setQuantities({});
+        } catch (error: any) {
+            console.error("Error creating supply requests:", error);
+            if (error.code === 'permission-denied') {
+                const contextualError = new FirestorePermissionError({ operation: 'create', path: supplyRequestsCollection.path });
+                errorEmitter.emit('permission-error', contextualError);
+            } else {
+                toast({ title: "Errore", description: "Impossibile inviare le richieste.", variant: "destructive" });
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleCancelRequest = async () => {
@@ -212,10 +197,7 @@ export default function SupplyRequestPage() {
             toast({ title: "Successo", description: "Richiesta annullata." });
         } catch (error: any) {
             if (error.code === 'permission-denied') {
-                const contextualError = new FirestorePermissionError({
-                    operation: 'delete',
-                    path: requestRef.path,
-                });
+                const contextualError = new FirestorePermissionError({ operation: 'delete', path: requestRef.path });
                 errorEmitter.emit('permission-error', contextualError);
             } else {
                 toast({ title: "Errore", description: "Impossibile annullare la richiesta.", variant: "destructive"});
@@ -233,8 +215,6 @@ export default function SupplyRequestPage() {
         );
     }
     
-    const isProductOutOfStock = selectedProductStock === 0;
-
     return (
         <>
         <div className="flex flex-col gap-6">
@@ -247,43 +227,44 @@ export default function SupplyRequestPage() {
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="space-y-2">
-                            <Label htmlFor="product">Prodotto</Label>
-                             <Select onValueChange={handleProductSelect} value={selectedProductId} required>
-                                <SelectTrigger id="product" disabled={isLoadingProducts}>
-                                    <SelectValue placeholder={isLoadingProducts ? "Caricamento..." : "Seleziona un prodotto..."} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {products.map((product) => (
-                                    <SelectItem key={product.id} value={product.id}>
-                                        {product.name}
-                                    </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            {isProductOutOfStock && (
-                                <div className="flex items-center gap-2 text-sm text-destructive mt-2 p-2 bg-destructive/10 rounded-md">
-                                    <AlertCircle className="h-4 w-4" />
-                                    <span>Questo articolo è esaurito. Non è possibile richiederlo.</span>
-                                </div>
-                            )}
-                        </div>
-                         <div className="space-y-2">
-                            <Label htmlFor="quantity">Quantità</Label>
-                            <Input 
-                                id="quantity" 
-                                type="number" 
-                                placeholder="Es: 5" 
-                                value={quantity}
-                                onChange={e => setQuantity(e.target.value)}
-                                min="1"
-                                required
-                                disabled={isProductOutOfStock}
-                            />
-                        </div>
-                        <Button type="submit" className="w-full" disabled={isSubmitting || isProductOutOfStock}>
+                        {isLoadingProducts ? (
+                            <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                        ) : (
+                           <ScrollArea className="h-96">
+                             <Table>
+                               <TableHeader>
+                                 <TableRow>
+                                   <TableHead>Prodotto</TableHead>
+                                   <TableHead className="w-[120px]">Quantità</TableHead>
+                                 </TableRow>
+                               </TableHeader>
+                               <TableBody>
+                                 {products.map(product => (
+                                   <TableRow key={product.id}>
+                                     <TableCell>
+                                       <Label htmlFor={`quantity-${product.id}`} className="font-medium">{product.name}</Label>
+                                       {product.quantity === 0 && <p className="text-xs text-destructive">Esaurito</p>}
+                                     </TableCell>
+                                     <TableCell>
+                                       <Input 
+                                         id={`quantity-${product.id}`} 
+                                         type="number"
+                                         placeholder="0"
+                                         value={quantities[product.id] || ''}
+                                         onChange={(e) => handleQuantityChange(product.id, e.target.value)}
+                                         min="0"
+                                         disabled={product.quantity === 0 || isSubmitting}
+                                       />
+                                     </TableCell>
+                                   </TableRow>
+                                 ))}
+                               </TableBody>
+                             </Table>
+                           </ScrollArea>
+                        )}
+                        <Button type="submit" className="w-full" disabled={isSubmitting || isLoadingProducts}>
                             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                            Invia Richiesta
+                            Invia Richieste
                         </Button>
                     </form>
                 </CardContent>
