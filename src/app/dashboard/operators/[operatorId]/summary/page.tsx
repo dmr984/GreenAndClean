@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
@@ -19,7 +19,6 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, Resp
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -46,6 +45,7 @@ type Request = {
     hours?: number;
     reason?: string;
     createdAt: Timestamp;
+    associatedShiftId?: string;
 };
 
 type Timbratura = {
@@ -82,10 +82,6 @@ type DetailView = {
     type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'ordinarie';
     title: string;
     items: Request[] | {date: Date, hours: number, shift: Shift}[];
-} | null;
-
-type SelectedDayInfo = {
-    type: 'ferie' | 'malattia' | 'permesso';
 } | null;
 
 
@@ -149,6 +145,42 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
+    const getContractualHoursForShift = (shift: Shift | null): number => {
+        if (!shift || !operator?.workSchedule) return 0;
+        const shiftDate = shift.events[0]?.timestamp.toDate();
+        if (!shiftDate) return 0;
+        const dayOfWeek = getDayFns(shiftDate);
+        const dayName = dayIndexToName[dayOfWeek];
+        return operator.workSchedule[dayName] || 0;
+    };
+    
+     const calculateShiftHours = (shift: Shift | null): { ordinary: number, overtime: number } => {
+        if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0 };
+    
+        const contractualHours = getContractualHoursForShift(shift);
+        const totalMinutesWorked = Math.round(shift.workDuration);
+
+        if (contractualHours === 0 || shift.isOvertime) {
+            return {
+                ordinary: 0,
+                overtime: roundOvertimeHours(totalMinutesWorked),
+            };
+        }
+
+        const contractualMinutes = contractualHours * 60;
+        if (totalMinutesWorked > contractualMinutes) {
+            const overtimeMinutes = totalMinutesWorked - contractualMinutes;
+            return { 
+                ordinary: roundOrdinaryHours(contractualMinutes),
+                overtime: roundOvertimeHours(overtimeMinutes), 
+            };
+        } else {
+            return { 
+                ordinary: roundOrdinaryHours(totalMinutesWorked), 
+                overtime: 0, 
+            };
+        }
+    };
 
     const summary = useMemo(() => {
         const confirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
@@ -281,6 +313,13 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         const approvedRequests = requests.filter(r => r.type === type && r.status === 'approvato');
         setDetailView({ type, title, items: approvedRequests });
     };
+    
+    const formatMinutes = (minutes: number) => {
+        if (isNaN(minutes) || minutes < 0) return '00:00';
+        const h = Math.floor(minutes / 60);
+        const m = Math.round(minutes % 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
 
     const handleCancelSingleDayOfLeave = async () => {
         if (!firestore || !itemToModify) return;
@@ -374,6 +413,54 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
         } finally {
             setRequestToDelete(null);
+        }
+    };
+    
+    const findShiftForOvertimeRequest = async (request: Request) => {
+        if (!firestore) return null;
+        
+        const startOfDay_ts = Timestamp.fromDate(startOfDay(request.startDate.toDate()));
+        const endOfDay_ts = Timestamp.fromDate(endOfDay(request.startDate.toDate()));
+
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${operatorId}/timbrature`),
+            where('timestamp', '>=', startOfDay_ts),
+            where('timestamp', '<=', endOfDay_ts)
+        );
+
+        const snapshot = await getDocs(timbratureQuery);
+        const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
+        
+        if (events.length > 0) {
+            events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            let workDuration = 0;
+            const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+            const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+
+            if (startTime && endTime) {
+                let totalMillis = endTime.toMillis() - startTime.toMillis();
+                let breakStart: Timestamp | null = null;
+                events.forEach(e => {
+                    if (e.type === 'pausa') breakStart = e.timestamp;
+                    if (e.type === 'fine_pausa' && breakStart) {
+                        totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                        breakStart = null;
+                    }
+                });
+                workDuration = totalMillis / (1000 * 60);
+            }
+
+            const shift: Shift = {
+                events,
+                startTime: startTime!,
+                endTime,
+                workDuration,
+                isOvertime: events.some(e => e.isOvertime)
+            };
+            setShiftForDetail(shift);
+        } else {
+            toast({ title: "Nessuna timbratura trovata per questo straordinario.", variant: "destructive" });
         }
     };
 
@@ -488,7 +575,12 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                 <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{item.hours}</TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="text-right space-x-2">
+                                     {detailView.type === 'straordinario' && (
+                                        <Button variant="ghost" size="icon" onClick={() => findShiftForOvertimeRequest(item)}>
+                                            <Eye className="h-4 w-4" />
+                                        </Button>
+                                    )}
                                     <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                     </Button>
@@ -567,6 +659,20 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                         <ResponsiveDialogTitle>Dettaglio Timbratura</ResponsiveDialogTitle>
                          {shiftForDetail.startTime && <ResponsiveDialogDescription>Turno del {format(shiftForDetail.startTime.toDate(), 'PPP', { locale: it })}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
+                    <div className="grid grid-cols-3 gap-4 text-center my-4">
+                        <div>
+                            <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
+                            <p className="text-2xl font-bold">{getContractualHoursForShift(shiftForDetail)}h</p>
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
+                            <p className="text-2xl font-bold">{formatMinutes(shiftForDetail.workDuration)}</p>
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
+                            <p className="text-2xl font-bold">{calculateShiftHours(shiftForDetail).overtime}h</p>
+                        </div>
+                    </div>
                     <div className="overflow-x-auto mt-4">
                         <Table>
                             <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
@@ -625,7 +731,6 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
 export default function OperatorSummaryPage() {
     const params = useParams();
     const router = useRouter();
-    const searchParams = useSearchParams();
     const operatorId = params.operatorId as string;
     const { toast } = useToast();
     const firestore = useFirestore();
