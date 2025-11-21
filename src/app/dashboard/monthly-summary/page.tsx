@@ -110,7 +110,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         );
 
         const requestsQuery = query(
-            collection(firestore, `app-users/${operatorId}/requests`)
+            collection(firestore, `app-users/${operatorId}/requests`),
+             where('status', '==', 'approvato')
         );
 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
@@ -265,39 +266,37 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 <Button variant="outline" size="sm" onClick={() => handleMonthNav(1)}>Succ.</Button>
             </div>
             
-            <div className="border rounded-md">
+            <div className="overflow-x-auto">
                 {isLoading ? (
                     <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
-                    <ScrollArea className="h-[600px]">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Data</TableHead>
-                                    <TableHead>Stato</TableHead>
-                                    <TableHead className="text-right">Dettagli</TableHead>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Data</TableHead>
+                                <TableHead>Stato</TableHead>
+                                <TableHead className="text-right">Dettagli</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {monthData.map((day) => (
+                                <TableRow key={day.date.toString()}>
+                                    <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
+                                    <TableCell>{getStatusInfo(day.status).badge}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            onClick={() => setSelectedDay(day)}
+                                            disabled={day.status === 'vuoto' || day.status === 'futuro'}
+                                        >
+                                            <Eye className="h-5 w-5"/>
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {monthData.map((day) => (
-                                    <TableRow key={day.date.toString()}>
-                                        <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
-                                        <TableCell>{getStatusInfo(day.status).badge}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                onClick={() => setSelectedDay(day)}
-                                                disabled={day.status === 'vuoto' || day.status === 'futuro'}
-                                            >
-                                                <Eye className="h-5 w-5"/>
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </ScrollArea>
+                            ))}
+                        </TableBody>
+                    </Table>
                 )}
             </div>
 

@@ -110,11 +110,13 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
-            where('timestamp', '<=', Timestamp.fromDate(monthEnd))
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
+            orderBy('timestamp', 'asc')
         );
 
         const requestsQuery = query(
-            collection(firestore, `app-users/${operatorId}/requests`)
+            collection(firestore, `app-users/${operatorId}/requests`),
+            where('status', '==', 'approvato')
         );
 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
@@ -122,8 +124,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             const allRequests = requestsSnap.docs.map(d => d.data() as Request);
             const allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
 
-            const approvedRequests = allRequests.filter(r => r.status === 'approvato');
-            const timbrature = allTimbrature.filter(t => t.status === 'confermata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const approvedRequests = allRequests; // Already filtered in query
+            const timbrature = allTimbrature.filter(t => t.status === 'confermata');
 
             const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
             const today = startOfDay(new Date());
@@ -189,6 +191,9 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 return { date: day, status: dayStatus, shift: dayShift };
             });
             setMonthData(processedData);
+            setIsLoading(false);
+        }, (error) => {
+            console.error("Error fetching daily summary data:", error);
             setIsLoading(false);
         });
 
@@ -268,39 +273,37 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
                 <Button variant="outline" size="sm" onClick={() => handleMonthNav(1)}>Succ.</Button>
             </div>
-            <div className="border rounded-md">
+            <div className="overflow-x-auto">
                 {isLoading ? (
                     <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
-                    <ScrollArea className="h-[600px]">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Data</TableHead>
-                                    <TableHead>Stato</TableHead>
-                                    <TableHead className="text-right">Dettagli</TableHead>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Data</TableHead>
+                                <TableHead>Stato</TableHead>
+                                <TableHead className="text-right">Dettagli</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {monthData.map((day) => (
+                                <TableRow key={day.date.toString()}>
+                                    <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
+                                    <TableCell>{getStatusInfo(day.status).badge}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            onClick={() => setSelectedDay(day)}
+                                            disabled={day.status === 'vuoto' || day.status === 'futuro'}
+                                        >
+                                            <Eye className="h-5 w-5"/>
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {monthData.map((day) => (
-                                    <TableRow key={day.date.toString()}>
-                                        <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
-                                        <TableCell>{getStatusInfo(day.status).badge}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                onClick={() => setSelectedDay(day)}
-                                                disabled={day.status === 'vuoto' || day.status === 'futuro'}
-                                            >
-                                                <Eye className="h-5 w-5"/>
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </ScrollArea>
+                            ))}
+                        </TableBody>
+                    </Table>
                 )}
             </div>
 
