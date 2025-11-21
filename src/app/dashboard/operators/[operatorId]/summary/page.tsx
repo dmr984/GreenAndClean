@@ -78,9 +78,9 @@ type Shift = {
 };
 
 type DetailView = {
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'ordinarie';
     title: string;
-    items: Request[];
+    items: Request[] | {date: Date, hours: number, shift: Shift}[];
 } | null;
 
 type SelectedDayInfo = {
@@ -97,6 +97,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
     const [detailView, setDetailView] = useState<DetailView>(null);
     const [itemToModify, setItemToModify] = useState<{ request: Request, day: Date } | null>(null);
     const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
+    const [shiftForDetail, setShiftForDetail] = useState<Shift | null>(null);
     
     const {toast} = useToast();
 
@@ -133,18 +134,18 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         };
     }, [firestore, operatorId, currentDate]);
 
-    const calculateOrdinaryHoursWithTolerance = (minutes: number): number => {
-        if (isNaN(minutes) || minutes <= 0) return 0;
+    const roundOrdinaryHours = (minutes: number): number => {
+        if (minutes <= 0) return 0;
         const totalHalfHours = Math.floor(minutes / 30);
         const remainingMinutes = minutes % 30;
         return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
     };
     
-    const calculateOvertimeHoursWithTolerance = (minutes: number): number => {
-        if (isNaN(minutes) || minutes <= 0) return 0;
-        const hours = Math.floor(minutes / 60);
+    const roundOvertimeHours = (minutes: number): number => {
+        if (minutes <= 0) return 0;
+        const totalHours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
-        return hours + (remainingMinutes >= 55 ? 1 : 0);
+        return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
 
@@ -155,26 +156,28 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         let workedDaysCount = 0;
         let totalOrdinaryMinutes = 0;
         let totalOvertimeMinutesFromShifts = 0;
+        let ordinaryHoursByDay: {date: Date, hours: number, shift: Shift}[] = [];
     
         const dailyTimbrature = confirmedTimbrature.reduce((acc, t) => {
             const dayString = t.timestamp.toDate().toDateString();
-            if (!acc[dayString]) acc[dayString] = { events: [], isOvertimeDay: t.isOvertime };
-            acc[dayString].events.push(t);
+            if (!acc[dayString]) acc[dayString] = [];
+            acc[dayString].push(t);
             return acc;
-        }, {} as Record<string, { events: Timbratura[], isOvertimeDay: boolean }>);
+        }, {} as Record<string, Timbratura[]>);
     
         for (const dayString in dailyTimbrature) {
             workedDaysCount++;
-            const { events, isOvertimeDay } = dailyTimbrature[dayString];
+            const events = dailyTimbrature[dayString];
             events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             
+            const isOvertimeDay = events[0].isOvertime;
             let dayTotalMillis = 0;
             let entrata: Timestamp | null = null;
             let currentBreakStart: Timestamp | null = null;
     
             for (const event of events) {
-                if (event.type === 'entrata') {
-                    if (!entrata) entrata = event.timestamp;
+                if (event.type === 'entrata' && !entrata) {
+                    entrata = event.timestamp;
                 } else if (event.type === 'pausa' && entrata && !currentBreakStart) {
                     currentBreakStart = event.timestamp;
                 } else if (event.type === 'fine_pausa' && entrata && currentBreakStart) {
@@ -182,16 +185,39 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                      currentBreakStart = null;
                 } else if (event.type === 'uscita' && entrata) {
                     dayTotalMillis += (event.timestamp.toMillis() - entrata.toMillis());
-                    entrata = null; 
-                    currentBreakStart = null;
+                    // Don't reset here if there can be multiple shifts per day
                 }
             }
             const dayTotalMinutes = dayTotalMillis / (1000 * 60);
+            
+            const shiftObject: Shift = {
+                events: events,
+                startTime: events.find(e => e.type === 'entrata')!.timestamp,
+                endTime: events.find(e => e.type === 'uscita')?.timestamp || null,
+                workDuration: dayTotalMinutes,
+                isOvertime: isOvertimeDay
+            };
+
 
             if (isOvertimeDay) {
                 totalOvertimeMinutesFromShifts += dayTotalMinutes;
             } else {
-                totalOrdinaryMinutes += dayTotalMinutes;
+                 const dayDate = new Date(dayString);
+                const dayName = dayIndexToName[getDay(dayDate)];
+                const contractualHours = operator.workSchedule[dayName] || 0;
+                const contractualMinutes = contractualHours * 60;
+
+                let ordinaryMinutesForDay = dayTotalMinutes;
+                if (dayTotalMinutes > contractualMinutes) {
+                    const overtimeMinutes = dayTotalMinutes - contractualMinutes;
+                    totalOvertimeMinutesFromShifts += overtimeMinutes;
+                    ordinaryMinutesForDay = contractualMinutes;
+                }
+                totalOrdinaryMinutes += ordinaryMinutesForDay;
+                const roundedOrdinaryHours = roundOrdinaryHours(ordinaryMinutesForDay);
+                if (roundedOrdinaryHours > 0) {
+                   ordinaryHoursByDay.push({date: dayDate, hours: roundedOrdinaryHours, shift: shiftObject});
+                }
             }
         }
         
@@ -203,19 +229,8 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             .filter(r => r.type === 'straordinario' && r.reason !== 'Straordinario da giorno non lavorativo approvato' && r.reason !== 'Straordinario approvato da turno' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd}))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
-        const contractualHours = (operator?.workSchedule?.[dayIndexToName[getDay(periodStart)]] || 0) * workedDaysCount; // simplified
-        const contractualMinutes = contractualHours * 60;
-        
-        let finalOrdinaryMinutes = totalOrdinaryMinutes;
-        let finalOvertimeMinutes = totalOvertimeMinutesFromShifts;
-
-        if (totalOrdinaryMinutes > contractualMinutes) {
-             finalOvertimeMinutes += (totalOrdinaryMinutes - contractualMinutes);
-             finalOrdinaryMinutes = contractualMinutes;
-        }
-
-        const ordinaryWorkedHours = calculateOrdinaryHoursWithTolerance(finalOrdinaryMinutes);
-        const overtimeFromShiftsHours = calculateOvertimeHoursWithTolerance(finalOvertimeMinutes);
+        const ordinaryWorkedHours = roundOrdinaryHours(totalOrdinaryMinutes);
+        const overtimeFromShiftsHours = roundOvertimeHours(totalOvertimeMinutesFromShifts);
         const totalOvertimeHours = overtimeFromShiftsHours + manuallyAddedOvertimeHours;
     
         let ferieDaysCount = 0;
@@ -245,6 +260,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), {start: periodStart, end: periodEnd})).reduce((sum, r) => sum + (r.hours || 0), 0),
             malattiaDays: malattiaDaysCount,
             ferieDays: ferieDaysCount,
+            ordinaryHoursByDay: ordinaryHoursByDay
         };
     }, [timbrature, requests, operator, currentDate]);
 
@@ -254,6 +270,12 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
     
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
         if (!type) return;
+
+        if (type === 'ordinarie') {
+            setDetailView({ type, title, items: summary.ordinaryHoursByDay });
+            return;
+        }
+
         const approvedRequests = requests.filter(r => r.type === type && r.status === 'approvato');
         setDetailView({ type, title, items: approvedRequests });
     };
@@ -359,10 +381,40 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
         }
 
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
+        
+        if (detailView.type === 'ordinarie') {
+             const items = detailView.items as {date: Date, hours: number, shift: Shift}[];
+             return (
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Giorno</TableHead>
+                                <TableHead>Ore Ordinarie</TableHead>
+                                <TableHead className="text-right">Dettaglio</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {items.map((item, index) => (
+                                <TableRow key={index}>
+                                    <TableCell>{format(item.date, 'PPP', { locale: it })}</TableCell>
+                                    <TableCell>{item.hours}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => setShiftForDetail(item.shift)}>
+                                            <Eye className="h-4 w-4" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            );
+        }
 
         if (detailView.type === 'ferie' || detailView.type === 'malattia') {
             const allDays: { day: Date, request: Request }[] = [];
-            detailView.items.forEach(item => {
+            (detailView.items as Request[]).forEach(item => {
                 const interval = { start: item.startDate.toDate(), end: item.endDate.toDate() };
                 const daysInInterval = eachDayOfInterval(interval);
 
@@ -407,7 +459,7 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             );
         }
 
-        const filteredItems = detailView.items.filter(item => {
+        const filteredItems = (detailView.items as Request[]).filter(item => {
              const start = item.startDate.toDate();
              const end = item.endDate.toDate();
              return isWithinInterval(start, monthInterval) || isWithinInterval(end, monthInterval) || (start < monthInterval.start && end > monthInterval.end);
@@ -461,14 +513,11 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
             </div>
             
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Card
-                  onClick={() => onDateClick(currentDate)}
-                  className="cursor-pointer transition-all hover:bg-muted/50"
-                >
+                <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle><Briefcase className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedDays}</div></CardContent>
                 </Card>
                 <Card
-                  onClick={() => onDateClick(currentDate)}
+                  onClick={() => handleSummaryCardClick('ordinarie', 'Dettaglio Ore Ordinarie')}
                   className="cursor-pointer transition-all hover:bg-muted/50"
                 >
                     <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Ore Ordinarie</CardTitle><Clock className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedHours.toLocaleString('it-IT')}</div></CardContent>
@@ -497,14 +546,45 @@ const MonthlySummary = ({ operatorId, operator, onDateClick, onCleanMonth }: { o
                 <ResponsiveDialogHeader>
                     <ResponsiveDialogTitle>{detailView?.title}</ResponsiveDialogTitle>
                     <ResponsiveDialogDescription>
-                        Riepilogo delle richieste approvate per {format(currentDate, 'MMMM yyyy', { locale: it })}.
+                        Riepilogo delle voci per {format(currentDate, 'MMMM yyyy', { locale: it })}.
                     </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
                  <div className="py-4">
                     {renderDetailTable()}
                 </div>
+                 <ResponsiveDialogFooter>
+                     <Button variant="outline" onClick={() => setDetailView(null)}>Chiudi</Button>
+                </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
+        
+        {shiftForDetail && (
+             <ResponsiveDialog open={!!shiftForDetail} onOpenChange={() => setShiftForDetail(null)}>
+                <ResponsiveDialogContent className="sm:max-w-xl">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Dettaglio Timbratura</ResponsiveDialogTitle>
+                         {shiftForDetail.startTime && <ResponsiveDialogDescription>Turno del {format(shiftForDetail.startTime.toDate(), 'PPP', { locale: it })}</ResponsiveDialogDescription>}
+                    </ResponsiveDialogHeader>
+                    <div className="overflow-x-auto mt-4">
+                        <Table>
+                            <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
+                                    <TableRow key={t.id}>
+                                        <TableCell>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                        <TableCell className='capitalize'>{t.type.replace('_', ' ')}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                     <ResponsiveDialogFooter>
+                         <Button variant="outline" onClick={() => setShiftForDetail(null)}>Chiudi</Button>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+        )}
+
 
          <AlertDialog open={!!itemToModify} onOpenChange={(open) => !open && setItemToModify(null)}>
             <AlertDialogContent>
@@ -547,7 +627,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     const [currentMonth, setCurrentMonth] = useState(initialDate);
     const [dailyShifts, setDailyShifts] = useState<Shift[]>([]);
     const [workedDays, setWorkedDays] = useState<Date[]>([]);
-    const [missedWorkDays, setMissedWorkDays] = useState<Date[]>([]);
+    const [overtimeDays, setOvertimeDays] = useState<Date[]>([]);
     const [leaveDays, setLeaveDays] = useState<{ferie: Date[], malattia: Date[], permesso: Date[]}>({ ferie: [], malattia: [], permesso: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [selectedDayInfo, setSelectedDayInfo] = useState<SelectedDayInfo>(null);
@@ -577,35 +657,39 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
     useEffect(() => {
         if (!firestore || !operatorId || !operator) return;
 
-        let localWorkedDays: Date[] = [];
-
         const monthlyTimbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', startOfPeriod),
             where('timestamp', '<=', endOfPeriod),
+            where('status', '==', 'confermata')
         );
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
 
         const unsubTimbrature = onSnapshot(monthlyTimbratureQuery, (timbratureSnapshot) => {
-            const allTimbrature = timbratureSnapshot.docs.map(doc => doc.data() as {type: string, timestamp: Timestamp, status: string});
-            const confirmedTimbrature = allTimbrature.filter(data => data.status === 'confermata');
+            const confirmedTimbrature = timbratureSnapshot.docs.map(doc => doc.data() as Timbratura);
             
-            const dailyEvents = confirmedTimbrature.reduce((acc, t) => {
+            const dailyData = confirmedTimbrature.reduce((acc, t) => {
                 const day = format(t.timestamp.toDate(), 'yyyy-MM-dd');
-                if (!acc[day]) acc[day] = [];
-                acc[day].push(t.type);
+                if (!acc[day]) acc[day] = { events: [], isOvertime: false };
+                acc[day].events.push(t);
+                if (t.isOvertime) acc[day].isOvertime = true;
                 return acc;
-            }, {} as Record<string, string[]>);
+            }, {} as Record<string, { events: Timbratura[], isOvertime: boolean }>);
 
             const validWorkedDays: Date[] = [];
-            for (const dayStr in dailyEvents) {
-                const events = dailyEvents[dayStr];
-                if (events.includes('entrata') && events.includes('uscita')) {
-                    validWorkedDays.push(new Date(dayStr + 'T12:00:00'));
+            const validOvertimeDays: Date[] = [];
+            for (const dayStr in dailyData) {
+                const { events, isOvertime } = dailyData[dayStr];
+                if (events.some(e => e.type === 'entrata') && events.some(e => e.type === 'uscita')) {
+                    if (isOvertime) {
+                        validOvertimeDays.push(new Date(dayStr + 'T12:00:00'));
+                    } else {
+                        validWorkedDays.push(new Date(dayStr + 'T12:00:00'));
+                    }
                 }
             }
-            localWorkedDays = validWorkedDays;
             setWorkedDays(validWorkedDays);
+            setOvertimeDays(validOvertimeDays);
         });
 
         const unsubRequests = onSnapshot(requestsQuery, (requestsSnapshot) => {
@@ -631,26 +715,6 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                 }
             });
              setLeaveDays({ ferie, malattia, permesso });
-
-            const workedOrLeaveDays = new Set([
-                ...localWorkedDays.map(d => format(d, 'yyyy-MM-dd')),
-                ...ferie.map(d => format(d, 'yyyy-MM-dd')),
-                ...malattia.map(d => format(d, 'yyyy-MM-dd')),
-            ]);
-
-            const missed: Date[] = [];
-            for (let day = new Date(monthStart); day <= monthEnd; day.setDate(day.getDate() + 1)) {
-                 if (day > new Date()) continue; 
-
-                const dayName = dayIndexToName[getDay(day)];
-                const contractualHours = operator.workSchedule[dayName] || 0;
-                const dayStr = format(day, 'yyyy-MM-dd');
-
-                if (contractualHours > 0 && !workedOrLeaveDays.has(dayStr)) {
-                    missed.push(new Date(day));
-                }
-            }
-            setMissedWorkDays(missed);
         });
 
         return () => {
@@ -928,10 +992,9 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
 
     const isDateDisabled = (date: Date): boolean => {
         const today = startOfDay(new Date());
-        const isLeaveOrSickDay = leaveDays.ferie.some(d => isSameDay(d, date)) || leaveDays.malattia.some(d => isSameDay(d, date));
         
         if (date > today && !isSameDay(date, today)) {
-          return !isLeaveOrSickDay;
+          return true;
         }
         
         return false;
@@ -975,19 +1038,14 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                 ferie: leaveDays.ferie, 
                                 malattia: leaveDays.malattia, 
                                 permesso: leaveDays.permesso,
-                                missed: missedWorkDays,
-                                straordinario: workedDays.filter(d => {
-                                    const shift = dailyShifts.find(s => isSameDay(s.startTime.toDate(), d));
-                                    return shift ? shift.isOvertime : false;
-                                })
+                                straordinario: overtimeDays
                             }}
                              modifiersClassNames={{
                                 worked: 'bg-primary/20',
                                 straordinario: 'bg-amber-500/30 text-amber-800',
                                 ferie: 'bg-green-500/30 text-green-800',
                                 malattia: 'bg-red-500/30 text-red-800',
-                                permesso: 'bg-yellow-500/30 text-yellow-800',
-                                missed: 'border-2 border-destructive',
+                                permesso: 'bg-yellow-500/30 text-yellow-800'
                             }}
                         />
                     </CardContent>
@@ -997,8 +1055,7 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-red-500/30 border"></div> Malattia</div>
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-yellow-500/30 border"></div> Permesso</div>
                          <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full bg-amber-500/30 border"></div> Straordinario</div>
-                         <div className="flex items-center gap-2"><div className="h-4 w-4 rounded-full border-2 border-destructive"></div> Turno Mancante</div>
-                         <Button className="w-full mt-4" onClick={() => { setEditingShift(null); setIsAddDialogOpen(true);}}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
+                         <Button className="w-full mt-4" onClick={() => { setEditingShift(null); setEditShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' }); setIsAddDialogOpen(true);}}><Plus className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale</Button>
                     </CardFooter>
                 </Card>
             </div>
@@ -1019,8 +1076,10 @@ function DailySummaryContent({ operatorId, operator, initialDate }: { operatorId
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="font-semibold">Turno {index + 1}</h4>
-                                                    {shift.isOvertime && (
+                                                    {shift.isOvertime ? (
                                                         <Badge variant="outline" className="border-amber-500 text-amber-600">Straordinario</Badge>
+                                                    ) : (
+                                                        <Badge variant="outline">Ordinario</Badge>
                                                     )}
                                                 </div>
                                                 <Button variant="ghost" size="icon" onClick={() => { setDetailShift(shift); setIsDetailOpen(true); }}><Eye className="h-5 w-5" /></Button>

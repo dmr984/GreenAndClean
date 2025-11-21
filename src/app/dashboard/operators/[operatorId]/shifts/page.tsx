@@ -43,6 +43,7 @@ type Timbratura = {
     status: 'sospesa' | 'confermata' | 'rifiutata';
     latitude?: number;
     longitude?: number;
+    isOvertime: boolean;
 };
 
 type Shift = {
@@ -50,6 +51,7 @@ type Shift = {
     status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     workDuration: number; // total work minutes
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
+    isOvertime: boolean;
 };
 
 type StraordinarioEvent = {
@@ -227,7 +229,7 @@ export default function ShiftApprovalPage() {
         return approvedShifts;
     }, [allShifts]);
 
-    const processShift = (events: Timbratura[], leaveDays: Set<string>): { status: Shift['status'], workDuration: number, isOnLeaveDay: boolean } => {
+    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'events'> => {
         const hasPending = events.some(e => e.status === 'sospesa');
         const hasRejected = events.some(e => e.status === 'rifiutata');
         const isComplete = events.some(e => e.type === 'uscita');
@@ -262,8 +264,9 @@ export default function ShiftApprovalPage() {
         
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
+        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime || false;
 
-        return { status, workDuration, isOnLeaveDay };
+        return { status, workDuration, isOnLeaveDay, isOvertime };
     };
 
     const handleApprovalClick = () => {
@@ -441,6 +444,7 @@ export default function ShiftApprovalPage() {
                 timestamp: newEventsMap[eventType]!.timestamp,
                 status: 'confermata',
                 viewedByOperator: false,
+                isOvertime: editingShift.isOvertime,
             });
         }
         
@@ -483,7 +487,7 @@ export default function ShiftApprovalPage() {
     };
     
     const roundOrdinaryHours = (minutes: number): number => {
-        if (minutes < 0) return 0;
+        if (minutes <= 0) return 0;
         const totalHalfHours = Math.floor(minutes / 30);
         const remainingMinutes = minutes % 30;
         return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
@@ -493,7 +497,7 @@ export default function ShiftApprovalPage() {
         if (minutes <= 0) return 0;
         const totalHours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
-        return totalHours + (remainingMinutes >= 55 ? 1 : 0);
+        return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
@@ -502,8 +506,8 @@ export default function ShiftApprovalPage() {
         const contractualHours = getContractualHoursForShift(shift);
         const totalMinutesWorked = Math.round(shift.workDuration);
 
-        // Scenario 1: Non-working day (pure overtime)
-        if (contractualHours === 0) {
+        // Scenario 1: Non-working day (pure overtime) or explicitly marked as overtime
+        if (contractualHours === 0 || shift.isOvertime) {
             return {
                 ordinary: 0,
                 overtime: roundOvertimeHours(totalMinutesWorked),
@@ -517,7 +521,7 @@ export default function ShiftApprovalPage() {
             // Overtime occurred
             const overtimeMinutes = totalMinutesWorked - contractualMinutes;
             return { 
-                ordinary: contractualHours, 
+                ordinary: roundOrdinaryHours(contractualMinutes), // workDuration can be > contractualMinutes
                 overtime: roundOvertimeHours(overtimeMinutes), 
                 leave: 0 
             };
@@ -528,7 +532,7 @@ export default function ShiftApprovalPage() {
             return { 
                 ordinary: roundOrdinaryHours(ordinaryMinutes), 
                 overtime: 0, 
-                leave: roundOrdinaryHours(leaveMinutes)
+                leave: roundOrdinaryHours(leaveMinutes) // Calculate potential leave
             };
         }
     };
@@ -625,55 +629,32 @@ export default function ShiftApprovalPage() {
         
         const dayName = dayIndexToName[getDayFns(newShiftDate)];
         const isWorkDay = (operator.workSchedule[dayName] || 0) > 0;
+        const isOvertime = !isWorkDay;
 
-        if (isWorkDay) {
-            const batch = writeBatch(firestore);
-            const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
-            const events: { type: Timbratura['type'], time: string }[] = [
-                { type: 'entrata', time: newShiftTimes.entrata },
-                { type: 'uscita', time: newShiftTimes.uscita },
-                { type: 'pausa', time: newShiftTimes.pausa },
-                { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
-            ];
+        
+        const batch = writeBatch(firestore);
+        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        const events: { type: Timbratura['type'], time: string }[] = [
+            { type: 'entrata', time: newShiftTimes.entrata },
+            { type: 'uscita', time: newShiftTimes.uscita },
+            { type: 'pausa', time: newShiftTimes.pausa },
+            { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
+        ];
 
-            for (const event of events) {
-                if (event.time) {
-                    const newDocRef = doc(timbratureCollectionRef);
-                    batch.set(newDocRef, {
-                        userId: operatorId, type: event.type, timestamp: createTimestamp(event.time),
-                        status: 'sospesa' as const, viewedByOperator: false,
-                    });
-                }
+        for (const event of events) {
+            if (event.time) {
+                const newDocRef = doc(timbratureCollectionRef);
+                batch.set(newDocRef, {
+                    userId: operatorId, type: event.type, timestamp: createTimestamp(event.time),
+                    status: 'sospesa' as const, viewedByOperator: false, isOvertime
+                });
             }
-            try {
-                await batch.commit();
-                toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
-            } catch (error) {
-                toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
-            }
-
-        } else {
-            const overtimeCollectionRef = collection(firestore, `app-users/${operatorId}/straordinari`);
-            const newEvents: StraordinarioEvent[] = [];
-            if (newShiftTimes.entrata) newEvents.push({ type: 'entrata', timestamp: createTimestamp(newShiftTimes.entrata) });
-            if (newShiftTimes.pausa) newEvents.push({ type: 'pausa', timestamp: createTimestamp(newShiftTimes.pausa) });
-            if (newShiftTimes.fine_pausa) newEvents.push({ type: 'fine_pausa', timestamp: createTimestamp(newShiftTimes.fine_pausa) });
-            if (newShiftTimes.uscita) newEvents.push({ type: 'uscita', timestamp: createTimestamp(newShiftTimes.uscita) });
-            
-            newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-            const newOvertimeShift = {
-                date: Timestamp.fromDate(startOfDay(newShiftDate)),
-                events: newEvents,
-                status: 'in_attesa_di_approvazione' as const,
-                userId: operatorId,
-            };
-            try {
-                await addDoc(overtimeCollectionRef, newOvertimeShift);
-                toast({ title: 'Successo', description: 'Turno straordinario manuale aggiunto. Ora è in attesa di approvazione.' });
-            } catch (error) {
-                toast({ title: 'Errore', description: 'Impossibile aggiungere il turno straordinario.', variant: 'destructive'});
-            }
+        }
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
+        } catch (error) {
+            toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
         }
         
         setIsAddShiftOpen(false);
@@ -719,6 +700,7 @@ export default function ShiftApprovalPage() {
                 viewedByOperator: false,
                 latitude: null,
                 longitude: null,
+                isOvertime: true
             });
         });
     
@@ -1053,7 +1035,7 @@ export default function ShiftApprovalPage() {
                 <ResponsiveDialogContent>
                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle>Aggiungi Turno Manuale</ResponsiveDialogTitle>
-                        <ResponsiveDialogDescription>Seleziona il giorno e inserisci gli orari del turno. Se inserito in un giorno non lavorativo, verrà creato come straordinario.</ResponsiveDialogDescription>
+                        <ResponsiveDialogDescription>Seleziona il giorno e inserisci gli orari del turno. Il sistema capirà se è ordinario o straordinario.</ResponsiveDialogDescription>
                     </ResponsiveDialogHeader>
                      <div className="grid gap-4 py-4">
                         <div className="space-y-2">
@@ -1318,12 +1300,12 @@ export default function ShiftApprovalPage() {
                         <div>
                             <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
                             <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="1" min="0" />
-                            <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 55° minuto. Modifica se necessario.</p>
+                            <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 50° minuto. Modifica se necessario.</p>
                         </div>
                         {parseFloat(approvalData.leaveHours) > 0 && (
                             <div>
                                 <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
-                                <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="1" min="0" />
+                                <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="0.5" min="0" />
                                 <div className="flex items-center space-x-2 mt-2">
                                     <Checkbox id="include-leave" checked={includeLeaveHours} onCheckedChange={(checked) => setIncludeLeaveHours(checked as boolean)} />
                                     <Label htmlFor="include-leave" className="text-sm font-normal">
