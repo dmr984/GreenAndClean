@@ -91,6 +91,7 @@ type DayInfo = {
 
 const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange }: { operatorId: string, operator: Operator, initialDate: Date, onMonthChange: (date: Date) => void }) => {
     const firestore = useFirestore();
+    const { toast } = useToast();
     const [currentMonth, setCurrentMonth] = useState(initialDate);
     const [monthData, setMonthData] = useState<DayInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -109,7 +110,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
-            where('timestamp', '<=', Timestamp.fromDate(monthEnd))
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
+            orderBy('timestamp', 'asc')
         );
 
         const requestsQuery = query(
@@ -121,7 +123,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             const requestsSnap = await getDocs(requestsQuery);
             let allRequests = requestsSnap.docs.map(d => d.data() as Request);
             let allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
-            allTimbrature = allTimbrature.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const approvedRequests = allRequests;
             const timbrature = allTimbrature.filter(t => t.status === 'confermata');
@@ -192,12 +193,19 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             setMonthData(processedData);
             setIsLoading(false);
         }, (error) => {
+            if (error.code === 'failed-precondition') {
+                toast({
+                    variant: 'destructive',
+                    title: 'Indice mancante in Firestore',
+                    description: "La query richiede un indice. Controlla la console per il link di creazione."
+                })
+            }
             console.error("Error fetching daily summary data:", error);
             setIsLoading(false);
         });
 
         return () => unsub();
-    }, [firestore, operatorId, operator, currentMonth]);
+    }, [firestore, operatorId, operator, currentMonth, toast]);
 
     const handleMonthNav = (offset: number) => {
         const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1);
@@ -290,7 +298,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 return (
                                 <TableRow key={day.date.toString()} className={cn(isSunday && "text-red-500")}>
                                      <TableCell className="px-2 font-medium">
-                                        <span className='capitalize'>{format(day.date, 'eee', { locale: it })}</span> {format(day.date, 'dd/MM')}
+                                        <span className='capitalize'>{format(day.date, 'eee dd/MM/yy', { locale: it })}</span>
                                     </TableCell>
                                     <TableCell className="px-2">{getStatusInfo(day.status).badge}</TableCell>
                                     <TableCell className="text-right px-2">
@@ -566,24 +574,36 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)),
-            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue))
+            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue)),
+            orderBy('timestamp', 'asc')
         );
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
             const allRequests = s.docs.map(d => ({id: d.id, ...d.data()} as Request));
             setRequests(allRequests);
+            setIsLoading(false); // Set loading to false once requests are loaded
         }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             setTimbrature(s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata'));
+            setIsLoading(false); // Also set loading to false once timbrature are loaded
+        }, (error) => {
+            console.error("Error fetching timbrature", error);
+            if (error.code === 'failed-precondition') {
+                 toast({
+                    variant: 'destructive',
+                    title: 'Indice mancante in Firestore',
+                    description: "La query richiede un indice. Controlla la console per il link di creazione."
+                })
+            }
             setIsLoading(false);
-        }, () => setIsLoading(false));
+        });
 
         return () => { 
             unsubRequests(); 
             unsubTimbrature(); 
         };
-    }, [firestore, operatorId, currentDate]);
+    }, [firestore, operatorId, currentDate, toast]);
     
     const roundOrdinaryHours = (minutes: number): number => {
         if (minutes <= 0) return 0;

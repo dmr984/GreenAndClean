@@ -105,7 +105,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
-            where('timestamp', '<=', Timestamp.fromDate(monthEnd))
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
+            orderBy('timestamp', 'asc')
         );
 
         const requestsQuery = query(
@@ -117,7 +118,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             const requestsSnap = await getDocs(requestsQuery);
             let allRequests = requestsSnap.docs.map(d => d.data() as Request);
             let allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
-            allTimbrature = allTimbrature.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const approvedRequests = allRequests;
             const timbrature = allTimbrature.filter(t => t.status === 'confermata');
@@ -187,10 +187,21 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             });
             setMonthData(processedData);
             setIsLoading(false);
+        }, (error) => {
+            // Firestore error can be for missing index
+             if (error.code === 'failed-precondition') {
+                toast({
+                    variant: 'destructive',
+                    title: 'Indice mancante in Firestore',
+                    description: "La query richiede un indice. Controlla la console per il link di creazione."
+                })
+             }
+             console.error("Error loading daily summary", error);
+             setIsLoading(false);
         });
 
         return () => unsub();
-    }, [firestore, operatorId, operator, currentMonth]);
+    }, [firestore, operatorId, operator, currentMonth, toast]);
 
     const handleMonthNav = (offset: number) => {
         const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1);
@@ -284,7 +295,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 return (
                                 <TableRow key={day.date.toString()} className={cn(isSunday && "text-red-500")}>
                                     <TableCell className="px-2 font-medium">
-                                        <span className='capitalize'>{format(day.date, 'eee', { locale: it })}</span> {format(day.date, 'dd/MM')}
+                                        <span className='capitalize'>{format(day.date, 'eee dd/MM/yy', { locale: it })}</span>
                                     </TableCell>
                                     <TableCell className="px-2">{getStatusInfo(day.status).badge}</TableCell>
                                     <TableCell className="text-right px-2">
