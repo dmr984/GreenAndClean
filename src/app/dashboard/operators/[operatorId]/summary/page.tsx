@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive, Clock, MoreHorizontal } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive, Clock, MoreHorizontal, Sun, Moon, Activity, Bed } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -92,13 +92,10 @@ type DayInfo = {
 
 const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange }: { operatorId: string, operator: Operator, initialDate: Date, onMonthChange: (date: Date) => void }) => {
     const firestore = useFirestore();
-    const { toast } = useToast();
     const [currentMonth, setCurrentMonth] = useState(initialDate);
     const [monthData, setMonthData] = useState<DayInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedDay, setSelectedDay] = useState<DayInfo | null>(null);
-    const [shiftDetail, setShiftDetail] = useState<Shift | null>(null);
-
 
     useEffect(() => {
         if (!firestore || !operatorId || !operator) {
@@ -123,7 +120,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
             const requestsSnap = await getDocs(requestsQuery);
             const allRequests = requestsSnap.docs.map(d => d.data() as Request);
-            const allTimbrature = timbratureSnap.docs.map(d => d.data() as Timbratura);
+            const allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
 
             const approvedRequests = allRequests.filter(r => r.status === 'approvato');
             const timbrature = allTimbrature.filter(t => t.status === 'confermata').sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -205,15 +202,16 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         setSelectedDay(null);
     };
     
-    const getStatusBadge = (status: DayInfo['status']) => {
+    const getStatusInfo = (status: DayInfo['status']): { badge: React.ReactNode, icon: React.ReactNode, text: string } => {
         switch (status) {
-            case 'lavorato': return <Badge variant="secondary">Ordinario</Badge>;
-            case 'straordinario': return <Badge className="bg-amber-500 text-white">Straordinario</Badge>;
-            case 'lavorato/straordinario': return <Badge className="bg-blue-500 text-white">Ordinario/Straordinario</Badge>;
-            case 'ferie': return <Badge className="bg-green-500 text-white">Ferie</Badge>;
-            case 'malattia': return <Badge className="bg-red-600 text-white">Malattia</Badge>;
-            case 'permesso': return <Badge className="bg-yellow-500 text-white">Permesso</Badge>;
-            default: return <Badge variant="outline"> - </Badge>;
+            case 'lavorato': return { badge: <Badge variant="secondary">Ordinario</Badge>, icon: <Sun className="h-5 w-5 text-yellow-500" />, text: "Giorno Lavorativo" };
+            case 'straordinario': return { badge: <Badge className="bg-amber-500 text-white">Straordinario</Badge>, icon: <Moon className="h-5 w-5 text-amber-500" />, text: "Straordinario" };
+            case 'lavorato/straordinario': return { badge: <Badge className="bg-blue-500 text-white">Ordinario/Straordinario</Badge>, icon: <Activity className="h-5 w-5 text-blue-500" />, text: "Ordinario/Straordinario" };
+            case 'ferie': return { badge: <Badge className="bg-green-500 text-white">Ferie</Badge>, icon: <Plane className="h-5 w-5 text-green-500" />, text: "Giorno di Ferie" };
+            case 'malattia': return { badge: <Badge className="bg-red-600 text-white">Malattia</Badge>, icon: <Stethoscope className="h-5 w-5 text-red-600" />, text: "Giorno di Malattia" };
+            case 'permesso': return { badge: <Badge className="bg-yellow-500 text-white">Permesso</Badge>, icon: <UserCheck className="h-5 w-5 text-yellow-500" />, text: "Permesso Orario" };
+            case 'futuro': return { badge: <Badge variant="outline">-</Badge>, icon: <Clock className="h-5 w-5 text-muted-foreground" />, text: "Giorno Futuro" };
+            default: return { badge: <Badge variant="outline">-</Badge>, icon: <Bed className="h-5 w-5 text-muted-foreground" />, text: "Nessuna attività registrata" };
         }
     };
     
@@ -270,124 +268,91 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
                 <Button variant="outline" size="sm" onClick={() => handleMonthNav(1)}>Succ.</Button>
             </div>
-             <div className="flex flex-col lg:flex-row gap-6">
-                <Card className="w-full lg:w-1/3">
-                    <CardHeader><CardTitle>Giorni del Mese</CardTitle></CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
-                        ) : (
-                            <ScrollArea className="h-[500px]">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Data</TableHead>
-                                            <TableHead>Stato</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {monthData.map((day) => (
-                                            <TableRow 
-                                                key={day.date.toString()} 
-                                                onClick={() => setSelectedDay(day)}
-                                                className={cn("cursor-pointer", isSameDay(day.date, selectedDay?.date || new Date(0)) && "bg-muted")}
-                                            >
-                                                <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
-                                                <TableCell>{getStatusBadge(day.status)}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </ScrollArea>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>Dettaglio Giorno</CardTitle>
-                        <CardDescription>
-                            {selectedDay ? format(selectedDay.date, 'PPP', { locale: it }) : 'Seleziona un giorno dalla lista'}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {!selectedDay ? (
-                            <div className="flex items-center justify-center h-64 text-muted-foreground">Seleziona un giorno per vedere i dettagli.</div>
-                        ) : selectedDay.shift ? (
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <h4 className="font-semibold text-lg">Turno di Lavoro</h4>
-                                    <Button variant="ghost" size="icon" onClick={() => setShiftDetail(selectedDay.shift)}><Eye className="h-5 w-5"/></Button>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                     <div className="p-4 bg-muted/50 rounded-md">
-                                        <p className="text-sm font-medium text-muted-foreground">Inizio</p>
-                                        <p className="text-lg font-semibold">{format(selectedDay.shift.startTime.toDate(), 'HH:mm')}</p>
-                                    </div>
-                                    <div className="p-4 bg-muted/50 rounded-md">
-                                        <p className="text-sm font-medium text-muted-foreground">Fine</p>
-                                        <p className="text-lg font-semibold">{selectedDay.shift.endTime ? format(selectedDay.shift.endTime.toDate(), 'HH:mm') : 'In corso'}</p>
-                                    </div>
-                                </div>
-                                <Table>
-                                    <TableBody>
-                                        {selectedDay.shift.events.map(event => (
-                                            <TableRow key={event.id}>
-                                                <TableCell className="capitalize font-medium">{event.type.replace('_', ' ')}</TableCell>
-                                                <TableCell>{format(event.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Badge variant={event.status === 'confermata' ? 'secondary' : 'default'}>{event.status}</Badge>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        ) : (
-                             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-4">
-                                {getStatusBadge(selectedDay.status)}
-                                <p className="font-medium text-lg text-center">Nessuna attività registrata per questo giorno.</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-             </div>
-
-              {shiftDetail && (
-                <ResponsiveDialog open={!!shiftDetail} onOpenChange={() => setShiftDetail(null)}>
-                    <ResponsiveDialogContent>
-                        <ResponsiveDialogHeader>
-                            <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
-                            {shiftDetail.startTime && <ResponsiveDialogDescription>Turno del {format(shiftDetail.startTime.toDate(), 'PPP', {locale: it})}</ResponsiveDialogDescription>}
-                        </ResponsiveDialogHeader>
-                         <div className="grid grid-cols-3 gap-4 text-center my-4">
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(shiftDetail.startTime.toDate())]] || 0}h</p>
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
-                                <p className="text-2xl font-bold">{formatMinutes(shiftDetail.workDuration)}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                                <p className="text-2xl font-bold">{calculateShiftHours(shiftDetail).overtime}h</p>
-                            </div>
-                        </div>
-                        <ScrollArea className="max-h-64">
+             <Card>
+                <CardHeader><CardTitle>Riepilogo Giornaliero</CardTitle></CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                        <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
+                    ) : (
+                        <ScrollArea className="h-[600px]">
                             <Table>
-                                <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Data</TableHead>
+                                        <TableHead>Stato</TableHead>
+                                        <TableHead className="text-right">Dettagli</TableHead>
+                                    </TableRow>
+                                </TableHeader>
                                 <TableBody>
-                                    {shiftDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
-                                        <TableRow key={t.id}>
-                                            <TableCell>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                            <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                    {monthData.map((day) => (
+                                        <TableRow key={day.date.toString()}>
+                                            <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
+                                            <TableCell>{getStatusInfo(day.status).badge}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    onClick={() => setSelectedDay(day)}
+                                                    disabled={day.status === 'vuoto' || day.status === 'futuro'}
+                                                >
+                                                    <Eye className="h-5 w-5"/>
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
                             </Table>
                         </ScrollArea>
+                    )}
+                </CardContent>
+            </Card>
+
+              {selectedDay && (
+                <ResponsiveDialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
+                    <ResponsiveDialogContent className="max-w-2xl">
+                        <ResponsiveDialogHeader>
+                            <ResponsiveDialogTitle>Dettaglio del {format(selectedDay.date, 'PPP', { locale: it })}</ResponsiveDialogTitle>
+                            <div className="flex items-center gap-2 pt-2 text-muted-foreground">
+                                {getStatusInfo(selectedDay.status).icon}
+                                <span>{getStatusInfo(selectedDay.status).text}</span>
+                            </div>
+                        </ResponsiveDialogHeader>
+                        
+                        {selectedDay.shift ? (
+                            <>
+                             <div className="grid grid-cols-3 gap-4 text-center my-4">
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
+                                    <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]] || 0}h</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
+                                    <p className="text-2xl font-bold">{formatMinutes(selectedDay.shift.workDuration)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
+                                    <p className="text-2xl font-bold">{calculateShiftHours(selectedDay.shift).overtime}h</p>
+                                </div>
+                            </div>
+                            <ScrollArea className="max-h-64">
+                                <Table>
+                                    <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {selectedDay.shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
+                                            <TableRow key={t.id}>
+                                                <TableCell>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </ScrollArea>
+                           </>
+                        ) : (
+                            <div className="py-8 text-center text-muted-foreground">Nessun turno registrato per questo giorno.</div>
+                        )}
                         <ResponsiveDialogFooter className="pt-4">
-                            <Button variant="outline" onClick={() => setShiftDetail(null)}>Chiudi</Button>
+                            <Button variant="outline" onClick={() => setSelectedDay(null)}>Chiudi</Button>
                         </ResponsiveDialogFooter>
                     </ResponsiveDialogContent>
                 </ResponsiveDialog>
@@ -598,8 +563,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)),
-            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue)),
-            where('status', '==', 'confermata')
+            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue))
         );
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
@@ -608,7 +572,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
-            setTimbrature(s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)));
+            setTimbrature(s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata'));
             setIsLoading(false);
         }, () => setIsLoading(false));
 
