@@ -663,7 +663,6 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
 
         let workedDaysCount = 0;
         let totalOrdinaryMinutes = 0;
-        let totalOvertimeMinutesFromShifts = 0;
         let ordinaryHoursByDay: {date: Date, hours: number, shift: Shift}[] = [];
         
         const shiftsProcessed = new Set<string>();
@@ -711,9 +710,8 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                             isOvertime: isOvertimeDay
                         };
 
-                        const { ordinary, overtime } = calculateShiftHours(shiftObject);
+                        const { ordinary } = calculateShiftHours(shiftObject);
                         totalOrdinaryMinutes += ordinary * 60;
-                        totalOvertimeMinutesFromShifts += overtime * 60;
                         if(ordinary > 0){
                            ordinaryHoursByDay.push({date: new Date(dayString), hours: ordinary, shift: shiftObject});
                         }
@@ -728,13 +726,11 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             }
         }
         
-        const manuallyAddedOvertimeHours = approvedRequests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval) && !r.associatedShiftId)
+        const totalOvertimeHours = approvedRequests
+            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
         
         const ordinaryWorkedHours = roundOrdinaryHours(totalOrdinaryMinutes);
-        const overtimeFromShiftsHours = roundOvertimeHours(totalOvertimeMinutesFromShifts);
-        const totalOvertimeHours = overtimeFromShiftsHours + manuallyAddedOvertimeHours;
     
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
