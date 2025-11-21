@@ -273,17 +273,17 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Data</TableHead>
-                                <TableHead>Stato</TableHead>
-                                <TableHead className="text-right">Dettagli</TableHead>
+                                <TableHead className="px-2">Data</TableHead>
+                                <TableHead className="px-2">Stato</TableHead>
+                                <TableHead className="text-right px-2">Dettagli</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {monthData.map((day) => (
                                 <TableRow key={day.date.toString()}>
-                                    <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
-                                    <TableCell>{getStatusInfo(day.status).badge}</TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="px-2">{format(day.date, 'dd/MM/yy')}</TableCell>
+                                    <TableCell className="px-2">{getStatusInfo(day.status).badge}</TableCell>
+                                    <TableCell className="text-right px-2">
                                         <Button 
                                             variant="ghost" 
                                             size="icon" 
