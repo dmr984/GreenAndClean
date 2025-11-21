@@ -264,44 +264,42 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
                 <Button variant="outline" size="sm" onClick={() => handleMonthNav(1)}>Succ.</Button>
             </div>
-             <Card>
-                <CardHeader><CardTitle>Riepilogo Giornaliero</CardTitle></CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
-                    ) : (
-                        <ScrollArea className="h-[600px]">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Stato</TableHead>
-                                        <TableHead className="text-right">Dettagli</TableHead>
+            
+            <div className="border rounded-md">
+                {isLoading ? (
+                    <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
+                ) : (
+                    <ScrollArea className="h-[600px]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Data</TableHead>
+                                    <TableHead>Stato</TableHead>
+                                    <TableHead className="text-right">Dettagli</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {monthData.map((day) => (
+                                    <TableRow key={day.date.toString()}>
+                                        <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
+                                        <TableCell>{getStatusInfo(day.status).badge}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                onClick={() => setSelectedDay(day)}
+                                                disabled={day.status === 'vuoto' || day.status === 'futuro'}
+                                            >
+                                                <Eye className="h-5 w-5"/>
+                                            </Button>
+                                        </TableCell>
                                     </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {monthData.map((day) => (
-                                        <TableRow key={day.date.toString()}>
-                                            <TableCell>{format(day.date, 'dd/MM/yy')}</TableCell>
-                                            <TableCell>{getStatusInfo(day.status).badge}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    onClick={() => setSelectedDay(day)}
-                                                    disabled={day.status === 'vuoto' || day.status === 'futuro'}
-                                                >
-                                                    <Eye className="h-5 w-5"/>
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </ScrollArea>
-                    )}
-                </CardContent>
-            </Card>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </ScrollArea>
+                )}
+            </div>
 
               {selectedDay && (
                 <ResponsiveDialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
