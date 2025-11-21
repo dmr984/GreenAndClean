@@ -81,7 +81,7 @@ type DetailView = {
 
 type DayInfo = {
     date: Date;
-    status: 'lavorato' | 'straordinario' | 'lavorato/straordinario' | 'ferie' | 'malattia' | 'permesso' | 'assente' | 'futuro' | 'vuoto';
+    status: 'lavorato' | 'straordinario' | 'lavorato/straordinario' | 'ferie' | 'malattia' | 'permesso' | 'futuro' | 'vuoto';
     shift: Shift | null;
 }
 
@@ -109,8 +109,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
             where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
-            where('status', '==', 'confermata'),
-            orderBy('timestamp', 'asc')
+            where('status', '==', 'confermata')
         );
 
         const requestsQuery = query(
@@ -121,7 +120,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
             const requestsSnap = await getDocs(requestsQuery);
             const approvedRequests = requestsSnap.docs.map(d => d.data() as Request);
-            const timbrature = timbratureSnap.docs.map(d => d.data() as Timbratura);
+            const timbrature = timbratureSnap.docs.map(d => d.data() as Timbratura).sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
             const today = startOfDay(new Date());
@@ -210,7 +209,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             case 'ferie': return <Badge className="bg-green-500 text-white">Ferie</Badge>;
             case 'malattia': return <Badge className="bg-red-600 text-white">Malattia</Badge>;
             case 'permesso': return <Badge className="bg-yellow-500 text-white">Permesso</Badge>;
-            case 'assente': return <Badge variant="destructive">Assente</Badge>;
             default: return <Badge variant="outline"> - </Badge>;
         }
     };
