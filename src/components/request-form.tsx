@@ -239,12 +239,8 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                 <SelectContent>
                                     <SelectItem value="ferie">Ferie</SelectItem>
                                     <SelectItem value="permesso">Permesso</SelectItem>
-                                    {role === 'admin' && (
-                                        <>
-                                            <SelectItem value="malattia">Malattia</SelectItem>
-                                            <SelectItem value="straordinario">Straordinario</SelectItem>
-                                        </>
-                                    )}
+                                    {role === 'admin' && <SelectItem value="malattia">Malattia</SelectItem>}
+                                    {/* Straordinario is now handled via shift approval */}
                                 </SelectContent>
                             </Select>
                             {errors.requestType && <p className="text-xs text-destructive mt-1">{errors.requestType.message}</p>}
@@ -285,8 +281,8 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                       }}
                                       initialFocus
                                       locale={it}
-                                      disabled={bookedDays}
-                                      modifiers={{ booked: bookedDays }}
+                                      disabled={role === 'operator' ? { before: new Date() } : bookedDays}
+                                      modifiers={role === 'admin' ? { booked: bookedDays } : {}}
                                       modifiersClassNames={{ booked: "bg-destructive/80 text-destructive-foreground opacity-100" }}
                                     />
                                 </DialogContent>
@@ -311,7 +307,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         id="endDate"
                                         variant={"outline"}
                                         className={cn("justify-start text-left font-normal", !field.value && "text-muted-foreground")}
-                                        disabled={!startDateValue}
+                                        disabled={!startDateValue || (selectedType !== 'ferie' && selectedType !== 'malattia')}
                                     >
                                         <CalendarIcon className="mr-2 h-4 w-4" />
                                         {field.value ? format(field.value, "PPP", { locale: it }) : <span>Scegli una data (opzionale)</span>}
@@ -328,10 +324,10 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                           field.onChange(date);
                                           setIsEndPickerOpen(false);
                                         }}
-                                        disabled={[{ before: startDateValue! }, ...bookedDays]} 
+                                        disabled={[{ before: startDateValue! }, ...(role === 'admin' ? bookedDays : []) ]}
                                         initialFocus 
                                         locale={it}
-                                        modifiers={{ booked: bookedDays }}
+                                        modifiers={role === 'admin' ? { booked: bookedDays } : {}}
                                         modifiersClassNames={{ booked: "bg-destructive/80 text-destructive-foreground opacity-100" }}
                                     />
                                 </DialogContent>
@@ -382,3 +378,5 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
         </form>
     );
 }
+
+    
