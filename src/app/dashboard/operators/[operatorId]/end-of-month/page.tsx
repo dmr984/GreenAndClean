@@ -377,29 +377,31 @@ export default function EndOfMonthPage() {
     const handlePrint = () => {
         const printContent = printRef.current;
         if (!printContent) return;
-        
-        const contentToPrint = printContent.innerHTML;
 
-        const printWindow = window.open('', '', 'height=800,width=800');
-        if (printWindow) {
-            printWindow.document.write('<html><head><title>Stampa Riepilogo</title>');
-            // Aggiungi qui eventuali stili necessari per la stampa
-            const styles = Array.from(document.styleSheets)
-                .map(s => s.href ? `<link rel="stylesheet" href="${s.href}">` : `<style>${(s.ownerNode as HTMLStyleElement).innerHTML}</style>`)
-                .join('');
-            
-            printWindow.document.write(styles);
-            printWindow.document.write('<style>@media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; } }</style>');
-            printWindow.document.write('</head><body>');
-            printWindow.document.write(contentToPrint);
-            printWindow.document.write('</body></html>');
-            printWindow.document.close();
-            printWindow.focus();
-            setTimeout(() => {
-                printWindow.print();
-                printWindow.close();
-            }, 250);
-        }
+        // Create a specific style block for printing
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @media print {
+                body * {
+                    visibility: hidden;
+                }
+                .print-container, .print-container * {
+                    visibility: visible;
+                }
+                .print-container {
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                }
+                .no-print {
+                    display: none !important;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+        window.print();
+        document.head.removeChild(style);
     };
 
 
@@ -489,24 +491,25 @@ export default function EndOfMonthPage() {
             </Card>
 
             <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-                <ResponsiveDialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
-                     <ResponsiveDialogHeader>
+                <ResponsiveDialogContent className="max-w-4xl p-0">
+                    <ResponsiveDialogHeader className="p-4 bg-muted/50 border-b flex-row items-center justify-between no-print">
                         <ResponsiveDialogTitle className="sr-only">Anteprima di Stampa</ResponsiveDialogTitle>
-                    </ResponsiveDialogHeader>
-                    <div className="p-4 bg-muted/50 border-b flex justify-end gap-2 no-print">
-                        <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
-                        <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto bg-gray-100 p-4 sm:p-8" >
-                        <div ref={printRef}>
-                            <PrintableSummary 
-                                operator={operator}
-                                currentMonth={currentMonth}
-                                monthlySummary={monthlySummary}
-                                dailyDetails={dailyDetails}
-                                formatMinutes={formatMinutes}
-                            />
+                         <div/>
+                        <div className="flex gap-2">
+                           <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
+                           <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
                         </div>
+                    </ResponsiveDialogHeader>
+                    <div className="overflow-y-auto bg-gray-100 p-4 sm:p-8 max-h-[80vh] print-container">
+                      <div ref={printRef}>
+                          <PrintableSummary 
+                              operator={operator}
+                              currentMonth={currentMonth}
+                              monthlySummary={monthlySummary}
+                              dailyDetails={dailyDetails}
+                              formatMinutes={formatMinutes}
+                          />
+                      </div>
                     </div>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
