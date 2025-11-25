@@ -376,7 +376,7 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrint = () => {
-        const printWindow = window.open('', '_blank');
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
         if (!printWindow) {
             alert('Per favore, abilita i pop-up per questo sito.');
             return;
@@ -390,11 +390,14 @@ export default function EndOfMonthPage() {
                 <head>
                     <title>Riepilogo Mensile - ${operator?.username}</title>
                     <style>
-                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; }
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f0f0f0; }
                         @media print {
                            @page { size: A4; margin: 20mm; }
-                           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                           body { background-color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                           .print-button-container { display: none !important; }
                         }
+                        .print-button-container { text-align: center; padding: 1rem; background-color: #fff; border-bottom: 1px solid #ddd; }
+                        .print-button { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px; }
                         /* Include styles from the component itself */
                         .bg-white { background-color: #fff; } .text-black { color: #000; } .p-8 { padding: 2rem; } .w-\\[210mm\\] { width: 210mm; } .min-h-\\[297mm\\] { min-height: 297mm; } .mx-auto { margin-left: auto; margin-right: auto; }
                         .flex { display: flex; } .justify-between { justify-content: space-between; } .items-center { align-items: center; } .mb-8 { margin-bottom: 2rem; } .pb-4 { padding-bottom: 1rem; } .border-b { border-bottom-width: 1px; } .border-gray-300 { border-color: #d1d5db; }
@@ -415,17 +418,15 @@ export default function EndOfMonthPage() {
                     </style>
                 </head>
                 <body>
+                    <div class="print-button-container">
+                        <button class="print-button" onclick="window.print()">Stampa</button>
+                    </div>
                     ${content.outerHTML}
                 </body>
             </html>
         `);
         printWindow.document.close();
         printWindow.focus();
-        // Use a timeout to ensure content is rendered before printing
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 500);
     };
 
     if (isLoading || !operator) {
@@ -527,3 +528,4 @@ export default function EndOfMonthPage() {
         </>
     );
 }
+
