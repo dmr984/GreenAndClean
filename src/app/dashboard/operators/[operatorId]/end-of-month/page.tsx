@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -51,6 +51,14 @@ type Shift = {
     overtimeHours: number;
     permissionHours: number;
 };
+
+type DailyDetail = {
+    date: Date;
+    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo';
+    shift: Shift | null;
+    request: Request | null;
+};
+
 
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
     <Card>
@@ -108,9 +116,7 @@ export default function EndOfMonthPage() {
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', monthStart),
-            where('timestamp', '<=', monthEnd),
-            // where('status', '==', 'confermata'), // Temporarily removed for stability
-            orderBy('timestamp', 'asc')
+            where('timestamp', '<=', monthEnd)
         );
         const requestsQuery = query(
             collection(firestore, `app-users/${operatorId}/requests`),
@@ -154,8 +160,8 @@ export default function EndOfMonthPage() {
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
-    const { monthlySummary, workedShifts } = useMemo(() => {
-        if (!operator) return { monthlySummary: {} as any, workedShifts: [] };
+    const { monthlySummary, dailyDetails } = useMemo(() => {
+        if (!operator) return { monthlySummary: {} as any, dailyDetails: [] };
 
         const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
 
@@ -166,61 +172,89 @@ export default function EndOfMonthPage() {
             return acc;
         }, {} as Record<string, Timbratura[]>);
 
-        const shifts: Shift[] = [];
-        for (const dayString in dailyTimbrature) {
-            const dayDate = new Date(dayString);
-            const dayName = dayIndexToName[getDay(dayDate)];
+        const allDaysOfMonth = eachDayOfInterval(monthInterval);
+        const details: DailyDetail[] = [];
+
+        for (const day of allDaysOfMonth) {
+            const dayName = dayIndexToName[getDay(day)];
             const contractualHours = operator.workSchedule[dayName] || 0;
-            const events = dailyTimbrature[dayString];
-            
-            let workedMinutes = 0;
-            const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-            const endTime = events.find(e => e.type === 'uscita')?.timestamp;
-            if (startTime && endTime) {
-                let totalMillis = endTime.toMillis() - startTime.toMillis();
-                 let breakStart: Timestamp | null = null;
-                events.forEach(e => {
-                    if (e.type === 'pausa') breakStart = e.timestamp;
-                    if (e.type === 'fine_pausa' && breakStart) {
-                        totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                        breakStart = null;
-                    }
-                });
-                workedMinutes = totalMillis / (1000 * 60);
-            }
-            
-            const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
-            
-            let ordinaryHours = 0;
-            let overtimeHours = 0;
+            const dayString = day.toDateString();
 
-            if (isOvertimeShift) {
-                 overtimeHours = roundOvertimeHours(workedMinutes);
-            } else {
-                const contractualMinutes = contractualHours * 60;
-                 if (workedMinutes > contractualMinutes) {
-                    ordinaryHours = roundOrdinaryHours(contractualMinutes);
-                    overtimeHours = roundOvertimeHours(workedMinutes - contractualMinutes);
-                } else {
-                    ordinaryHours = roundOrdinaryHours(workedMinutes);
+            const leaveRequest = monthlyData.requests.find(r =>
+                (r.type === 'ferie' || r.type === 'malattia') &&
+                isWithinInterval(day, { start: r.startDate.toDate(), end: r.endDate.toDate() })
+            );
+
+            const workedEvents = dailyTimbrature[dayString];
+
+            if (workedEvents) {
+                 const events = workedEvents;
+                let workedMinutes = 0;
+                const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+                const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+                if (startTime && endTime) {
+                    let totalMillis = endTime.toMillis() - startTime.toMillis();
+                    let breakStart: Timestamp | null = null;
+                    events.forEach(e => {
+                        if (e.type === 'pausa') breakStart = e.timestamp;
+                        if (e.type === 'fine_pausa' && breakStart) {
+                            totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                            breakStart = null;
+                        }
+                    });
+                    workedMinutes = totalMillis / (1000 * 60);
                 }
-            }
+                const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
+                let ordinaryHours = 0, overtimeHours = 0;
+                if (isOvertimeShift) {
+                    overtimeHours = roundOvertimeHours(workedMinutes);
+                } else {
+                    const contractualMinutes = contractualHours * 60;
+                    if (workedMinutes > contractualMinutes) {
+                        ordinaryHours = roundOrdinaryHours(contractualMinutes);
+                        overtimeHours = roundOvertimeHours(workedMinutes - contractualMinutes);
+                    } else {
+                        ordinaryHours = roundOrdinaryHours(workedMinutes);
+                    }
+                }
+                 const permissionHours = monthlyData.requests
+                    .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
+                    .reduce((sum, r) => sum + (r.hours || 0), 0);
 
-            const permissionHours = monthlyData.requests
-                .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), dayDate))
-                .reduce((sum, r) => sum + (r.hours || 0), 0);
-            
-            shifts.push({
-                date: dayDate,
-                events,
-                contractualHours,
-                workedMinutes,
-                ordinaryHours,
-                overtimeHours,
-                permissionHours
-            });
+                details.push({
+                    date: day,
+                    status: 'lavorato',
+                    request: null,
+                    shift: {
+                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours
+                    },
+                });
+            } else if (leaveRequest) {
+                details.push({
+                    date: day,
+                    status: leaveRequest.type,
+                    request: leaveRequest,
+                    shift: null,
+                });
+            } else if (contractualHours > 0) {
+                 details.push({
+                    date: day,
+                    status: 'mancata_timbratura',
+                    request: null,
+                    shift: null,
+                });
+            } else {
+                 details.push({
+                    date: day,
+                    status: 'riposo',
+                    request: null,
+                    shift: null,
+                });
+            }
         }
         
+        const shifts = details.filter(d => d.status === 'lavorato').map(d => d.shift!);
+
         let ferieDays = 0;
         let malattiaDays = 0;
         monthlyData.requests.forEach(req => {
@@ -238,9 +272,11 @@ export default function EndOfMonthPage() {
         });
 
         const totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-        const totalOvertime = monthlyData.requests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
-            .reduce((sum, r) => sum + (r.hours || 0), 0);
+        const totalOvertimeFromShifts = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
+        const totalOvertimeFromRequests = monthlyData.requests
+             .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
+             .reduce((sum, r) => sum + (r.hours || 0), 0);
+
         const totalPermesso = monthlyData.requests
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -250,12 +286,12 @@ export default function EndOfMonthPage() {
             monthlySummary: {
                 workedDays: shifts.length,
                 ordinaryHours: totalOrdinary,
-                overtimeHours: totalOvertime,
+                overtimeHours: totalOvertimeFromShifts + totalOvertimeFromRequests,
                 ferieDays,
                 permessoHours: totalPermesso,
                 malattiaDays,
             },
-            workedShifts: shifts.sort((a,b) => a.date.getTime() - b.date.getTime()),
+            dailyDetails: details,
         };
 
     }, [operator, currentMonth, monthlyData]);
@@ -282,7 +318,7 @@ export default function EndOfMonthPage() {
                     <div>
                         <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.username}</CardTitle>
                         <CardDescription>
-                           Riepilogo delle ore ordinarie, straordinarie, permessi e malattia per il mese selezionato. Visualizza anche il dettaglio giornaliero di ogni turno lavorato.
+                           Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                         </CardDescription>
                     </div>
                 </div>
@@ -307,26 +343,46 @@ export default function EndOfMonthPage() {
 
                 <div>
                     <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
-                    {workedShifts.length > 0 ? (
+                    {dailyDetails.length > 0 ? (
                         <div className="space-y-6">
-                            {workedShifts.map(shift => (
-                                <div key={shift.date.toISOString()} className="border rounded-lg p-4">
-                                    <h4 className="font-bold text-lg capitalize">{format(shift.date, 'eeee dd MMMM', { locale: it })}</h4>
-                                    <div className="text-sm text-muted-foreground mt-2 mb-4">
-                                        {shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                        <InfoBox label="Ore Previste" value={`${shift.contractualHours}h`} />
-                                        <InfoBox label="Ore Lavorate" value={formatMinutes(shift.workedMinutes)} />
-                                        <InfoBox label="Ore Ordinarie" value={`${shift.ordinaryHours}h`} />
-                                        <InfoBox label="Straordinario" value={`${shift.overtimeHours}h`} />
-                                        <InfoBox label="Permesso" value={`${shift.permissionHours}h`} />
-                                    </div>
+                            {dailyDetails.map(detail => {
+                                 if (detail.status === 'riposo') return null;
+
+                                 const isSunday = getDay(detail.date) === 0;
+
+                                return (
+                                <div key={detail.date.toISOString()} className={cn("border rounded-lg p-4", isSunday && "border-red-500/30 bg-red-500/5")}>
+                                    <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
+                                        {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
+                                        {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
+                                        {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                                        {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
+
+                                        {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                    </h4>
+
+                                    {detail.status === 'lavorato' && detail.shift && (
+                                        <>
+                                            <div className="text-sm text-muted-foreground mt-2 mb-4">
+                                                {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
+                                                <InfoBox label="Ore Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
+                                                <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                                <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
+                                                <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                            </div>
+                                        </>
+                                    )}
+                                    {detail.status === 'ferie' && <p className="text-muted-foreground mt-2">Giorno di ferie approvato.</p>}
+                                    {detail.status === 'malattia' && <p className="text-muted-foreground mt-2">Giorno di malattia approvato.</p>}
+                                    {detail.status === 'mancata_timbratura' && <p className="text-yellow-600 font-semibold mt-2">Nessuna timbratura registrata in un giorno lavorativo.</p>}
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     ) : (
-                        <p className="text-center text-muted-foreground py-8">Nessun giorno lavorato in questo mese.</p>
+                        <p className="text-center text-muted-foreground py-8">Nessun dato da mostrare per questo mese.</p>
                     )}
                 </div>
             </CardContent>
