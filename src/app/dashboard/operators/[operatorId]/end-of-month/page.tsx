@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -83,7 +83,6 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
-    const router = useRouter();
     const operatorId = params.operatorId as string;
 
     const [operator, setOperator] = useState<Operator | null>(null);
@@ -306,13 +305,6 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const handlePrint = () => {
-        const month = currentMonth.getMonth() + 1;
-        const year = currentMonth.getFullYear();
-        const printUrl = `/dashboard/operators/${operatorId}/end-of-month/print?month=${month}&year=${year}`;
-        window.open(printUrl, '_blank');
-    };
-    
     const formatMinutes = (minutes: number) => {
         if (isNaN(minutes) || minutes < 0) return '00:00';
         const h = Math.floor(minutes / 60);
@@ -334,10 +326,6 @@ export default function EndOfMonthPage() {
                            Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                         </CardDescription>
                     </div>
-                     <Button onClick={handlePrint}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        Stampa Riepilogo
-                    </Button>
                 </div>
             </CardHeader>
             <CardContent className="space-y-8">
