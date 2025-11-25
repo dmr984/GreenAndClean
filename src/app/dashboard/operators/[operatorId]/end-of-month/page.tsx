@@ -421,14 +421,15 @@ export default function EndOfMonthPage() {
             .section-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
             .daily-details-list { display: flex; flex-direction: column; gap: 1rem; }
             .day-entry { border-bottom: 1px solid #f3f4f6; padding-bottom: 1rem; }
-            .day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
-            .day-date { font-weight: bold; font-size: 1rem; text-transform: capitalize; }
-            .day-times { font-size: 0.875rem; color: #4b5563; }
+            .day-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.25rem; }
+            .day-date { font-weight: bold; font-size: 1rem; text-transform: capitalize; flex-shrink: 0; }
+            .day-times { font-size: 0.875rem; color: #4b5563; white-space: nowrap; }
             .day-details { font-size: 0.875rem; color: #6b7281; }
             .day-details span { margin-right: 0.5rem; }
-            .day-status-ferie { color: #16a34a; font-weight: 500; font-size: 0.875rem; }
-            .day-status-malattia { color: #dc2626; font-weight: 500; font-size: 0.875rem; }
-            .day-status-mancata { color: #f59e0b; font-weight: 500; font-size: 0.875rem; }
+            .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.875rem; font-weight: 500; margin-left: auto; }
+            .day-status-ferie { color: #16a34a; }
+            .day-status-malattia { color: #dc2626; }
+            .day-status-mancata { color: #f59e0b; }
         `;
 
         printWindow.document.write(`
