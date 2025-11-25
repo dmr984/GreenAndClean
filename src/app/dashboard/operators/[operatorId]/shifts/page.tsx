@@ -91,7 +91,6 @@ export default function ShiftApprovalPage() {
 
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
     const [overtimeShifts, setOvertimeShifts] = useState<StraordinarioShift[]>([]);
-    const [unlockRequests, setUnlockRequests] = useState<UnlockRequest[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     
@@ -145,12 +144,15 @@ export default function ShiftApprovalPage() {
         const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), orderBy('date', 'desc'));
 
         const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
-            const allClockings = clockingSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            const allClockings: Timbratura[] = [];
+            clockingSnapshot.forEach(doc => {
+                allClockings.push({ id: doc.id, ...doc.data() } as Timbratura);
+            });
             allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             
             const requestSnapshot = await getDocs(requestsQuery);
             const leaveDays = new Set<string>();
-            const pendingUnlockRequests: UnlockRequest[] = [];
+            
             requestSnapshot.forEach(doc => {
                 const req = doc.data();
                 if (req.type === 'ferie' || req.type === 'malattia' && req.status === 'approvato') {
@@ -158,12 +160,8 @@ export default function ShiftApprovalPage() {
                         leaveDays.add(format(d, 'yyyy-MM-dd'));
                     }
                 }
-                if (req.type === 'sblocco_timbratura' && req.status === 'in_attesa') {
-                    pendingUnlockRequests.push({id: doc.id, ...req} as UnlockRequest);
-                }
             });
-            setUnlockRequests(pendingUnlockRequests);
-
+            
             const groupedShifts: Shift[] = [];
             let currentShiftEvents: Timbratura[] = [];
 
@@ -512,7 +510,6 @@ export default function ShiftApprovalPage() {
         const contractualHours = getContractualHoursForShift(shift);
         const totalMinutesWorked = Math.round(shift.workDuration);
 
-        // Scenario 1: Non-working day (pure overtime) or explicitly marked as overtime
         if (shift.isOvertime) {
             return {
                 ordinary: 0,
@@ -521,13 +518,11 @@ export default function ShiftApprovalPage() {
             };
         }
 
-        // Scenario 2: Working day
         const contractualMinutes = contractualHours * 60;
-        const ordinaryWorkedHours = roundOrdinaryHours(Math.min(totalMinutesWorked, contractualMinutes));
+        const ordinaryWorkedMinutes = Math.min(totalMinutesWorked, contractualMinutes);
+        const ordinaryWorkedHours = roundOrdinaryHours(ordinaryWorkedMinutes);
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeWorkedHours = roundOvertimeHours(overtimeMinutes);
-
-        // Correct leave calculation
         const leaveHours = Math.max(0, contractualHours - ordinaryWorkedHours);
 
         return { 
@@ -824,34 +819,6 @@ export default function ShiftApprovalPage() {
 
     return (
         <div className="space-y-6">
-            
-            {unlockRequests.length > 0 && (
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center gap-3">
-                            <Unlock className="h-6 w-6 text-primary" />
-                            <CardTitle>Richieste Sblocco Timbratura</CardTitle>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="border rounded-lg overflow-x-auto">
-                            <Table>
-                                <TableHeader><TableRow><TableHead>Data</TableHead><TableHead className="text-right">Azione</TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    {unlockRequests.map(req => (
-                                        <TableRow key={req.id}>
-                                            <TableCell className="font-medium">{format(req.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button size="sm" onClick={() => handleApproveUnlock(req)}>Approva Sblocco</Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
 
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

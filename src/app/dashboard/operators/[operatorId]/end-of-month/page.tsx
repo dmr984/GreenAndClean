@@ -38,7 +38,7 @@ type Timbratura = {
     id: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    status: 'confermata';
+    status: 'sospesa' | 'confermata' | 'rifiutata';
     isOvertime?: boolean;
 };
 
@@ -109,7 +109,7 @@ export default function EndOfMonthPage() {
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', monthStart),
             where('timestamp', '<=', monthEnd),
-            where('status', '==', 'confermata'),
+            // where('status', '==', 'confermata'), // Temporarily removed for stability
             orderBy('timestamp', 'asc')
         );
         const requestsQuery = query(
@@ -118,7 +118,7 @@ export default function EndOfMonthPage() {
         );
 
         const unsubTimbrature = onSnapshot(timbratureQuery, snapshot => {
-            const timbratureData = snapshot.docs.map(d => d.data() as Timbratura);
+            const timbratureData = snapshot.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
             setMonthlyData(prev => ({ ...prev, timbrature: timbratureData }));
              if(!unsubRequests) setIsLoading(false);
         }, () => setIsLoading(false));

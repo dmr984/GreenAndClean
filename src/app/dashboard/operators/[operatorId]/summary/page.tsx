@@ -109,8 +109,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
-            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
-            orderBy('timestamp', 'asc')
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd))
+            // orderBy('timestamp', 'asc') // Temporarily removed for stability
         );
 
         const requestsQuery = query(
@@ -122,6 +122,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             const requestsSnap = await getDocs(requestsQuery);
             let allRequests = requestsSnap.docs.map(d => d.data() as Request);
             let allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
+            allTimbrature.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
 
             const approvedRequests = allRequests;
             const timbrature = allTimbrature.filter(t => t.status === 'confermata');
@@ -580,8 +582,8 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)),
-            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue)),
-            orderBy('timestamp', 'asc')
+            where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue))
+            // orderBy('timestamp', 'asc') // Temporarily removed for stability
         );
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
@@ -591,7 +593,9 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
-            setTimbrature(s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata'));
+            const allTimbrature = s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            allTimbrature.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            setTimbrature(allTimbrature.filter(t => t.status === 'confermata'));
             setIsLoading(false); // Also set loading to false once timbrature are loaded
         }, (error) => {
             console.error("Error fetching timbrature", error);
