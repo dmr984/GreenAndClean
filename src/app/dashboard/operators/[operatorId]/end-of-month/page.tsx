@@ -81,9 +81,9 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 );
 
 // Standalone component for the printable summary
-const PrintableSummary = ({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }: { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }) => (
-    <div className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto print-content">
-        <header className="flex justify-between items-center mb-8 pb-4 border-b">
+const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
+    <div ref={ref} className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto">
+        <header className="flex justify-between items-center mb-8 pb-4 border-b border-gray-300">
              <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="h-15 w-15 rounded-full"/>
              <div className="text-right">
                  <h1 className="text-2xl font-bold">{operator.username}</h1>
@@ -100,13 +100,13 @@ const PrintableSummary = ({ operator, currentMonth, monthlySummary, dailyDetails
             <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
         </div>
 
-        <Separator className="my-8" />
+        <Separator className="my-8 bg-gray-300" />
 
         <div>
             <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
             <div className="space-y-4">
                 {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
-                    <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3")}>
+                    <div key={detail.date.toISOString()} className={cn("border border-gray-200 rounded-lg p-3")}>
                         <h4 className={cn("font-bold text-base capitalize flex items-center gap-2")}>
                             {detail.status === 'ferie' && <Plane className="h-4 w-4 text-green-600" />}
                             {detail.status === 'malattia' && <Stethoscope className="h-4 w-4 text-red-600" />}
@@ -137,15 +137,16 @@ const PrintableSummary = ({ operator, currentMonth, monthlySummary, dailyDetails
             </div>
         </div>
     </div>
-);
+));
+PrintableSummary.displayName = 'PrintableSummary';
+
 
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
     const operatorId = params.operatorId as string;
     
-    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-    const printRef = useRef<HTMLDivElement>(null);
+    const printContentRef = useRef<HTMLDivElement>(null);
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -375,35 +376,57 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrint = () => {
-        const printContent = printRef.current;
-        if (!printContent) return;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Per favore, abilita i pop-up per questo sito.');
+            return;
+        }
 
-        // Create a specific style block for printing
-        const style = document.createElement('style');
-        style.innerHTML = `
-            @media print {
-                body * {
-                    visibility: hidden;
-                }
-                .print-container, .print-container * {
-                    visibility: visible;
-                }
-                .print-container {
-                    position: absolute;
-                    left: 0;
-                    top: 0;
-                    width: 100%;
-                }
-                .no-print {
-                    display: none !important;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-        window.print();
-        document.head.removeChild(style);
+        const content = printContentRef.current;
+        if (!content) return;
+        
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Riepilogo Mensile - ${operator?.username}</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; }
+                        @media print {
+                           @page { size: A4; margin: 20mm; }
+                           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        }
+                        /* Include styles from the component itself */
+                        .bg-white { background-color: #fff; } .text-black { color: #000; } .p-8 { padding: 2rem; } .w-\\[210mm\\] { width: 210mm; } .min-h-\\[297mm\\] { min-height: 297mm; } .mx-auto { margin-left: auto; margin-right: auto; }
+                        .flex { display: flex; } .justify-between { justify-content: space-between; } .items-center { align-items: center; } .mb-8 { margin-bottom: 2rem; } .pb-4 { padding-bottom: 1rem; } .border-b { border-bottom-width: 1px; } .border-gray-300 { border-color: #d1d5db; }
+                        .h-15 { height: 3.75rem; } .w-15 { width: 3.75rem; } .rounded-full { border-radius: 9999px; } .text-right { text-align: right; } .text-2xl { font-size: 1.5rem; line-height: 2rem; } .font-bold { font-weight: 700; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; } .capitalize { text-transform: capitalize; }
+                        .grid { display: grid; } .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gap-4 { gap: 1rem; } .my-8 { margin-top: 2rem; margin-bottom: 2rem; } .bg-gray-300 { background-color: #d1d5db; } .h-\\[1px\\] { height: 1px; } .w-full { width: 100%; }
+                        .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .font-semibold { font-weight: 600; } .mb-4 { margin-bottom: 1rem; } .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+                        .border { border-width: 1px; } .border-gray-200 { border-color: #e5e7eb; } .rounded-lg { border-radius: 0.5rem; } .p-3 { padding: 0.75rem; }
+                        .text-base { font-size: 1rem; line-height: 1.5rem; } .gap-2 { gap: 0.5rem; } .h-4 { height: 1rem; } .w-4 { width: 1rem; } .text-green-600 { color: #16a34a; } .text-red-600 { color: #dc2626; } .text-yellow-600 { color: #ca8a04; } .text-blue-600 { color: #2563eb; }
+                        .text-xs { font-size: 0.75rem; line-height: 1rem; } .text-gray-500 { color: #6b7281; } .mt-1 { margin-top: 0.25rem; } .mb-2 { margin-bottom: 0.5rem; }
+                        .grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+                        .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .text-muted-foreground { color: #64748b; }
+                        .text-gray-600 { color: #4b5563; } .text-yellow-700 { color: #a16207; }
+                        /* ShadCN card styles for summary boxes */
+                        .card { border-radius: 0.5rem; border: 1px solid #e2e8f0; background-color: #ffffff; color: #0f172a; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1); }
+                        .card-header { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 1.5rem; padding-bottom: 0.5rem; }
+                        .card-title { font-size: 0.875rem; font-weight: 500; }
+                        .card-content { padding: 1.5rem; padding-top: 0; }
+                    </style>
+                </head>
+                <body>
+                    ${content.outerHTML}
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        // Use a timeout to ensure content is rendered before printing
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 500);
     };
-
 
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -420,7 +443,7 @@ export default function EndOfMonthPage() {
                                Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                             </CardDescription>
                         </div>
-                        <Button onClick={() => setIsPreviewOpen(true)}>
+                        <Button onClick={handlePrint}>
                             <Printer className="mr-2 h-4 w-4" />Stampa Riepilogo
                         </Button>
                     </div>
@@ -489,30 +512,18 @@ export default function EndOfMonthPage() {
                     </div>
                 </CardContent>
             </Card>
-
-            <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-                <ResponsiveDialogContent className="max-w-4xl p-0">
-                    <ResponsiveDialogHeader className="p-4 bg-muted/50 border-b flex-row items-center justify-between no-print">
-                        <ResponsiveDialogTitle className="sr-only">Anteprima di Stampa</ResponsiveDialogTitle>
-                         <div/>
-                        <div className="flex gap-2">
-                           <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
-                           <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
-                        </div>
-                    </ResponsiveDialogHeader>
-                    <div className="overflow-y-auto bg-gray-100 p-4 sm:p-8 max-h-[80vh] print-container">
-                      <div ref={printRef}>
-                          <PrintableSummary 
-                              operator={operator}
-                              currentMonth={currentMonth}
-                              monthlySummary={monthlySummary}
-                              dailyDetails={dailyDetails}
-                              formatMinutes={formatMinutes}
-                          />
-                      </div>
-                    </div>
-                </ResponsiveDialogContent>
-            </ResponsiveDialog>
+            
+            {/* Hidden div for printing */}
+            <div className="hidden">
+                 <PrintableSummary 
+                    ref={printContentRef}
+                    operator={operator}
+                    currentMonth={currentMonth}
+                    monthlySummary={monthlySummary}
+                    dailyDetails={dailyDetails}
+                    formatMinutes={formatMinutes}
+                />
+            </div>
         </>
     );
 }
