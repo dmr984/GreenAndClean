@@ -140,12 +140,13 @@ export default function ShiftApprovalPage() {
     useEffect(() => {
         if (!firestore || !operatorId) return;
         
-        const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'asc'));
+        const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`));
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
         const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), orderBy('date', 'desc'));
 
         const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
             const allClockings = clockingSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             
             const requestSnapshot = await getDocs(requestsQuery);
             const leaveDays = new Set<string>();
