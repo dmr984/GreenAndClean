@@ -377,19 +377,21 @@ export default function EndOfMonthPage() {
     const handlePrint = () => {
         const printContent = printRef.current;
         if (!printContent) return;
+        
+        const contentToPrint = printContent.innerHTML;
 
         const printWindow = window.open('', '', 'height=800,width=800');
         if (printWindow) {
             printWindow.document.write('<html><head><title>Stampa Riepilogo</title>');
             // Aggiungi qui eventuali stili necessari per la stampa
             const styles = Array.from(document.styleSheets)
-                .map(s => s.href ? `<link rel="stylesheet" href="${s.href}">` : '')
+                .map(s => s.href ? `<link rel="stylesheet" href="${s.href}">` : `<style>${(s.ownerNode as HTMLStyleElement).innerHTML}</style>`)
                 .join('');
-            const inlineStyles = Array.from(document.querySelectorAll('style')).map(s => s.innerHTML).join('');
-
-            printWindow.document.write(`<style>${inlineStyles}</style>`);
+            
+            printWindow.document.write(styles);
+            printWindow.document.write('<style>@media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; } }</style>');
             printWindow.document.write('</head><body>');
-            printWindow.document.write(printContent.innerHTML);
+            printWindow.document.write(contentToPrint);
             printWindow.document.write('</body></html>');
             printWindow.document.close();
             printWindow.focus();
@@ -486,23 +488,25 @@ export default function EndOfMonthPage() {
                 </CardContent>
             </Card>
 
-             <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-                <ResponsiveDialogContent className="max-w-4xl p-0 print-container">
-                    <ResponsiveDialogHeader>
+            <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                <ResponsiveDialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle className="sr-only">Anteprima di Stampa</ResponsiveDialogTitle>
                     </ResponsiveDialogHeader>
-                     <div className="p-4 bg-gray-100 flex justify-end gap-2 no-print">
+                    <div className="p-4 bg-muted/50 border-b flex justify-end gap-2 no-print">
                         <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
                         <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
                     </div>
-                    <div className="bg-gray-200 p-8 overflow-y-auto" ref={printRef}>
-                        <PrintableSummary 
-                            operator={operator}
-                            currentMonth={currentMonth}
-                            monthlySummary={monthlySummary}
-                            dailyDetails={dailyDetails}
-                            formatMinutes={formatMinutes}
-                        />
+                    <div className="flex-1 overflow-y-auto bg-gray-100 p-4 sm:p-8" >
+                        <div ref={printRef}>
+                            <PrintableSummary 
+                                operator={operator}
+                                currentMonth={currentMonth}
+                                monthlySummary={monthlySummary}
+                                dailyDetails={dailyDetails}
+                                formatMinutes={formatMinutes}
+                            />
+                        </div>
                     </div>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
