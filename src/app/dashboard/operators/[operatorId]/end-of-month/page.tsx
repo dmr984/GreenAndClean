@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
@@ -11,7 +11,8 @@ import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfIn
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import Link from 'next/link';
+import { ResponsiveDialog, ResponsiveDialogContent } from '@/components/ui/responsive-dialog';
+import Image from 'next/image';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -60,7 +61,6 @@ type DailyDetail = {
     request: Request | null;
 };
 
-
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
     <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -80,11 +80,73 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
     </div>
 );
 
+// Standalone component for the printable summary
+const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
+    <div ref={ref} className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto print-content">
+        <header className="flex justify-between items-center mb-8 pb-4 border-b">
+             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="h-15 w-15 rounded-full"/>
+             <div className="text-right">
+                 <h1 className="text-2xl font-bold">{operator.username}</h1>
+                 <p className="text-lg capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+             </div>
+        </header>
+
+        <div className="grid grid-cols-3 gap-4 mb-8">
+            <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
+            <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
+            <SummaryCard title="Ore Straordinarie" value={monthlySummary.overtimeHours.toLocaleString('it-IT')} icon={Plus} />
+            <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays} icon={Plane} />
+            <SummaryCard title="Permessi (ore)" value={monthlySummary.permessoHours.toLocaleString('it-IT')} icon={UserCheck} />
+            <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
+        </div>
+
+        <Separator className="my-8" />
+
+        <div>
+            <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
+            <div className="space-y-4">
+                {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
+                    <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3")}>
+                        <h4 className={cn("font-bold text-base capitalize flex items-center gap-2")}>
+                            {detail.status === 'ferie' && <Plane className="h-4 w-4 text-green-600" />}
+                            {detail.status === 'malattia' && <Stethoscope className="h-4 w-4 text-red-600" />}
+                            {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-4 w-4 text-yellow-600" />}
+                            {detail.status === 'lavorato' && <Briefcase className="h-4 w-4 text-blue-600" />}
+                            {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                        </h4>
+
+                        {detail.status === 'lavorato' && detail.shift && (
+                            <>
+                                <p className="text-xs text-gray-500 mt-1 mb-2">
+                                    {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ')}
+                                </p>
+                                <div className="grid grid-cols-5 gap-2">
+                                    <InfoBox label="Previste" value={`${detail.shift.contractualHours}h`} />
+                                    <InfoBox label="Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
+                                    <InfoBox label="Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                    <InfoBox label="Straord." value={`${detail.shift.overtimeHours}h`} />
+                                    <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                </div>
+                            </>
+                        )}
+                        {detail.status === 'ferie' && <p className="text-gray-600 mt-1 text-sm">Giorno di ferie approvato.</p>}
+                        {detail.status === 'malattia' && <p className="text-gray-600 mt-1 text-sm">Giorno di malattia approvato.</p>}
+                        {detail.status === 'mancata_timbratura' && <p className="text-yellow-700 font-semibold mt-1 text-sm">Nessuna timbratura registrata.</p>}
+                    </div>
+                ))}
+            </div>
+        </div>
+    </div>
+));
+PrintableSummary.displayName = 'PrintableSummary';
+
 
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
     const operatorId = params.operatorId as string;
+    
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -313,90 +375,136 @@ export default function EndOfMonthPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
+
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
     return (
-        <Card className="p-4 sm:p-6">
-            <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                    <div>
-                        <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.username}</CardTitle>
-                        <CardDescription>
-                           Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
-                        </CardDescription>
-                    </div>
-                     <Link href={`/dashboard/operators/${operatorId}/end-of-month/print?month=${currentMonth.toISOString()}`} target="_blank" passHref>
-                        <Button>
+        <>
+            <style>
+                {`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    .print-container, .print-container * {
+                        visibility: visible;
+                    }
+                    .print-container {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        height: 100%;
+                    }
+                    .no-print {
+                        display: none;
+                    }
+                }
+                `}
+            </style>
+
+            <Card className="p-4 sm:p-6">
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                        <div>
+                            <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.username}</CardTitle>
+                            <CardDescription>
+                               Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
+                            </CardDescription>
+                        </div>
+                        <Button onClick={() => setIsPreviewOpen(true)}>
                             <Printer className="mr-2 h-4 w-4" />Stampa Riepilogo
                         </Button>
-                    </Link>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-8">
-                <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                    <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(1)}>Succ.</Button>
-                </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-8">
+                    <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                        <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
+                        <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
+                        <Button variant="outline" size="sm" onClick={() => handleMonthChange(1)}>Succ.</Button>
+                    </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
-                    <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
-                    <SummaryCard title="Ore Straordinarie" value={monthlySummary.overtimeHours.toLocaleString('it-IT')} icon={Plus} />
-                    <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays} icon={Plane} />
-                    <SummaryCard title="Permessi (ore)" value={monthlySummary.permessoHours.toLocaleString('it-IT')} icon={UserCheck} />
-                    <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
-                </div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
+                        <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
+                        <SummaryCard title="Ore Straordinarie" value={monthlySummary.overtimeHours.toLocaleString('it-IT')} icon={Plus} />
+                        <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays} icon={Plane} />
+                        <SummaryCard title="Permessi (ore)" value={monthlySummary.permessoHours.toLocaleString('it-IT')} icon={UserCheck} />
+                        <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
+                    </div>
 
-                <Separator />
+                    <Separator />
 
-                <div>
-                    <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
-                    {dailyDetails.length > 0 ? (
-                        <div className="space-y-6">
-                            {dailyDetails.map(detail => {
-                                 if (detail.status === 'riposo') return null;
+                    <div>
+                        <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
+                        {dailyDetails.length > 0 ? (
+                            <div className="space-y-6">
+                                {dailyDetails.map(detail => {
+                                     if (detail.status === 'riposo') return null;
 
-                                 const isSunday = getDay(detail.date) === 0;
+                                     const isSunday = getDay(detail.date) === 0;
 
-                                return (
-                                <div key={detail.date.toISOString()} className={cn("border rounded-lg p-4", isSunday && "border-red-500/30 bg-red-500/5")}>
-                                    <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
-                                        {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
-                                        {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
-                                        {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
-                                        {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
+                                    return (
+                                    <div key={detail.date.toISOString()} className={cn("border rounded-lg p-4", isSunday && "border-red-500/30 bg-red-500/5")}>
+                                        <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
+                                            {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
+                                            {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
+                                            {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                                            {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
 
-                                        {format(detail.date, 'eeee dd MMMM', { locale: it })}
-                                    </h4>
+                                            {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                        </h4>
 
-                                    {detail.status === 'lavorato' && detail.shift && (
-                                        <>
-                                            <div className="text-sm text-muted-foreground mt-2 mb-4">
-                                                {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
-                                            </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                                <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
-                                                <InfoBox label="Ore Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
-                                                <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
-                                                <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
-                                                <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
-                                            </div>
-                                        </>
-                                    )}
-                                    {detail.status === 'ferie' && <p className="text-muted-foreground mt-2">Giorno di ferie approvato.</p>}
-                                    {detail.status === 'malattia' && <p className="text-muted-foreground mt-2">Giorno di malattia approvato.</p>}
-                                    {detail.status === 'mancata_timbratura' && <p className="text-yellow-600 font-semibold mt-2">Nessuna timbratura registrata in un giorno lavorativo.</p>}
-                                </div>
-                            )})}
-                        </div>
-                    ) : (
-                        <p className="text-center text-muted-foreground py-8">Nessun dato da mostrare per questo mese.</p>
-                    )}
-                </div>
-            </CardContent>
-        </Card>
+                                        {detail.status === 'lavorato' && detail.shift && (
+                                            <>
+                                                <div className="text-sm text-muted-foreground mt-2 mb-4">
+                                                    {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
+                                                </div>
+                                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                    <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
+                                                    <InfoBox label="Ore Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
+                                                    <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                                    <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
+                                                    <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                                </div>
+                                            </>
+                                        )}
+                                        {detail.status === 'ferie' && <p className="text-muted-foreground mt-2">Giorno di ferie approvato.</p>}
+                                        {detail.status === 'malattia' && <p className="text-muted-foreground mt-2">Giorno di malattia approvato.</p>}
+                                        {detail.status === 'mancata_timbratura' && <p className="text-yellow-600 font-semibold mt-2">Nessuna timbratura registrata in un giorno lavorativo.</p>}
+                                    </div>
+                                )})}
+                            </div>
+                        ) : (
+                            <p className="text-center text-muted-foreground py-8">Nessun dato da mostrare per questo mese.</p>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+             <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                <ResponsiveDialogContent className="max-w-4xl p-0 print-container">
+                     <div className="p-4 bg-gray-100 flex justify-end gap-2 no-print">
+                        <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
+                        <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
+                    </div>
+                    <div className="bg-gray-200 p-8 overflow-y-auto">
+                        <PrintableSummary 
+                            operator={operator}
+                            currentMonth={currentMonth}
+                            monthlySummary={monthlySummary}
+                            dailyDetails={dailyDetails}
+                            formatMinutes={formatMinutes}
+                        />
+                    </div>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+        </>
     );
 }
