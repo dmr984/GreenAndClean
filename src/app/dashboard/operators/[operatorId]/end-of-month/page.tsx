@@ -65,9 +65,9 @@ const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: strin
 );
 
 const InfoBox = ({ label, value }: { label: string, value: string }) => (
-    <div className='flex flex-col'>
-        <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <p className="text-lg font-semibold">{value}</p>
+    <div>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="font-semibold">{value}</p>
     </div>
 );
 
@@ -315,7 +315,7 @@ export default function EndOfMonthPage() {
                                     <div className="text-sm text-muted-foreground mt-2 mb-4">
                                         {shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                         <InfoBox label="Ore Previste" value={`${shift.contractualHours}h`} />
                                         <InfoBox label="Ore Lavorate" value={formatMinutes(shift.workedMinutes)} />
                                         <InfoBox label="Ore Ordinarie" value={`${shift.ordinaryHours}h`} />
