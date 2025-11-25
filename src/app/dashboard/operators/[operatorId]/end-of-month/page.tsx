@@ -3,14 +3,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import Link from 'next/link';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -326,6 +327,11 @@ export default function EndOfMonthPage() {
                            Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                         </CardDescription>
                     </div>
+                     <Link href={`/dashboard/operators/${operatorId}/end-of-month/print?month=${currentMonth.toISOString()}`} target="_blank" passHref>
+                        <Button asChild>
+                            <a><Printer className="mr-2 h-4 w-4" />Stampa Riepilogo</a>
+                        </Button>
+                    </Link>
                 </div>
             </CardHeader>
             <CardContent className="space-y-8">
