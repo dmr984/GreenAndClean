@@ -11,7 +11,6 @@ import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfIn
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 import Image from 'next/image';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -82,60 +81,72 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 
 // Standalone component for the printable summary
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
-    <div ref={ref} className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto">
-        <header className="flex justify-between items-center mb-8 pb-4 border-b border-gray-300">
-             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="h-15 w-15 rounded-full"/>
-             <div className="text-right">
-                 <h1 className="text-2xl font-bold">{operator.username}</h1>
-                 <p className="text-lg capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+    <div ref={ref} className="printable-summary">
+        <header className="summary-header">
+             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="logo"/>
+             <div className="header-text">
+                 <h1 className="operator-name">{operator.username}</h1>
+                 <p className="month-name">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
              </div>
         </header>
 
-        <div className="grid grid-cols-3 gap-4 mb-8">
-            <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
-            <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
-            <SummaryCard title="Ore Straordinarie" value={monthlySummary.overtimeHours.toLocaleString('it-IT')} icon={Plus} />
-            <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays} icon={Plane} />
-            <SummaryCard title="Permessi (ore)" value={monthlySummary.permessoHours.toLocaleString('it-IT')} icon={UserCheck} />
-            <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
-        </div>
+        <section className="summary-cards-grid">
+            <div className="print-card">
+                <div className="print-card-title">Giorni Lavorati</div>
+                <div className="print-card-value">{monthlySummary.workedDays}</div>
+            </div>
+            <div className="print-card">
+                <div className="print-card-title">Ore Ordinarie</div>
+                <div className="print-card-value">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div>
+            </div>
+            <div className="print-card">
+                <div className="print-card-title">Ore Straordinarie</div>
+                <div className="print-card-value">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div>
+            </div>
+            <div className="print-card">
+                <div className="print-card-title">Ferie (giorni)</div>
+                <div className="print-card-value">{monthlySummary.ferieDays}</div>
+            </div>
+            <div className="print-card">
+                <div className="print-card-title">Permessi (ore)</div>
+                <div className="print-card-value">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div>
+            </div>
+            <div className="print-card">
+                <div className="print-card-title">Malattia (giorni)</div>
+                <div className="print-card-value">{monthlySummary.malattiaDays}</div>
+            </div>
+        </section>
 
-        <Separator className="my-8 bg-gray-300" />
-
-        <div>
-            <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
-            <div className="space-y-4">
+        <section className="daily-details-section">
+            <h3 className="section-title">Dettaglio Giornaliero</h3>
+            <div className="daily-details-list">
                 {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
-                    <div key={detail.date.toISOString()} className={cn("border border-gray-200 rounded-lg p-3")}>
-                        <h4 className={cn("font-bold text-base capitalize flex items-center gap-2")}>
-                            {detail.status === 'ferie' && <Plane className="h-4 w-4 text-green-600" />}
-                            {detail.status === 'malattia' && <Stethoscope className="h-4 w-4 text-red-600" />}
-                            {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-4 w-4 text-yellow-600" />}
-                            {detail.status === 'lavorato' && <Briefcase className="h-4 w-4 text-blue-600" />}
-                            {format(detail.date, 'eeee dd MMMM', { locale: it })}
-                        </h4>
-
+                    <div key={detail.date.toISOString()} className="day-entry">
+                        <div className="day-header">
+                            <span className="day-date">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</span>
+                            {detail.status === 'lavorato' && detail.shift && (
+                                <span className="day-times">
+                                    Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
+                                </span>
+                            )}
+                             {detail.status === 'ferie' && <span className="day-status-ferie">Giorno di ferie</span>}
+                             {detail.status === 'malattia' && <span className="day-status-malattia">Giorno di malattia</span>}
+                             {detail.status === 'mancata_timbratura' && <span className="day-status-mancata">Nessuna timbratura registrata</span>}
+                        </div>
                         {detail.status === 'lavorato' && detail.shift && (
-                            <>
-                                <p className="text-xs text-gray-500 mt-1 mb-2">
-                                    {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ')}
-                                </p>
-                                <div className="grid grid-cols-5 gap-2">
-                                    <InfoBox label="Previste" value={`${detail.shift.contractualHours}h`} />
-                                    <InfoBox label="Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
-                                    <InfoBox label="Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
-                                    <InfoBox label="Straord." value={`${detail.shift.overtimeHours}h`} />
-                                    <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
-                                </div>
-                            </>
+                             <div className="day-details">
+                                <span>Previste: {detail.shift.contractualHours}h</span> | 
+                                <span>Lavorate: {formatMinutes(detail.shift.workedMinutes)}</span> | 
+                                <span>Ordinarie: {detail.shift.ordinaryHours}h</span> | 
+                                <span>Straordinario: {detail.shift.overtimeHours}h</span> | 
+                                <span>Permesso: {detail.shift.permissionHours}h</span>
+                             </div>
                         )}
-                        {detail.status === 'ferie' && <p className="text-gray-600 mt-1 text-sm">Giorno di ferie approvato.</p>}
-                        {detail.status === 'malattia' && <p className="text-gray-600 mt-1 text-sm">Giorno di malattia approvato.</p>}
-                        {detail.status === 'mancata_timbratura' && <p className="text-yellow-700 font-semibold mt-1 text-sm">Nessuna timbratura registrata.</p>}
+                       
                     </div>
                 ))}
             </div>
-        </div>
+        </section>
     </div>
 ));
 PrintableSummary.displayName = 'PrintableSummary';
@@ -376,46 +387,56 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrint = () => {
-        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        const content = printContentRef.current;
+        if (!content) return;
+
+        const printWindow = window.open('', '_blank');
         if (!printWindow) {
             alert('Per favore, abilita i pop-up per questo sito.');
             return;
         }
 
-        const content = printContentRef.current;
-        if (!content) return;
-        
+        const styles = `
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; }
+            @media print {
+                @page { size: A4; margin: 20px; }
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .print-button-container { display: none !important; }
+            }
+            .print-button-container { text-align: center; padding: 1rem; background-color: #f3f4f6; }
+            .print-button { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #3b82f6; color: white; border: none; border-radius: 0.375rem; }
+            
+            .printable-summary { background-color: white; color: black; padding: 40px; max-width: 210mm; margin: auto; }
+            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; }
+            .logo { height: 60px; width: 60px; border-radius: 50%; }
+            .header-text { text-align: right; }
+            .operator-name { font-size: 1.875rem; font-weight: bold; }
+            .month-name { font-size: 1.125rem; text-transform: capitalize; color: #4b5563; }
+            
+            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 30px; }
+            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; text-align: center; }
+            .print-card-title { font-size: 0.875rem; color: #6b7281; margin-bottom: 0.25rem; }
+            .print-card-value { font-size: 1.875rem; font-weight: bold; }
+
+            .daily-details-section { margin-top: 30px; }
+            .section-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
+            .daily-details-list { display: flex; flex-direction: column; gap: 1rem; }
+            .day-entry { border-bottom: 1px solid #f3f4f6; padding-bottom: 1rem; }
+            .day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+            .day-date { font-weight: bold; font-size: 1rem; text-transform: capitalize; }
+            .day-times { font-size: 0.875rem; color: #4b5563; }
+            .day-details { font-size: 0.875rem; color: #6b7281; }
+            .day-details span { margin-right: 0.5rem; }
+            .day-status-ferie { color: #16a34a; font-weight: 500; font-size: 0.875rem; }
+            .day-status-malattia { color: #dc2626; font-weight: 500; font-size: 0.875rem; }
+            .day-status-mancata { color: #f59e0b; font-weight: 500; font-size: 0.875rem; }
+        `;
+
         printWindow.document.write(`
             <html>
                 <head>
                     <title>Riepilogo Mensile - ${operator?.username}</title>
-                    <style>
-                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f0f0f0; }
-                        @media print {
-                           @page { size: A4; margin: 20mm; }
-                           body { background-color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                           .print-button-container { display: none !important; }
-                        }
-                        .print-button-container { text-align: center; padding: 1rem; background-color: #fff; border-bottom: 1px solid #ddd; }
-                        .print-button { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px; }
-                        /* Include styles from the component itself */
-                        .bg-white { background-color: #fff; } .text-black { color: #000; } .p-8 { padding: 2rem; } .w-\\[210mm\\] { width: 210mm; } .min-h-\\[297mm\\] { min-height: 297mm; } .mx-auto { margin-left: auto; margin-right: auto; }
-                        .flex { display: flex; } .justify-between { justify-content: space-between; } .items-center { align-items: center; } .mb-8 { margin-bottom: 2rem; } .pb-4 { padding-bottom: 1rem; } .border-b { border-bottom-width: 1px; } .border-gray-300 { border-color: #d1d5db; }
-                        .h-15 { height: 3.75rem; } .w-15 { width: 3.75rem; } .rounded-full { border-radius: 9999px; } .text-right { text-align: right; } .text-2xl { font-size: 1.5rem; line-height: 2rem; } .font-bold { font-weight: 700; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; } .capitalize { text-transform: capitalize; }
-                        .grid { display: grid; } .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gap-4 { gap: 1rem; } .my-8 { margin-top: 2rem; margin-bottom: 2rem; } .bg-gray-300 { background-color: #d1d5db; } .h-\\[1px\\] { height: 1px; } .w-full { width: 100%; }
-                        .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .font-semibold { font-weight: 600; } .mb-4 { margin-bottom: 1rem; } .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
-                        .border { border-width: 1px; } .border-gray-200 { border-color: #e5e7eb; } .rounded-lg { border-radius: 0.5rem; } .p-3 { padding: 0.75rem; }
-                        .text-base { font-size: 1rem; line-height: 1.5rem; } .gap-2 { gap: 0.5rem; } .h-4 { height: 1rem; } .w-4 { width: 1rem; } .text-green-600 { color: #16a34a; } .text-red-600 { color: #dc2626; } .text-yellow-600 { color: #ca8a04; } .text-blue-600 { color: #2563eb; }
-                        .text-xs { font-size: 0.75rem; line-height: 1rem; } .text-gray-500 { color: #6b7281; } .mt-1 { margin-top: 0.25rem; } .mb-2 { margin-bottom: 0.5rem; }
-                        .grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-                        .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .text-muted-foreground { color: #64748b; }
-                        .text-gray-600 { color: #4b5563; } .text-yellow-700 { color: #a16207; }
-                        /* ShadCN card styles for summary boxes */
-                        .card { border-radius: 0.5rem; border: 1px solid #e2e8f0; background-color: #ffffff; color: #0f172a; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1); }
-                        .card-header { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 1.5rem; padding-bottom: 0.5rem; }
-                        .card-title { font-size: 0.875rem; font-weight: 500; }
-                        .card-content { padding: 1.5rem; padding-top: 0; }
-                    </style>
+                    <style>${styles}</style>
                 </head>
                 <body>
                     <div class="print-button-container">
@@ -528,4 +549,3 @@ export default function EndOfMonthPage() {
         </>
     );
 }
-
