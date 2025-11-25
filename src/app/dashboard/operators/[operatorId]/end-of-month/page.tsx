@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
@@ -12,6 +12,8 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
+
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -157,7 +159,8 @@ export default function EndOfMonthPage() {
     const params = useParams();
     const operatorId = params.operatorId as string;
     
-    const printContentRef = useRef<HTMLDivElement>(null);
+    const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+    const [printContent, setPrintContent] = useState('');
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -387,9 +390,6 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrint = () => {
-        const content = printContentRef.current;
-        if (!content) return;
-
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
             alert('Per favore, abilita i pop-up per questo sito.');
@@ -397,7 +397,7 @@ export default function EndOfMonthPage() {
         }
 
         const styles = `
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background-color: #f3f4f6; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background-color: #f3f4f6; color: black; }
             .print-controls { padding: 1rem; text-align: center; }
             .print-button { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #3b82f6; color: white; border: none; border-radius: 0.375rem; }
             @media print {
@@ -406,32 +406,42 @@ export default function EndOfMonthPage() {
                 @page { size: A4; margin: 20px; }
             }
             .printable-summary { background-color: white; color: black; padding: 40px; max-width: 210mm; margin: 20px auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 20px; }
-            .logo { height: 60px; width: 60px; border-radius: 50%; object-fit: contain; }
+            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px; }
+            .logo { height: 60px; width: auto; object-fit: contain; }
             .header-text { text-align: right; }
-            .operator-name { font-size: 1.875rem; font-weight: bold; }
-            .month-name { font-size: 1.125rem; text-transform: capitalize; color: #4b5563; }
+            .operator-name { font-size: 1.5rem; font-weight: bold; }
+            .month-name { font-size: 1rem; text-transform: capitalize; color: #4b5563; }
             
-            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 20px; }
-            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; text-align: center; }
-            .print-card-title { font-size: 0.8rem; color: #6b7281; margin-bottom: 0.25rem; }
-            .print-card-value { font-size: 1.5rem; font-weight: bold; }
+            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 15px; }
+            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem; text-align: center; }
+            .print-card-title { font-size: 0.75rem; color: #6b7281; margin-bottom: 0.1rem; }
+            .print-card-value { font-size: 1.25rem; font-weight: bold; }
 
-            .daily-details-section { margin-top: 20px; }
-            .section-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
-            .daily-details-list { display: flex; flex-direction: column; gap: 0.5rem; }
-            .day-entry { border-bottom: 1px solid #e5e7eb; padding-bottom: 0.75rem; padding-top: 0.75rem; }
+            .daily-details-section { margin-top: 15px; }
+            .section-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
+            .daily-details-list { display: flex; flex-direction: column; gap: 0; }
+            .day-entry { border-bottom: 1px solid #e5e7eb; padding-top: 0.25rem; padding-bottom: 0.25rem; }
             .day-entry:last-child { border-bottom: none; }
-            .day-header { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.25rem; }
-            .day-date { font-weight: bold; font-size: 1rem; text-transform: capitalize; flex-shrink: 0; white-space: nowrap; }
-            .day-times { font-size: 0.875rem; color: #4b5563; white-space: nowrap; }
-            .day-details { font-size: 0.875rem; color: #6b7281; }
+            .day-header { display: flex; align-items: center; gap: 1rem; }
+            .day-date { font-weight: bold; font-size: 0.9rem; text-transform: capitalize; flex-shrink: 0; white-space: nowrap; }
+            .day-times, .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.8rem; color: #4b5563; white-space: nowrap; }
+            .day-details { font-size: 0.8rem; color: #6b7281; padding-left: 0.5rem; margin-top: 0.1rem; }
             .day-details span { margin-right: 0.5rem; }
-            .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.875rem; font-weight: 500; white-space: nowrap; }
-            .day-status-ferie { color: #16a34a; }
-            .day-status-malattia { color: #dc2626; }
-            .day-status-mancata { color: #f59e0b; }
+            .day-status-ferie { color: #16a34a; font-weight: 500; }
+            .day-status-malattia { color: #dc2626; font-weight: 500; }
+            .day-status-mancata { color: #f59e0b; font-weight: 500; }
         `;
+
+        const reactDom = require('react-dom/server');
+        const printContent = reactDom.renderToString(
+             <PrintableSummary 
+                operator={operator!} 
+                currentMonth={currentMonth} 
+                monthlySummary={monthlySummary} 
+                dailyDetails={dailyDetails} 
+                formatMinutes={formatMinutes} 
+            />
+        );
 
         printWindow.document.write(`
             <html>
@@ -443,7 +453,7 @@ export default function EndOfMonthPage() {
                      <div class="print-controls">
                         <button class="print-button" onclick="window.print()">Stampa</button>
                     </div>
-                    ${content.outerHTML}
+                    ${printContent}
                 </body>
             </html>
         `);
@@ -466,9 +476,7 @@ export default function EndOfMonthPage() {
                                Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                             </CardDescription>
                         </div>
-                        <Button onClick={handlePrint}>
-                            <Printer className="mr-2 h-4 w-4" />Stampa Riepilogo
-                        </Button>
+                         <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa Riepilogo</Button>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-8">
@@ -535,19 +543,7 @@ export default function EndOfMonthPage() {
                     </div>
                 </CardContent>
             </Card>
-            
-            {/* Hidden div for printing */}
-            <div className="hidden">
-                 <PrintableSummary 
-                    ref={printContentRef}
-                    operator={operator}
-                    currentMonth={currentMonth}
-                    monthlySummary={monthlySummary}
-                    dailyDetails={dailyDetails}
-                    formatMinutes={formatMinutes}
-                />
-            </div>
+
         </>
     );
 }
-
