@@ -188,7 +188,7 @@ export default function EndOfMonthPage() {
             const workedEvents = dailyTimbrature[dayString];
 
             if (workedEvents) {
-                 const events = workedEvents;
+                const events = workedEvents;
                 let workedMinutes = 0;
                 const startTime = events.find(e => e.type === 'entrata')?.timestamp;
                 const endTime = events.find(e => e.type === 'uscita')?.timestamp;
@@ -229,7 +229,7 @@ export default function EndOfMonthPage() {
                         date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours
                     },
                 });
-            } else if (leaveRequest) {
+            } else if (leaveRequest && contractualHours > 0) {
                 details.push({
                     date: day,
                     status: leaveRequest.type,
@@ -254,22 +254,28 @@ export default function EndOfMonthPage() {
         }
         
         const shifts = details.filter(d => d.status === 'lavorato').map(d => d.shift!);
-
+        
         let ferieDays = 0;
         let malattiaDays = 0;
+
+        const processedLeaveDays = new Set<string>();
+
         monthlyData.requests.forEach(req => {
             if (req.type === 'ferie' || req.type === 'malattia') {
                 for (let day = req.startDate.toDate(); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                    if (isWithinInterval(day, monthInterval)) {
+                    const dayString = day.toDateString();
+                    if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                         const dayName = dayIndexToName[getDay(day)];
                         if ((operator.workSchedule[dayName] || 0) > 0) {
                             if (req.type === 'ferie') ferieDays++;
                             if (req.type === 'malattia') malattiaDays++;
+                            processedLeaveDays.add(dayString);
                         }
                     }
                 }
             }
         });
+
 
         const totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
         const totalOvertimeFromShifts = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
