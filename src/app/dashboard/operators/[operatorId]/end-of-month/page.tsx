@@ -11,7 +11,7 @@ import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfIn
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { ResponsiveDialog, ResponsiveDialogContent } from '@/components/ui/responsive-dialog';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 import Image from 'next/image';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -81,8 +81,8 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 );
 
 // Standalone component for the printable summary
-const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
-    <div ref={ref} className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto print-content">
+const PrintableSummary = ({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }: { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }) => (
+    <div className="bg-white text-black p-8 w-[210mm] min-h-[297mm] mx-auto print-content">
         <header className="flex justify-between items-center mb-8 pb-4 border-b">
              <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="h-15 w-15 rounded-full"/>
              <div className="text-right">
@@ -137,9 +137,7 @@ const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, 
             </div>
         </div>
     </div>
-));
-PrintableSummary.displayName = 'PrintableSummary';
-
+);
 
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
@@ -147,6 +145,7 @@ export default function EndOfMonthPage() {
     const operatorId = params.operatorId as string;
     
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const printRef = useRef<HTMLDivElement>(null);
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -376,7 +375,29 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrint = () => {
-        window.print();
+        const printContent = printRef.current;
+        if (!printContent) return;
+
+        const printWindow = window.open('', '', 'height=800,width=800');
+        if (printWindow) {
+            printWindow.document.write('<html><head><title>Stampa Riepilogo</title>');
+            // Aggiungi qui eventuali stili necessari per la stampa
+            const styles = Array.from(document.styleSheets)
+                .map(s => s.href ? `<link rel="stylesheet" href="${s.href}">` : '')
+                .join('');
+            const inlineStyles = Array.from(document.querySelectorAll('style')).map(s => s.innerHTML).join('');
+
+            printWindow.document.write(`<style>${inlineStyles}</style>`);
+            printWindow.document.write('</head><body>');
+            printWindow.document.write(printContent.innerHTML);
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+                printWindow.close();
+            }, 250);
+        }
     };
 
 
@@ -386,29 +407,6 @@ export default function EndOfMonthPage() {
 
     return (
         <>
-            <style>
-                {`
-                @media print {
-                    body * {
-                        visibility: hidden;
-                    }
-                    .print-container, .print-container * {
-                        visibility: visible;
-                    }
-                    .print-container {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: 100%;
-                    }
-                    .no-print {
-                        display: none;
-                    }
-                }
-                `}
-            </style>
-
             <Card className="p-4 sm:p-6">
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -490,11 +488,14 @@ export default function EndOfMonthPage() {
 
              <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
                 <ResponsiveDialogContent className="max-w-4xl p-0 print-container">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle className="sr-only">Anteprima di Stampa</ResponsiveDialogTitle>
+                    </ResponsiveDialogHeader>
                      <div className="p-4 bg-gray-100 flex justify-end gap-2 no-print">
                         <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
                         <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
                     </div>
-                    <div className="bg-gray-200 p-8 overflow-y-auto">
+                    <div className="bg-gray-200 p-8 overflow-y-auto" ref={printRef}>
                         <PrintableSummary 
                             operator={operator}
                             currentMonth={currentMonth}
