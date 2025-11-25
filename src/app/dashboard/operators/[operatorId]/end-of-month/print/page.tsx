@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -61,35 +60,42 @@ type DailyDetail = {
 
 
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
-    <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">{title}</CardTitle>
-            <Icon className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
+    <div className="border p-4 rounded-lg">
+        <div className="flex flex-row items-center justify-between pb-2">
+            <h3 className="text-sm font-medium">{title}</h3>
+            <Icon className="h-4 w-4 text-gray-500" />
+        </div>
+        <div>
             <div className="text-2xl font-bold">{value}</div>
-        </CardContent>
-    </Card>
+        </div>
+    </div>
 );
 
 const InfoBox = ({ label, value }: { label: string, value: string }) => (
     <div>
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="font-semibold">{value}</p>
+        <p className="text-xs text-gray-600">{label}</p>
+        <p className="font-semibold text-sm">{value}</p>
     </div>
 );
 
-
-export default function EndOfMonthPage() {
+function PrintableContent() {
     const firestore = useFirestore();
     const params = useParams();
-    const router = useRouter();
+    const searchParams = useSearchParams();
     const operatorId = params.operatorId as string;
 
     const [operator, setOperator] = useState<Operator | null>(null);
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const month = searchParams.get('month');
+        const year = searchParams.get('year');
+        if (month && year) {
+            setCurrentMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -104,8 +110,7 @@ export default function EndOfMonthPage() {
     }, [firestore, operatorId]);
 
     useEffect(() => {
-        if (!firestore || !operatorId) {
-            setIsLoading(false);
+        if (!firestore || !operatorId || !currentMonth) {
             return;
         };
         setIsLoading(true);
@@ -123,30 +128,25 @@ export default function EndOfMonthPage() {
             where('status', '==', 'approvato')
         );
 
-        const unsubTimbrature = onSnapshot(timbratureQuery, snapshot => {
-            const timbratureData = snapshot.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
-            setMonthlyData(prev => ({ ...prev, timbrature: timbratureData }));
-             if(!unsubRequests) setIsLoading(false);
-        }, () => setIsLoading(false));
-
-        const unsubRequests = onSnapshot(requestsQuery, snapshot => {
-            const requestsData = snapshot.docs.map(d => d.data() as Request);
-            setMonthlyData(prev => ({ ...prev, requests: requestsData }));
-            if(!unsubTimbrature) setIsLoading(false);
-        }, () => setIsLoading(false));
-        
-        Promise.all([getDocs(timbratureQuery), getDocs(requestsQuery)]).then(() => {
-            setIsLoading(false)
-        })
-
-
-        return () => {
-            unsubTimbrature();
-            unsubRequests();
+        const fetchData = async () => {
+            const [timbratureSnap, requestsSnap] = await Promise.all([
+                getDocs(timbratureQuery),
+                getDocs(requestsQuery),
+            ]);
+            
+            const timbratureData = timbratureSnap.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
+            const requestsData = requestsSnap.docs.map(d => d.data() as Request);
+            
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData });
+            setIsLoading(false);
+            window.print();
         };
+
+        fetchData();
+
     }, [firestore, operatorId, currentMonth]);
-    
-    const roundOrdinaryHours = (minutes: number): number => {
+
+     const roundOrdinaryHours = (minutes: number): number => {
         if (minutes <= 0) return 0;
         const totalHalfHours = Math.floor(minutes / 30);
         const remainingMinutes = minutes % 30;
@@ -161,7 +161,7 @@ export default function EndOfMonthPage() {
     };
 
     const { monthlySummary, dailyDetails } = useMemo(() => {
-        if (!operator) return { monthlySummary: {} as any, dailyDetails: [] };
+        if (!operator || !currentMonth) return { monthlySummary: {} as any, dailyDetails: [] };
 
         const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
 
@@ -302,17 +302,6 @@ export default function EndOfMonthPage() {
 
     }, [operator, currentMonth, monthlyData]);
 
-    const handleMonthChange = (offset: number) => {
-        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
-    };
-
-    const handlePrint = () => {
-        const month = currentMonth.getMonth() + 1;
-        const year = currentMonth.getFullYear();
-        const printUrl = `/dashboard/operators/${operatorId}/end-of-month/print?month=${month}&year=${year}`;
-        window.open(printUrl, '_blank');
-    };
-    
     const formatMinutes = (minutes: number) => {
         if (isNaN(minutes) || minutes < 0) return '00:00';
         const h = Math.floor(minutes / 60);
@@ -320,34 +309,31 @@ export default function EndOfMonthPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    if (isLoading || !operator) {
-        return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    if (isLoading || !operator || !currentMonth) {
+        return <div className="flex flex-1 items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
-
+    
     return (
-        <Card className="p-4 sm:p-6">
-            <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                    <div>
-                        <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.username}</CardTitle>
-                        <CardDescription>
-                           Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
-                        </CardDescription>
-                    </div>
-                     <Button onClick={handlePrint}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        Stampa Riepilogo
-                    </Button>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-8">
-                <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                    <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(1)}>Succ.</Button>
-                </div>
+        <div className="bg-white text-black p-8" id="print-content">
+            <style jsx global>{`
+                @media print {
+                    @page {
+                        size: A4;
+                        margin: 1.5cm;
+                    }
+                    body {
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                }
+            `}</style>
+            <div className="space-y-6">
+                <header className="text-center">
+                    <h1 className="text-2xl font-bold">Riepilogo Mensile per {operator.username}</h1>
+                    <p className="text-lg capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                </header>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-3 gap-4 text-sm">
                     <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
                     <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
                     <SummaryCard title="Ore Straordinarie" value={monthlySummary.overtimeHours.toLocaleString('it-IT')} icon={Plus} />
@@ -356,53 +342,54 @@ export default function EndOfMonthPage() {
                     <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
                 </div>
 
-                <Separator />
+                <div className="border-t pt-6">
+                    <h2 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h2>
+                    <div className="space-y-4">
+                        {dailyDetails.map(detail => {
+                             if (detail.status === 'riposo') return null;
 
-                <div>
-                    <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
-                    {dailyDetails.length > 0 ? (
-                        <div className="space-y-6">
-                            {dailyDetails.map(detail => {
-                                 if (detail.status === 'riposo') return null;
+                             const isSunday = getDay(detail.date) === 0;
 
-                                 const isSunday = getDay(detail.date) === 0;
+                            return (
+                            <div key={detail.date.toISOString()} className={cn("border-b pb-3", isSunday && "text-red-700")}>
+                                <h3 className={cn("font-bold capitalize flex items-center gap-2")}>
+                                    {detail.status === 'ferie' && <Plane className="h-4 w-4" />}
+                                    {detail.status === 'malattia' && <Stethoscope className="h-4 w-4" />}
+                                    {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-4 w-4" />}
+                                    {detail.status === 'lavorato' && <Briefcase className="h-4 w-4" />}
+                                    {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                </h3>
 
-                                return (
-                                <div key={detail.date.toISOString()} className={cn("border rounded-lg p-4", isSunday && "border-red-500/30 bg-red-500/5")}>
-                                    <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
-                                        {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
-                                        {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
-                                        {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
-                                        {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
-
-                                        {format(detail.date, 'eeee dd MMMM', { locale: it })}
-                                    </h4>
-
-                                    {detail.status === 'lavorato' && detail.shift && (
-                                        <>
-                                            <div className="text-sm text-muted-foreground mt-2 mb-4">
-                                                {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
-                                            </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                                <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
-                                                <InfoBox label="Ore Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
-                                                <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
-                                                <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
-                                                <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
-                                            </div>
-                                        </>
-                                    )}
-                                    {detail.status === 'ferie' && <p className="text-muted-foreground mt-2">Giorno di ferie approvato.</p>}
-                                    {detail.status === 'malattia' && <p className="text-muted-foreground mt-2">Giorno di malattia approvato.</p>}
-                                    {detail.status === 'mancata_timbratura' && <p className="text-yellow-600 font-semibold mt-2">Nessuna timbratura registrata in un giorno lavorativo.</p>}
-                                </div>
-                            )})}
-                        </div>
-                    ) : (
-                        <p className="text-center text-muted-foreground py-8">Nessun dato da mostrare per questo mese.</p>
-                    )}
+                                {detail.status === 'lavorato' && detail.shift && (
+                                    <>
+                                        <div className="text-xs text-gray-600 mt-1 mb-2">
+                                            {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
+                                        </div>
+                                        <div className="grid grid-cols-5 gap-2 text-xs">
+                                            <InfoBox label="Previste" value={`${detail.shift.contractualHours}h`} />
+                                            <InfoBox label="Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
+                                            <InfoBox label="Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                            <InfoBox label="Straord." value={`${detail.shift.overtimeHours}h`} />
+                                            <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                        </div>
+                                    </>
+                                )}
+                                {detail.status === 'ferie' && <p className="text-sm text-gray-600 mt-1">Giorno di ferie approvato.</p>}
+                                {detail.status === 'malattia' && <p className="text-sm text-gray-600 mt-1">Giorno di malattia approvato.</p>}
+                                {detail.status === 'mancata_timbratura' && <p className="text-sm font-semibold mt-1">Nessuna timbratura registrata.</p>}
+                            </div>
+                        )})}
+                    </div>
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
+}
+
+export default function PrintPage() {
+    return (
+        <Suspense fallback={<div className="flex flex-1 items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
+            <PrintableContent />
+        </Suspense>
+    )
 }
