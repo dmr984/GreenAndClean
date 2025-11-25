@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format, parse, set, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, startOfDay, endOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { getDay as getDayFns } from 'date-fns';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
@@ -85,7 +84,7 @@ type DetailView = {
 
 type DayInfo = {
     date: Date;
-    status: 'lavorato' | 'straordinario' | 'lavorato/straordinario' | 'ferie' | 'malattia' | 'permesso' | 'futuro' | 'vuoto';
+    status: 'lavorato' | 'straordinario' | 'lavorato/straordinario' | 'ferie' | 'malattia' | 'permesso' | 'futuro' | 'vuoto' | 'ordinario/permesso';
     shift: Shift | null;
 }
 
@@ -178,14 +177,16 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
 
                     const hasOvertime = (calculateShiftHours(shift).overtime > 0);
                     const isPureOvertime = shift.isOvertime;
+                    const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
 
                     if (isPureOvertime) dayStatus = 'straordinario';
+                    else if (permissionRequest) dayStatus = 'ordinario/permesso';
                     else if (hasOvertime) dayStatus = 'lavorato/straordinario';
                     else dayStatus = 'lavorato';
                 }
-                                
+                
                 const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
-                if(permissionRequest) dayStatus = 'permesso';
+                if(permissionRequest && dayTimbrature.length === 0) dayStatus = 'permesso';
 
 
                 return { date: day, status: dayStatus, shift: dayShift };
@@ -219,6 +220,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             case 'lavorato': return { badge: <Badge variant="secondary">Ordinario</Badge>, icon: <Sun className="h-5 w-5 text-yellow-500" />, text: "Giorno Lavorativo" };
             case 'straordinario': return { badge: <Badge className="bg-amber-500 text-white">Straordinario</Badge>, icon: <Moon className="h-5 w-5 text-amber-500" />, text: "Straordinario" };
             case 'lavorato/straordinario': return { badge: <Badge className="bg-blue-500 text-white">Ordinario/Straordinario</Badge>, icon: <Activity className="h-5 w-5 text-blue-500" />, text: "Ordinario/Straordinario" };
+            case 'ordinario/permesso': return { badge: <Badge className="bg-cyan-500 text-white">Ordinario/Permesso</Badge>, icon: <UserCheck className="h-5 w-5 text-cyan-500" />, text: "Ordinario con Permesso" };
             case 'ferie': return { badge: <Badge className="bg-green-500 text-white">Ferie</Badge>, icon: <Plane className="h-5 w-5 text-green-500" />, text: "Giorno di Ferie" };
             case 'malattia': return { badge: <Badge className="bg-red-600 text-white">Malattia</Badge>, icon: <Stethoscope className="h-5 w-5 text-red-600" />, text: "Giorno di Malattia" };
             case 'permesso': return { badge: <Badge className="bg-yellow-500 text-white">Permesso</Badge>, icon: <UserCheck className="h-5 w-5 text-yellow-500" />, text: "Permesso Orario" };
@@ -331,7 +333,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         
                         {selectedDay.shift ? (
                             <>
-                             <div className="grid grid-cols-3 gap-4 text-center my-4">
+                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]] || 0}h</p>
@@ -340,8 +342,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
                                     <p className="text-2xl font-bold">{formatMinutes(selectedDay.shift.workDuration)}</p>
                                 </div>
+                                 <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Ordinarie Calcolate</p>
+                                    <p className="text-2xl font-bold">{calculateShiftHours(selectedDay.shift).ordinary}h</p>
+                                </div>
                                 <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
+                                    <p className="text-sm font-medium text-muted-foreground">Straordinari Calcolati</p>
                                     <p className="text-2xl font-bold">{calculateShiftHours(selectedDay.shift).overtime}h</p>
                                 </div>
                             </div>
@@ -623,7 +629,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         if (!shift || !operator?.workSchedule) return 0;
         const shiftDate = shift.events[0]?.timestamp.toDate();
         if (!shiftDate) return 0;
-        const dayOfWeek = getDayFns(shiftDate);
+        const dayOfWeek = getDay(shiftDate);
         const dayName = dayIndexToName[dayOfWeek];
         return operator.workSchedule[dayName] || 0;
     };
@@ -845,7 +851,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                 if (!prev) return null;
                  return {
                     ...prev,
-                    items: prev.items.filter(item => item.id !== request.id)
+                    items: prev.items.filter(item => (item as Request).id !== request.id)
                 };
             });
 
@@ -870,7 +876,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                 if (!prev) return null;
                 return {
                     ...prev,
-                    items: prev.items.filter(item => item.id !== requestToDelete.id)
+                    items: prev.items.filter(item => (item as Request).id !== requestToDelete.id)
                 };
             });
         } catch (error) {
