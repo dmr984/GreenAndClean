@@ -328,8 +328,8 @@ export default function EndOfMonthPage() {
                         </CardDescription>
                     </div>
                      <Link href={`/dashboard/operators/${operatorId}/end-of-month/print?month=${currentMonth.toISOString()}`} target="_blank" passHref>
-                        <Button asChild>
-                            <a><Printer className="mr-2 h-4 w-4" />Stampa Riepilogo</a>
+                        <Button>
+                            <Printer className="mr-2 h-4 w-4" />Stampa Riepilogo
                         </Button>
                     </Link>
                 </div>
