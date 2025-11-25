@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
@@ -126,14 +126,16 @@ const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, 
                     <div key={detail.date.toISOString()} className="day-entry">
                         <div className="day-header">
                             <span className="day-date">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</span>
-                            {detail.status === 'lavorato' && detail.shift && (
-                                <span className="day-times">
-                                    Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
-                                </span>
-                            )}
-                             {detail.status === 'ferie' && <span className="day-status-ferie">Giorno di ferie</span>}
-                             {detail.status === 'malattia' && <span className="day-status-malattia">Giorno di malattia</span>}
-                             {detail.status === 'mancata_timbratura' && <span className="day-status-mancata">Nessuna timbratura registrata</span>}
+                             <div className="day-status">
+                                {detail.status === 'lavorato' && detail.shift && (
+                                    <span className="day-times">
+                                        Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
+                                    </span>
+                                )}
+                                 {detail.status === 'ferie' && <span className="day-status-ferie">Giorno di ferie</span>}
+                                 {detail.status === 'malattia' && <span className="day-status-malattia">Giorno di malattia</span>}
+                                 {detail.status === 'mancata_timbratura' && <span className="day-status-mancata">Nessuna timbratura registrata</span>}
+                             </div>
                         </div>
                         {detail.status === 'lavorato' && detail.shift && (
                              <div className="day-details">
@@ -405,27 +407,28 @@ export default function EndOfMonthPage() {
                 .print-controls { display: none !important; }
                 @page { size: A4; margin: 20px; }
             }
-            .printable-summary { background-color: white; color: black; padding: 40px; max-width: 210mm; margin: 20px auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px; }
-            .logo { height: 60px; width: auto; object-fit: contain; }
+            .printable-summary { background-color: white; color: black; padding: 20px; max-width: 210mm; margin: 20px auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 10px; }
+            .logo { height: 50px; width: auto; object-fit: contain; }
             .header-text { text-align: right; }
-            .operator-name { font-size: 1.5rem; font-weight: bold; }
-            .month-name { font-size: 1rem; text-transform: capitalize; color: #4b5563; }
+            .operator-name { font-size: 1.25rem; font-weight: bold; }
+            .month-name { font-size: 0.9rem; text-transform: capitalize; color: #4b5563; }
             
-            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 15px; }
-            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem; text-align: center; }
-            .print-card-title { font-size: 0.75rem; color: #6b7281; margin-bottom: 0.1rem; }
-            .print-card-value { font-size: 1.25rem; font-weight: bold; }
+            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 8px; text-align: center; }
+            .print-card-title { font-size: 0.7rem; color: #6b7281; margin-bottom: 2px; }
+            .print-card-value { font-size: 1.1rem; font-weight: bold; }
 
-            .daily-details-section { margin-top: 15px; }
-            .section-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
+            .daily-details-section { margin-top: 10px; }
+            .section-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; }
             .daily-details-list { display: flex; flex-direction: column; gap: 0; }
-            .day-entry { border-bottom: 1px solid #e5e7eb; padding-top: 0.25rem; padding-bottom: 0.25rem; }
+            .day-entry { border-bottom: 1px solid #e5e7eb; padding-top: 3px; padding-bottom: 3px; }
             .day-entry:last-child { border-bottom: none; }
             .day-header { display: flex; align-items: center; gap: 1rem; }
-            .day-date { font-weight: bold; font-size: 0.9rem; text-transform: capitalize; flex-shrink: 0; white-space: nowrap; }
-            .day-times, .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.8rem; color: #4b5563; white-space: nowrap; }
-            .day-details { font-size: 0.8rem; color: #6b7281; padding-left: 0.5rem; margin-top: 0.1rem; }
+            .day-date { font-weight: bold; font-size: 0.8rem; text-transform: capitalize; flex-shrink: 0; white-space: nowrap; }
+            .day-status { display: flex; align-items: center; }
+            .day-times, .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.75rem; color: #4b5563; white-space: nowrap; }
+            .day-details { font-size: 0.75rem; color: #6b7281; padding-left: 0.5rem; margin-top: 2px; }
             .day-details span { margin-right: 0.5rem; }
             .day-status-ferie { color: #16a34a; font-weight: 500; }
             .day-status-malattia { color: #dc2626; font-weight: 500; }
@@ -547,3 +550,4 @@ export default function EndOfMonthPage() {
         </>
     );
 }
+
