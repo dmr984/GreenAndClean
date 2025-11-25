@@ -406,27 +406,28 @@ export default function EndOfMonthPage() {
                 @page { size: A4; margin: 20px; }
             }
             .printable-summary { background-color: white; color: black; padding: 40px; max-width: 210mm; margin: 20px auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; }
+            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 20px; }
             .logo { height: 60px; width: 60px; border-radius: 50%; object-fit: contain; }
             .header-text { text-align: right; }
             .operator-name { font-size: 1.875rem; font-weight: bold; }
             .month-name { font-size: 1.125rem; text-transform: capitalize; color: #4b5563; }
             
-            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 30px; }
-            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; text-align: center; }
-            .print-card-title { font-size: 0.875rem; color: #6b7281; margin-bottom: 0.25rem; }
-            .print-card-value { font-size: 1.875rem; font-weight: bold; }
+            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 20px; }
+            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; text-align: center; }
+            .print-card-title { font-size: 0.8rem; color: #6b7281; margin-bottom: 0.25rem; }
+            .print-card-value { font-size: 1.5rem; font-weight: bold; }
 
-            .daily-details-section { margin-top: 30px; }
-            .section-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
-            .daily-details-list { display: flex; flex-direction: column; gap: 1rem; }
-            .day-entry { border-bottom: 1px solid #f3f4f6; padding-bottom: 1rem; }
-            .day-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.25rem; }
-            .day-date { font-weight: bold; font-size: 1rem; text-transform: capitalize; flex-shrink: 0; }
+            .daily-details-section { margin-top: 20px; }
+            .section-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+            .daily-details-list { display: flex; flex-direction: column; gap: 0.5rem; }
+            .day-entry { border-bottom: 1px solid #e5e7eb; padding-bottom: 0.75rem; padding-top: 0.75rem; }
+            .day-entry:last-child { border-bottom: none; }
+            .day-header { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.25rem; }
+            .day-date { font-weight: bold; font-size: 1rem; text-transform: capitalize; flex-shrink: 0; white-space: nowrap; }
             .day-times { font-size: 0.875rem; color: #4b5563; white-space: nowrap; }
             .day-details { font-size: 0.875rem; color: #6b7281; }
             .day-details span { margin-right: 0.5rem; }
-            .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.875rem; font-weight: 500; }
+            .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.875rem; font-weight: 500; white-space: nowrap; }
             .day-status-ferie { color: #16a34a; }
             .day-status-malattia { color: #dc2626; }
             .day-status-mancata { color: #f59e0b; }
@@ -549,3 +550,4 @@ export default function EndOfMonthPage() {
         </>
     );
 }
+
