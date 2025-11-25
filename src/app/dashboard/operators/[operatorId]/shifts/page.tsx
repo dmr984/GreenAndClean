@@ -507,7 +507,7 @@ export default function ShiftApprovalPage() {
 
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
-    
+
         const contractualHours = getContractualHoursForShift(shift);
         const totalMinutesWorked = Math.round(shift.workDuration);
 
@@ -522,24 +522,18 @@ export default function ShiftApprovalPage() {
 
         // Scenario 2: Working day
         const contractualMinutes = contractualHours * 60;
-        if (totalMinutesWorked > contractualMinutes) {
-            // Overtime occurred
-            const overtimeMinutes = totalMinutesWorked - contractualMinutes;
-            return { 
-                ordinary: roundOrdinaryHours(contractualMinutes), // workDuration can be > contractualMinutes
-                overtime: roundOvertimeHours(overtimeMinutes), 
-                leave: 0 
-            };
-        } else {
-            // Less than or equal to contractual hours
-            const ordinaryMinutes = totalMinutesWorked;
-            const leaveMinutes = contractualMinutes - totalMinutesWorked;
-            return { 
-                ordinary: roundOrdinaryHours(ordinaryMinutes), 
-                overtime: 0, 
-                leave: roundOrdinaryHours(leaveMinutes) // Calculate potential leave
-            };
-        }
+        const ordinaryWorkedHours = roundOrdinaryHours(Math.min(totalMinutesWorked, contractualMinutes));
+        const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
+        const overtimeWorkedHours = roundOvertimeHours(overtimeMinutes);
+
+        // Correct leave calculation
+        const leaveHours = Math.max(0, contractualHours - ordinaryWorkedHours);
+
+        return { 
+            ordinary: ordinaryWorkedHours, 
+            overtime: overtimeWorkedHours, 
+            leave: leaveHours
+        };
     };
 
 
