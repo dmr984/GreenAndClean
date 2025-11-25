@@ -426,7 +426,7 @@ export default function EndOfMonthPage() {
             .day-times { font-size: 0.875rem; color: #4b5563; white-space: nowrap; }
             .day-details { font-size: 0.875rem; color: #6b7281; }
             .day-details span { margin-right: 0.5rem; }
-            .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.875rem; font-weight: 500; margin-left: auto; }
+            .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.875rem; font-weight: 500; }
             .day-status-ferie { color: #16a34a; }
             .day-status-malattia { color: #dc2626; }
             .day-status-mancata { color: #f59e0b; }
@@ -439,7 +439,7 @@ export default function EndOfMonthPage() {
                     <style>${styles}</style>
                 </head>
                 <body>
-                    <div class="print-controls">
+                     <div class="print-controls">
                         <button class="print-button" onclick="window.print()">Stampa</button>
                     </div>
                     ${content.outerHTML}
