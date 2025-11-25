@@ -397,18 +397,17 @@ export default function EndOfMonthPage() {
         }
 
         const styles = `
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; }
-            @media print {
-                @page { size: A4; margin: 20px; }
-                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .print-button-container { display: none !important; }
-            }
-            .print-button-container { text-align: center; padding: 1rem; background-color: #f3f4f6; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background-color: #f3f4f6; }
+            .print-controls { padding: 1rem; text-align: center; }
             .print-button { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #3b82f6; color: white; border: none; border-radius: 0.375rem; }
-            
-            .printable-summary { background-color: white; color: black; padding: 40px; max-width: 210mm; margin: auto; }
+            @media print {
+                body { background-color: white; }
+                .print-controls { display: none !important; }
+                @page { size: A4; margin: 20px; }
+            }
+            .printable-summary { background-color: white; color: black; padding: 40px; max-width: 210mm; margin: 20px auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
             .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; }
-            .logo { height: 60px; width: 60px; border-radius: 50%; }
+            .logo { height: 60px; width: 60px; border-radius: 50%; object-fit: contain; }
             .header-text { text-align: right; }
             .operator-name { font-size: 1.875rem; font-weight: bold; }
             .month-name { font-size: 1.125rem; text-transform: capitalize; color: #4b5563; }
@@ -439,7 +438,7 @@ export default function EndOfMonthPage() {
                     <style>${styles}</style>
                 </head>
                 <body>
-                    <div class="print-button-container">
+                    <div class="print-controls">
                         <button class="print-button" onclick="window.print()">Stampa</button>
                     </div>
                     ${content.outerHTML}
