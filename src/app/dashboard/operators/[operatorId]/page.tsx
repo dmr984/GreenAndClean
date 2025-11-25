@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, ListChecks, Calendar as CalendarIcon } from 'lucide-react';
+import { Loader2, User, ClipboardList, ListChecks, Calendar as CalendarIcon, Calculator } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -162,6 +162,12 @@ export default function OperatorDetailPage() {
                     description="Visualizza lo storico completo." 
                     icon={CalendarIcon} 
                     link={`/dashboard/operators/${operatorId}/summary`}
+                />
+                <NavCard 
+                    title="Calcolo Fine Mese" 
+                    description="Riepilogo mensile per la stampa." 
+                    icon={Calculator} 
+                    link={`/dashboard/operators/${operatorId}/end-of-month`}
                 />
             </div>
         </div>
