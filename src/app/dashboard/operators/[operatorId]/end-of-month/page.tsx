@@ -85,7 +85,7 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
     <div ref={ref} className="printable-summary">
         <header className="summary-header">
-             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="logo"/>
+             <Image src="https://i.postimg.cc/sDj6JrCf/IMG-20251006-WA0024-1.jpg" alt="Serveco Logo" width={60} height={60} className="logo"/>
              <div className="header-text">
                  <h1 className="operator-name">{operator.username}</h1>
                  <p className="month-name">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
@@ -550,4 +550,3 @@ export default function EndOfMonthPage() {
         </>
     );
 }
-
