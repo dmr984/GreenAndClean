@@ -85,62 +85,62 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 
 // Standalone component for the printable summary
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
-    <div ref={ref} className="printable-summary">
-        <header className="summary-header">
-             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="logo"/>
-             <div className="header-text">
-                 <h1 className="operator-name">{operator.username}</h1>
-                 <p className="month-name">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+     <div ref={ref} className="bg-white text-black p-4 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+        <header className="flex justify-between items-center border-b pb-2 mb-2">
+             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={80} height={80} />
+             <div className="text-right">
+                 <h1 className="text-2xl font-bold">{operator.username}</h1>
+                 <p className="text-lg capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
              </div>
         </header>
 
-        <section className="summary-cards-grid">
-            <div className="print-card">
-                <div className="print-card-title">Giorni Lavorati</div>
-                <div className="print-card-value">{monthlySummary.workedDays}</div>
+        <section className="grid grid-cols-3 gap-2 mb-4">
+            <div className="border rounded-lg p-2 text-center">
+                <div className="text-xs text-gray-600">Giorni Lavorati</div>
+                <div className="text-xl font-bold">{monthlySummary.workedDays}</div>
             </div>
-            <div className="print-card">
-                <div className="print-card-title">Ore Ordinarie</div>
-                <div className="print-card-value">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div>
+            <div className="border rounded-lg p-2 text-center">
+                <div className="text-xs text-gray-600">Ore Ordinarie</div>
+                <div className="text-xl font-bold">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div>
             </div>
-            <div className="print-card">
-                <div className="print-card-title">Ore Straordinarie</div>
-                <div className="print-card-value">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div>
+            <div className="border rounded-lg p-2 text-center">
+                <div className="text-xs text-gray-600">Ore Straordinarie</div>
+                <div className="text-xl font-bold">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div>
             </div>
-            <div className="print-card">
-                <div className="print-card-title">Ferie (giorni)</div>
-                <div className="print-card-value">{monthlySummary.ferieDays}</div>
+            <div className="border rounded-lg p-2 text-center">
+                <div className="text-xs text-gray-600">Ferie (giorni)</div>
+                <div className="text-xl font-bold">{monthlySummary.ferieDays}</div>
             </div>
-            <div className="print-card">
-                <div className="print-card-title">Permessi (ore)</div>
-                <div className="print-card-value">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div>
+            <div className="border rounded-lg p-2 text-center">
+                <div className="text-xs text-gray-600">Permessi (ore)</div>
+                <div className="text-xl font-bold">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div>
             </div>
-            <div className="print-card">
-                <div className="print-card-title">Malattia (giorni)</div>
-                <div className="print-card-value">{monthlySummary.malattiaDays}</div>
+            <div className="border rounded-lg p-2 text-center">
+                <div className="text-xs text-gray-600">Malattia (giorni)</div>
+                <div className="text-xl font-bold">{monthlySummary.malattiaDays}</div>
             </div>
         </section>
 
-        <section className="daily-details-section">
-            <h3 className="section-title">Dettaglio Giornaliero</h3>
-            <div className="daily-details-list">
+        <section>
+            <h3 className="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
+            <div className="flex flex-col gap-0">
                 {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
-                    <div key={detail.date.toISOString()} className="day-entry">
-                        <div className="day-header">
-                            <span className="day-date">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</span>
-                             <div className="day-status">
+                    <div key={detail.date.toISOString()} className="border-b py-1 day-entry">
+                        <div className="flex items-center gap-4">
+                            <span className="font-bold text-sm capitalize w-48">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</span>
+                             <div className="text-sm text-gray-700 flex items-center">
                                 {detail.status === 'lavorato' && detail.shift && (
-                                    <span className="day-times">
+                                    <span className="whitespace-nowrap">
                                         Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
                                     </span>
                                 )}
-                                 {detail.status === 'ferie' && <span className="day-status-ferie">Giorno di ferie</span>}
-                                 {detail.status === 'malattia' && <span className="day-status-malattia">Giorno di malattia</span>}
-                                 {detail.status === 'mancata_timbratura' && <span className="day-status-mancata">Nessuna timbratura registrata</span>}
+                                 {detail.status === 'ferie' && <span className="text-green-600 font-medium">Giorno di ferie</span>}
+                                 {detail.status === 'malattia' && <span className="text-red-600 font-medium">Giorno di malattia</span>}
+                                 {detail.status === 'mancata_timbratura' && <span className="text-yellow-600 font-medium">Nessuna timbratura registrata</span>}
                              </div>
                         </div>
                         {detail.status === 'lavorato' && detail.shift && (
-                             <div className="day-details">
+                             <div className="pl-52 text-xs text-gray-500">
                                 <span>Previste: {detail.shift.contractualHours}h</span> | 
                                 <span>Lavorate: {formatMinutes(detail.shift.workedMinutes)}</span> | 
                                 <span>Ordinarie: {detail.shift.ordinaryHours}h</span> | 
@@ -163,8 +163,8 @@ export default function EndOfMonthPage() {
     const params = useParams();
     const operatorId = params.operatorId as string;
     
-    const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
-    const [printContent, setPrintContent] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const printRef = useRef<HTMLDivElement>(null);
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -393,132 +393,30 @@ export default function EndOfMonthPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const handlePrint = () => {
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert('Per favore, abilita i pop-up per questo sito.');
-            return;
-        }
+    const handlePrintAndShare = async () => {
+        if (!printRef.current) return;
+        setIsProcessing(true);
 
-        const reactDom = require('react-dom/server');
-        const printContent = reactDom.renderToString(
-             <PrintableSummary 
-                operator={operator!} 
-                currentMonth={currentMonth} 
-                monthlySummary={monthlySummary} 
-                dailyDetails={dailyDetails} 
-                formatMinutes={formatMinutes} 
-            />
-        );
-
-        const styles = `
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background-color: #f3f4f6; color: black; }
-            .print-controls { display: flex; gap: 10px; padding: 1rem; text-align: center; justify-content: center; }
-            .print-button { display: inline-flex; align-items: center; gap: 8px; font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #3b82f6; color: white; border: none; border-radius: 0.375rem; }
-            .share-button { display: inline-flex; align-items: center; gap: 8px; font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #16a34a; color: white; border: none; border-radius: 0.375rem; }
-            @media print {
-                body { background-color: white; }
-                .print-controls { display: none !important; }
-                @page { size: A4; margin: 20px; }
-            }
-            .printable-summary { background-color: white; color: black; max-width: 210mm; margin: 0 auto; padding: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-            .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
-            .logo { height: 50px; width: auto; object-fit: contain; }
-            .header-text { text-align: right; }
-            .operator-name { font-size: 1.25rem; font-weight: bold; }
-            .month-name { font-size: 0.9rem; text-transform: capitalize; color: #4b5563; }
+        try {
+            const canvas = await html2canvas(printRef.current, {
+                scale: 2,
+                useCORS: true, 
+            });
+            const imgData = canvas.toDataURL('image/png');
             
-            .summary-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 5px; }
-            .print-card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 4px; text-align: center; }
-            .print-card-title { font-size: 0.7rem; color: #6b7281; margin-bottom: 2px; }
-            .print-card-value { font-size: 1.1rem; font-weight: bold; }
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+            
+            pdf.output('dataurlnewwindow');
 
-            .daily-details-section { margin-top: 5px; }
-            .section-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; }
-            .daily-details-list { display: flex; flex-direction: column; gap: 0; }
-            .day-entry { border-bottom: 1px solid #e5e7eb; padding-top: 3px; padding-bottom: 3px; }
-            .day-entry:last-child { border-bottom: none; }
-            .day-header { display: flex; align-items: center; gap: 1rem; }
-            .day-date { font-weight: bold; font-size: 0.8rem; text-transform: capitalize; flex-shrink: 0; white-space: nowrap; }
-            .day-status { display: flex; align-items: center; }
-            .day-times, .day-status-ferie, .day-status-malattia, .day-status-mancata { font-size: 0.75rem; color: #4b5563; white-space: nowrap; }
-            .day-details { font-size: 0.75rem; color: #6b7281; padding-left: 0.5rem; margin-top: 2px; }
-            .day-details span { margin-right: 0.5rem; }
-            .day-status-ferie { color: #16a34a; font-weight: 500; }
-            .day-status-malattia { color: #dc2626; font-weight: 500; }
-            .day-status-mancata { color: #f59e0b; font-weight: 500; }
-        `;
-
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <title>Riepilogo Mensile - ${operator?.username}</title>
-                    <style>${styles}</style>
-                    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoVBL5gD3iHGpiKNt8YdYrzsSMBGhw==" crossorigin="anonymous" referrerpolicy="no-referrer"><\/script>
-                    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"><\/script>
-                </head>
-                <body>
-                     <div class="print-controls">
-                        <button class="print-button" onclick="window.print()">
-                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
-                           Stampa
-                        </button>
-                        <button class="share-button" id="share-btn">
-                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-                           Condividi
-                        </button>
-                    </div>
-                    <div id="summary-to-export">
-                        ${printContent}
-                    </div>
-                    <script>
-                        document.getElementById('share-btn').addEventListener('click', async () => {
-                            try {
-                                const { jsPDF } = window.jspdf;
-                                const element = document.getElementById('summary-to-export');
-                                
-                                if (!element || !window.html2canvas) {
-                                    alert('Errore: librerie necessarie non caricate.');
-                                    return;
-                                }
-
-                                const canvas = await window.html2canvas(element, { scale: 2 });
-                                const imgData = canvas.toDataURL('image/png');
-                                
-                                const pdf = new jsPDF('p', 'mm', 'a4');
-                                const pdfWidth = pdf.internal.pageSize.getWidth();
-                                const pdfHeight = pdf.internal.pageSize.getHeight();
-                                const imgWidth = canvas.width;
-                                const imgHeight = canvas.height;
-                                const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-                                const imgX = (pdfWidth - imgWidth * ratio) / 2;
-                                const imgY = 0;
-                                
-                                pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-                                
-                                const pdfBlob = pdf.getBlob();
-                                const pdfFile = new File([pdfBlob], 'Riepilogo-${operator?.username?.replace(/\\s/g, '_')}-${format(currentMonth, 'MM-yyyy')}.pdf', { type: 'application/pdf' });
-
-                                if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-                                    await navigator.share({
-                                        title: 'Riepilogo Mensile',
-                                        text: 'Ecco il riepilogo mensile per ${operator?.username}',
-                                        files: [pdfFile],
-                                    });
-                                } else {
-                                    alert("La condivisione di file non è supportata su questo browser o dispositivo.");
-                                }
-                            } catch (error) {
-                                console.error('Error sharing:', error);
-                                alert("Si è verificato un errore durante la condivisione.");
-                            }
-                        });
-                    <\/script>
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            alert("Si è verificato un errore durante la generazione del PDF.");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     if (isLoading || !operator) {
@@ -527,6 +425,20 @@ export default function EndOfMonthPage() {
 
     return (
         <>
+            {/* Hidden printable component */}
+             <div className="hidden">
+                 <div id="print-container">
+                    <PrintableSummary 
+                        ref={printRef}
+                        operator={operator} 
+                        currentMonth={currentMonth} 
+                        monthlySummary={monthlySummary} 
+                        dailyDetails={dailyDetails} 
+                        formatMinutes={formatMinutes} 
+                    />
+                </div>
+            </div>
+
             <Card className="p-4 sm:p-6">
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -536,7 +448,10 @@ export default function EndOfMonthPage() {
                                Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                             </CardDescription>
                         </div>
-                         <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa Riepilogo</Button>
+                         <Button onClick={handlePrintAndShare} disabled={isProcessing}>
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                            Stampa/Condividi Riepilogo
+                         </Button>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-8">
