@@ -7,7 +7,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -339,44 +339,44 @@ export default function EndOfMonthPage() {
             `;
             
             const detailsHTML = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-                const getDayStatus = () => {
-                    if (detail.status === 'lavorato' && detail.shift) {
-                        const shift = detail.shift;
-                        if (shift.isPureOvertime) return 'Straordinario';
-                        if (shift.ordinaryHours > 0 && shift.overtimeHours > 0) return 'Ordinario / Straordinario';
-                        if (shift.ordinaryHours > 0 && shift.permissionHours > 0) return 'Ordinario / Permesso';
-                        return 'Lavorativo';
-                    }
-                    switch (detail.status) {
-                        case 'ferie': return 'Giorno di ferie';
-                        case 'malattia': return 'Giorno di malattia';
-                        case 'mancata_timbratura': return 'Nessuna timbratura registrata';
-                        default: return '';
-                    }
-                };
-
-                const dayStatus = getDayStatus();
-                
+                let statusText = '';
                 let contentHTML = '';
 
                 if (detail.status === 'lavorato' && detail.shift) {
-                    const timbratureText = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-                    const hoursDetail = `
-                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Ore Previste:</b> ${detail.shift.contractualHours}h</span>
-                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
-                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
-                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Straordinario:</b> ${detail.shift.overtimeHours}h</span>
-                        <span style="font-size: 13px; color: #6b7280;"><b>Permesso:</b> ${detail.shift.permissionHours}h</span>
-                    `;
+                    const { shift } = detail;
+                    if (shift.isPureOvertime) {
+                        statusText = 'Straordinario';
+                    } else if (shift.ordinaryHours > 0 && shift.overtimeHours > 0) {
+                        statusText = 'Ordinario / Straordinario';
+                    } else if (shift.ordinaryHours > 0 && shift.permissionHours > 0) {
+                        statusText = 'Ordinario / Permesso';
+                    } else {
+                        statusText = 'Lavorativo';
+                    }
+                    
+                    const timbratureText = shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+
                     contentHTML = `
                         <div style="flex-grow: 1; margin-left: 1rem;">
                             <div style="font-weight: 500; font-size: 14px;">${timbratureText}</div>
-                            <div style="margin-top: 4px; font-weight: 600; color: #6b7280; font-size: 14px;">Stato: ${dayStatus}</div>
-                            <div style="margin-top: 6px;">${hoursDetail}</div>
+                            <div style="margin-top: 4px; font-weight: 500; font-size: 13px; color: #6b7280;">
+                                <span style="font-weight: 600; color: #374151;">Stato: ${statusText}</span> | 
+                                <span>Ore Previste: ${shift.contractualHours}h</span> | 
+                                <span>Ore Lavorate: ${formatMinutes(shift.workedMinutes)}</span> | 
+                                <span>Ore Ordinarie: ${shift.ordinaryHours}h</span> | 
+                                <span>Straordinario: ${shift.overtimeHours}h</span> | 
+                                <span>Permesso: ${shift.permissionHours}h</span>
+                            </div>
                         </div>
                     `;
                 } else {
-                     contentHTML = `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem; color: #6b7280;">${dayStatus}</span>`;
+                     switch (detail.status) {
+                        case 'ferie': statusText = 'Giorno di ferie'; break;
+                        case 'malattia': statusText = 'Giorno di malattia'; break;
+                        case 'mancata_timbratura': statusText = 'Nessuna timbratura registrata'; break;
+                        default: statusText = '';
+                    }
+                    contentHTML = `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem; color: #6b7280;">${statusText}</span>`;
                 }
 
                 return `
@@ -428,30 +428,22 @@ export default function EndOfMonthPage() {
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
-                            const pdfHeight = pdf.internal.pageSize.getHeight();
-                            
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
+                            const pdfHeight = pdfWidth / ratio;
                             
-                            const imgHeightInPdf = pdfWidth / ratio;
-                            let finalImgHeight = imgHeightInPdf;
-
-                            if (imgHeightInPdf > pdfHeight) {
-                                finalImgHeight = pdfHeight;
-                            }
-                            
-                            let heightLeft = imgHeight;
                             let position = 0;
-                            
-                            pdf.addImage(canvas, 'PNG', 0, 0, pdfWidth, imgHeightInPdf);
-                            heightLeft -= (pdfHeight * imgWidth / pdfWidth);
-
+                            let heightLeft = imgHeight;
+                             
+                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, pdfHeight);
+                            heightLeft -= pdf.internal.pageSize.getHeight() * (imgWidth / pdfWidth);
+                             
                             while (heightLeft > 0) {
                                 position = heightLeft - imgHeight;
                                 pdf.addPage();
-                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightInPdf);
-                                heightLeft -= (pdfHeight * imgWidth / pdfWidth);
+                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, pdfHeight);
+                                heightLeft -= pdf.internal.pageSize.getHeight() * (imgWidth / pdfWidth);
                             }
 
                             const blob = pdf.output('blob');
