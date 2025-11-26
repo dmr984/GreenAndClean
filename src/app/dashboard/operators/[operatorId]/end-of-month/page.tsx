@@ -13,8 +13,6 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -393,30 +391,84 @@ export default function EndOfMonthPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const handlePrintAndShare = async () => {
-        if (!printRef.current) return;
-        setIsProcessing(true);
+    const handlePrint = () => {
+        const printContent = printRef.current?.innerHTML;
+        if (!printContent) return;
 
-        try {
-            const canvas = await html2canvas(printRef.current, {
-                scale: 2,
-                useCORS: true, 
-            });
-            const imgData = canvas.toDataURL('image/jpeg', 1.0);
-            
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight);
-            
-            pdf.output('dataurlnewwindow');
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
 
-        } catch (error) {
-            console.error("Error generating PDF:", error);
-            alert("Si è verificato un errore durante la generazione del PDF.");
-        } finally {
-            setIsProcessing(false);
-        }
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Riepilogo Mensile - ${operator?.username}</title>
+                    <style>
+                        @import url('https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+                        body { 
+                            font-family: 'PT Sans', sans-serif;
+                            margin: 0;
+                            -webkit-print-color-adjust: exact; /* For Chrome, Safari */
+                            color-adjust: exact; /* For Firefox */
+                        }
+                        .printable-summary {
+                             background-color: white;
+                             color: black;
+                             width: 210mm;
+                             min-height: 297mm;
+                             padding: 1rem;
+                             box-sizing: border-box;
+                        }
+                        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
+                        header img { width: 80px; height: 80px; }
+                        header h1 { font-size: 1.5rem; font-weight: bold; }
+                        header p { font-size: 1.125rem; text-transform: capitalize; color: #4b5563; }
+                        section { margin-bottom: 1rem; }
+                        .grid { display: grid; gap: 0.5rem; }
+                        .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+                        .border { border: 1px solid #e5e7eb; }
+                        .rounded-lg { border-radius: 0.5rem; }
+                        .p-2 { padding: 0.5rem; }
+                        .text-center { text-align: center; }
+                        .text-xs { font-size: 0.75rem; }
+                        .text-gray-600 { color: #4b5563; }
+                        .text-xl { font-size: 1.25rem; }
+                        .font-bold { font-weight: 700; }
+                        h3 { font-size: 1.25rem; font-weight: bold; margin-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25rem; }
+                        .flex { display: flex; }
+                        .flex-col { flex-direction: column; }
+                        .gap-0 { gap: 0; }
+                        .day-entry { border-bottom: 1px solid #e5e7eb; padding: 2px 0; display: flex; flex-direction: column; }
+                        .items-center { align-items: center; }
+                        .gap-4 { gap: 1rem; }
+                        .w-48 { width: 12rem; }
+                        .text-sm { font-size: 0.875rem; }
+                        .text-gray-700 { color: #374151; }
+                        .whitespace-nowrap { white-space: nowrap; }
+                        .text-green-600 { color: #059669; }
+                        .text-red-600 { color: #dc2626; }
+                        .text-yellow-600 { color: #d97706; }
+                        .font-medium { font-weight: 500; }
+                        .pl-52 { padding-left: 13rem; }
+                        .text-xs { font-size: 0.75rem; }
+                        .text-gray-500 { color: #6b7282; }
+                        @media print {
+                            body { margin: 0; }
+                            .printable-summary { box-shadow: none; border: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${printContent}
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        // Use a timeout to ensure content is rendered before printing
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 500);
     };
 
     if (isLoading || !operator) {
@@ -426,17 +478,15 @@ export default function EndOfMonthPage() {
     return (
         <>
              {/* Hidden printable component, positioned off-screen */}
-             <div style={{ position: 'absolute', left: '-9999px' }}>
-                <div id="print-container">
-                    <PrintableSummary 
-                        ref={printRef}
-                        operator={operator} 
-                        currentMonth={currentMonth} 
-                        monthlySummary={monthlySummary} 
-                        dailyDetails={dailyDetails} 
-                        formatMinutes={formatMinutes} 
-                    />
-                </div>
+             <div style={{ position: 'absolute', left: '-9999px', opacity: 0 }}>
+                <PrintableSummary 
+                    ref={printRef}
+                    operator={operator} 
+                    currentMonth={currentMonth} 
+                    monthlySummary={monthlySummary} 
+                    dailyDetails={dailyDetails} 
+                    formatMinutes={formatMinutes} 
+                />
             </div>
 
             <Card className="p-4 sm:p-6">
@@ -448,9 +498,9 @@ export default function EndOfMonthPage() {
                                Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                             </CardDescription>
                         </div>
-                         <Button onClick={handlePrintAndShare} disabled={isProcessing}>
+                         <Button onClick={handlePrint} disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                            Stampa/Condividi Riepilogo
+                            Stampa Riepilogo
                          </Button>
                     </div>
                 </CardHeader>
