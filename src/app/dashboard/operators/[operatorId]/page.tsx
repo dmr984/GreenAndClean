@@ -97,10 +97,10 @@ export default function OperatorDetailPage() {
         return <div className="text-center text-muted-foreground">Operatore non trovato.</div>;
     }
 
-    const getAvatarFallback = (username: string) => {
-        const parts = username.split(' ');
-        if (parts.length > 1 && parts[0] && parts[1]) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-        return username.substring(0, 2).toUpperCase();
+    const getAvatarFallback = (firstName: string, lastName: string) => {
+        const firstInitial = firstName ? firstName[0] : '';
+        const lastInitial = lastName ? lastName[0] : '';
+        return `${firstInitial}${lastInitial}`.toUpperCase();
     };
     
     const formatWorkSchedule = (schedule?: WorkSchedule) => {
@@ -134,11 +134,11 @@ export default function OperatorDetailPage() {
         <div className="space-y-6">
             <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">
-                    <AvatarFallback className="text-xl">{getAvatarFallback(operator.username)}</AvatarFallback>
+                    <AvatarFallback className="text-xl">{getAvatarFallback(operator.firstName, operator.lastName)}</AvatarFallback>
                 </Avatar>
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">{operator.username}</h1>
-                    <p className="text-lg text-muted-foreground">{`${operator.firstName} ${operator.lastName}`}</p>
+                    <h1 className="text-3xl font-bold tracking-tight">{`${operator.firstName} ${operator.lastName}`}</h1>
+                    <p className="text-lg text-muted-foreground">Codice: {operator.username}</p>
                     <p className="text-muted-foreground">{formatWorkSchedule(operator.workSchedule)}</p>
                 </div>
             </div>

@@ -93,8 +93,8 @@ export function AdminDashboard() {
                                         <div className='flex items-center gap-3'>
                                             <User className='h-5 w-5 flex-shrink-0'/>
                                             <div className="flex flex-col">
-                                                <span className='truncate font-semibold'>{operator.username}</span>
-                                                <span className='text-xs text-muted-foreground truncate'>{`${operator.firstName} ${operator.lastName}`}</span>
+                                                <span className='truncate font-semibold'>{`${operator.firstName} ${operator.lastName}`}</span>
+                                                <span className='text-xs text-muted-foreground truncate'>Codice: {operator.username}</span>
                                             </div>
                                         </div>
                                          {totalPending > 0 && (
