@@ -329,12 +329,12 @@ export default function EndOfMonthPage() {
             
             const summaryHTML = `
                  <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin-bottom: 1rem; text-align: center;">
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Giorni Lav.</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.workedDays}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ore Ord.</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ore Straord.</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ferie (g)</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.ferieDays}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Permessi (h)</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Malattia (g)</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.malattiaDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Lavorati</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.workedDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ordinarie</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Straordinarie</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ferie</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.ferieDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Permessi</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Malattia</div><div style="font-size: 1.1rem; font-weight: 700; color: #374151;">${monthlySummary.malattiaDays}</div></div>
                 </div>
             `;
             
@@ -346,7 +346,7 @@ export default function EndOfMonthPage() {
                     const { shift } = detail;
                     
                     let statusText = '';
-                    if (shift.isPureOvertime) {
+                     if (shift.isPureOvertime) {
                         statusText = 'Straordinario';
                     } else if (shift.ordinaryHours > 0 && shift.overtimeHours > 0) {
                         statusText = 'Ordinario / Straordinario';
@@ -365,17 +365,18 @@ export default function EndOfMonthPage() {
                          <span style="font-weight: 700; color: #6b7280;">Permesso:</span> ${shift.permissionHours}h
                     `;
 
-                    contentHTML = `
-                         <tr>
+                     contentHTML = `
+                        <tr>
                             <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 <b style="color: #6b7280;">${dateText}</b>
-                                <br>
-                                <span style="font-size: 13px; font-weight: 500; color: #6b7280; text-transform: capitalize;">${statusText}</span>
                             </td>
                             <td style="vertical-align: top; font-size: 13px; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 ${timbratureText}
                                 <br>
-                                ${hoursText}
+                                <div style="display: flex; margin-top: 0.25rem;">
+                                    <div style="min-width: 180px; font-size: 13px; font-weight: 500; color: #6b7280; text-transform: capitalize;">${statusText}</div>
+                                    <div>${hoursText}</div>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -388,14 +389,14 @@ export default function EndOfMonthPage() {
                         default: statusText = '';
                     }
                     contentHTML = `
-                        <tr>
-                            <td colspan="2" style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
-                                <b style="color: #6b7280;">${dateText}</b>
-                                <br>
-                                <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
-                            </td>
-                        </tr>
-                    `;
+                       <tr>
+                           <td colspan="2" style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
+                               <b style="color: #6b7280;">${dateText}</b>
+                               <br>
+                               <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
+                           </td>
+                       </tr>
+                   `;
                 }
                 return contentHTML;
             }).join('');
