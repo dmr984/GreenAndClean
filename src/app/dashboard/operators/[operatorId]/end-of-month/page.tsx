@@ -409,7 +409,6 @@ export default function EndOfMonthPage() {
                          <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
                              <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.firstName} ${operator?.lastName}</h1>
-                             <h2 style="font-size: 1.1rem; font-weight: 500; color: #6b7280;">Codice: ${operator?.username}</h2>
                              <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280; margin-top: 0.5rem;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
@@ -537,7 +536,7 @@ export default function EndOfMonthPage() {
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div>
-                        <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.username}</CardTitle>
+                        <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.firstName} {operator.lastName}</CardTitle>
                         <CardDescription>
                            Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                         </CardDescription>
