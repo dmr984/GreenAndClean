@@ -28,69 +28,70 @@ const formatMinutes = (minutes: number) => {
 };
 
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] }>(({ operator, currentMonth, monthlySummary, dailyDetails }, ref) => (
-     <div ref={ref} className="bg-white text-black p-4 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
-        <header className="flex justify-between items-center border-b pb-2 mb-2">
-             <Image src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width={80} height={80} crossOrigin="anonymous" />
+     <div ref={ref} className="bg-white text-black p-8 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+        <header className="flex justify-between items-center border-b-2 border-gray-300 pb-4 mb-4">
+             <Image src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width={100} height={100} crossOrigin="anonymous" />
              <div className="text-right">
-                 <h1 className="text-2xl font-bold">{operator.username}</h1>
-                 <p className="text-lg capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                 <h1 className="text-3xl font-bold">{operator.username}</h1>
+                 <p className="text-xl capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
              </div>
         </header>
 
-        <section className="grid grid-cols-3 gap-2 mb-4">
-            <div className="border rounded-lg p-2 text-center">
-                <div className="text-xs text-gray-600">Giorni Lavorati</div>
-                <div className="text-xl font-bold">{monthlySummary.workedDays}</div>
+        <section className="grid grid-cols-3 gap-4 mb-6 text-center">
+            <div className="border rounded-lg p-3">
+                <div className="text-sm text-gray-600">Giorni Lavorati</div>
+                <div className="text-2xl font-bold">{monthlySummary.workedDays}</div>
             </div>
-            <div className="border rounded-lg p-2 text-center">
-                <div className="text-xs text-gray-600">Ore Ordinarie</div>
-                <div className="text-xl font-bold">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div>
+            <div className="border rounded-lg p-3">
+                <div className="text-sm text-gray-600">Ore Ordinarie</div>
+                <div className="text-2xl font-bold">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div>
             </div>
-            <div className="border rounded-lg p-2 text-center">
-                <div className="text-xs text-gray-600">Ore Straordinarie</div>
-                <div className="text-xl font-bold">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div>
+            <div className="border rounded-lg p-3">
+                <div className="text-sm text-gray-600">Ore Straordinarie</div>
+                <div className="text-2xl font-bold">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div>
             </div>
-            <div className="border rounded-lg p-2 text-center">
-                <div className="text-xs text-gray-600">Ferie (giorni)</div>
-                <div className="text-xl font-bold">{monthlySummary.ferieDays}</div>
+            <div className="border rounded-lg p-3">
+                <div className="text-sm text-gray-600">Ferie (giorni)</div>
+                <div className="text-2xl font-bold">{monthlySummary.ferieDays}</div>
             </div>
-            <div className="border rounded-lg p-2 text-center">
-                <div className="text-xs text-gray-600">Permessi (ore)</div>
-                <div className="text-xl font-bold">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div>
+            <div className="border rounded-lg p-3">
+                <div className="text-sm text-gray-600">Permessi (ore)</div>
+                <div className="text-2xl font-bold">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div>
             </div>
-            <div className="border rounded-lg p-2 text-center">
-                <div className="text-xs text-gray-600">Malattia (giorni)</div>
-                <div className="text-xl font-bold">{monthlySummary.malattiaDays}</div>
+            <div className="border rounded-lg p-3">
+                <div className="text-sm text-gray-600">Malattia (giorni)</div>
+                <div className="text-2xl font-bold">{monthlySummary.malattiaDays}</div>
             </div>
         </section>
 
         <section>
             <h3 className="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
-            <div className="flex flex-col gap-0">
+            <div className="text-xs">
                 {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
-                    <div key={detail.date} className="border-b py-1 day-entry" style={{ padding: '2px 0', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e5e7eb' }}>
-                        <div className="flex items-center gap-4">
-                            <span className="font-bold text-sm capitalize w-48">{format(new Date(detail.date), 'eeee dd/MM/yyyy', { locale: it })}</span>
-                             <div className="text-sm text-gray-700 flex items-center">
-                                {detail.status === 'lavorato' && detail.shift && (
-                                    <span className="whitespace-nowrap">
+                    <div key={detail.date} className="border-b py-2 flex items-center">
+                        <div className="w-1/3 font-bold capitalize">{format(new Date(detail.date), 'eeee dd/MM/yyyy', { locale: it })}</div>
+                        <div className="w-2/3">
+                            {detail.status === 'lavorato' && detail.shift ? (
+                                <div>
+                                    <div className="font-semibold">
                                         Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(new Date(detail.shift.events.find(e => e.type === 'entrata')!.timestamp), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(new Date(detail.shift.events.find(e => e.type === 'uscita')!.timestamp), 'HH:mm') : '--:--'}
-                                    </span>
-                                )}
-                                 {detail.status === 'ferie' && <span className="text-green-600 font-medium">Giorno di ferie</span>}
-                                 {detail.status === 'malattia' && <span className="text-red-600 font-medium">Giorno di malattia</span>}
-                                 {detail.status === 'mancata_timbratura' && <span className="text-yellow-600 font-medium">Nessuna timbratura registrata</span>}
-                             </div>
+                                    </div>
+                                    <div className="text-gray-600 text-[10px]">
+                                        <span>Prev: {detail.shift.contractualHours}h</span> | 
+                                        <span> Lav: {formatMinutes(detail.shift.workedMinutes)}</span> | 
+                                        <span> Ord: {detail.shift.ordinaryHours}h</span> | 
+                                        <span> Straord: {detail.shift.overtimeHours}h</span> | 
+                                        <span> Perm: {detail.shift.permissionHours}h</span>
+                                    </div>
+                                </div>
+                            ) : detail.status === 'ferie' ? (
+                                <span className="text-green-600 font-medium">Giorno di ferie</span>
+                            ) : detail.status === 'malattia' ? (
+                                <span className="text-red-600 font-medium">Giorno di malattia</span>
+                            ) : detail.status === 'mancata_timbratura' ? (
+                                <span className="text-yellow-600 font-medium">Nessuna timbratura registrata</span>
+                            ) : null}
                         </div>
-                        {detail.status === 'lavorato' && detail.shift && (
-                             <div className="pl-52 text-xs text-gray-500">
-                                <span>Previste: {detail.shift.contractualHours}h</span> | 
-                                <span>Lavorate: {formatMinutes(detail.shift.workedMinutes)}</span> | 
-                                <span>Ordinarie: {detail.shift.ordinaryHours}h</span> | 
-                                <span>Straordinario: {detail.shift.overtimeHours}h</span> | 
-                                <span>Permesso: {detail.shift.permissionHours}h</span>
-                             </div>
-                        )}
                     </div>
                 ))}
             </div>
@@ -109,19 +110,25 @@ export default function PrintPage() {
     useEffect(() => {
         const savedData = localStorage.getItem('printData');
         if (savedData) {
-            const parsedData = JSON.parse(savedData);
-            // Re-hydrate dates
-            parsedData.currentMonth = new Date(parsedData.currentMonth);
-            parsedData.dailyDetails.forEach((d: any) => {
-                d.date = new Date(d.date);
-                if (d.shift) {
-                    d.shift.events.forEach((e: any) => e.timestamp = new Timestamp(e.timestamp / 1000, 0).toDate());
-                }
-            });
-            setData(parsedData);
+            try {
+                const parsedData = JSON.parse(savedData);
+                // Re-hydrate dates
+                parsedData.currentMonth = new Date(parsedData.currentMonth);
+                parsedData.dailyDetails.forEach((d: any) => {
+                    d.date = new Date(d.date);
+                    if (d.shift) {
+                        // The timestamp is already a number from JSON
+                        d.shift.events.forEach((e: any) => e.timestamp = e.timestamp);
+                    }
+                });
+                setData(parsedData);
+            } catch (error) {
+                console.error("Failed to parse print data:", error);
+                toast({ title: "Errore", description: "Dati di stampa non validi.", variant: "destructive" });
+            }
         }
         setIsLoading(false);
-    }, []);
+    }, [toast]);
 
     const handlePrint = () => {
         window.print();
@@ -132,7 +139,7 @@ export default function PrintPage() {
         
         try {
             const canvas = await html2canvas(printRef.current, { useCORS: true, scale: 2 });
-            canvas.toBlob(async (blob) => {
+             canvas.toBlob(async (blob) => {
                 if (!blob) {
                     toast({ title: "Errore", description: "Impossibile creare l'immagine per la condivisione.", variant: "destructive" });
                     return;
@@ -169,6 +176,9 @@ export default function PrintPage() {
                     @media print {
                         .print-controls { display: none; }
                         body { background-color: #fff; }
+                        @page {
+                           margin: 0;
+                        }
                     }
                 `}</style>
                 <Button onClick={handlePrint}>
