@@ -163,7 +163,6 @@ export default function EndOfMonthPage() {
     const operatorId = params.operatorId as string;
     
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isSharing, setIsSharing] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
 
     const [operator, setOperator] = useState<Operator | null>(null);
@@ -412,24 +411,9 @@ export default function EndOfMonthPage() {
                             -webkit-print-color-adjust: exact;
                             color-adjust: exact;
                         }
-                        .print-controls {
-                            padding: 1rem;
-                            text-align: center;
-                        }
-                        .print-button {
-                            padding: 10px 20px;
-                            font-size: 16px;
-                            cursor: pointer;
-                            border: 1px solid #ccc;
-                            border-radius: 5px;
-                            margin: 20px;
-                            background-color: #f0f0f0;
-                        }
-                        @media print {
-                            .print-controls {
-                                display: none;
-                            }
-                        }
+                        .print-controls { padding: 1rem; text-align: center; }
+                        .print-button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: 1px solid #ccc; border-radius: 5px; margin: 5px; background-color: #f0f0f0; }
+                        @media print { .print-controls { display: none; } }
                         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
                         header img { width: 80px; height: 80px; }
                         header h1 { font-size: 1.5rem; font-weight: bold; }
@@ -461,72 +445,51 @@ export default function EndOfMonthPage() {
                         .text-yellow-600 { color: #d97706; }
                         .font-medium { font-weight: 500; }
                         .pl-52 { padding-left: 13rem; }
-                        .text-xs { font-size: 0.75rem; }
-                        .text-gray-500 { color: #6b7282; }
                     </style>
+                     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
                 </head>
                 <body>
                     <div class="print-controls">
                         <button class="print-button" onclick="window.print()">Stampa</button>
+                        <button class="print-button" id="share-btn">Condividi</button>
                     </div>
-                    ${printContent}
+                    <div id="print-area">
+                        ${printContent}
+                    </div>
+                    <script>
+                        document.getElementById('share-btn').addEventListener('click', async () => {
+                            const printArea = document.getElementById('print-area');
+                            if (!printArea) return;
+                            
+                            try {
+                                const canvas = await html2canvas(printArea, { useCORS: true, scale: 2 });
+                                canvas.toBlob(async (blob) => {
+                                    if (!blob) {
+                                        alert("Errore nella creazione dell'immagine.");
+                                        return;
+                                    }
+                                    const file = new File([blob], 'Riepilogo.png', { type: 'image/png' });
+                                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                                        await navigator.share({
+                                            files: [file],
+                                            title: 'Riepilogo Mensile',
+                                        });
+                                    } else {
+                                        alert("La condivisione non è supportata su questo browser.");
+                                    }
+                                }, 'image/png');
+                            } catch(e) {
+                                console.error(e);
+                                alert("Errore durante la condivisione.");
+                            }
+                        });
+                    <\/script>
                 </body>
             </html>
         `);
         printWindow.document.close();
         printWindow.focus();
     };
-
-    const handleShare = async () => {
-        if (!printRef.current) return;
-        setIsSharing(true);
-
-        try {
-            const canvas = await html2canvas(printRef.current, {
-                useCORS: true,
-                scale: 2, 
-            });
-
-            const pdf = new jsPDF({
-                orientation: 'p',
-                unit: 'mm',
-                format: 'a4'
-            });
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            const ratio = imgHeight / imgWidth;
-            const finalImgHeight = pdfWidth * ratio;
-
-            pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, finalImgHeight > pdfHeight ? pdfHeight : finalImgHeight);
-            const blob = pdf.output('blob');
-
-
-            if (!blob) {
-                throw new Error("Failed to create blob from canvas.");
-            }
-
-            const fileName = `Riepilogo_${operator?.username.replace(' ','_')}_${format(currentMonth, 'MM-yyyy')}.pdf`;
-            const file = new File([blob], fileName, { type: 'application/pdf' });
-
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: `Riepilogo ${operator?.username}`,
-                    text: `Ecco il riepilogo mensile per ${format(currentMonth, 'MMMM yyyy')}`,
-                });
-            } else {
-                alert("La condivisione di file non è supportata su questo browser.");
-            }
-        } catch (error) {
-            console.error("Sharing failed:", error);
-            alert("Errore durante la condivisione. Riprova.");
-        } finally {
-            setIsSharing(false);
-        }
-    };
-
 
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -557,11 +520,7 @@ export default function EndOfMonthPage() {
                         <div className="flex gap-2">
                             <Button onClick={handlePrint} disabled={isProcessing}>
                                 {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                                Stampa
-                            </Button>
-                            <Button onClick={handleShare} disabled={isSharing}>
-                                {isSharing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
-                                Condividi
+                                Stampa Riepilogo
                             </Button>
                          </div>
                     </div>
