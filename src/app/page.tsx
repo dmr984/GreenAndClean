@@ -11,34 +11,34 @@ export default function LoginPage() {
 
   // Effect to ensure default admin exists
   useEffect(() => {
-    if (!firestore || ranOnce.current) return;
-    ranOnce.current = true;
-    
-    const checkAndCreateAdmin = async () => {
-        try {
-            // Check if an admin user already exists by username "070380"
-            const docSnap = await getDocs(query(collection(firestore, 'app-users'), where('username', '==', '070380')));
+    if (ranOnce.current) return;
+    if (firestore) {
+      ranOnce.current = true;
+      const checkAndCreateAdmin = async () => {
+          try {
+              // Check if an admin user already exists by username "070380"
+              const docSnap = await getDocs(query(collection(firestore, 'app-users'), where('username', '==', '070380')));
 
-            if (docSnap.empty) {
-                 // If no admin user, create one with a known ID for consistency
-                 const adminId = "admin_user_default_id";
-                 const adminDocRef = doc(firestore, 'app-users', adminId);
-                 const adminData = {
-                    username: "070380",
-                    role: "admin" as const,
-                    firstName: "Admin",
-                    lastName: "User",
-                    workSchedule: {},
-                };
-                await setDoc(adminDocRef, adminData, { merge: true });
-            }
-        } catch (error) {
-            console.error("Error ensuring admin user exists:", error);
-        }
-    };
-    
-    checkAndCreateAdmin();
-
+              if (docSnap.empty) {
+                   // If no admin user, create one with a known ID for consistency
+                   const adminId = "admin_user_default_id";
+                   const adminDocRef = doc(firestore, 'app-users', adminId);
+                   const adminData = {
+                      username: "070380",
+                      role: "admin" as const,
+                      firstName: "Admin",
+                      lastName: "User",
+                      workSchedule: {},
+                  };
+                  await setDoc(adminDocRef, adminData, { merge: true });
+              }
+          } catch (error) {
+              console.error("Error ensuring admin user exists:", error);
+          }
+      };
+      
+      checkAndCreateAdmin();
+    }
   }, [firestore]);
 
 
@@ -49,9 +49,9 @@ export default function LoginPage() {
           <Image 
             src="https://i.postimg.cc/65yrLs79/1764198317777.png"
             alt="Serveco Logo" 
-            width={40} 
-            height={40} 
-            className="h-10 w-10 mx-auto rounded-full"
+            width={80} 
+            height={80} 
+            className="h-20 w-20 mx-auto rounded-full"
           />
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
