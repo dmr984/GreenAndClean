@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2 } from 'lucide-react';
@@ -87,7 +87,7 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
      <div ref={ref} className="bg-white text-black p-4 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
         <header className="flex justify-between items-center border-b pb-2 mb-2">
-             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={80} height={80} />
+             <Image src="https://i.postimg.cc/sDj6JrCf/IMG-20251006-WA0024-1.jpg" alt="Serveco Logo" width={80} height={80} crossOrigin="anonymous" />
              <div className="text-right">
                  <h1 className="text-2xl font-bold">{operator.username}</h1>
                  <p className="text-lg capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
@@ -125,7 +125,7 @@ const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, 
             <h3 className="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
             <div className="flex flex-col gap-0">
                 {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
-                    <div key={detail.date.toISOString()} className="border-b py-1 day-entry">
+                    <div key={detail.date.toISOString()} className="border-b py-1 day-entry" style={{ padding: '2px 0', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e5e7eb' }}>
                         <div className="flex items-center gap-4">
                             <span className="font-bold text-sm capitalize w-48">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</span>
                              <div className="text-sm text-gray-700 flex items-center">
@@ -402,12 +402,12 @@ export default function EndOfMonthPage() {
                 scale: 2,
                 useCORS: true, 
             });
-            const imgData = canvas.toDataURL('image/png');
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
             
             const pdf = new jsPDF('p', 'mm', 'a4');
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight);
             
             pdf.output('dataurlnewwindow');
 
