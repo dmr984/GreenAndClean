@@ -12,6 +12,7 @@ export default function LoginPage() {
   // Effect to ensure default admin exists
   useEffect(() => {
     if (!firestore || ranOnce.current) return;
+    ranOnce.current = true;
     
     const checkAndCreateAdmin = async () => {
         try {
@@ -37,7 +38,6 @@ export default function LoginPage() {
     };
     
     checkAndCreateAdmin();
-    ranOnce.current = true;
 
   }, [firestore]);
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-md gap-6 p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3 text-center">
           <Image 
-            src="https://i.postimg.cc/fRPgjjWB/1764197982092.png"
+            src="https://i.postimg.cc/65yrLs79/1764198317777.png"
             alt="Serveco Logo" 
             width={40} 
             height={40} 
