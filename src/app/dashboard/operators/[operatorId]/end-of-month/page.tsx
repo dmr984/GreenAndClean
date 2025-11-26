@@ -358,7 +358,7 @@ export default function EndOfMonthPage() {
                     
                     const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
                     const hoursText = `
-                         <span style="font-weight: 700; color: #6b7280;">Ore Previste:</span> ${shift.contractualHours}h | 
+                        <span style="font-weight: 700; color: #6b7280;">Ore Previste:</span> ${shift.contractualHours}h | 
                          <span style="font-weight: 700; color: #6b7280;">Ore Lavorate:</span> ${formatMinutes(shift.workedMinutes)} | 
                          <span style="font-weight: 700; color: #6b7280;">Ore Ordinarie:</span> ${shift.ordinaryHours}h | 
                          <span style="font-weight: 700; color: #6b7280;">Straordinario:</span> ${shift.overtimeHours}h | 
@@ -369,39 +369,34 @@ export default function EndOfMonthPage() {
                          <tr>
                             <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 <b style="color: #6b7280;">${dateText}</b>
+                                <br>
+                                <span style="font-size: 13px; font-weight: 500; color: #6b7280; text-transform: capitalize;">${statusText}</span>
                             </td>
                             <td style="vertical-align: top; font-size: 13px; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 ${timbratureText}
                                 <br>
-                                <div style="display: flex;">
-                                    <div style="min-width: 180px; font-size: 13px; font-weight: 500; color: #6b7280; text-transform: capitalize;">${statusText}</div>
-                                    <div>${hoursText}</div>
-                                </div>
+                                ${hoursText}
                             </td>
                         </tr>
                     `;
-
                 } else {
-                     let statusText = '';
-                     switch (detail.status) {
+                    let statusText = '';
+                    switch (detail.status) {
                         case 'ferie': statusText = 'Giorno di ferie'; break;
                         case 'malattia': statusText = 'Giorno di malattia'; break;
                         case 'mancata_timbratura': statusText = 'Nessuna timbratura registrata'; break;
                         default: statusText = '';
                     }
-                     contentHTML = `
+                    contentHTML = `
                         <tr>
                             <td colspan="2" style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
-                                <div>
-                                    <b style="color: #6b7280;">${dateText}</b>
-                                    <br>
-                                    <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
-                                </div>
+                                <b style="color: #6b7280;">${dateText}</b>
+                                <br>
+                                <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
                             </td>
                         </tr>
-                     `;
+                    `;
                 }
-
                 return contentHTML;
             }).join('');
 
@@ -428,14 +423,12 @@ export default function EndOfMonthPage() {
             `;
             
             const script = `
-                <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
                 <script>
                     function handlePrint() {
                         window.print();
                     }
-
                     async function handleShare() {
-                        const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm');
+                        const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
                         const printContent = document.getElementById('printable-content');
                         if (!printContent) return;
                         
