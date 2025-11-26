@@ -342,30 +342,24 @@ export default function EndOfMonthPage() {
                     switch (detail.status) {
                         case 'lavorato':
                             return detail.shift ? `
-                                <div>
-                                    <div style="font-size: 12px; color: #555;">
-                                        Entrata: ${detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | 
-                                        Uscita: ${detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
-                                    </div>
-                                    <div style="font-size: 12px; color: #333; margin-top: 4px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 8px;">
-                                        <span><b>Ore Previste:</b> ${detail.shift.contractualHours}h</span>
-                                        <span><b>Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
-                                        <span><b>Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
-                                        <span><b>Straordinario:</b> ${detail.shift.overtimeHours}h</span>
-                                        <span><b>Permesso:</b> ${detail.shift.permissionHours}h</span>
-                                    </div>
+                                <div style="font-size: 14px; color: #333; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Ore Previste:</b> ${detail.shift.contractualHours}h</span>
+                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
+                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
+                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Straordinario:</b> ${detail.shift.overtimeHours}h</span>
+                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Permesso:</b> ${detail.shift.permissionHours}h</span>
                                 </div>
                             ` : '';
-                        case 'ferie': return `<span style="color: #16a34a; font-weight: 500; font-size: 12px;">Giorno di ferie</span>`;
-                        case 'malattia': return `<span style="color: #dc2626; font-weight: 500; font-size: 12px;">Giorno di malattia</span>`;
-                        case 'mancata_timbratura': return `<span style="color: #d97706; font-weight: 500; font-size: 12px;">Nessuna timbratura registrata</span>`;
+                        case 'ferie': return `<span style="color: #16a34a; font-weight: 500; font-size: 14px;">Giorno di ferie</span>`;
+                        case 'malattia': return `<span style="color: #dc2626; font-weight: 500; font-size: 14px;">Giorno di malattia</span>`;
+                        case 'mancata_timbratura': return `<span style="color: #d97706; font-weight: 500; font-size: 14px;">Nessuna timbratura registrata</span>`;
                         default: return '';
                     }
                 };
                 return `
-                    <div style="border-bottom: 1px solid #e5e7eb; padding-top: 0.5rem; padding-bottom: 0.5rem; display: flex; align-items: center;">
-                        <div style="width: 33.3333%; font-weight: 700; text-transform: capitalize; font-size: 12px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                        <div style="width: 66.6667%;">
+                    <div style="border-bottom: 1px solid #e5e7eb; padding: 0.75rem 0; display: flex; flex-direction: column;">
+                        <div style="font-weight: 700; text-transform: capitalize; font-size: 14px; color: #374151;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                        <div>
                            ${dayStatus()}
                         </div>
                     </div>
@@ -377,13 +371,13 @@ export default function EndOfMonthPage() {
                     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
                          <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
-                             <h1 style="font-size: 1.875rem; font-weight: 700;">${operator?.username}</h1>
+                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #374151;">${operator?.username}</h1>
                              <p style="font-size: 1.25rem; text-transform: capitalize; color: #4b5563;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
                     <section>${summaryHTML}</section>
                     <section>
-                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem;">Dettaglio Giornaliero</h3>
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #374151;">Dettaglio Giornaliero</h3>
                         <div style="font-size: 1rem;">
                            ${detailsHTML}
                         </div>
@@ -408,27 +402,27 @@ export default function EndOfMonthPage() {
 
                         try {
                             const canvas = await html2canvas(printContent, { useCORS: true, allowTaint: true, scale: 2 });
+                            
                             const { jsPDF } = window.jspdf;
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
-                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
                             const finalImgHeight = pdfWidth / ratio;
-                            
+
                             let heightLeft = finalImgHeight;
                             let position = 0;
                             
                             pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
-                            heightLeft -= pdfHeight;
+                            heightLeft -= pdf.internal.pageSize.getHeight();
 
                             while (heightLeft > 0) {
                                 position = heightLeft - finalImgHeight;
                                 pdf.addPage();
                                 pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
-                                heightLeft -= pdfHeight;
+                                heightLeft -= pdf.internal.pageSize.getHeight();
                             }
                             
                             const blob = pdf.output('blob');
@@ -458,7 +452,7 @@ export default function EndOfMonthPage() {
                             const shareButton = document.getElementById('shareBtn');
                             if(printButton) printButton.disabled = false;
                             if(shareButton) shareButton.disabled = false;
-                        }, 1000); 
+                        }, 500); 
                     };
                 <\/script>
             `;
@@ -478,6 +472,7 @@ export default function EndOfMonthPage() {
                                 background-color: #f3f4f6; 
                                 font-family: 'PT Sans', sans-serif;
                              }
+                             b { color: #374151; font-weight: 600; }
                         </style>
                         ${script}
                     </head>
