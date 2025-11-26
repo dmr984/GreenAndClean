@@ -87,8 +87,6 @@ export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
     const operatorId = params.operatorId as string;
-    const printRef = useRef<HTMLDivElement>(null);
-    
     const [isProcessing, setIsProcessing] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -318,16 +316,67 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrintAndShare = () => {
-        if (isProcessing || !printRef.current) return;
+        if (isProcessing) return;
         setIsProcessing(true);
 
-        const content = printRef.current.innerHTML;
-        const newWindow = window.open('', '_blank', 'width=800,height=800');
+        const printWindow = window.open('', '_blank', 'width=800,height=800');
 
-        if (newWindow) {
+        if (printWindow) {
             const stylesheets = Array.from(document.styleSheets)
                 .map(sheet => sheet.href ? `<link rel="stylesheet" href="${sheet.href}">` : '')
                 .join('');
+
+            const content = `
+                <div class="bg-white text-black p-8 printable-summary" style="width: 210mm; min-height: 297mm; margin: auto;">
+                    <header class="flex justify-between items-center border-b-2 border-gray-300 pb-4 mb-4">
+                         <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
+                         <div class="text-right">
+                             <h1 class="text-3xl font-bold">${operator?.username}</h1>
+                             <p class="text-xl capitalize text-gray-600">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                         </div>
+                    </header>
+                    <section class="grid grid-cols-3 gap-4 mb-6 text-center">
+                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Giorni Lavorati</div><div class="text-2xl font-bold">${monthlySummary.workedDays}</div></div>
+                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Ordinarie</div><div class="text-2xl font-bold">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Straordinarie</div><div class="text-2xl font-bold">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ferie (giorni)</div><div class="text-2xl font-bold">${monthlySummary.ferieDays}</div></div>
+                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Permessi (ore)</div><div class="text-2xl font-bold">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Malattia (giorni)</div><div class="text-2xl font-bold">${monthlySummary.malattiaDays}</div></div>
+                    </section>
+                    <section>
+                        <h3 class="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
+                        <div class="text-xs">
+                            ${dailyDetails.filter(d => d.status !== 'riposo').map(detail => `
+                                <div class="border-b py-2 flex items-center">
+                                    <div class="w-1/3 font-bold capitalize">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                                    <div class="w-2/3">
+                                        ${detail.status === 'lavorato' && detail.shift ? `
+                                            <div>
+                                                <div class="font-semibold">
+                                                    Entrata: ${detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: ${detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
+                                                </div>
+                                                <div class="text-gray-600 text-[10px]">
+                                                    <span>Prev: ${detail.shift.contractualHours}h</span> | 
+                                                    <span> Lav: ${formatMinutes(detail.shift.workedMinutes)}</span> | 
+                                                    <span> Ord: ${detail.shift.ordinaryHours}h</span> | 
+                                                    <span> Straord: ${detail.shift.overtimeHours}h</span> | 
+                                                    <span> Perm: ${detail.shift.permissionHours}h</span>
+                                                </div>
+                                            </div>
+                                        ` : detail.status === 'ferie' ? `
+                                            <span class="text-green-600 font-medium">Giorno di ferie</span>
+                                        ` : detail.status === 'malattia' ? `
+                                            <span class="text-red-600 font-medium">Giorno di malattia</span>
+                                        ` : detail.status === 'mancata_timbratura' ? `
+                                            <span class="text-yellow-600 font-medium">Nessuna timbratura registrata</span>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </section>
+                </div>
+            `;
             
             const script = `
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
@@ -343,19 +392,35 @@ export default function EndOfMonthPage() {
                         printButton.style.display = 'none';
                         shareButton.style.display = 'none';
                         
-                        const { jsPDF } = window.jspdf;
-
                         try {
                              await new Promise(resolve => setTimeout(resolve, 500));
-                             const canvas = await html2canvas(document.getElementById('printable-content'), { useCORS: true, allowTaint: true });
-                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                             const canvas = await html2canvas(document.getElementById('printable-content'), { 
+                                useCORS: true, 
+                                allowTaint: true,
+                                scale: 2
+                             });
+                             
+                            const { jsPDF } = window.jspdf;
+                            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             const pdfWidth = pdf.internal.pageSize.getWidth();
-                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
-                            const finalImgHeight = pdfWidth / ratio;
-                            pdf.addImage(canvas, 'PNG', 0, 0, pdfWidth, finalImgHeight);
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
+                            let imgHeightOnPdf = pdfWidth / ratio;
+                            let heightLeft = imgHeightOnPdf;
+                            
+                            let position = 0;
+
+                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightOnPdf);
+                            heightLeft -= pdfHeight;
+
+                            while (heightLeft > 0) {
+                                position = heightLeft - imgHeightOnPdf;
+                                pdf.addPage();
+                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightOnPdf);
+                                heightLeft -= pdfHeight;
+                            }
                             
                             const blob = pdf.output('blob');
                             const file = new File([blob], 'Riepilogo.pdf', { type: 'application/pdf' });
@@ -380,13 +445,18 @@ export default function EndOfMonthPage() {
                     }
                     
                      window.onload = () => {
-                        document.getElementById('printBtn').disabled = false;
-                        document.getElementById('shareBtn').disabled = false;
+                        const printButton = document.getElementById('printBtn');
+                        const shareButton = document.getElementById('shareBtn');
+                        // Add a small delay to ensure all content (especially images) is rendered
+                        setTimeout(() => {
+                            if(printButton) printButton.disabled = false;
+                            if(shareButton) shareButton.disabled = false;
+                        }, 1000); 
                     };
                 <\/script>
             `;
 
-            newWindow.document.write(`
+            printWindow.document.write(`
                 <html>
                     <head>
                         <title>Riepilogo Mensile - ${operator?.username}</title>
@@ -412,7 +482,7 @@ export default function EndOfMonthPage() {
                 </html>
             `);
 
-            newWindow.document.close();
+            printWindow.document.close();
         }
         setIsProcessing(false);
     };
@@ -420,60 +490,6 @@ export default function EndOfMonthPage() {
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
-    
-    const renderPrintableContent = () => (
-         <div className="bg-white text-black p-8 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
-            <header className="flex justify-between items-center border-b-2 border-gray-300 pb-4 mb-4">
-                 <Image src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width={100} height={100} crossOrigin="anonymous" />
-                 <div className="text-right">
-                     <h1 className="text-3xl font-bold">{operator.username}</h1>
-                     <p className="text-xl capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
-                 </div>
-            </header>
-    
-            <section className="grid grid-cols-3 gap-4 mb-6 text-center">
-                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Giorni Lavorati</div><div className="text-2xl font-bold">{monthlySummary.workedDays}</div></div>
-                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Ore Ordinarie</div><div className="text-2xl font-bold">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
-                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Ore Straordinarie</div><div className="text-2xl font-bold">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
-                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Ferie (giorni)</div><div className="text-2xl font-bold">{monthlySummary.ferieDays}</div></div>
-                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Permessi (ore)</div><div className="text-2xl font-bold">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
-                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Malattia (giorni)</div><div className="text-2xl font-bold">{monthlySummary.malattiaDays}</div></div>
-            </section>
-    
-            <section>
-                <h3 className="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
-                <div className="text-xs">
-                    {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
-                        <div key={detail.date.toISOString()} className="border-b py-2 flex items-center">
-                            <div className="w-1/3 font-bold capitalize">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                            <div className="w-2/3">
-                                {detail.status === 'lavorato' && detail.shift ? (
-                                    <div>
-                                        <div className="font-semibold">
-                                            Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
-                                        </div>
-                                        <div className="text-gray-600 text-[10px]">
-                                            <span>Prev: {detail.shift.contractualHours}h</span> | 
-                                            <span> Lav: {formatMinutes(detail.shift.workedMinutes)}</span> | 
-                                            <span> Ord: {detail.shift.ordinaryHours}h</span> | 
-                                            <span> Straord: {detail.shift.overtimeHours}h</span> | 
-                                            <span> Perm: {detail.shift.permissionHours}h</span>
-                                        </div>
-                                    </div>
-                                ) : detail.status === 'ferie' ? (
-                                    <span className="text-green-600 font-medium">Giorno di ferie</span>
-                                ) : detail.status === 'malattia' ? (
-                                    <span className="text-red-600 font-medium">Giorno di malattia</span>
-                                ) : detail.status === 'mancata_timbratura' ? (
-                                    <span className="text-yellow-600 font-medium">Nessuna timbratura registrata</span>
-                                ) : null}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </section>
-        </div>
-    );
 
     return (
         <>
@@ -558,13 +574,6 @@ export default function EndOfMonthPage() {
                 </div>
             </CardContent>
         </Card>
-        
-        {/* Hidden div for printing */}
-        <div className="hidden">
-             <div ref={printRef}>
-                {renderPrintableContent()}
-             </div>
-        </div>
         </>
     );
 }
