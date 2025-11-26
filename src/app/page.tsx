@@ -1,16 +1,17 @@
 'use client';
 import Image from 'next/image';
 import LoginForm from '@/components/login-form';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDocs, query, collection, where, setDoc } from 'firebase/firestore';
 
 export default function LoginPage() {
   const firestore = useFirestore();
+  const ranOnce = useRef(false);
 
   // Effect to ensure default admin exists
   useEffect(() => {
-    if (!firestore) return;
+    if (!firestore || ranOnce.current) return;
     
     const checkAndCreateAdmin = async () => {
         try {
@@ -36,6 +37,7 @@ export default function LoginPage() {
     };
     
     checkAndCreateAdmin();
+    ranOnce.current = true;
 
   }, [firestore]);
 
