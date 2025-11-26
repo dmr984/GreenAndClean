@@ -105,6 +105,7 @@ export default function PrintPage() {
     const { toast } = useToast();
     const [data, setData] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -136,27 +137,50 @@ export default function PrintPage() {
 
     const handleShare = async () => {
         if (!printRef.current) return;
+        setIsProcessing(true);
         
         try {
-            const canvas = await html2canvas(printRef.current, { useCORS: true, scale: 2 });
+            // Add a small delay to ensure images are loaded
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            const canvas = await html2canvas(printRef.current, { 
+                useCORS: true, 
+                scale: 2,
+                logging: true,
+                allowTaint: true,
+             });
+
              canvas.toBlob(async (blob) => {
                 if (!blob) {
                     toast({ title: "Errore", description: "Impossibile creare l'immagine per la condivisione.", variant: "destructive" });
+                    setIsProcessing(false);
                     return;
                 }
+
                 const file = new File([blob], 'Riepilogo.png', { type: 'image/png' });
+                
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        files: [file],
-                        title: `Riepilogo Mensile - ${data.operator.username}`,
-                    });
+                    try {
+                        await navigator.share({
+                            files: [file],
+                            title: `Riepilogo Mensile - ${data.operator.username}`,
+                        });
+                    } catch (error) {
+                        // This catch block handles the case where the user cancels the share dialog
+                        console.log("Share action was cancelled or failed", error);
+                    }
                 } else {
-                    toast({ title: "Condivisione non supportata", description: "Il tuo browser non supporta la condivisione di file.", variant: "destructive"});
+                     // Fallback for desktop browsers: open image in a new tab
+                     const imageUrl = URL.createObjectURL(blob);
+                     window.open(imageUrl, '_blank');
                 }
+                 setIsProcessing(false);
             }, 'image/png');
+
         } catch(e) {
             console.error(e);
             toast({ title: "Errore durante la condivisione", description: "Si è verificato un problema tecnico.", variant: "destructive"});
+            setIsProcessing(false);
         }
     };
 
@@ -181,11 +205,12 @@ export default function PrintPage() {
                         }
                     }
                 `}</style>
-                <Button onClick={handlePrint}>
+                <Button onClick={handlePrint} disabled={isProcessing}>
                     <Printer className="mr-2 h-4 w-4" /> Stampa
                 </Button>
-                 <Button variant="outline" onClick={handleShare}>
-                    <Share2 className="mr-2 h-4 w-4" /> Condividi
+                 <Button variant="outline" onClick={handleShare} disabled={isProcessing}>
+                    {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Share2 className="mr-2 h-4 w-4" />}
+                     Condividi
                 </Button>
             </div>
             <PrintableSummary
