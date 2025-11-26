@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { Loader2, Share2, Printer } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Loader2, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import Image from 'next/image';
 import { usePrint } from '@/providers/print-provider';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 // Define types locally for this page
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -104,64 +102,9 @@ PrintableSummary.displayName = 'PrintableSummary';
 export default function PrintPage() {
     const { printData } = usePrint();
     const printRef = useRef<HTMLDivElement>(null);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     const handlePrint = () => {
         window.print();
-    };
-
-    const handleShare = async () => {
-        if (!printRef.current || !navigator.share) {
-             alert("La funzione di condivisione non è supportata su questo browser o dispositivo.");
-             return;
-        }
-
-        setIsGenerating(true);
-        try {
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            const canvas = await html2canvas(printRef.current, {
-                scale: 2,
-                useCORS: true, 
-                allowTaint: true 
-            });
-
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
-            const ratio = canvasWidth / canvasHeight;
-            const imgHeight = pdfWidth / ratio;
-            
-            pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, imgHeight > pdfHeight ? pdfHeight : imgHeight);
-            
-            const blob = pdf.output('blob');
-
-            if (!blob) {
-                throw new Error("Failed to generate PDF blob.");
-            }
-
-            const file = new File([blob], `Riepilogo-${printData.operator.username}-${format(new Date(printData.currentMonth), 'MM-yyyy')}.pdf`, {
-                type: 'application/pdf',
-            });
-            
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: `Riepilogo Mensile`,
-                    text: `Ecco il riepilogo per ${printData.operator.username} di ${format(new Date(printData.currentMonth), 'MMMM yyyy', { locale: it })}`,
-                });
-            } else {
-                 alert("La condivisione di file PDF non è supportata su questo browser.");
-            }
-
-        } catch (error) {
-            console.error("Error during share:", error);
-            alert("Si è verificato un errore durante la preparazione del file per la condivisione.");
-        } finally {
-            setIsGenerating(false);
-        }
     };
     
     if (!printData) {
@@ -199,13 +142,9 @@ export default function PrintPage() {
                         }
                     }
                 `}</style>
-                <Button onClick={handlePrint} disabled={isGenerating}>
+                <Button onClick={handlePrint}>
                     <Printer className="mr-2 h-4 w-4" />
                     Stampa
-                </Button>
-                 <Button onClick={handleShare} disabled={isGenerating} variant="outline">
-                    {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
-                    Condividi
                 </Button>
             </div>
             <PrintableSummary
