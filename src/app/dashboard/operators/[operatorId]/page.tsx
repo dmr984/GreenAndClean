@@ -138,6 +138,7 @@ export default function OperatorDetailPage() {
                 </Avatar>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">{operator.username}</h1>
+                    <p className="text-lg text-muted-foreground">{`${operator.firstName} ${operator.lastName}`}</p>
                     <p className="text-muted-foreground">{formatWorkSchedule(operator.workSchedule)}</p>
                 </div>
             </div>
