@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs, writeBatch } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -327,13 +327,13 @@ export default function EndOfMonthPage() {
                 .join('');
             
             const summaryHTML = `
-                <div class="grid grid-cols-3 gap-4 mb-6 text-center">
-                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Giorni Lavorati</div><div class="text-2xl font-bold">${monthlySummary.workedDays}</div></div>
-                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Ordinarie</div><div class="text-2xl font-bold">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
-                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Straordinarie</div><div class="text-2xl font-bold">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
-                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ferie (giorni)</div><div class="text-2xl font-bold">${monthlySummary.ferieDays}</div></div>
-                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Permessi (ore)</div><div class="text-2xl font-bold">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
-                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Malattia (giorni)</div><div class="text-2xl font-bold">${monthlySummary.malattiaDays}</div></div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; text-align: center;">
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Giorni Lavorati</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.workedDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Ore Ordinarie</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Ore Straordinarie</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Ferie (giorni)</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.ferieDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Permessi (ore)</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Malattia (giorni)</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.malattiaDays}</div></div>
                 </div>
             `;
             
@@ -343,28 +343,29 @@ export default function EndOfMonthPage() {
                         case 'lavorato':
                             return detail.shift ? `
                                 <div>
-                                    <div class="font-semibold text-sm">
-                                        Entrata: ${detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: ${detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
+                                    <div style="font-size: 12px; color: #555;">
+                                        Entrata: ${detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | 
+                                        Uscita: ${detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
                                     </div>
-                                    <div class="text-gray-700 text-xs mt-1">
-                                        <span class="font-semibold">Prev:</span> ${detail.shift.contractualHours}h | 
-                                        <span class="font-semibold">Lav:</span> ${formatMinutes(detail.shift.workedMinutes)} | 
-                                        <span class="font-semibold">Ord:</span> ${detail.shift.ordinaryHours}h | 
-                                        <span class="font-semibold">Straord:</span> ${detail.shift.overtimeHours}h | 
-                                        <span class="font-semibold">Perm:</span> ${detail.shift.permissionHours}h
+                                    <div style="font-size: 12px; color: #333; margin-top: 4px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 8px;">
+                                        <span><b>Ore Previste:</b> ${detail.shift.contractualHours}h</span>
+                                        <span><b>Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
+                                        <span><b>Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
+                                        <span><b>Straordinario:</b> ${detail.shift.overtimeHours}h</span>
+                                        <span><b>Permesso:</b> ${detail.shift.permissionHours}h</span>
                                     </div>
                                 </div>
                             ` : '';
-                        case 'ferie': return `<span class="text-green-600 font-medium text-sm">Giorno di ferie</span>`;
-                        case 'malattia': return `<span class="text-red-600 font-medium text-sm">Giorno di malattia</span>`;
-                        case 'mancata_timbratura': return `<span class="text-yellow-600 font-medium text-sm">Nessuna timbratura registrata</span>`;
+                        case 'ferie': return `<span style="color: #16a34a; font-weight: 500; font-size: 12px;">Giorno di ferie</span>`;
+                        case 'malattia': return `<span style="color: #dc2626; font-weight: 500; font-size: 12px;">Giorno di malattia</span>`;
+                        case 'mancata_timbratura': return `<span style="color: #d97706; font-weight: 500; font-size: 12px;">Nessuna timbratura registrata</span>`;
                         default: return '';
                     }
                 };
                 return `
-                    <div class="border-b py-2 flex items-center">
-                        <div class="w-1/3 font-bold capitalize text-sm">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                        <div class="w-2/3">
+                    <div style="border-bottom: 1px solid #e5e7eb; padding-top: 0.5rem; padding-bottom: 0.5rem; display: flex; align-items: center;">
+                        <div style="width: 33.3333%; font-weight: 700; text-transform: capitalize; font-size: 12px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                        <div style="width: 66.6667%;">
                            ${dayStatus()}
                         </div>
                     </div>
@@ -372,18 +373,18 @@ export default function EndOfMonthPage() {
             }).join('');
 
             const content = `
-                <div id="printable-content" class="bg-white text-black p-8 printable-summary" style="width: 210mm; min-height: 297mm; margin: auto;">
-                    <header class="flex justify-between items-center border-b-2 border-gray-300 pb-4 mb-4">
+                <div id="printable-content" style="background-color: white; color: black; padding: 2rem; width: 210mm; min-height: 297mm; margin: auto;">
+                    <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
                          <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
-                         <div class="text-right">
-                             <h1 class="text-3xl font-bold">${operator?.username}</h1>
-                             <p class="text-xl capitalize text-gray-600">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                         <div style="text-align: right;">
+                             <h1 style="font-size: 1.875rem; font-weight: 700;">${operator?.username}</h1>
+                             <p style="font-size: 1.25rem; text-transform: capitalize; color: #4b5563;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
                     <section>${summaryHTML}</section>
                     <section>
-                        <h3 class="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
-                        <div class="text-base">
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem;">Dettaglio Giornaliero</h3>
+                        <div style="font-size: 1rem;">
                            ${detailsHTML}
                         </div>
                     </section>
@@ -401,6 +402,9 @@ export default function EndOfMonthPage() {
                     async function handleShare() {
                         const printContent = document.getElementById('printable-content');
                         if (!printContent) return;
+                        
+                        document.getElementById('printBtn').disabled = true;
+                        document.getElementById('shareBtn').disabled = true;
 
                         try {
                             const canvas = await html2canvas(printContent, { useCORS: true, allowTaint: true, scale: 2 });
@@ -408,22 +412,23 @@ export default function EndOfMonthPage() {
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
-                            let imgHeightOnPdf = pdfWidth / ratio;
+                            const finalImgHeight = pdfWidth / ratio;
                             
-                            let heightLeft = imgHeightOnPdf;
+                            let heightLeft = finalImgHeight;
                             let position = 0;
-
-                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightOnPdf);
-                            heightLeft -= pdf.internal.pageSize.getHeight();
+                            
+                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
+                            heightLeft -= pdfHeight;
 
                             while (heightLeft > 0) {
-                                position = heightLeft - imgHeightOnPdf;
+                                position = heightLeft - finalImgHeight;
                                 pdf.addPage();
-                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightOnPdf);
-                                heightLeft -= pdf.internal.pageSize.getHeight();
+                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
+                                heightLeft -= pdfHeight;
                             }
                             
                             const blob = pdf.output('blob');
@@ -441,13 +446,16 @@ export default function EndOfMonthPage() {
                         } catch (error) {
                             console.error('Error sharing:', error);
                             alert('Impossibile condividere il file PDF.');
+                        } finally {
+                           document.getElementById('printBtn').disabled = false;
+                           document.getElementById('shareBtn').disabled = false;
                         }
                     }
                     
-                     window.onload = () => {
-                        const printButton = document.getElementById('printBtn');
-                        const shareButton = document.getElementById('shareBtn');
+                    window.onload = () => {
                         setTimeout(() => {
+                            const printButton = document.getElementById('printBtn');
+                            const shareButton = document.getElementById('shareBtn');
                             if(printButton) printButton.disabled = false;
                             if(shareButton) shareButton.disabled = false;
                         }, 1000); 
@@ -462,20 +470,21 @@ export default function EndOfMonthPage() {
                         ${stylesheets}
                         <style>
                             @import url('https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap');
-                            @media print { .no-print { display: none !important; } }
+                            @media print { 
+                                .no-print { display: none !important; } 
+                                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                            }
                             body { 
-                                background-color: #fff; 
-                                color: #000;
+                                background-color: #f3f4f6; 
                                 font-family: 'PT Sans', sans-serif;
                              }
-                             .printable-summary-container { padding: 1rem; }
                         </style>
                         ${script}
                     </head>
                     <body>
-                        <div class="no-print" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc; display: flex; justify-content: center; gap: 1rem;">
+                        <div class="no-print" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc; background-color: #fff; display: flex; justify-content: center; gap: 1rem;">
                             <button id="printBtn" onclick="handlePrint()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Stampa</button>
-                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Condividi</button>
+                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Condividi PDF</button>
                         </div>
                         ${content}
                     </body>
