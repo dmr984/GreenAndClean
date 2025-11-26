@@ -343,8 +343,8 @@ export default function EndOfMonthPage() {
 
                 if (detail.status === 'lavorato' && detail.shift) {
                     const { shift } = detail;
-                     let statusText = '';
-                     if (shift.isPureOvertime) {
+                    let statusText = '';
+                    if (shift.isPureOvertime) {
                         statusText = 'Straordinario';
                     } else if (shift.ordinaryHours > 0 && shift.overtimeHours > 0) {
                         statusText = 'Ordinario / Straordinario';
@@ -357,11 +357,11 @@ export default function EndOfMonthPage() {
                     const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
                     
                     const hoursText = `
-                        <span><b>Ore Previste:</b> ${shift.contractualHours}h</span> | 
-                        <span><b>Ore Lavorate:</b> ${formatMinutes(shift.workedMinutes)}</span> | 
-                        <span><b>Ore Ordinarie:</b> ${shift.ordinaryHours}h</span> | 
-                        <span><b>Straordinario:</b> ${shift.overtimeHours}h</span> | 
-                        <span><b>Permesso:</b> ${shift.permissionHours}h</span>
+                        <span style="font-weight: 600; color: #6b7280;">Ore Previste:</span> ${shift.contractualHours}h | 
+                        <span style="font-weight: 600; color: #6b7280;">Ore Lavorate:</span> ${formatMinutes(shift.workedMinutes)} | 
+                        <span style="font-weight: 600; color: #6b7280;">Ore Ordinarie:</span> ${shift.ordinaryHours}h | 
+                        <span style="font-weight: 600; color: #6b7280;">Straordinario:</span> ${shift.overtimeHours}h | 
+                        <span style="font-weight: 600; color: #6b7280;">Permesso:</span> ${shift.permissionHours}h
                     `;
 
                     contentHTML = `
@@ -436,23 +436,21 @@ export default function EndOfMonthPage() {
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
-                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             
                             const imgProps = pdf.getImageProperties(canvas);
-                            const imgWidth = pdfWidth;
-                            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+                            const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
                             let heightLeft = imgHeight;
                             let position = 0;
 
-                            pdf.addImage(canvas, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-                            heightLeft -= pdfHeight;
+                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
+                            heightLeft -= pdf.internal.pageSize.getHeight();
 
                             while (heightLeft > 0) {
                                 position = heightLeft - imgHeight;
                                 pdf.addPage();
-                                pdf.addImage(canvas, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-                                heightLeft -= pdfHeight;
+                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
+                                heightLeft -= pdf.internal.pageSize.getHeight();
                             }
                             
                             const blob = pdf.output('blob');
@@ -502,7 +500,6 @@ export default function EndOfMonthPage() {
                                 background-color: #f3f4f6; 
                                 font-family: 'PT Sans', sans-serif;
                              }
-                             b { color: #6b7280; font-weight: 600; }
                         </style>
                         ${script}
                     </head>
