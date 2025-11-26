@@ -328,12 +328,12 @@ export default function EndOfMonthPage() {
             
             const summaryHTML = `
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; text-align: center;">
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Giorni Lavorati</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.workedDays}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Ore Ordinarie</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Ore Straordinarie</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Ferie (giorni)</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.ferieDays}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Permessi (ore)</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #4b5563;">Malattia (giorni)</div><div style="font-size: 1.5rem; font-weight: 700;">${monthlySummary.malattiaDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Giorni Lavorati</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.workedDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Ore Ordinarie</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Ore Straordinarie</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Ferie (giorni)</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.ferieDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Permessi (ore)</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Malattia (giorni)</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.malattiaDays}</div></div>
                 </div>
             `;
             
@@ -342,25 +342,25 @@ export default function EndOfMonthPage() {
                     switch (detail.status) {
                         case 'lavorato':
                             return detail.shift ? `
-                                <div style="font-size: 14px; color: #333; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 0.75rem;">
-                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Ore Previste:</b> ${detail.shift.contractualHours}h</span>
-                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
-                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
-                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Straordinario:</b> ${detail.shift.overtimeHours}h</span>
-                                    <span style="white-space: nowrap;"><b style="color: #374151; font-weight: 600;">Permesso:</b> ${detail.shift.permissionHours}h</span>
+                                <div style="font-size: 14px; color: #333; margin-top: 4px;">
+                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Previste:</b> ${detail.shift.contractualHours}h</span>
+                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
+                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
+                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Straordinario:</b> ${detail.shift.overtimeHours}h</span>
+                                    <span style="white-space: nowrap;"><b style="color: #6b7280; font-weight: 600;">Permesso:</b> ${detail.shift.permissionHours}h</span>
                                 </div>
                             ` : '';
-                        case 'ferie': return `<span style="color: #16a34a; font-weight: 500; font-size: 14px;">Giorno di ferie</span>`;
-                        case 'malattia': return `<span style="color: #dc2626; font-weight: 500; font-size: 14px;">Giorno di malattia</span>`;
-                        case 'mancata_timbratura': return `<span style="color: #d97706; font-weight: 500; font-size: 14px;">Nessuna timbratura registrata</span>`;
+                        case 'ferie': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Giorno di ferie</span>`;
+                        case 'malattia': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Giorno di malattia</span>`;
+                        case 'mancata_timbratura': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Nessuna timbratura registrata</span>`;
                         default: return '';
                     }
                 };
                 return `
                     <div style="border-bottom: 1px solid #e5e7eb; padding: 0.75rem 0; display: flex; flex-direction: column;">
-                        <div style="font-weight: 700; text-transform: capitalize; font-size: 14px; color: #374151;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                        <div>
-                           ${dayStatus()}
+                        <div style="display: flex; align-items: baseline;">
+                             <div style="font-weight: 700; color: #6b7280; text-transform: capitalize; font-size: 14px; min-width: 180px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                             ${dayStatus()}
                         </div>
                     </div>
                 `;
@@ -371,13 +371,13 @@ export default function EndOfMonthPage() {
                     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
                          <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
-                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #374151;">${operator?.username}</h1>
-                             <p style="font-size: 1.25rem; text-transform: capitalize; color: #4b5563;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.username}</h1>
+                             <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
                     <section>${summaryHTML}</section>
                     <section>
-                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #374151;">Dettaglio Giornaliero</h3>
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #6b7280;">Dettaglio Giornaliero</h3>
                         <div style="font-size: 1rem;">
                            ${detailsHTML}
                         </div>
@@ -411,7 +411,7 @@ export default function EndOfMonthPage() {
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
                             const finalImgHeight = pdfWidth / ratio;
-
+                            
                             let heightLeft = finalImgHeight;
                             let position = 0;
                             
@@ -419,12 +419,12 @@ export default function EndOfMonthPage() {
                             heightLeft -= pdf.internal.pageSize.getHeight();
 
                             while (heightLeft > 0) {
-                                position = heightLeft - finalImgHeight;
+                                position = heightLeft - finalImgHeight; // Re-calculate position
                                 pdf.addPage();
                                 pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
                                 heightLeft -= pdf.internal.pageSize.getHeight();
                             }
-                            
+
                             const blob = pdf.output('blob');
                             const file = new File([blob], 'Riepilogo.pdf', { type: 'application/pdf' });
 
@@ -447,6 +447,7 @@ export default function EndOfMonthPage() {
                     }
                     
                     window.onload = () => {
+                         // A small delay to ensure all content, especially images, is loaded.
                         setTimeout(() => {
                             const printButton = document.getElementById('printBtn');
                             const shareButton = document.getElementById('shareBtn');
@@ -465,21 +466,21 @@ export default function EndOfMonthPage() {
                         <style>
                             @import url('https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap');
                             @media print { 
-                                .no-print { display: none !important; } 
+                                #controls { display: none !important; } 
                                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                             }
                             body { 
                                 background-color: #f3f4f6; 
                                 font-family: 'PT Sans', sans-serif;
                              }
-                             b { color: #374151; font-weight: 600; }
+                             b { color: #6b7280; font-weight: 600; }
                         </style>
                         ${script}
                     </head>
                     <body>
-                        <div class="no-print" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc; background-color: #fff; display: flex; justify-content: center; gap: 1rem;">
+                        <div id="controls" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc; background-color: #fff; display: flex; justify-content: center; gap: 1rem;">
                             <button id="printBtn" onclick="handlePrint()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Stampa</button>
-                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Condividi PDF</button>
+                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Condividi</button>
                         </div>
                         ${content}
                     </body>
