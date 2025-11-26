@@ -325,9 +325,54 @@ export default function EndOfMonthPage() {
             const stylesheets = Array.from(document.styleSheets)
                 .map(sheet => sheet.href ? `<link rel="stylesheet" href="${sheet.href}">` : '')
                 .join('');
+            
+            const summaryHTML = `
+                <div class="grid grid-cols-3 gap-4 mb-6 text-center">
+                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Giorni Lavorati</div><div class="text-2xl font-bold">${monthlySummary.workedDays}</div></div>
+                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Ordinarie</div><div class="text-2xl font-bold">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Straordinarie</div><div class="text-2xl font-bold">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ferie (giorni)</div><div class="text-2xl font-bold">${monthlySummary.ferieDays}</div></div>
+                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Permessi (ore)</div><div class="text-2xl font-bold">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                    <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Malattia (giorni)</div><div class="text-2xl font-bold">${monthlySummary.malattiaDays}</div></div>
+                </div>
+            `;
+            
+            const detailsHTML = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
+                const dayStatus = () => {
+                    switch (detail.status) {
+                        case 'lavorato':
+                            return detail.shift ? `
+                                <div>
+                                    <div class="font-semibold text-sm">
+                                        Entrata: ${detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: ${detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
+                                    </div>
+                                    <div class="text-gray-700 text-xs mt-1">
+                                        <span class="font-semibold">Prev:</span> ${detail.shift.contractualHours}h | 
+                                        <span class="font-semibold">Lav:</span> ${formatMinutes(detail.shift.workedMinutes)} | 
+                                        <span class="font-semibold">Ord:</span> ${detail.shift.ordinaryHours}h | 
+                                        <span class="font-semibold">Straord:</span> ${detail.shift.overtimeHours}h | 
+                                        <span class="font-semibold">Perm:</span> ${detail.shift.permissionHours}h
+                                    </div>
+                                </div>
+                            ` : '';
+                        case 'ferie': return `<span class="text-green-600 font-medium text-sm">Giorno di ferie</span>`;
+                        case 'malattia': return `<span class="text-red-600 font-medium text-sm">Giorno di malattia</span>`;
+                        case 'mancata_timbratura': return `<span class="text-yellow-600 font-medium text-sm">Nessuna timbratura registrata</span>`;
+                        default: return '';
+                    }
+                };
+                return `
+                    <div class="border-b py-2 flex items-center">
+                        <div class="w-1/3 font-bold capitalize text-sm">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                        <div class="w-2/3">
+                           ${dayStatus()}
+                        </div>
+                    </div>
+                `;
+            }).join('');
 
             const content = `
-                <div class="bg-white text-black p-8 printable-summary" style="width: 210mm; min-height: 297mm; margin: auto;">
+                <div id="printable-content" class="bg-white text-black p-8 printable-summary" style="width: 210mm; min-height: 297mm; margin: auto;">
                     <header class="flex justify-between items-center border-b-2 border-gray-300 pb-4 mb-4">
                          <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div class="text-right">
@@ -335,91 +380,50 @@ export default function EndOfMonthPage() {
                              <p class="text-xl capitalize text-gray-600">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
-                    <section class="grid grid-cols-3 gap-4 mb-6 text-center">
-                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Giorni Lavorati</div><div class="text-2xl font-bold">${monthlySummary.workedDays}</div></div>
-                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Ordinarie</div><div class="text-2xl font-bold">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
-                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ore Straordinarie</div><div class="text-2xl font-bold">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
-                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Ferie (giorni)</div><div class="text-2xl font-bold">${monthlySummary.ferieDays}</div></div>
-                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Permessi (ore)</div><div class="text-2xl font-bold">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
-                        <div class="border rounded-lg p-3"><div class="text-sm text-gray-600">Malattia (giorni)</div><div class="text-2xl font-bold">${monthlySummary.malattiaDays}</div></div>
-                    </section>
+                    <section>${summaryHTML}</section>
                     <section>
                         <h3 class="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
-                        <div class="text-xs">
-                            ${dailyDetails.filter(d => d.status !== 'riposo').map(detail => `
-                                <div class="border-b py-2 flex items-center">
-                                    <div class="w-1/3 font-bold capitalize">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                                    <div class="w-2/3">
-                                        ${detail.status === 'lavorato' && detail.shift ? `
-                                            <div>
-                                                <div class="font-semibold">
-                                                    Entrata: ${detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: ${detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
-                                                </div>
-                                                <div class="text-gray-600 text-[10px]">
-                                                    <span>Prev: ${detail.shift.contractualHours}h</span> | 
-                                                    <span> Lav: ${formatMinutes(detail.shift.workedMinutes)}</span> | 
-                                                    <span> Ord: ${detail.shift.ordinaryHours}h</span> | 
-                                                    <span> Straord: ${detail.shift.overtimeHours}h</span> | 
-                                                    <span> Perm: ${detail.shift.permissionHours}h</span>
-                                                </div>
-                                            </div>
-                                        ` : detail.status === 'ferie' ? `
-                                            <span class="text-green-600 font-medium">Giorno di ferie</span>
-                                        ` : detail.status === 'malattia' ? `
-                                            <span class="text-red-600 font-medium">Giorno di malattia</span>
-                                        ` : detail.status === 'mancata_timbratura' ? `
-                                            <span class="text-yellow-600 font-medium">Nessuna timbratura registrata</span>
-                                        ` : ''}
-                                    </div>
-                                </div>
-                            `).join('')}
+                        <div class="text-base">
+                           ${detailsHTML}
                         </div>
                     </section>
                 </div>
             `;
             
             const script = `
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+                <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
+                <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
                 <script>
                     function handlePrint() {
                         window.print();
                     }
 
                     async function handleShare() {
-                        const printButton = document.getElementById('printBtn');
-                        const shareButton = document.getElementById('shareBtn');
-                        printButton.style.display = 'none';
-                        shareButton.style.display = 'none';
-                        
+                        const printContent = document.getElementById('printable-content');
+                        if (!printContent) return;
+
                         try {
-                             await new Promise(resolve => setTimeout(resolve, 500));
-                             const canvas = await html2canvas(document.getElementById('printable-content'), { 
-                                useCORS: true, 
-                                allowTaint: true,
-                                scale: 2
-                             });
-                             
+                            const canvas = await html2canvas(printContent, { useCORS: true, allowTaint: true, scale: 2 });
                             const { jsPDF } = window.jspdf;
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                            
                             const pdfWidth = pdf.internal.pageSize.getWidth();
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
-                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             let imgHeightOnPdf = pdfWidth / ratio;
-                            let heightLeft = imgHeightOnPdf;
                             
+                            let heightLeft = imgHeightOnPdf;
                             let position = 0;
 
                             pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightOnPdf);
-                            heightLeft -= pdfHeight;
+                            heightLeft -= pdf.internal.pageSize.getHeight();
 
                             while (heightLeft > 0) {
                                 position = heightLeft - imgHeightOnPdf;
                                 pdf.addPage();
                                 pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightOnPdf);
-                                heightLeft -= pdfHeight;
+                                heightLeft -= pdf.internal.pageSize.getHeight();
                             }
                             
                             const blob = pdf.output('blob');
@@ -434,20 +438,15 @@ export default function EndOfMonthPage() {
                             } else {
                                 alert('La condivisione di file non è supportata su questo browser.');
                             }
-
                         } catch (error) {
                             console.error('Error sharing:', error);
-                            alert('Impossibile condividere il file.');
-                        } finally {
-                           printButton.style.display = 'inline-block';
-                           shareButton.style.display = 'inline-block';
+                            alert('Impossibile condividere il file PDF.');
                         }
                     }
                     
                      window.onload = () => {
                         const printButton = document.getElementById('printBtn');
                         const shareButton = document.getElementById('shareBtn');
-                        // Add a small delay to ensure all content (especially images) is rendered
                         setTimeout(() => {
                             if(printButton) printButton.disabled = false;
                             if(shareButton) shareButton.disabled = false;
@@ -462,22 +461,23 @@ export default function EndOfMonthPage() {
                         <title>Riepilogo Mensile - ${operator?.username}</title>
                         ${stylesheets}
                         <style>
+                            @import url('https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap');
                             @media print { .no-print { display: none !important; } }
                             body { 
                                 background-color: #fff; 
                                 color: #000;
-                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                                font-family: 'PT Sans', sans-serif;
                              }
                              .printable-summary-container { padding: 1rem; }
                         </style>
                         ${script}
                     </head>
                     <body>
-                        <div class="no-print" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc;">
-                            <button id="printBtn" onclick="handlePrint()" disabled style="padding: 8px 16px; font-size: 16px; margin-right: 10px;">Stampa</button>
-                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px;">Condividi</button>
+                        <div class="no-print" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc; display: flex; justify-content: center; gap: 1rem;">
+                            <button id="printBtn" onclick="handlePrint()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Stampa</button>
+                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">Condividi</button>
                         </div>
-                        <div id="printable-content">${content}</div>
+                        ${content}
                     </body>
                 </html>
             `);
