@@ -1,8 +1,44 @@
 'use client';
 import Image from 'next/image';
 import LoginForm from '@/components/login-form';
+import { useEffect } from 'react';
+import { useFirestore } from '@/firebase';
+import { doc, getDocs, query, collection, where, setDoc } from 'firebase/firestore';
 
 export default function LoginPage() {
+  const firestore = useFirestore();
+
+  // Effect to ensure default admin exists
+  useEffect(() => {
+    if (!firestore) return;
+    
+    const checkAndCreateAdmin = async () => {
+        try {
+            // Check if an admin user already exists by username
+            const docSnap = await getDocs(query(collection(firestore, 'app-users'), where('username', '==', 'admin')));
+
+            if (docSnap.empty) {
+                 // If no admin user, create one with a known ID for consistency
+                 const adminId = "admin_user_default_id";
+                 const adminDocRef = doc(firestore, 'app-users', adminId);
+                 const adminData = {
+                    username: "admin",
+                    role: "admin" as const,
+                    firstName: "Admin",
+                    lastName: "User",
+                    workSchedule: {},
+                };
+                await setDoc(adminDocRef, adminData, { merge: true });
+            }
+        } catch (error) {
+            console.error("Error ensuring admin user exists:", error);
+        }
+    };
+    
+    checkAndCreateAdmin();
+
+  }, [firestore]);
+
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">

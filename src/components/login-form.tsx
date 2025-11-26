@@ -23,36 +23,6 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [operatorCode, setOperatorCode] = useState('');
 
-  // Effect to ensure default admin exists
-  useEffect(() => {
-    if (!firestore) return;
-    
-    const checkAndCreateAdmin = async () => {
-        try {
-            const adminId = "admin_user";
-            const adminDocRef = doc(firestore, 'app-users', adminId);
-            const docSnap = await getDocs(query(collection(firestore, 'app-users'), where('username', '==', 'admin')));
-
-            if (docSnap.empty) {
-                 const adminData = {
-                    username: "admin",
-                    role: "admin" as const,
-                    firstName: "Admin",
-                    lastName: "User",
-                    workSchedule: {},
-                };
-                await setDoc(adminDocRef, adminData, { merge: true });
-            }
-        } catch (error) {
-            console.error("Error ensuring admin user exists:", error);
-        }
-    };
-    
-    checkAndCreateAdmin();
-
-  }, [firestore]);
-
-
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
