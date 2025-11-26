@@ -340,9 +340,11 @@ export default function EndOfMonthPage() {
             
             const detailsHTML = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                 let contentHTML = '';
+                 const dateText = `<b style="color: #6b7280;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</b>`;
 
                 if (detail.status === 'lavorato' && detail.shift) {
                     const { shift } = detail;
+                    
                     let statusText = '';
                     if (shift.isPureOvertime) {
                         statusText = 'Straordinario';
@@ -353,9 +355,8 @@ export default function EndOfMonthPage() {
                     } else {
                         statusText = 'Lavorativo';
                     }
-
-                    const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
                     
+                    const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
                     const hoursText = `
                         <span style="font-weight: 600; color: #6b7280;">Ore Previste:</span> ${shift.contractualHours}h | 
                         <span style="font-weight: 600; color: #6b7280;">Ore Lavorate:</span> ${formatMinutes(shift.workedMinutes)} | 
@@ -365,16 +366,16 @@ export default function EndOfMonthPage() {
                     `;
 
                     contentHTML = `
-                        <div style="flex-grow: 1; margin-left: 1rem;">
-                            <div style="font-weight: 500; font-size: 13px;">${timbratureText}</div>
-                            <div style="display: flex; margin-top: 4px;">
-                                <div style="min-width: 180px; font-weight: 600; color: #6b7280; font-size: 13px;">${statusText}</div>
-                                <div style="flex-grow: 1; margin-left: 1rem; font-size: 13px; color: #6b7280;">
-                                    ${hoursText}
-                                </div>
-                            </div>
-                        </div>
+                         <tr>
+                            <td style="width: 200px; vertical-align: top; font-size: 14px; text-transform: capitalize;">${dateText}</td>
+                            <td style="vertical-align: top; font-size: 13px;">${timbratureText}</td>
+                        </tr>
+                        <tr>
+                            <td style="width: 200px; vertical-align: top; font-weight: 600; color: #6b7280; font-size: 13px; padding-bottom: 0.75rem;">${statusText}</td>
+                            <td style="vertical-align: top; font-size: 13px; color: #6b7280; padding-bottom: 0.75rem;">${hoursText}</td>
+                        </tr>
                     `;
+
                 } else {
                      let statusText = '';
                      switch (detail.status) {
@@ -383,18 +384,17 @@ export default function EndOfMonthPage() {
                         case 'mancata_timbratura': statusText = 'Nessuna timbratura registrata'; break;
                         default: statusText = '';
                     }
-                    contentHTML = `<div style="flex-grow: 1; margin-left: 1rem;"><span style="font-weight: 500; font-size: 14px; color: #6b7280;">${statusText}</span></div>`;
+                     contentHTML = `
+                        <tr>
+                            <td style="width: 200px; vertical-align: top; font-size: 14px; text-transform: capitalize;">${dateText}</td>
+                            <td style="vertical-align: top; font-weight: 500; font-size: 14px; color: #6b7280; padding-bottom: 0.75rem;">${statusText}</td>
+                        </tr>
+                     `;
                 }
 
-                return `
-                    <div style="border-bottom: 1px solid #e5e7eb; padding: 0.75rem 0;">
-                         <div style="display: flex; align-items: flex-start;">
-                            <div style="font-weight: 700; color: #6b7280; text-transform: capitalize; font-size: 14px; min-width: 180px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                            ${contentHTML}
-                         </div>
-                    </div>
-                `;
-            }).join('');
+                return contentHTML;
+            }).join('<tr style="border-bottom: 1px solid #e5e7eb; height: 10px;"><td colspan="2"></td></tr>');
+
 
             const content = `
                 <div id="printable-content" style="background-color: white; color: black; padding: 2rem; width: 210mm; min-height: 297mm; margin: auto;">
@@ -408,9 +408,11 @@ export default function EndOfMonthPage() {
                     <section>${summaryHTML}</section>
                     <section>
                         <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #6b7280;">Dettaglio Giornaliero</h3>
-                        <div style="font-size: 1rem;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                          <tbody>
                            ${detailsHTML}
-                        </div>
+                          </tbody>
+                        </table>
                     </section>
                 </div>
             `;
@@ -436,6 +438,7 @@ export default function EndOfMonthPage() {
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             
                             const imgProps = pdf.getImageProperties(canvas);
                             const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
@@ -444,13 +447,13 @@ export default function EndOfMonthPage() {
                             let position = 0;
 
                             pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-                            heightLeft -= pdf.internal.pageSize.getHeight();
+                            heightLeft -= pdfHeight;
 
                             while (heightLeft > 0) {
                                 position = heightLeft - imgHeight;
                                 pdf.addPage();
                                 pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-                                heightLeft -= pdf.internal.pageSize.getHeight();
+                                heightLeft -= pdfHeight;
                             }
                             
                             const blob = pdf.output('blob');
@@ -499,6 +502,9 @@ export default function EndOfMonthPage() {
                             body { 
                                 background-color: #f3f4f6; 
                                 font-family: 'PT Sans', sans-serif;
+                             }
+                             table, tr, td {
+                                 border-collapse: collapse;
                              }
                         </style>
                         ${script}
