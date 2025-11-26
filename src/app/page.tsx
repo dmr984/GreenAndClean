@@ -39,19 +39,19 @@ export default function LoginPage() {
       
       checkAndCreateAdmin();
     }
-  }, [firestore]);
+  }, []);
 
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="mx-auto grid w-full max-w-md gap-6 p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3 text-center">
-          <Image 
+          <Image
             src="https://i.postimg.cc/65yrLs79/1764198317777.png"
-            alt="Serveco Logo" 
-            width={80} 
-            height={80} 
-            className="h-20 w-20 mx-auto rounded-full"
+            alt="Serveco Logo"
+            width={160}
+            height={160}
+            className="h-40 w-40 mx-auto rounded-full"
           />
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
