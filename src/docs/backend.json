@@ -1,0 +1,349 @@
+
+{
+  "entities": {
+    "Operator": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Operator",
+      "type": "object",
+      "description": "Represents a cleaning operator within the WorkForce Hub application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Operator entity."
+        },
+        "username": {
+          "type": "string",
+          "description": "The unique operator code used for login."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The first name of the cleaning operator."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The last name of the cleaning operator."
+        },
+        "workSchedule": {
+            "type": "object",
+            "description": "The contractual work schedule for the operator, mapping days to hours.",
+            "properties": {
+                "monday": { "type": "number" },
+                "tuesday": { "type": "number" },
+                "wednesday": { "type": "number" },
+                "thursday": { "type": "number" },
+                "friday": { "type": "number" },
+                "saturday": { "type": "number" },
+                "sunday": { "type": "number" }
+            }
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "firstName",
+        "lastName",
+        "workSchedule"
+      ]
+    },
+    "Admin": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Admin",
+      "type": "object",
+      "description": "Represents an administrator within the WorkForce Hub application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Admin entity."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The first name of the administrator."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The last name of the administrator."
+        }
+      },
+      "required": [
+        "id",
+        "firstName",
+        "lastName"
+      ]
+    },
+    "Timbratura": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Timbratura",
+      "type": "object",
+      "description": "Represents a single clock-in/out event.",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who made the clocking event."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The exact date and time of the clocking event."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["entrata", "pausa", "fine_pausa", "uscita"],
+          "description": "The type of clocking event."
+        },
+        "latitude": {
+          "type": "number",
+          "description": "The latitude of the location where the event occurred."
+        },
+        "longitude": {
+          "type": "number",
+          "description": "The longitude of the location where the event occurred."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["sospesa", "confermata", "rifiutata"],
+          "description": "The approval status of the clocking event."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
+        }
+      },
+      "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
+    },
+    "Straordinario": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Straordinario",
+        "type": "object",
+        "description": "Represents a single overtime shift performed on a non-working day.",
+        "properties": {
+            "userId": { "type": "string" },
+            "date": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "enum": ["in_corso", "in_attesa_di_approvazione", "approvato", "rifiutato"] },
+            "events": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": { "type": "string", "enum": ["entrata", "pausa", "fine_pausa", "uscita"] },
+                        "timestamp": { "type": "string", "format": "date-time" }
+                    },
+                    "required": ["type", "timestamp"]
+                }
+            }
+        },
+        "required": ["userId", "date", "status", "events"]
+    },
+     "Request": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Request",
+      "type": "object",
+      "description": "Represents a user request for leave, overtime, etc.",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user making the request."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ferie", "permesso", "malattia", "straordinario", "sblocco_timbratura"],
+          "description": "The type of request."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in_attesa", "approvato", "rifiutato"],
+          "description": "The status of the request."
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The start date/time of the request."
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The end date/time of the request."
+        },
+        "hours": {
+          "type": "number",
+          "description": "The number of hours requested (for 'permesso' or 'straordinario')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "An optional reason for the request."
+        },
+        "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The timestamp when the request was created."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
+        }
+      },
+      "required": ["userId", "type", "status", "startDate", "endDate", "createdAt"]
+    },
+    "Product": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Product",
+      "type": "object",
+      "description": "Represents a product in the warehouse.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the product."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The available quantity in stock."
+        }
+      },
+      "required": ["name", "quantity"]
+    },
+    "SupplyRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SupplyRequest",
+      "type": "object",
+      "description": "Represents a supply request from an operator.",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the operator making the request."
+        },
+        "username": {
+          "type": "string",
+          "description": "The username of the operator (denormalized)."
+        },
+        "productId": {
+          "type": "string",
+          "description": "The ID of the requested product."
+        },
+        "productName": {
+          "type": "string",
+          "description": "The name of the requested product (denormalized)."
+        },
+        "requestedQuantity": {
+          "type": "number",
+          "description": "The quantity requested by the operator."
+        },
+        "approvedQuantity": {
+          "type": "number",
+          "description": "The quantity approved by the admin."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in_attesa", "approvata", "rifiutata"],
+          "description": "The status of the supply request."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the request was created."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
+        }
+      },
+      "required": ["userId", "username", "productId", "productName", "requestedQuantity", "status", "createdAt"]
+    }
+  },
+  "auth": {
+    "providers": []
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/app-users/{userId}",
+        "definition": {
+          "entityName": "Operator",
+          "schema": {
+            "$ref": "#/backend/entities/Operator"
+          },
+          "description": "Stores information about all users (admins and operators).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{adminId}",
+        "definition": {
+          "entityName": "AdminRole",
+          "schema": {
+            "$ref": "#/backend/entities/Admin"
+          },
+          "description": "A collection to store admin roles. Existence of a document with the user's ID in this collection grants admin privileges.",
+          "params": [
+            {
+              "name": "adminId",
+              "description": "The unique identifier of the administrator."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/app-users/{userId}/timbrature/{timbraturaId}",
+        "definition": {
+            "entityName": "Timbratura",
+            "schema": { "$ref": "#/backend/entities/Timbratura" },
+            "description": "Stores all clocking events for a specific user.",
+            "params": [
+                { "name": "userId", "description": "The user's unique ID." },
+                { "name": "timbraturaId", "description": "The clocking event's unique ID." }
+            ]
+        }
+      },
+      {
+            "path": "/app-users/{userId}/straordinari/{straordinarioId}",
+            "definition": {
+                "entityName": "Straordinario",
+                "schema": { "$ref": "#/backend/entities/Straordinario" },
+                "description": "Stores overtime shifts for a specific user.",
+                "params": [
+                    { "name": "userId", "description": "The user's unique ID." },
+                    { "name": "straordinarioId", "description": "The overtime shift's unique ID." }
+                ]
+            }
+      },
+      {
+        "path": "/app-users/{userId}/requests/{requestId}",
+        "definition": {
+          "entityName": "Request",
+          "schema": { "$ref": "#/backend/entities/Request" },
+          "description": "Stores all leave, overtime, or other requests for a specific user.",
+          "params": [
+            { "name": "userId", "description": "The user's unique ID." },
+            { "name": "requestId", "description": "The request's unique ID." }
+          ]
+        }
+      },
+      {
+        "path": "/products/{productId}",
+        "definition": {
+          "entityName": "Product",
+          "schema": { "$ref": "#/backend/entities/Product" },
+          "description": "Stores all available products for the warehouse.",
+          "params": [
+            { "name": "productId", "description": "The product's unique ID." }
+          ]
+        }
+      },
+      {
+        "path": "/supply-requests/{supplyRequestId}",
+        "definition": {
+          "entityName": "SupplyRequest",
+          "schema": { "$ref": "#/backend/entities/SupplyRequest" },
+          "description": "Stores all supply requests from all operators.",
+          "params": [
+            { "name": "supplyRequestId", "description": "The supply request's unique ID." }
+          ]
+        }
+      }
+    ],
+    "reasoning": "Updated the Operator entity to use a unique operator code for login instead of a visible username. Removed the 'visibleInLogin' property as it is no longer needed."
+  }
+}

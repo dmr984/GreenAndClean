@@ -1,9 +1,8 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -58,7 +57,6 @@ type Operator = {
     firstName: string;
     lastName: string;
     role: 'operator';
-    visibleInLogin: boolean;
     workSchedule: WorkSchedule;
 };
 
@@ -77,10 +75,12 @@ export default function ManageOperatorsPage() {
 
     
     // Form state
+    const [newOperatorCode, setNewOperatorCode] = useState("");
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
     const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
 
+    const [editingOperatorCode, setEditingOperatorCode] = useState("");
     const [editingFirstName, setEditingFirstName] = useState("");
     const [editingLastName, setEditingLastName] = useState("");
     const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
@@ -114,14 +114,14 @@ export default function ManageOperatorsPage() {
                     const pendingDays = new Set(shiftSnapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
                     setPendingCounts(prev => ({
                         ...prev,
-                        [op.id]: { ...prev[op.id], shifts: pendingDays.size }
+                        [op.id]: { ...(prev[op.id] || {shifts:0, leaves: 0}), shifts: pendingDays.size }
                     }));
                 });
 
                 onSnapshot(leavesQuery, (leaveSnapshot) => {
                      setPendingCounts(prev => ({
                         ...prev,
-                        [op.id]: { ...prev[op.id], leaves: leaveSnapshot.size }
+                        [op.id]: { ...(prev[op.id] || {shifts:0, leaves: 0}), leaves: leaveSnapshot.size }
                     }));
                 });
             });
@@ -160,31 +160,42 @@ export default function ManageOperatorsPage() {
     ) => {
         e.preventDefault();
 
+        const operatorCode = action === 'add' ? newOperatorCode : editingOperatorCode;
         const firstName = action === 'add' ? newFirstName : editingFirstName;
         const lastName = action === 'add' ? newLastName : editingLastName;
         const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
 
-        if (!firestore || !firstName.trim() || !lastName.trim()) {
+        if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
                 title: "Campi Mancanti",
-                description: "Nome e cognome sono obbligatori.",
+                description: "Codice operatore, nome e cognome sono obbligatori.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        // Check for unique operator code
+        const usersRef = collection(firestore, 'app-users');
+        const q = query(usersRef, where("username", "==", operatorCode.trim()));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty && (action === 'add' || querySnapshot.docs[0].id !== selectedOperator?.id)) {
+             toast({
+                title: "Codice Esistente",
+                description: "Questo codice operatore è già in uso. Scegline un altro.",
                 variant: "destructive",
             });
             return;
         }
         
-        // Ensure all days are present in the schedule, defaulting to 0 if not entered
         const finalWorkSchedule: WorkSchedule = {};
         weekDays.forEach(day => {
             finalWorkSchedule[day] = workSchedule[day] || 0;
         });
-
-        const generatedUsername = `${firstName} ${lastName}`;
         
         const operatorData = {
-            username: generatedUsername,
+            username: operatorCode.trim(),
             role: 'operator' as const,
-            visibleInLogin: true,
             firstName,
             lastName,
             workSchedule: finalWorkSchedule,
@@ -193,8 +204,9 @@ export default function ManageOperatorsPage() {
         if (action === 'add') {
              addDoc(collection(firestore, 'app-users'), operatorData)
               .then(() => {
-                toast({ title: "Successo", description: `Operatore "${generatedUsername}" aggiunto.` });
+                toast({ title: "Successo", description: `Operatore con codice "${operatorCode}" aggiunto.` });
                 setIsAddDialogOpen(false);
+                setNewOperatorCode("");
                 setNewFirstName("");
                 setNewLastName("");
                 setNewWorkSchedule({});
@@ -207,22 +219,14 @@ export default function ManageOperatorsPage() {
             });
         } else if (action === 'edit' && selectedOperator) {
             const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
-            // We only update the fields that can be edited, role and visibility are managed separately.
-            const updatePayload = {
-                 username: generatedUsername,
-                 firstName,
-                 lastName,
-                 workSchedule: finalWorkSchedule
-            };
-
-            updateDoc(operatorRef, updatePayload)
+            updateDoc(operatorRef, operatorData)
             .then(() => {
                 toast({ title: "Successo", description: "Dati operatore aggiornati." });
                 setIsEditDialogOpen(false);
                 setSelectedOperator(null);
             }).catch((error: any) => {
                  if (error.code === 'permission-denied') {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'update', path: operatorRef.path, requestResourceData: updatePayload }));
+                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'update', path: operatorRef.path, requestResourceData: operatorData }));
                 } else {
                      toast({ title: "Errore", description: "Impossibile aggiornare l'operatore.", variant: "destructive" });
                 }
@@ -239,7 +243,7 @@ export default function ManageOperatorsPage() {
             .then(() => {
                 toast({
                     title: "Successo",
-                    description: `Operatore "${operatorToDelete.username}" eliminato.`
+                    description: `Operatore "${operatorToDelete.firstName} ${operatorToDelete.lastName}" eliminato.`
                 });
             }).catch((error: any) => {
                 if (error.code === 'permission-denied') {
@@ -257,31 +261,6 @@ export default function ManageOperatorsPage() {
                 }
             }).finally(() => {
                 setOperatorToDelete(null);
-            });
-    };
-
-
-    const handleVisibilityChange = (operatorId: string, newVisibility: boolean) => {
-        if (!firestore) return;
-        const operatorRef = doc(firestore, 'app-users', operatorId);
-        const updatePayload = { visibleInLogin: newVisibility };
-        
-        updateDoc(operatorRef, updatePayload)
-            .catch((error) => {
-                if (error.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'update',
-                        path: operatorRef.path,
-                        requestResourceData: updatePayload
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                    toast({
-                        title: "Errore",
-                        description: "Impossibile aggiornare la visibilità.",
-                        variant: "destructive",
-                    });
-                }
             });
     };
 
@@ -352,6 +331,12 @@ export default function ManageOperatorsPage() {
                                     <div className="grid gap-6 py-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
+                                                <Label htmlFor="new-code">Codice Operatore</Label>
+                                                <Input id="new-code" value={newOperatorCode} onChange={(e) => setNewOperatorCode(e.target.value)} required />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
                                                 <Label htmlFor="new-firstName">Nome</Label>
                                                 <Input id="new-firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} required />
                                             </div>
@@ -383,9 +368,9 @@ export default function ManageOperatorsPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Nome Operatore</TableHead>
+                                        <TableHead>Codice Operatore</TableHead>
+                                        <TableHead>Nome</TableHead>
                                         <TableHead>Programma Lavorativo</TableHead>
-                                        <TableHead>Visibile nel Login</TableHead>
                                         <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -401,16 +386,10 @@ export default function ManageOperatorsPage() {
                                                         {totalPending > 0 && <Badge variant="destructive">{totalPending}</Badge>}
                                                     </div>
                                                 </TableCell>
+                                                <TableCell>{`${operator.firstName} ${operator.lastName}`}</TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
-                                                <TableCell onClick={(e) => e.stopPropagation()}>
-                                                    <Switch
-                                                        checked={operator.visibleInLogin}
-                                                        onCheckedChange={(checked) => handleVisibilityChange(operator.id, checked)}
-                                                        aria-label={`Toggle visibility for ${operator.username}`}
-                                                    />
-                                                </TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -438,6 +417,12 @@ export default function ManageOperatorsPage() {
                         </DialogHeader>
                          <div className="grid gap-6 py-4">
                             <div className="grid grid-cols-2 gap-4">
+                                 <div>
+                                    <Label htmlFor="editing-code">Codice Operatore</Label>
+                                    <Input id="editing-code" value={editingOperatorCode} onChange={(e) => setEditingOperatorCode(e.target.value)} required />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="editing-firstName">Nome</Label>
                                     <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} required />
@@ -464,7 +449,7 @@ export default function ManageOperatorsPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Questa azione eliminerà l'operatore "{operatorToDelete?.username}" dal database in modo permanente. Questa azione non può essere annullata.
+                            Questa azione eliminerà l'operatore "{operatorToDelete?.firstName} {operatorToDelete?.lastName}" dal database in modo permanente. Questa azione non può essere annullata.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore, FirestorePermissionError, errorEmitter } from "@/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, query, where, collection, getDocs } from "firebase/firestore";
 
 
 interface ChangeCodeDialogProps {
@@ -18,10 +18,7 @@ interface ChangeCodeDialogProps {
 
 export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDialogProps) {
     const { toast } = useToast();
-    const [username, setUsername] = React.useState("");
-    const [currentPassword, setCurrentPassword] = React.useState("");
-    const [newPassword, setNewPassword] = React.useState("");
-    const [confirmPassword, setConfirmPassword] = React.useState("");
+    const [operatorCode, setOperatorCode] = React.useState("");
     const firestore = useFirestore();
 
     React.useEffect(() => {
@@ -30,7 +27,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
                 const userDocRef = doc(firestore, 'app-users', userId);
                 const docSnap = await getDoc(userDocRef);
                 if (docSnap.exists()) {
-                    setUsername(docSnap.data().username);
+                    setOperatorCode(docSnap.data().username);
                 }
             };
             fetchUser();
@@ -45,11 +42,6 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
              toast({ variant: "destructive", title: "Errore", description: "Utente o database non trovato." });
              return;
         }
-        
-        if (newPassword && newPassword !== confirmPassword) {
-            toast({ variant: "destructive", title: "Errore", description: "I nuovi codici non corrispondono." });
-            return;
-        }
 
         try {
             const userDocRef = doc(firestore, 'app-users', userId);
@@ -61,20 +53,20 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
             }
 
             const userData = userDoc.data();
-            
-            // Allow changing username without password check, but changing password requires the current one
-            const updates: { username?: string, password?: string } = {};
+            const updates: { username?: string } = {};
 
-            if (username && username !== userData.username) {
-                updates.username = username;
-            }
-            
-            if (newPassword) {
-                if (userData.password !== currentPassword) {
-                    toast({ variant: "destructive", title: "Errore", description: "Il codice attuale non è corretto." });
+            if (operatorCode && operatorCode !== userData.username) {
+                // Check if new operator code is unique
+                const usersRef = collection(firestore, 'app-users');
+                const q = query(usersRef, where("username", "==", operatorCode.trim()));
+                const querySnapshot = await getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    toast({ variant: "destructive", title: "Codice Esistente", description: "Questo codice operatore è già in uso." });
                     return;
                 }
-                updates.password = newPassword;
+
+                updates.username = operatorCode;
             }
             
 
@@ -82,7 +74,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
                  await updateDoc(userDocRef, updates);
                  // Update local storage for immediate UI feedback
                 const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-                const updatedUser = { ...storedUser, username: username };
+                const updatedUser = { ...storedUser, username: operatorCode };
                 localStorage.setItem('user', JSON.stringify(updatedUser));
                 window.dispatchEvent(new Event('storage')); // Trigger re-renders
                  toast({ title: "Profilo Aggiornato", description: "Le tue impostazioni sono state salvate." });
@@ -101,9 +93,6 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
     }
     
     const resetAndClose = () => {
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
         onOpenChange(false);
     }
     
@@ -120,54 +109,20 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
                 <DialogHeader>
                     <DialogTitle>Impostazioni Profilo</DialogTitle>
                     <DialogDescription>
-                        Modifica il tuo nome utente o imposta un nuovo codice di accesso.
+                        Modifica il tuo codice operatore di accesso.
                     </DialogDescription>
                 </DialogHeader>
                 <form id="change-settings-form" onSubmit={handleSettingsChange} className="grid gap-4 py-4">
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="username" className="text-left sm:text-right">Nome Utente</Label>
+                        <Label htmlFor="username" className="text-left sm:text-right">Codice Operatore</Label>
                         <Input 
                             id="username" 
                             name="username" 
                             type="text" 
                             className="col-span-1 sm:col-span-3"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
+                            value={operatorCode}
+                            onChange={(e) => setOperatorCode(e.target.value)}
                             required 
-                        />
-                    </div>
-                     <hr className="my-2"/>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="current-password" className="text-left sm:text-right">Codice Attuale</Label>
-                        <Input 
-                            id="current-password" 
-                            name="current-password" 
-                            type="password" 
-                            className="col-span-1 sm:col-span-3"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                        />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="new-password" className="text-left sm:text-right">Nuovo Codice</Label>
-                        <Input 
-                            id="new-password" 
-                            name="new-password" 
-                            type="password" 
-                            className="col-span-1 sm:col-span-3"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                        />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                        <Label htmlFor="confirm-password" className="text-left sm:text-right">Conferma Codice</Label>
-                        <Input 
-                            id="confirm-password" 
-                            name="confirm-password" 
-                            type="password" 
-                            className="col-span-1 sm:col-span-3"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
                         />
                     </div>
                 </form>
@@ -179,5 +134,3 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId }: ChangeCodeDia
         </Dialog>
     );
 }
-
-    

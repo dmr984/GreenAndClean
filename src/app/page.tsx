@@ -9,7 +9,7 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-md gap-6 p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3 text-center">
           <Image 
-            src="https://i.ibb.co/cKq6nWLR/1762432288621.png" 
+            src="https://i.ibb.co/cKq6nWLR/1762432288621.png"
             alt="Serveco Logo" 
             width={40} 
             height={40} 
@@ -17,7 +17,7 @@ export default function LoginPage() {
           />
           <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
           <p className="text-balance text-muted-foreground">
-            Seleziona il tuo nome utente per accedere.
+            Inserisci il tuo codice operatore per accedere.
           </p>
         </div>
         <LoginForm />
