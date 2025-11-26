@@ -341,15 +341,21 @@ export default function EndOfMonthPage() {
                 const dayStatus = () => {
                     switch (detail.status) {
                         case 'lavorato':
-                            return detail.shift ? `
-                                <div style="font-size: 14px; color: #333; margin-top: 4px;">
+                            const timbratureText = detail.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                            const hoursDetail = `
+                                <div style="font-size: 13px; color: #333; margin-top: 4px; display: flex; flex-wrap: wrap;">
                                     <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Previste:</b> ${detail.shift.contractualHours}h</span>
                                     <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
                                     <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
                                     <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Straordinario:</b> ${detail.shift.overtimeHours}h</span>
                                     <span style="white-space: nowrap;"><b style="color: #6b7280; font-weight: 600;">Permesso:</b> ${detail.shift.permissionHours}h</span>
                                 </div>
-                            ` : '';
+                            `;
+                            return `
+                                <div style="margin-left: 1rem; flex-grow: 1;">
+                                    <span style="font-weight: 500; font-size: 14px;">${timbratureText}</span>
+                                    ${hoursDetail}
+                                </div>`;
                         case 'ferie': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Giorno di ferie</span>`;
                         case 'malattia': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Giorno di malattia</span>`;
                         case 'mancata_timbratura': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Nessuna timbratura registrata</span>`;
@@ -358,9 +364,9 @@ export default function EndOfMonthPage() {
                 };
                 return `
                     <div style="border-bottom: 1px solid #e5e7eb; padding: 0.75rem 0; display: flex; flex-direction: column;">
-                        <div style="display: flex; align-items: baseline;">
-                             <div style="font-weight: 700; color: #6b7280; text-transform: capitalize; font-size: 14px; min-width: 180px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                             ${dayStatus()}
+                         <div style="display: flex; align-items: baseline;">
+                            <div style="font-weight: 700; color: #6b7280; text-transform: capitalize; font-size: 14px; min-width: 180px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                            ${dayStatus()}
                         </div>
                     </div>
                 `;
@@ -407,23 +413,29 @@ export default function EndOfMonthPage() {
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
-                            const finalImgHeight = pdfWidth / ratio;
-                            
-                            let heightLeft = finalImgHeight;
+                            let finalImgHeight = pdfWidth / ratio;
+                             
+                            if (finalImgHeight > pdfHeight) {
+                                finalImgHeight = pdfHeight;
+                            }
+
+                            let heightLeft = imgHeight * (pdfWidth / imgWidth); // total height in pdf units
                             let position = 0;
                             
-                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
-                            heightLeft -= pdf.internal.pageSize.getHeight();
+                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, heightLeft);
+                            heightLeft -= pdfHeight;
 
                             while (heightLeft > 0) {
-                                position = heightLeft - finalImgHeight; // Re-calculate position
+                                position = heightLeft - (imgHeight * (pdfWidth / imgWidth));
                                 pdf.addPage();
-                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, finalImgHeight);
-                                heightLeft -= pdf.internal.pageSize.getHeight();
+                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight * (pdfWidth/imgWidth));
+                                heightLeft -= pdfHeight;
                             }
+
 
                             const blob = pdf.output('blob');
                             const file = new File([blob], 'Riepilogo.pdf', { type: 'application/pdf' });
