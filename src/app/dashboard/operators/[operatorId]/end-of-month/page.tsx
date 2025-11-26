@@ -12,6 +12,7 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
+import { usePrint } from '@/providers/print-provider';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -86,6 +87,7 @@ export default function EndOfMonthPage() {
     const params = useParams();
     const router = useRouter();
     const operatorId = params.operatorId as string;
+    const { setPrintData } = usePrint();
     
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -318,31 +320,28 @@ export default function EndOfMonthPage() {
 
     const handlePrintAndShare = () => {
         setIsProcessing(true);
-        try {
-            const printData = {
-                operator: operator,
-                currentMonth: currentMonth.toISOString(),
-                monthlySummary: monthlySummary,
-                dailyDetails: dailyDetails.map(d => ({
-                    ...d,
-                    shift: d.shift ? {
-                        ...d.shift,
-                        events: d.shift.events.map(e => ({...e, timestamp: e.timestamp.toMillis()})),
-                    } : null,
-                    request: d.request ? {
-                        ...d.request,
-                        startDate: d.request.startDate.toMillis(),
-                        endDate: d.request.endDate.toMillis(),
-                    } : null
-                }))
-            };
-            localStorage.setItem('printData', JSON.stringify(printData));
-            router.push(`/dashboard/operators/${operatorId}/end-of-month/print`);
-        } catch (error) {
-            console.error("Error preparing print data:", error);
-        } finally {
-            setIsProcessing(false);
-        }
+        const printData = {
+            operator: operator,
+            currentMonth: currentMonth.toISOString(),
+            monthlySummary: monthlySummary,
+            dailyDetails: dailyDetails.map(d => ({
+                ...d,
+                date: d.date.toISOString(),
+                shift: d.shift ? {
+                    ...d.shift,
+                    date: d.shift.date.toISOString(),
+                    events: d.shift.events.map(e => ({...e, timestamp: e.timestamp.toMillis()})),
+                } : null,
+                request: d.request ? {
+                    ...d.request,
+                    startDate: d.request.startDate.toMillis(),
+                    endDate: d.request.endDate.toMillis(),
+                } : null
+            }))
+        };
+        setPrintData(printData);
+        router.push(`/dashboard/operators/${operatorId}/end-of-month/print`);
+        setIsProcessing(false);
     };
 
     if (isLoading || !operator) {

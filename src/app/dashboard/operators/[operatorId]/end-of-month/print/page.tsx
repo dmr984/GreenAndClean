@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
+import { usePrint } from '@/providers/print-provider';
 
 // Define types locally for this page
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -101,44 +102,35 @@ PrintableSummary.displayName = 'PrintableSummary';
 
 export default function PrintPage() {
     const { toast } = useToast();
-    const [data, setData] = useState<any>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const { printData } = usePrint();
     const printRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const savedData = localStorage.getItem('printData');
-        if (savedData) {
-            try {
-                const parsedData = JSON.parse(savedData);
-                // Re-hydrate dates
-                parsedData.currentMonth = new Date(parsedData.currentMonth);
-                parsedData.dailyDetails.forEach((d: any) => {
-                    d.date = new Date(d.date);
-                    if (d.shift) {
-                        d.shift.events.forEach((e: any) => e.timestamp = e.timestamp);
-                    }
-                });
-                setData(parsedData);
-            } catch (error) {
-                console.error("Failed to parse print data:", error);
-                toast({ title: "Errore", description: "Dati di stampa non validi.", variant: "destructive" });
-            }
-        }
-        setIsLoading(false);
-    }, [toast]);
 
     const handlePrint = () => {
         window.print();
     };
 
-
-    if (isLoading) {
-        return <div className="flex h-screen items-center justify-center"><Loader2 className="h-16 w-16 animate-spin" /></div>;
+    if (!printData) {
+        return (
+          <div className="flex h-screen items-center justify-center">
+            <div className='text-center'>
+              <Loader2 className="h-16 w-16 animate-spin mx-auto mb-4" />
+              <p>Caricamento dati di stampa...</p>
+              <p className='text-sm text-muted-foreground'>Se questa schermata persiste, torna indietro e riprova.</p>
+            </div>
+          </div>
+        );
+    }
+    
+    // Re-hydrate dates from ISO strings
+    const hydratedData = {
+        ...printData,
+        currentMonth: new Date(printData.currentMonth),
+        dailyDetails: printData.dailyDetails.map(d => ({
+            ...d,
+            date: new Date(d.date),
+        }))
     }
 
-    if (!data) {
-        return <div className="flex h-screen items-center justify-center">Nessun dato da stampare. Torna indietro e riprova.</div>;
-    }
 
     return (
         <div className="bg-gray-100">
@@ -158,10 +150,10 @@ export default function PrintPage() {
             </div>
             <PrintableSummary
                 ref={printRef}
-                operator={data.operator}
-                currentMonth={data.currentMonth}
-                monthlySummary={data.monthlySummary}
-                dailyDetails={data.dailyDetails}
+                operator={hydratedData.operator}
+                currentMonth={hydratedData.currentMonth}
+                monthlySummary={hydratedData.monthlySummary}
+                dailyDetails={hydratedData.dailyDetails}
             />
         </div>
     );
