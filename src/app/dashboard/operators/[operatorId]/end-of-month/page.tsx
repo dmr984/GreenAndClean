@@ -500,7 +500,7 @@ export default function EndOfMonthPage() {
             const finalImgHeight = pdfWidth * ratio;
 
             pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, finalImgHeight > pdfHeight ? pdfHeight : finalImgHeight);
-            const blob = pdf.getBlob();
+            const blob = pdf.output('blob');
 
 
             if (!blob) {
@@ -634,5 +634,3 @@ export default function EndOfMonthPage() {
         </>
     );
 }
-
-    
