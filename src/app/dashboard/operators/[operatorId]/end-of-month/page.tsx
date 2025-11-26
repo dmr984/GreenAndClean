@@ -328,13 +328,13 @@ export default function EndOfMonthPage() {
                 .join('');
             
             const summaryHTML = `
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; text-align: center;">
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Giorni Lavorati</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.workedDays}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Ore Ordinarie</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Ore Straordinarie</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Ferie (giorni)</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.ferieDays}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Permessi (ore)</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
-                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem;"><div style="font-size: 0.875rem; color: #6b7280;">Malattia (giorni)</div><div style="font-size: 1.5rem; font-weight: 700; color: #6b7280;">${monthlySummary.malattiaDays}</div></div>
+                 <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin-bottom: 1.5rem; text-align: center;">
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem;"><div style="font-size: 0.75rem; color: #6b7280;">Giorni Lav.</div><div style="font-size: 1.25rem; font-weight: 700; color: #374151;">${monthlySummary.workedDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem;"><div style="font-size: 0.75rem; color: #6b7280;">Ore Ord.</div><div style="font-size: 1.25rem; font-weight: 700; color: #374151;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem;"><div style="font-size: 0.75rem; color: #6b7280;">Ore Straord.</div><div style="font-size: 1.25rem; font-weight: 700; color: #374151;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem;"><div style="font-size: 0.75rem; color: #6b7280;">Ferie (g)</div><div style="font-size: 1.25rem; font-weight: 700; color: #374151;">${monthlySummary.ferieDays}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem;"><div style="font-size: 0.75rem; color: #6b7280;">Permessi (h)</div><div style="font-size: 1.25rem; font-weight: 700; color: #374151;">${monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                    <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem;"><div style="font-size: 0.75rem; color: #6b7280;">Malattia (g)</div><div style="font-size: 1.25rem; font-weight: 700; color: #374151;">${monthlySummary.malattiaDays}</div></div>
                 </div>
             `;
             
@@ -357,7 +357,7 @@ export default function EndOfMonthPage() {
                     }
                     
                     const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-                    const hoursText = `
+                     const hoursText = `
                         <span style="font-weight: 600; color: #6b7280;">Ore Previste:</span> ${shift.contractualHours}h | 
                         <span style="font-weight: 600; color: #6b7280;">Ore Lavorate:</span> ${formatMinutes(shift.workedMinutes)} | 
                         <span style="font-weight: 600; color: #6b7280;">Ore Ordinarie:</span> ${shift.ordinaryHours}h | 
@@ -367,12 +367,12 @@ export default function EndOfMonthPage() {
 
                     contentHTML = `
                          <tr>
-                            <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem;">
+                            <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 <b style="color: #6b7280;">${dateText}</b>
                                 <br>
-                                <span style="font-size: 13px; color: #6b7280;">${statusText}</span>
+                                <span style="font-size: 13px; color: #6b7280; font-weight: 500;">${statusText}</span>
                             </td>
-                            <td style="vertical-align: top; font-size: 13px; padding-bottom: 0.5rem;">
+                            <td style="vertical-align: top; font-size: 13px; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 ${timbratureText}
                                 <br>
                                 ${hoursText}
@@ -390,12 +390,11 @@ export default function EndOfMonthPage() {
                     }
                      contentHTML = `
                         <tr>
-                            <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem;">
+                            <td colspan="2" style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">
                                 <b style="color: #6b7280;">${dateText}</b>
                                 <br>
                                 <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
                             </td>
-                            <td style="padding-bottom: 0.5rem;"></td>
                         </tr>
                      `;
                 }
@@ -409,13 +408,13 @@ export default function EndOfMonthPage() {
                     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
                          <img src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
-                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.username}</h1>
+                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #374151;">${operator?.username}</h1>
                              <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
                     <section>${summaryHTML}</section>
                     <section>
-                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #6b7280;">Dettaglio Giornaliero</h3>
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #374151;">Dettaglio Giornaliero</h3>
                         <table style="width: 100%; border-collapse: collapse;">
                           <tbody>
                            ${detailsHTML}
@@ -446,22 +445,20 @@ export default function EndOfMonthPage() {
                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
-                            const pdfHeight = pdf.internal.pageSize.getHeight();
                             
                             const imgProps = pdf.getImageProperties(canvas);
                             const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
                             let heightLeft = imgHeight;
                             let position = 0;
 
                             pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-                            heightLeft -= pdfHeight;
+                            heightLeft -= pdf.internal.pageSize.getHeight();
 
                             while (heightLeft > 0) {
                                 position = heightLeft - imgHeight;
                                 pdf.addPage();
                                 pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-                                heightLeft -= pdfHeight;
+                                heightLeft -= pdf.internal.pageSize.getHeight();
                             }
                             
                             const blob = pdf.output('blob');
