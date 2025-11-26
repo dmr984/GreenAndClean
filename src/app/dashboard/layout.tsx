@@ -197,7 +197,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1 flex justify-center">
             <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-lg">
                 <span className="uppercase tracking-wider whitespace-nowrap">SERVECO SRL</span>
-                <Image src="https://i.postimg.cc/CLXQbsxc/1764199275620.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
+                <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
             </Link>
           </div>
 

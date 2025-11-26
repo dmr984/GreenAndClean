@@ -39,7 +39,7 @@ export default function LoginPage() {
     
     checkAndCreateAdmin();
     
-  }, []);
+  }, [firestore]);
 
 
   return (
@@ -47,7 +47,7 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-md gap-6 p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3 text-center">
           <Image
-            src="https://i.postimg.cc/CLXQbsxc/1764199275620.png"
+            src="https://i.postimg.cc/GhwM2hg1/1764199658760.png"
             alt="Serveco Logo"
             width={240}
             height={240}
