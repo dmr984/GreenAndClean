@@ -54,6 +54,7 @@ type Shift = {
     ordinaryHours: number;
     overtimeHours: number;
     permissionHours: number;
+    isPureOvertime: boolean;
 };
 
 type DailyDetail = {
@@ -228,7 +229,7 @@ export default function EndOfMonthPage() {
                     status: 'lavorato',
                     request: null,
                     shift: {
-                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours
+                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime: isOvertimeShift
                     },
                 });
             } else if (leaveRequest && contractualHours > 0) {
@@ -338,36 +339,50 @@ export default function EndOfMonthPage() {
             `;
             
             const detailsHTML = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-                const dayStatus = () => {
+                const getDayStatus = () => {
+                    if (detail.status === 'lavorato' && detail.shift) {
+                        const shift = detail.shift;
+                        if (shift.isPureOvertime) return 'Straordinario';
+                        if (shift.ordinaryHours > 0 && shift.overtimeHours > 0) return 'Ordinario / Straordinario';
+                        if (shift.ordinaryHours > 0 && shift.permissionHours > 0) return 'Ordinario / Permesso';
+                        return 'Lavorativo';
+                    }
                     switch (detail.status) {
-                        case 'lavorato':
-                            const timbratureText = detail.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-                            const hoursDetail = `
-                                <div style="font-size: 13px; color: #333; margin-top: 4px; display: flex; flex-wrap: wrap;">
-                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Previste:</b> ${detail.shift.contractualHours}h</span>
-                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
-                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
-                                    <span style="white-space: nowrap; margin-right: 1rem;"><b style="color: #6b7280; font-weight: 600;">Straordinario:</b> ${detail.shift.overtimeHours}h</span>
-                                    <span style="white-space: nowrap;"><b style="color: #6b7280; font-weight: 600;">Permesso:</b> ${detail.shift.permissionHours}h</span>
-                                </div>
-                            `;
-                            return `
-                                <div style="margin-left: 1rem; flex-grow: 1;">
-                                    <span style="font-weight: 500; font-size: 14px;">${timbratureText}</span>
-                                    ${hoursDetail}
-                                </div>`;
-                        case 'ferie': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Giorno di ferie</span>`;
-                        case 'malattia': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Giorno di malattia</span>`;
-                        case 'mancata_timbratura': return `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem;">Nessuna timbratura registrata</span>`;
+                        case 'ferie': return 'Giorno di ferie';
+                        case 'malattia': return 'Giorno di malattia';
+                        case 'mancata_timbratura': return 'Nessuna timbratura registrata';
                         default: return '';
                     }
                 };
-                return `
-                    <div style="border-bottom: 1px solid #e5e7eb; padding: 0.75rem 0; display: flex; flex-direction: column;">
-                         <div style="display: flex; align-items: baseline;">
-                            <div style="font-weight: 700; color: #6b7280; text-transform: capitalize; font-size: 14px; min-width: 180px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
-                            ${dayStatus()}
+
+                const dayStatus = getDayStatus();
+                
+                let contentHTML = '';
+
+                if (detail.status === 'lavorato' && detail.shift) {
+                    const timbratureText = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                    const hoursDetail = `
+                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Ore Previste:</b> ${detail.shift.contractualHours}h</span>
+                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Ore Lavorate:</b> ${formatMinutes(detail.shift.workedMinutes)}</span>
+                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Ore Ordinarie:</b> ${detail.shift.ordinaryHours}h</span>
+                        <span style="font-size: 13px; color: #6b7280; margin-right: 1rem;"><b>Straordinario:</b> ${detail.shift.overtimeHours}h</span>
+                        <span style="font-size: 13px; color: #6b7280;"><b>Permesso:</b> ${detail.shift.permissionHours}h</span>
+                    `;
+                    contentHTML = `
+                        <div style="flex-grow: 1; margin-left: 1rem;">
+                            <div style="font-weight: 500; font-size: 14px;">${timbratureText}</div>
+                            <div style="margin-top: 4px; font-weight: 600; color: #6b7280; font-size: 14px;">Stato: ${dayStatus}</div>
+                            <div style="margin-top: 6px;">${hoursDetail}</div>
                         </div>
+                    `;
+                } else {
+                     contentHTML = `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem; color: #6b7280;">${dayStatus}</span>`;
+                }
+
+                return `
+                    <div style="border-bottom: 1px solid #e5e7eb; padding: 0.75rem 0; display: flex; align-items: flex-start;">
+                        <div style="font-weight: 700; color: #6b7280; text-transform: capitalize; font-size: 14px; min-width: 180px;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                        ${contentHTML}
                     </div>
                 `;
             }).join('');
@@ -414,28 +429,30 @@ export default function EndOfMonthPage() {
                             
                             const pdfWidth = pdf.internal.pageSize.getWidth();
                             const pdfHeight = pdf.internal.pageSize.getHeight();
+                            
                             const imgWidth = canvas.width;
                             const imgHeight = canvas.height;
                             const ratio = imgWidth / imgHeight;
-                            let finalImgHeight = pdfWidth / ratio;
-                             
-                            if (finalImgHeight > pdfHeight) {
+                            
+                            const imgHeightInPdf = pdfWidth / ratio;
+                            let finalImgHeight = imgHeightInPdf;
+
+                            if (imgHeightInPdf > pdfHeight) {
                                 finalImgHeight = pdfHeight;
                             }
-
-                            let heightLeft = imgHeight * (pdfWidth / imgWidth); // total height in pdf units
+                            
+                            let heightLeft = imgHeight;
                             let position = 0;
                             
-                            pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, heightLeft);
-                            heightLeft -= pdfHeight;
+                            pdf.addImage(canvas, 'PNG', 0, 0, pdfWidth, imgHeightInPdf);
+                            heightLeft -= (pdfHeight * imgWidth / pdfWidth);
 
                             while (heightLeft > 0) {
-                                position = heightLeft - (imgHeight * (pdfWidth / imgWidth));
+                                position = heightLeft - imgHeight;
                                 pdf.addPage();
-                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeight * (pdfWidth/imgWidth));
-                                heightLeft -= pdfHeight;
+                                pdf.addImage(canvas, 'PNG', 0, position, pdfWidth, imgHeightInPdf);
+                                heightLeft -= (pdfHeight * imgWidth / pdfWidth);
                             }
-
 
                             const blob = pdf.output('blob');
                             const file = new File([blob], 'Riepilogo.pdf', { type: 'application/pdf' });
@@ -447,7 +464,7 @@ export default function EndOfMonthPage() {
                                     files: [file],
                                 });
                             } else {
-                                alert('La condivisione di file non è supportata su questo browser.');
+                                 pdf.output('dataurlnewwindow');
                             }
                         } catch (error) {
                             console.error('Error sharing:', error);
