@@ -153,7 +153,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {user?.role === 'admin' && (
                         <>
                            <Link href="/dashboard/operators" passHref>
-                            <Button variant={pathname.startsWith('/dashboard/operators') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                            <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Users className="h-5 w-5" /> Gestione Operatori
                             </Button>
                           </Link>
