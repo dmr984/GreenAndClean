@@ -340,7 +340,7 @@ export default function EndOfMonthPage() {
             
             const detailsHTML = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                 let contentHTML = '';
-                 const dateText = `<b style="color: #6b7280;">${format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</b>`;
+                const dateText = format(detail.date, 'eeee dd/MM/yyyy', { locale: it });
 
                 if (detail.status === 'lavorato' && detail.shift) {
                     const { shift } = detail;
@@ -367,12 +367,16 @@ export default function EndOfMonthPage() {
 
                     contentHTML = `
                          <tr>
-                            <td style="width: 200px; vertical-align: top; font-size: 14px; text-transform: capitalize;">${dateText}</td>
-                            <td style="vertical-align: top; font-size: 13px;">${timbratureText}</td>
-                        </tr>
-                        <tr>
-                            <td style="width: 200px; vertical-align: top; font-weight: 600; color: #6b7280; font-size: 13px; padding-bottom: 0.75rem;">${statusText}</td>
-                            <td style="vertical-align: top; font-size: 13px; color: #6b7280; padding-bottom: 0.75rem;">${hoursText}</td>
+                            <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem;">
+                                <b style="color: #6b7280;">${dateText}</b>
+                                <br>
+                                <span style="font-size: 13px; color: #6b7280;">${statusText}</span>
+                            </td>
+                            <td style="vertical-align: top; font-size: 13px; padding-bottom: 0.5rem;">
+                                ${timbratureText}
+                                <br>
+                                ${hoursText}
+                            </td>
                         </tr>
                     `;
 
@@ -386,20 +390,24 @@ export default function EndOfMonthPage() {
                     }
                      contentHTML = `
                         <tr>
-                            <td style="width: 200px; vertical-align: top; font-size: 14px; text-transform: capitalize;">${dateText}</td>
-                            <td style="vertical-align: top; font-weight: 500; font-size: 14px; color: #6b7280; padding-bottom: 0.75rem;">${statusText}</td>
+                            <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize; padding-bottom: 0.5rem;">
+                                <b style="color: #6b7280;">${dateText}</b>
+                                <br>
+                                <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
+                            </td>
+                            <td style="padding-bottom: 0.5rem;"></td>
                         </tr>
                      `;
                 }
 
                 return contentHTML;
-            }).join('<tr style="border-bottom: 1px solid #e5e7eb; height: 10px;"><td colspan="2"></td></tr>');
+            }).join('');
 
 
             const content = `
                 <div id="printable-content" style="background-color: white; color: black; padding: 2rem; width: 210mm; min-height: 297mm; margin: auto;">
                     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
-                         <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
+                         <img src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
                              <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.username}</h1>
                              <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
@@ -418,8 +426,8 @@ export default function EndOfMonthPage() {
             `;
             
             const script = `
-                <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
-                <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
+                <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\'\'\'/script>
+                <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\'\'\'/script>
                 <script>
                     function handlePrint() {
                         window.print();
