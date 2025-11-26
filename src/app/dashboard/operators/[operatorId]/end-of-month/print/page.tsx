@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Loader2, FileText } from 'lucide-react';
+import { Loader2, FileText, Share2, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -106,18 +106,25 @@ export default function PrintPage() {
     const printRef = useRef<HTMLDivElement>(null);
     const [isGenerating, setIsGenerating] = useState(false);
 
-    const handleGeneratePdf = async () => {
-        if (!printRef.current) return;
+    const handlePrint = () => {
+        window.print();
+    };
+
+    const handleShare = async () => {
+        if (!printRef.current || !navigator.share) {
+             alert("La funzione di condivisione non è supportata su questo browser o dispositivo.");
+             return;
+        }
+
         setIsGenerating(true);
-
-        // Wait a moment for images to render
-        await new Promise(resolve => setTimeout(resolve, 500));
-
         try {
+            // Give image time to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+
             const canvas = await html2canvas(printRef.current, {
                 scale: 2,
-                useCORS: true,
-                allowTaint: true
+                useCORS: true, 
+                allowTaint: true 
             });
 
             const pdf = new jsPDF('p', 'mm', 'a4');
@@ -127,21 +134,32 @@ export default function PrintPage() {
             const canvasHeight = canvas.height;
             const ratio = canvasWidth / canvasHeight;
             const imgHeight = pdfWidth / ratio;
-            let finalImgHeight = imgHeight;
-            let position = 0;
-
-            if (finalImgHeight > pdfHeight) {
-                // If content is taller than one page, we don't handle pagination
-                 pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, pdfHeight); 
-            } else {
-                pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, finalImgHeight);
-            }
             
-            pdf.output('dataurlnewwindow');
+            pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, imgHeight > pdfHeight ? pdfHeight : imgHeight);
+            
+            const blob = pdf.output('blob');
+
+            if (!blob) {
+                throw new Error("Failed to generate PDF blob.");
+            }
+
+            const file = new File([blob], `Riepilogo-${printData.operator.username}-${format(new Date(printData.currentMonth), 'MM-yyyy')}.pdf`, {
+                type: 'application/pdf',
+            });
+            
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: `Riepilogo Mensile`,
+                    text: `Ecco il riepilogo per ${printData.operator.username} di ${format(new Date(printData.currentMonth), 'MMMM yyyy', { locale: it })}`,
+                });
+            } else {
+                 alert("La condivisione di file PDF non è supportata su questo browser.");
+            }
 
         } catch (error) {
-            console.error("Error generating PDF:", error);
-            alert("Si è verificato un errore durante la generazione del PDF.");
+            console.error("Error during share:", error);
+            alert("Si è verificato un errore durante la preparazione del file per la condivisione.");
         } finally {
             setIsGenerating(false);
         }
@@ -183,9 +201,13 @@ export default function PrintPage() {
                         }
                     }
                 `}</style>
-                <Button onClick={handleGeneratePdf} disabled={isGenerating}>
-                    {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                    Genera PDF e Apri
+                <Button onClick={handlePrint} disabled={isGenerating}>
+                    <Printer className="mr-2 h-4 w-4" />
+                    Stampa
+                </Button>
+                 <Button onClick={handleShare} disabled={isGenerating} variant="outline">
+                    {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
+                    Condividi
                 </Button>
             </div>
             <PrintableSummary
