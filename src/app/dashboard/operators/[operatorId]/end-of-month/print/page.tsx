@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Loader2, FileText, Share2, Printer } from 'lucide-react';
+import { Loader2, Share2, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -118,7 +118,6 @@ export default function PrintPage() {
 
         setIsGenerating(true);
         try {
-            // Give image time to load
             await new Promise(resolve => setTimeout(resolve, 500));
 
             const canvas = await html2canvas(printRef.current, {
@@ -177,11 +176,10 @@ export default function PrintPage() {
         );
     }
     
-    // Re-hydrate dates from ISO strings
     const hydratedData = {
         ...printData,
         currentMonth: new Date(printData.currentMonth),
-        dailyDetails: printData.dailyDetails.map(d => ({
+        dailyDetails: printData.dailyDetails.map((d: any) => ({
             ...d,
             date: new Date(d.date),
         }))
