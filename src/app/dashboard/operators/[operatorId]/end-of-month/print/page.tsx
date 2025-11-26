@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, Printer } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Loader2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import Image from 'next/image';
-import { useToast } from '@/hooks/use-toast';
 import { usePrint } from '@/providers/print-provider';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // Define types locally for this page
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -101,14 +102,51 @@ PrintableSummary.displayName = 'PrintableSummary';
 
 
 export default function PrintPage() {
-    const { toast } = useToast();
     const { printData } = usePrint();
     const printRef = useRef<HTMLDivElement>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
 
-    const handlePrint = () => {
-        window.print();
+    const handleGeneratePdf = async () => {
+        if (!printRef.current) return;
+        setIsGenerating(true);
+
+        // Wait a moment for images to render
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        try {
+            const canvas = await html2canvas(printRef.current, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true
+            });
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const ratio = canvasWidth / canvasHeight;
+            const imgHeight = pdfWidth / ratio;
+            let finalImgHeight = imgHeight;
+            let position = 0;
+
+            if (finalImgHeight > pdfHeight) {
+                // If content is taller than one page, we don't handle pagination
+                 pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, pdfHeight); 
+            } else {
+                pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, finalImgHeight);
+            }
+            
+            pdf.output('dataurlnewwindow');
+
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            alert("Si è verificato un errore durante la generazione del PDF.");
+        } finally {
+            setIsGenerating(false);
+        }
     };
-
+    
     if (!printData) {
         return (
           <div className="flex h-screen items-center justify-center">
@@ -141,11 +179,13 @@ export default function PrintPage() {
                         body { background-color: #fff; }
                         @page {
                            margin: 0;
+                           size: A4 portrait;
                         }
                     }
                 `}</style>
-                <Button onClick={handlePrint}>
-                    <Printer className="mr-2 h-4 w-4" /> Stampa
+                <Button onClick={handleGeneratePdf} disabled={isGenerating}>
+                    {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                    Genera PDF e Apri
                 </Button>
             </div>
             <PrintableSummary
