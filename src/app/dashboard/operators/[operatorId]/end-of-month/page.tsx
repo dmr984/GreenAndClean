@@ -12,7 +12,8 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -162,6 +163,7 @@ export default function EndOfMonthPage() {
     const operatorId = params.operatorId as string;
     
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isSharing, setIsSharing] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
 
     const [operator, setOperator] = useState<Operator | null>(null);
@@ -410,8 +412,9 @@ export default function EndOfMonthPage() {
                             -webkit-print-color-adjust: exact;
                             color-adjust: exact;
                         }
-                        .print-container {
+                        .print-controls {
                             padding: 1rem;
+                            text-align: center;
                         }
                         .print-button {
                             padding: 10px 20px;
@@ -423,11 +426,8 @@ export default function EndOfMonthPage() {
                             background-color: #f0f0f0;
                         }
                         @media print {
-                            .print-button {
+                            .print-controls {
                                 display: none;
-                            }
-                            .print-container {
-                                padding: 0;
                             }
                         }
                         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
@@ -466,10 +466,10 @@ export default function EndOfMonthPage() {
                     </style>
                 </head>
                 <body>
-                    <div class="print-container">
+                    <div class="print-controls">
                         <button class="print-button" onclick="window.print()">Stampa</button>
-                        ${printContent}
                     </div>
+                    ${printContent}
                 </body>
             </html>
         `);
@@ -477,13 +477,49 @@ export default function EndOfMonthPage() {
         printWindow.focus();
     };
 
+    const handleShare = async () => {
+        if (!printRef.current) return;
+        setIsSharing(true);
+
+        try {
+            const canvas = await html2canvas(printRef.current, {
+                useCORS: true,
+                scale: 2, 
+            });
+
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'application/pdf'));
+
+            if (!blob) {
+                throw new Error("Failed to create blob from canvas.");
+            }
+
+            const fileName = `Riepilogo_${operator?.username.replace(' ','_')}_${format(currentMonth, 'MM-yyyy')}.pdf`;
+            const file = new File([blob], fileName, { type: 'application/pdf' });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: `Riepilogo ${operator?.username}`,
+                    text: `Ecco il riepilogo mensile per ${format(currentMonth, 'MMMM yyyy')}`,
+                });
+            } else {
+                alert("La condivisione di file non è supportata su questo browser.");
+            }
+        } catch (error) {
+            console.error("Sharing failed:", error);
+            alert("Errore durante la condivisione. Riprova.");
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
     return (
         <>
-             {/* Hidden printable component, positioned off-screen */}
              <div style={{ position: 'absolute', left: '-9999px', opacity: 1 }}>
                 <PrintableSummary 
                     ref={printRef}
@@ -504,10 +540,16 @@ export default function EndOfMonthPage() {
                                Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
                             </CardDescription>
                         </div>
-                         <Button onClick={handlePrint} disabled={isProcessing}>
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                            Stampa Riepilogo
-                         </Button>
+                        <div className="flex gap-2">
+                            <Button onClick={handlePrint} disabled={isProcessing}>
+                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                                Stampa
+                            </Button>
+                            <Button onClick={handleShare} disabled={isSharing}>
+                                {isSharing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
+                                Condividi
+                            </Button>
+                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-8">
