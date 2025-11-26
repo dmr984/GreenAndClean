@@ -12,6 +12,8 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
+import jspdf from 'jspdf';
+import html2canvas from 'html2canvas';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -315,21 +317,74 @@ export default function EndOfMonthPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const handlePrint = () => {
-        if (isProcessing) return;
+    const handlePrintAndShare = () => {
+        if (isProcessing || !printRef.current) return;
         setIsProcessing(true);
 
-        const content = printRef.current?.innerHTML;
-        if (!content) {
-            setIsProcessing(false);
-            return;
-        }
+        const content = printRef.current.innerHTML;
+        const newWindow = window.open('', '_blank', 'width=800,height=800');
 
-        const newWindow = window.open('', '_blank');
         if (newWindow) {
             const stylesheets = Array.from(document.styleSheets)
                 .map(sheet => sheet.href ? `<link rel="stylesheet" href="${sheet.href}">` : '')
                 .join('');
+            
+            const script = `
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+                <script>
+                    function handlePrint() {
+                        window.print();
+                    }
+
+                    async function handleShare() {
+                        const printButton = document.getElementById('printBtn');
+                        const shareButton = document.getElementById('shareBtn');
+                        printButton.style.display = 'none';
+                        shareButton.style.display = 'none';
+                        
+                        const { jsPDF } = window.jspdf;
+
+                        try {
+                             await new Promise(resolve => setTimeout(resolve, 500));
+                             const canvas = await html2canvas(document.getElementById('printable-content'), { useCORS: true, allowTaint: true });
+                             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                            const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
+                            const imgWidth = canvas.width;
+                            const imgHeight = canvas.height;
+                            const ratio = imgWidth / imgHeight;
+                            const finalImgHeight = pdfWidth / ratio;
+                            pdf.addImage(canvas, 'PNG', 0, 0, pdfWidth, finalImgHeight);
+                            
+                            const blob = pdf.output('blob');
+                            const file = new File([blob], 'Riepilogo.pdf', { type: 'application/pdf' });
+
+                            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                                await navigator.share({
+                                    title: 'Riepilogo Mensile',
+                                    text: 'Ecco il riepilogo di questo mese.',
+                                    files: [file],
+                                });
+                            } else {
+                                alert('La condivisione di file non è supportata su questo browser.');
+                            }
+
+                        } catch (error) {
+                            console.error('Error sharing:', error);
+                            alert('Impossibile condividere il file.');
+                        } finally {
+                           printButton.style.display = 'inline-block';
+                           shareButton.style.display = 'inline-block';
+                        }
+                    }
+                    
+                     window.onload = () => {
+                        document.getElementById('printBtn').disabled = false;
+                        document.getElementById('shareBtn').disabled = false;
+                    };
+                <\/script>
+            `;
 
             newWindow.document.write(`
                 <html>
@@ -337,35 +392,27 @@ export default function EndOfMonthPage() {
                         <title>Riepilogo Mensile - ${operator?.username}</title>
                         ${stylesheets}
                         <style>
-                            @media print {
-                                .no-print { display: none; }
-                            }
+                            @media print { .no-print { display: none !important; } }
                             body { 
                                 background-color: #fff; 
                                 color: #000;
                                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                              }
-                             .printable-summary { width: 100%; margin: 0; padding: 2rem; }
+                             .printable-summary-container { padding: 1rem; }
                         </style>
+                        ${script}
                     </head>
                     <body>
-                        <div class="no-print" style="padding: 1rem; text-align: center;">
-                            <button id="printBtn">Stampa</button>
+                        <div class="no-print" style="padding: 1rem; text-align: center; border-bottom: 1px solid #ccc;">
+                            <button id="printBtn" onclick="handlePrint()" disabled style="padding: 8px 16px; font-size: 16px; margin-right: 10px;">Stampa</button>
+                            <button id="shareBtn" onclick="handleShare()" disabled style="padding: 8px 16px; font-size: 16px;">Condividi</button>
                         </div>
-                        ${content}
+                        <div id="printable-content">${content}</div>
                     </body>
                 </html>
             `);
 
             newWindow.document.close();
-            const printButton = newWindow.document.getElementById('printBtn');
-            if (printButton) {
-                printButton.onclick = () => newWindow.print();
-                // A short delay to ensure everything, including images, has rendered.
-                setTimeout(() => {
-                    printButton.removeAttribute('disabled');
-                }, 500); // Wait 500ms
-            }
         }
         setIsProcessing(false);
     };
@@ -440,7 +487,7 @@ export default function EndOfMonthPage() {
                         </CardDescription>
                     </div>
                     <div className="flex gap-2">
-                         <Button onClick={handlePrint} disabled={isProcessing}>
+                         <Button onClick={handlePrintAndShare} disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
                             Stampa/Condividi Riepilogo
                         </Button>
