@@ -487,7 +487,21 @@ export default function EndOfMonthPage() {
                 scale: 2, 
             });
 
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'application/pdf'));
+            const pdf = new jsPDF({
+                orientation: 'p',
+                unit: 'mm',
+                format: 'a4'
+            });
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const ratio = imgHeight / imgWidth;
+            const finalImgHeight = pdfWidth * ratio;
+
+            pdf.addImage(canvas, 'JPEG', 0, 0, pdfWidth, finalImgHeight > pdfHeight ? pdfHeight : finalImgHeight);
+            const blob = pdf.getBlob();
+
 
             if (!blob) {
                 throw new Error("Failed to create blob from canvas.");
@@ -620,3 +634,5 @@ export default function EndOfMonthPage() {
         </>
     );
 }
+
+    
