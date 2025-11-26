@@ -12,7 +12,6 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
-import { usePrint } from '@/providers/print-provider';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -85,12 +84,10 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
-    const router = useRouter();
     const operatorId = params.operatorId as string;
-    const { setPrintData } = usePrint();
+    const printRef = useRef<HTMLDivElement>(null);
     
     const [isProcessing, setIsProcessing] = useState(false);
-
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
@@ -318,37 +315,121 @@ export default function EndOfMonthPage() {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const handlePrintAndShare = () => {
+    const handlePrint = () => {
+        if (isProcessing) return;
         setIsProcessing(true);
-        const printData = {
-            operator: operator,
-            currentMonth: currentMonth.toISOString(),
-            monthlySummary: monthlySummary,
-            dailyDetails: dailyDetails.map(d => ({
-                ...d,
-                date: d.date.toISOString(),
-                shift: d.shift ? {
-                    ...d.shift,
-                    date: d.shift.date.toISOString(),
-                    events: d.shift.events.map(e => ({...e, timestamp: e.timestamp.toMillis()})),
-                } : null,
-                request: d.request ? {
-                    ...d.request,
-                    startDate: d.request.startDate.toMillis(),
-                    endDate: d.request.endDate.toMillis(),
-                } : null
-            }))
-        };
-        setPrintData(printData);
-        router.push(`/dashboard/operators/${operatorId}/end-of-month/print`);
+
+        const content = printRef.current?.innerHTML;
+        if (!content) {
+            setIsProcessing(false);
+            return;
+        }
+
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+            const stylesheets = Array.from(document.styleSheets)
+                .map(sheet => sheet.href ? `<link rel="stylesheet" href="${sheet.href}">` : '')
+                .join('');
+
+            newWindow.document.write(`
+                <html>
+                    <head>
+                        <title>Riepilogo Mensile - ${operator?.username}</title>
+                        ${stylesheets}
+                        <style>
+                            @media print {
+                                .no-print { display: none; }
+                            }
+                            body { 
+                                background-color: #fff; 
+                                color: #000;
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                             }
+                             .printable-summary { width: 100%; margin: 0; padding: 2rem; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="no-print" style="padding: 1rem; text-align: center;">
+                            <button id="printBtn">Stampa</button>
+                        </div>
+                        ${content}
+                    </body>
+                </html>
+            `);
+
+            newWindow.document.close();
+            const printButton = newWindow.document.getElementById('printBtn');
+            if (printButton) {
+                printButton.onclick = () => newWindow.print();
+                // A short delay to ensure everything, including images, has rendered.
+                setTimeout(() => {
+                    printButton.removeAttribute('disabled');
+                }, 500); // Wait 500ms
+            }
+        }
         setIsProcessing(false);
     };
 
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
+    
+    const renderPrintableContent = () => (
+         <div className="bg-white text-black p-8 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+            <header className="flex justify-between items-center border-b-2 border-gray-300 pb-4 mb-4">
+                 <Image src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width={100} height={100} crossOrigin="anonymous" />
+                 <div className="text-right">
+                     <h1 className="text-3xl font-bold">{operator.username}</h1>
+                     <p className="text-xl capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                 </div>
+            </header>
+    
+            <section className="grid grid-cols-3 gap-4 mb-6 text-center">
+                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Giorni Lavorati</div><div className="text-2xl font-bold">{monthlySummary.workedDays}</div></div>
+                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Ore Ordinarie</div><div className="text-2xl font-bold">{monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
+                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Ore Straordinarie</div><div className="text-2xl font-bold">{monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
+                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Ferie (giorni)</div><div className="text-2xl font-bold">{monthlySummary.ferieDays}</div></div>
+                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Permessi (ore)</div><div className="text-2xl font-bold">{monthlySummary.permessoHours.toLocaleString('it-IT')}</div></div>
+                <div className="border rounded-lg p-3"><div className="text-sm text-gray-600">Malattia (giorni)</div><div className="text-2xl font-bold">{monthlySummary.malattiaDays}</div></div>
+            </section>
+    
+            <section>
+                <h3 className="text-xl font-bold mb-2 border-b pb-1">Dettaglio Giornaliero</h3>
+                <div className="text-xs">
+                    {dailyDetails.filter(d => d.status !== 'riposo').map(detail => (
+                        <div key={detail.date.toISOString()} className="border-b py-2 flex items-center">
+                            <div className="w-1/3 font-bold capitalize">{format(detail.date, 'eeee dd/MM/yyyy', { locale: it })}</div>
+                            <div className="w-2/3">
+                                {detail.status === 'lavorato' && detail.shift ? (
+                                    <div>
+                                        <div className="font-semibold">
+                                            Entrata: {detail.shift.events.find(e => e.type === 'entrata') ? format(detail.shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'} | Uscita: {detail.shift.events.find(e => e.type === 'uscita') ? format(detail.shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}
+                                        </div>
+                                        <div className="text-gray-600 text-[10px]">
+                                            <span>Prev: {detail.shift.contractualHours}h</span> | 
+                                            <span> Lav: {formatMinutes(detail.shift.workedMinutes)}</span> | 
+                                            <span> Ord: {detail.shift.ordinaryHours}h</span> | 
+                                            <span> Straord: {detail.shift.overtimeHours}h</span> | 
+                                            <span> Perm: {detail.shift.permissionHours}h</span>
+                                        </div>
+                                    </div>
+                                ) : detail.status === 'ferie' ? (
+                                    <span className="text-green-600 font-medium">Giorno di ferie</span>
+                                ) : detail.status === 'malattia' ? (
+                                    <span className="text-red-600 font-medium">Giorno di malattia</span>
+                                ) : detail.status === 'mancata_timbratura' ? (
+                                    <span className="text-yellow-600 font-medium">Nessuna timbratura registrata</span>
+                                ) : null}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        </div>
+    );
 
     return (
+        <>
         <Card className="p-4 sm:p-6">
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -359,7 +440,7 @@ export default function EndOfMonthPage() {
                         </CardDescription>
                     </div>
                     <div className="flex gap-2">
-                         <Button onClick={handlePrintAndShare} disabled={isProcessing}>
+                         <Button onClick={handlePrint} disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
                             Stampa/Condividi Riepilogo
                         </Button>
@@ -430,5 +511,13 @@ export default function EndOfMonthPage() {
                 </div>
             </CardContent>
         </Card>
+        
+        {/* Hidden div for printing */}
+        <div className="hidden">
+             <div ref={printRef}>
+                {renderPrintableContent()}
+             </div>
+        </div>
+        </>
     );
 }

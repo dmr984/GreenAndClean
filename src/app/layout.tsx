@@ -3,7 +3,6 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase';
 import { UserProvider } from '@/providers/user-provider';
-import { PrintProvider } from '@/providers/print-provider';
 
 export const metadata: Metadata = {
   title: 'Serveco Hub',
@@ -32,9 +31,7 @@ export default function RootLayout({
       <body className="font-body antialiased">
         <FirebaseClientProvider>
           <UserProvider>
-            <PrintProvider>
-              {children}
-            </PrintProvider>
+            {children}
           </UserProvider>
         </FirebaseClientProvider>
         <Toaster />
