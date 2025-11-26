@@ -354,19 +354,23 @@ export default function EndOfMonthPage() {
                         statusText = 'Lavorativo';
                     }
 
-                    const timbratureText = shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                    const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                    
+                    const hoursText = `
+                        <span><b>Ore Previste:</b> ${shift.contractualHours}h</span> | 
+                        <span><b>Ore Lavorate:</b> ${formatMinutes(shift.workedMinutes)}</span> | 
+                        <span><b>Ore Ordinarie:</b> ${shift.ordinaryHours}h</span> | 
+                        <span><b>Straordinario:</b> ${shift.overtimeHours}h</span> | 
+                        <span><b>Permesso:</b> ${shift.permissionHours}h</span>
+                    `;
 
                     contentHTML = `
                         <div style="flex-grow: 1; margin-left: 1rem;">
                             <div style="font-weight: 500; font-size: 13px;">${timbratureText}</div>
-                            <div style="display: flex; margin-top: 4px; font-size: 13px; color: #6b7280;">
-                                <div style="font-weight: 600; color: #374151; min-width: 180px;">Stato: ${statusText}</div>
-                                <div style="flex-grow: 1; margin-left: 1rem;">
-                                    <span><b>Ore Previste:</b> ${shift.contractualHours}h</span> | 
-                                    <span><b>Ore Lavorate:</b> ${formatMinutes(shift.workedMinutes)}</span> | 
-                                    <span><b>Ore Ordinarie:</b> ${shift.ordinaryHours}h</span> | 
-                                    <span><b>Straordinario:</b> ${shift.overtimeHours}h</span> | 
-                                    <span><b>Permesso:</b> ${shift.permissionHours}h</span>
+                            <div style="display: flex; margin-top: 4px;">
+                                <div style="min-width: 180px; font-weight: 600; color: #6b7280; font-size: 13px;">${statusText}</div>
+                                <div style="flex-grow: 1; margin-left: 1rem; font-size: 13px; color: #6b7280;">
+                                    ${hoursText}
                                 </div>
                             </div>
                         </div>
@@ -379,7 +383,7 @@ export default function EndOfMonthPage() {
                         case 'mancata_timbratura': statusText = 'Nessuna timbratura registrata'; break;
                         default: statusText = '';
                     }
-                    contentHTML = `<span style="font-weight: 500; font-size: 14px; margin-left: 1rem; color: #6b7280;">${statusText}</span>`;
+                    contentHTML = `<div style="flex-grow: 1; margin-left: 1rem;"><span style="font-weight: 500; font-size: 14px; color: #6b7280;">${statusText}</span></div>`;
                 }
 
                 return `
