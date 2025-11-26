@@ -87,7 +87,7 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
      <div ref={ref} className="bg-white text-black p-4 printable-summary" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
         <header className="flex justify-between items-center border-b pb-2 mb-2">
-             <Image src="https://i.postimg.cc/sDj6JrCf/IMG-20251006-WA0024-1.jpg" alt="Serveco Logo" width={80} height={80} crossOrigin="anonymous" />
+             <Image src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width={80} height={80} crossOrigin="anonymous" />
              <div className="text-right">
                  <h1 className="text-2xl font-bold">{operator.username}</h1>
                  <p className="text-lg capitalize text-gray-600">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
