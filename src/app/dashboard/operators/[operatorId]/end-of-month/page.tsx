@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -85,7 +87,7 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 const PrintableSummary = React.forwardRef<HTMLDivElement, { operator: Operator, currentMonth: Date, monthlySummary: any, dailyDetails: DailyDetail[], formatMinutes: (minutes: number) => string }>(({ operator, currentMonth, monthlySummary, dailyDetails, formatMinutes }, ref) => (
     <div ref={ref} className="printable-summary">
         <header className="summary-header">
-             <Image src="https://i.postimg.cc/sDj6JrCf/IMG-20251006-WA0024-1.jpg" alt="Serveco Logo" width={60} height={60} className="logo"/>
+             <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={60} height={60} className="logo"/>
              <div className="header-text">
                  <h1 className="operator-name">{operator.username}</h1>
                  <p className="month-name">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
@@ -400,14 +402,16 @@ export default function EndOfMonthPage() {
 
         const styles = `
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background-color: #f3f4f6; color: black; }
-            .print-controls { padding: 1rem; text-align: center; }
-            .print-button { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #3b82f6; color: white; border: none; border-radius: 0.375rem; }
+            .print-container { padding: 20px; }
+            .print-controls { display: flex; gap: 10px; padding: 1rem; text-align: center; justify-content: center; }
+            .print-button { display: inline-flex; align-items: center; gap: 8px; font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #3b82f6; color: white; border: none; border-radius: 0.375rem; }
+            .share-button { display: inline-flex; align-items: center; gap: 8px; font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; background-color: #16a34a; color: white; border: none; border-radius: 0.375rem; }
             @media print {
                 body { background-color: white; }
                 .print-controls { display: none !important; }
                 @page { size: A4; margin: 20px; }
             }
-            .printable-summary { background-color: white; color: black; padding: 20px; max-width: 210mm; margin: 20px auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+            .printable-summary { background-color: white; color: black; max-width: 210mm; margin: 0 auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
             .summary-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 10px; }
             .logo { height: 50px; width: auto; object-fit: contain; }
             .header-text { text-align: right; }
@@ -451,12 +455,62 @@ export default function EndOfMonthPage() {
                 <head>
                     <title>Riepilogo Mensile - ${operator?.username}</title>
                     <style>${styles}</style>
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoVBL5gD3iHGpiKNt8YdYrzsSMBGhw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
                 </head>
                 <body>
-                     <div class="print-controls">
-                        <button class="print-button" onclick="window.print()">Stampa</button>
+                     <div class="print-container">
+                         <div class="print-controls">
+                            <button class="print-button" onclick="window.print()">
+                               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+                               Stampa
+                            </button>
+                            <button class="share-button" id="share-btn">
+                               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+                               Condividi
+                            </button>
+                        </div>
+                        <div id="summary-to-export">
+                            ${printContent}
+                        </div>
                     </div>
-                    ${printContent}
+                    <script>
+                        document.getElementById('share-btn').addEventListener('click', async () => {
+                            const { jsPDF } = window.jspdf;
+                            const element = document.getElementById('summary-to-export');
+                            
+                            const canvas = await html2canvas(element, { scale: 2 });
+                            const imgData = canvas.toDataURL('image/png');
+                            
+                            const pdf = new jsPDF('p', 'mm', 'a4');
+                            const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = pdf.internal.pageSize.getHeight();
+                            const imgWidth = canvas.width;
+                            const imgHeight = canvas.height;
+                            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                            const imgX = (pdfWidth - imgWidth * ratio) / 2;
+                            const imgY = 0;
+                            
+                            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+                            
+                            const pdfBlob = pdf.getBlob();
+                            const pdfFile = new File([pdfBlob], 'Riepilogo-${operator?.username?.replace(/\\s/g, '_')}-${format(currentMonth, 'MM-yyyy')}.pdf', { type: 'application/pdf' });
+
+                            if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                                try {
+                                    await navigator.share({
+                                        title: 'Riepilogo Mensile',
+                                        text: 'Ecco il riepilogo mensile per ${operator?.username}',
+                                        files: [pdfFile],
+                                    });
+                                } catch (error) {
+                                    console.error('Error sharing:', error);
+                                }
+                            } else {
+                                alert("La condivisione di file non è supportata su questo browser o dispositivo.");
+                            }
+                        });
+                    </script>
                 </body>
             </html>
         `);
