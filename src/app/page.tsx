@@ -14,15 +14,15 @@ export default function LoginPage() {
     
     const checkAndCreateAdmin = async () => {
         try {
-            // Check if an admin user already exists by username
-            const docSnap = await getDocs(query(collection(firestore, 'app-users'), where('username', '==', 'admin')));
+            // Check if an admin user already exists by username "070380"
+            const docSnap = await getDocs(query(collection(firestore, 'app-users'), where('username', '==', '070380')));
 
             if (docSnap.empty) {
                  // If no admin user, create one with a known ID for consistency
                  const adminId = "admin_user_default_id";
                  const adminDocRef = doc(firestore, 'app-users', adminId);
                  const adminData = {
-                    username: "admin",
+                    username: "070380",
                     role: "admin" as const,
                     firstName: "Admin",
                     lastName: "User",
