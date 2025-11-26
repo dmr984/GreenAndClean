@@ -426,7 +426,7 @@ export default function EndOfMonthPage() {
     return (
         <>
              {/* Hidden printable component, positioned off-screen */}
-             <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', opacity: 0 }}>
+             <div style={{ position: 'absolute', left: '-9999px' }}>
                 <div id="print-container">
                     <PrintableSummary 
                         ref={printRef}
