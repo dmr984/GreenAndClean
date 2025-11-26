@@ -26,6 +26,8 @@ type WorkSchedule = {
 type Operator = {
     id: string;
     username: string;
+    firstName: string;
+    lastName: string;
     workSchedule: WorkSchedule;
 };
 
@@ -366,18 +368,18 @@ export default function EndOfMonthPage() {
                     `;
 
                      contentHTML = `
-                        <tr>
-                            <td style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize;">
+                        <div>
+                             <div style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize;">
                                 <b style="color: #6b7280;">${dateText}</b>
                                 <br>
                                 <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
-                            </td>
-                            <td style="vertical-align: top; font-size: 13px;">
+                            </div>
+                            <div style="vertical-align: top; font-size: 13px; margin-top: 4px;">
                                 ${timbratureText}
                                 <br>
                                 ${hoursText}
-                            </td>
-                        </tr>
+                            </div>
+                        </div>
                     `;
                 } else {
                     let statusText = '';
@@ -388,16 +390,16 @@ export default function EndOfMonthPage() {
                         default: statusText = '';
                     }
                      contentHTML = `
-                       <tr>
-                           <td colspan="2" style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize;">
+                       <div>
+                           <div style="min-width: 180px; vertical-align: top; font-size: 14px; text-transform: capitalize;">
                                <b style="color: #6b7280;">${dateText}</b>
                                 <br>
                                <span style="font-size: 13px; font-weight: 500; color: #6b7280;">${statusText}</span>
-                           </td>
-                       </tr>
+                           </div>
+                       </div>
                    `;
                 }
-                return `<tr style="border-bottom: 1px solid #e5e7eb;"><td colspan="2" style="padding-bottom: 0.5rem; padding-top: 0.5rem;">${contentHTML}</td></tr>`;
+                return `<div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; padding-top: 0.5rem;">${contentHTML}</div>`;
             }).join('');
 
 
@@ -406,18 +408,17 @@ export default function EndOfMonthPage() {
                     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
                          <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
-                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.username}</h1>
-                             <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                             <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.firstName} ${operator?.lastName}</h1>
+                             <h2 style="font-size: 1.1rem; font-weight: 500; color: #6b7280;">Codice: ${operator?.username}</h2>
+                             <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280; margin-top: 0.5rem;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                          </div>
                     </header>
                     <section>${summaryHTML}</section>
                     <section>
                         <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; border-bottom: 1px solid #d1d5db; padding-bottom: 0.25rem; color: #6b7280;">Dettaglio Giornaliero</h3>
-                        <table style="width: 100%; border-collapse: collapse;">
-                          <tbody>
+                        <div style="width: 100%; border-collapse: collapse;">
                            ${detailsHTML}
-                          </tbody>
-                        </table>
+                        </div>
                     </section>
                 </div>
             `;
@@ -507,6 +508,8 @@ export default function EndOfMonthPage() {
                                  border-collapse: collapse;
                              }
                         </style>
+                        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+                        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
                         ${script}
                     </head>
                     <body>
@@ -585,7 +588,9 @@ export default function EndOfMonthPage() {
                                         {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                     </h4>
 
-                                    {detail.status === 'lavorato' && detail.shift && (
+                                    <div className="border-b my-2"></div>
+                                    
+                                    {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
                                                 {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
@@ -598,10 +603,14 @@ export default function EndOfMonthPage() {
                                                 <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
                                             </div>
                                         </>
-                                    )}
-                                    {detail.status === 'ferie' && <p className="text-muted-foreground mt-1">Giorno di ferie approvato.</p>}
-                                    {detail.status === 'malattia' && <p className="text-muted-foreground mt-1">Giorno di malattia approvato.</p>}
-                                    {detail.status === 'mancata_timbratura' && <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>}
+                                    ) : detail.status === 'ferie' ? (
+                                        <p className="text-muted-foreground mt-1">Giorno di ferie approvato.</p>
+                                    ) : detail.status === 'malattia' ? (
+                                        <p className="text-muted-foreground mt-1">Giorno di malattia approvato.</p>
+                                    ) : detail.status === 'mancata_timbratura' ? (
+                                        <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>
+                                    ) : null}
+
                                 </div>
                             )})}
                         </div>
