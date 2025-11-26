@@ -407,16 +407,28 @@ export default function EndOfMonthPage() {
                         body { 
                             font-family: 'PT Sans', sans-serif;
                             margin: 0;
-                            -webkit-print-color-adjust: exact; /* For Chrome, Safari */
-                            color-adjust: exact; /* For Firefox */
+                            -webkit-print-color-adjust: exact;
+                            color-adjust: exact;
                         }
-                        .printable-summary {
-                             background-color: white;
-                             color: black;
-                             width: 210mm;
-                             min-height: 297mm;
-                             padding: 1rem;
-                             box-sizing: border-box;
+                        .print-container {
+                            padding: 1rem;
+                        }
+                        .print-button {
+                            padding: 10px 20px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            border: 1px solid #ccc;
+                            border-radius: 5px;
+                            margin: 20px;
+                            background-color: #f0f0f0;
+                        }
+                        @media print {
+                            .print-button {
+                                display: none;
+                            }
+                            .print-container {
+                                padding: 0;
+                            }
                         }
                         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
                         header img { width: 80px; height: 80px; }
@@ -451,24 +463,18 @@ export default function EndOfMonthPage() {
                         .pl-52 { padding-left: 13rem; }
                         .text-xs { font-size: 0.75rem; }
                         .text-gray-500 { color: #6b7282; }
-                        @media print {
-                            body { margin: 0; }
-                            .printable-summary { box-shadow: none; border: none; }
-                        }
                     </style>
                 </head>
                 <body>
-                    ${printContent}
+                    <div class="print-container">
+                        <button class="print-button" onclick="window.print()">Stampa</button>
+                        ${printContent}
+                    </div>
                 </body>
             </html>
         `);
         printWindow.document.close();
         printWindow.focus();
-        // Use a timeout to ensure content is rendered before printing
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 500);
     };
 
     if (isLoading || !operator) {
@@ -478,7 +484,7 @@ export default function EndOfMonthPage() {
     return (
         <>
              {/* Hidden printable component, positioned off-screen */}
-             <div style={{ position: 'absolute', left: '-9999px', opacity: 0 }}>
+             <div style={{ position: 'absolute', left: '-9999px', opacity: 1 }}>
                 <PrintableSummary 
                     ref={printRef}
                     operator={operator} 
