@@ -12,6 +12,8 @@ type Operator = {
     id: string;
     username: string;
     role: string;
+    firstName: string;
+    lastName: string;
 };
 
 export function AdminDashboard() {
@@ -90,7 +92,10 @@ export function AdminDashboard() {
                                     <Button variant="outline" className="w-full h-20 justify-start p-4 text-left relative">
                                         <div className='flex items-center gap-3'>
                                             <User className='h-5 w-5 flex-shrink-0'/>
-                                            <span className='truncate font-semibold'>{operator.username}</span>
+                                            <div className="flex flex-col">
+                                                <span className='truncate font-semibold'>{operator.username}</span>
+                                                <span className='text-xs text-muted-foreground truncate'>{`${operator.firstName} ${operator.lastName}`}</span>
+                                            </div>
                                         </div>
                                          {totalPending > 0 && (
                                             <Badge variant="destructive" className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full p-0">
