@@ -330,7 +330,7 @@ export default function EndOfMonthPage() {
                 .join('');
             
             const summaryHTML = `
-                 <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin-bottom: 1rem; text-align: center;">
+                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1rem; text-align: center;">
                     <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Giorni Lavorati</div><div style="font-size: 1.0rem; font-weight: 700; color: #6b7280;">${monthlySummary.workedDays}</div></div>
                     <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ore Ordinarie</div><div style="font-size: 1.0rem; font-weight: 700; color: #6b7280;">${monthlySummary.ordinaryHours.toLocaleString('it-IT')}</div></div>
                     <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.25rem;"><div style="font-size: 0.7rem; color: #6b7280;">Ore Straordinarie</div><div style="font-size: 1.0rem; font-weight: 700; color: #6b7280;">${monthlySummary.overtimeHours.toLocaleString('it-IT')}</div></div>
@@ -406,7 +406,7 @@ export default function EndOfMonthPage() {
             const content = `
                 <div id="printable-content" style="background-color: white; color: black; padding: 2rem; width: 210mm; min-height: 297mm; margin: auto;">
                     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d1d5db; padding-bottom: 1rem; margin-bottom: 1rem;">
-                         <img src="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
+                         <img src="https://i.postimg.cc/fRPgjjWB/1764197982092.png" alt="Serveco Logo" width="100" height="100" crossOrigin="anonymous" />
                          <div style="text-align: right;">
                              <h1 style="font-size: 1.875rem; font-weight: 700; color: #6b7280;">${operator?.firstName} ${operator?.lastName}</h1>
                              <p style="font-size: 1.25rem; text-transform: capitalize; color: #6b7280; margin-top: 0.5rem;">${format(currentMonth, 'MMMM yyyy', { locale: it })}</p>

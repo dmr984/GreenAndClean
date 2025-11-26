@@ -18,8 +18,8 @@ export default function RootLayout({
   return (
     <html lang="it" suppressHydrationWarning className="dark">
       <head>
-        <link rel="icon" href="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" type="image/png" />
-        <link rel="apple-touch-icon" href="https://i.postimg.cc/d3QKx62Q/IMG-20251006-WA0024.jpg" />
+        <link rel="icon" href="https://i.postimg.cc/fRPgjjWB/1764197982092.png" type="image/png" />
+        <link rel="apple-touch-icon" href="https://i.postimg.cc/fRPgjjWB/1764197982092.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

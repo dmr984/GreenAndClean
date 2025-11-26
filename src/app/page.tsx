@@ -47,7 +47,7 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-md gap-6 p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3 text-center">
           <Image 
-            src="https://i.ibb.co/cKq6nWLR/1762432288621.png"
+            src="https://i.postimg.cc/fRPgjjWB/1764197982092.png"
             alt="Serveco Logo" 
             width={40} 
             height={40} 

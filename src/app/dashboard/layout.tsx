@@ -153,7 +153,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {user?.role === 'admin' && (
                         <>
                            <Link href="/dashboard/operators" passHref>
-                            <Button variant={pathname === '/dashboard/operators' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                            <Button variant={pathname.startsWith('/dashboard/operators') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Users className="h-5 w-5" /> Gestione Operatori
                             </Button>
                           </Link>
@@ -197,7 +197,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1 flex justify-center">
             <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-lg">
                 <span className="uppercase tracking-wider whitespace-nowrap">SERVECO SRL</span>
-                <Image src="https://i.ibb.co/cKq6nWLR/1762432288621.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
+                <Image src="https://i.postimg.cc/fRPgjjWB/1764197982092.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
             </Link>
           </div>
 
