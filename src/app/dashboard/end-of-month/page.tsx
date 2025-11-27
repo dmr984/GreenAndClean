@@ -291,7 +291,7 @@ export default function EndOfMonthPage() {
 
                     const entrataIndex = events.findIndex(e => e.type === 'entrata');
                     if (entrataIndex !== -1 && calculationStart) {
-                         const virtualEntrata = { ...events[entrataIndex], timestamp: Timestamp.fromDate(calculationStart) };
+                         const virtualEntrata = { ...events[entrataIndex], timestamp: Timestamp.fromDate(calculationStart), id: `virtual-${events[entrataIndex].id}` };
                          events[entrataIndex] = virtualEntrata;
                     }
                 }
