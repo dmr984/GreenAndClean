@@ -53,8 +53,15 @@ type Shift = {
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string; // "HH:mm"
+    endTime?: string; // "HH:mm"
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 type Operator = {
@@ -131,7 +138,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 
                 const today = new Date();
                 const dayName = dayIndexToName[getDay(today)];
-                const contractualHours = operatorData.workSchedule?.[dayName] || 0;
+                const contractualHours = operatorData.workSchedule?.[dayName]?.totalHours || 0;
                 setIsWorkDay(contractualHours > 0);
 
             } else {
@@ -194,50 +201,58 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }, [firestore, authUser, toast]);
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            if (isOnBreak && shifts.length > 0 && shifts[0].endTime === null) {
-                const lastEvent = shifts[0].events[shifts[0].events.length - 1];
-                if (lastEvent && lastEvent.type === 'pausa') {
-                    const breakStartTime = lastEvent.timestamp.toMillis();
-                    const now = new Date().getTime();
-                    const breakDurationMinutes = (now - breakStartTime) / (1000 * 60);
-
-                    // 1 hour 15 minutes = 75 minutes
-                    if (breakDurationMinutes > 75) {
-                        handleAutoEndBreak(lastEvent);
-                    }
-                }
+      if (!isOnBreak || !shifts.length || !operator?.workSchedule) return;
+  
+      const interval = setInterval(() => {
+        if (shifts[0].endTime === null) {
+          const lastEvent = shifts[0].events[shifts[0].events.length - 1];
+          if (lastEvent && lastEvent.type === 'pausa') {
+            const breakStartTime = lastEvent.timestamp.toMillis();
+            const now = new Date().getTime();
+            const breakDurationMinutes = (now - breakStartTime) / (1000 * 60);
+  
+            const dayName = dayIndexToName[getDay(lastEvent.timestamp.toDate())];
+            const mandatoryBreakMinutes = operator.workSchedule?.[dayName]?.breakMinutes || 60;
+            const toleranceMinutes = 15;
+            const autoEndThreshold = mandatoryBreakMinutes + toleranceMinutes;
+  
+            if (breakDurationMinutes > autoEndThreshold) {
+              handleAutoEndBreak(lastEvent, mandatoryBreakMinutes);
             }
-        }, 60000); // Check every minute
+          }
+        }
+      }, 60000); // Check every minute
+  
+      return () => clearInterval(interval);
+  }, [isOnBreak, shifts, operator]);
 
-        return () => clearInterval(interval);
-    }, [isOnBreak, shifts]);
-
-  const handleAutoEndBreak = async (lastEvent: ClockingEvent) => {
-    if (!firestore || !operator) return;
-
-    const autoEndBreakEvent: Omit<ClockingEvent, 'id'> = {
-      userId: operator.id,
-      type: 'fine_pausa',
-      timestamp: serverTimestamp(),
-      status: 'rifiutata', // Mark as auto-generated and invalid
-      latitude: 0,
-      longitude: 0,
-      viewedByOperator: false,
-    };
-
-    try {
-      await addDoc(collection(firestore, `app-users/${operator.id}/timbrature`), autoEndBreakEvent);
-      toast({
-        variant: 'destructive',
-        title: 'Pausa Terminata Automaticamente',
-        description: 'La pausa è stata interrotta per superamento del limite di tempo.',
-        duration: 10000,
-      });
-      // The onSnapshot listener for clockings will handle the UI update
-    } catch (error) {
-      console.error("Failed to auto-end break:", error);
-    }
+  const handleAutoEndBreak = async (lastEvent: ClockingEvent, mandatoryBreakMinutes: number) => {
+      if (!firestore || !operator) return;
+  
+      const breakStartTime = lastEvent.timestamp.toDate();
+      const autoEndTime = new Date(breakStartTime.getTime() + mandatoryBreakMinutes * 60000);
+  
+      const autoEndBreakEvent: Omit<ClockingEvent, 'id'> = {
+          userId: operator.id,
+          type: 'fine_pausa',
+          timestamp: Timestamp.fromDate(autoEndTime),
+          status: 'rifiutata', // Mark as auto-generated and invalid for manual approval
+          latitude: 0,
+          longitude: 0,
+          viewedByOperator: false,
+      };
+  
+      try {
+          await addDoc(collection(firestore, `app-users/${operator.id}/timbrature`), autoEndBreakEvent);
+          toast({
+              variant: 'destructive',
+              title: 'Pausa Terminata Automaticamente',
+              description: `La pausa è stata interrotta dopo ${mandatoryBreakMinutes} minuti.`,
+              duration: 10000,
+          });
+      } catch (error) {
+          console.error("Failed to auto-end break:", error);
+      }
   };
 
 

@@ -154,34 +154,34 @@ export default function ManageOperatorsPage() {
       setter: React.Dispatch<React.SetStateAction<WorkSchedule>>,
       day: DayOfWeek,
       field: keyof DailySchedule,
-      value: string
+      value: string | number
     ) => {
         setter(prev => {
-            const daySchedule = prev[day] || {};
-            const newDaySchedule = { ...daySchedule, [field]: value };
-
-            // Auto-calculate end time if start time and total hours are set
-            if (field === 'startTime' || field === 'totalHours') {
-                const totalHours = field === 'totalHours' ? parseFloat(value) : newDaySchedule.totalHours;
-                const startTime = field === 'startTime' ? value : newDaySchedule.startTime;
-
-                if (startTime && totalHours && totalHours > 0) {
-                    const [startH, startM] = startTime.split(':').map(Number);
-                    const startDate = new Date(0);
-                    startDate.setHours(startH, startM);
-                    
-                    // Assume 1 hour break for shifts >= 6 hours
-                    const breakMinutes = totalHours >= 6 ? 60 : 0;
-                    const totalDurationMinutes = totalHours * 60 + breakMinutes;
-                    
-                    const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
-                    
-                    newDaySchedule.endTime = `${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}`;
-                    newDaySchedule.breakMinutes = breakMinutes;
-                }
+            const daySchedule = { ...(prev[day] || {}) };
+            
+            if (field === 'totalHours' || field === 'breakMinutes') {
+                daySchedule[field] = value ? parseFloat(String(value)) : undefined;
+            } else {
+                (daySchedule as any)[field] = value || undefined;
+            }
+            
+            // Auto-calculate end time
+            const { totalHours, startTime, breakMinutes } = daySchedule;
+            if (totalHours && totalHours > 0 && startTime) {
+                const [startH, startM] = startTime.split(':').map(Number);
+                const startDate = new Date(0);
+                startDate.setHours(startH, startM);
+                
+                const totalDurationMinutes = (totalHours * 60) + (breakMinutes || 0);
+                
+                const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
+                
+                daySchedule.endTime = `${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}`;
+            } else {
+                daySchedule.endTime = undefined;
             }
 
-            return { ...prev, [day]: newDaySchedule };
+            return { ...prev, [day]: daySchedule };
         });
     };
 
@@ -224,18 +224,10 @@ export default function ManageOperatorsPage() {
             const daySchedule = workSchedule[day];
             if (daySchedule && (daySchedule.totalHours || daySchedule.startTime)) {
                 const newDaySchedule: DailySchedule = {};
-                if (daySchedule.totalHours) {
-                    newDaySchedule.totalHours = parseFloat(String(daySchedule.totalHours));
-                }
-                if (daySchedule.startTime) {
-                    newDaySchedule.startTime = daySchedule.startTime;
-                }
-                if (daySchedule.endTime) {
-                    newDaySchedule.endTime = daySchedule.endTime;
-                }
-                if (daySchedule.breakMinutes) {
-                    newDaySchedule.breakMinutes = daySchedule.breakMinutes;
-                }
+                if (daySchedule.totalHours) newDaySchedule.totalHours = parseFloat(String(daySchedule.totalHours));
+                if (daySchedule.startTime) newDaySchedule.startTime = daySchedule.startTime;
+                if (daySchedule.endTime) newDaySchedule.endTime = daySchedule.endTime;
+                if (daySchedule.breakMinutes) newDaySchedule.breakMinutes = parseFloat(String(daySchedule.breakMinutes));
                 if (Object.keys(newDaySchedule).length > 0) {
                     finalWorkSchedule[day] = newDaySchedule;
                 }
@@ -340,14 +332,14 @@ export default function ManageOperatorsPage() {
 
     const renderWorkScheduleFields = (
         schedule: WorkSchedule,
-        handler: (day: DayOfWeek, field: keyof DailySchedule, value: string) => void,
+        handler: (day: DayOfWeek, field: keyof DailySchedule, value: string | number) => void,
         prefix: string
     ) => (
         <div className="space-y-4">
             {weekDays.map(day => (
                 <div key={`${prefix}-${day}`}>
                     <Label className="font-semibold">{dayLabels[day]}</Label>
-                    <div className="grid grid-cols-2 items-center gap-4 mt-1 p-3 border rounded-md">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 items-center gap-4 mt-1 p-3 border rounded-md">
                         <div className="space-y-1">
                             <Label htmlFor={`${prefix}-${day}-hours`}>Ore Totali</Label>
                             <Input 
@@ -367,6 +359,27 @@ export default function ManageOperatorsPage() {
                                 type="time"
                                 value={schedule[day]?.startTime || ''}
                                 onChange={(e) => handler(day, 'startTime', e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor={`${prefix}-${day}-break`}>Minuti Pausa (Opz.)</Label>
+                            <Input
+                                id={`${prefix}-${day}-break`}
+                                type="number"
+                                placeholder="Es: 60"
+                                value={schedule[day]?.breakMinutes || ''}
+                                onChange={(e) => handler(day, 'breakMinutes', e.target.value)}
+                                min="0"
+                            />
+                        </div>
+                         <div className="space-y-1">
+                            <Label htmlFor={`${prefix}-${day}-end`}>Orario di Uscita Previsto</Label>
+                            <Input 
+                                id={`${prefix}-${day}-end`}
+                                type="time"
+                                value={schedule[day]?.endTime || ''}
+                                readOnly
+                                className="bg-muted"
                             />
                         </div>
                     </div>
@@ -390,7 +403,7 @@ export default function ManageOperatorsPage() {
                                     <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Operatore
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="sm:max-w-2xl">
+                            <DialogContent className="sm:max-w-3xl">
                                 <form onSubmit={(e) => handleFormSubmit(e, 'add')}>
                                     <DialogHeader>
                                         <DialogTitle>Aggiungi Nuovo Operatore</DialogTitle>
@@ -478,7 +491,7 @@ export default function ManageOperatorsPage() {
             </Card>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="sm:max-w-3xl">
                     <form onSubmit={(e) => handleFormSubmit(e, 'edit')}>
                         <DialogHeader>
                             <DialogTitle>Modifica Operatore</DialogTitle>
