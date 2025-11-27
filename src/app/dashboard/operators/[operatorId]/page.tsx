@@ -115,7 +115,14 @@ export default function OperatorDetailPage() {
         
         const scheduleString = dayIndexToName
             .filter(day => schedule[day]?.totalHours && schedule[day]!.totalHours! > 0)
-            .map(day => `${dayMapping[day]}: ${schedule[day]!.totalHours}h`)
+            .map(day => {
+                const s = schedule[day]!;
+                let display = `${dayMapping[day]}: ${s.totalHours}h`;
+                if (s.startTime) {
+                    display += ` (${s.startTime})`;
+                }
+                return display;
+            })
             .join(' | ');
 
         return scheduleString || 'Nessun giorno lavorativo impostato.';
