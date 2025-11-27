@@ -21,9 +21,17 @@ import { Label } from '@/components/ui/label';
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string;
+    endTime?: string;
+    breakMinutes?: number;
 };
+
+type WorkSchedule = {
+    [key in DayOfWeek]?: DailySchedule;
+};
+
 
 type Operator = {
     id: string;
@@ -229,7 +237,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
     const calculateShiftHours = (shift: Shift | null): { ordinary: number, overtime: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0 };
     
-        const contractualHours = (operator.workSchedule[dayIndexToName[getDay(shift.startTime.toDate())]] || 0);
+        const contractualHours = (operator.workSchedule[dayIndexToName[getDay(shift.startTime.toDate())]]?.totalHours || 0);
         const totalMinutesWorked = Math.round(shift.workDuration);
 
         const roundOrdinaryHours = (minutes: number): number => {
@@ -334,7 +342,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]] || 0}h</p>
+                                    <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours || 0}h</p>
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>

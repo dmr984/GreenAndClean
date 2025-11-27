@@ -21,8 +21,15 @@ import { Input } from '@/components/ui/input';
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string;
+    endTime?: string;
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 type Operator = {
@@ -234,7 +241,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
     const calculateShiftHours = (shift: Shift | null): { ordinary: number, overtime: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0 };
     
-        const contractualHours = (operator.workSchedule[dayIndexToName[getDay(shift.startTime.toDate())]] || 0);
+        const contractualHours = (operator.workSchedule[dayIndexToName[getDay(shift.startTime.toDate())]]?.totalHours || 0);
         const totalMinutesWorked = Math.round(shift.workDuration);
 
         const roundOrdinaryHours = (minutes: number): number => {
@@ -338,7 +345,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]] || 0}h</p>
+                                    <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours || 0}h</p>
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
@@ -635,7 +642,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         if (!shiftDate) return 0;
         const dayOfWeek = getDay(shiftDate);
         const dayName = dayIndexToName[dayOfWeek];
-        return operator.workSchedule[dayName] || 0;
+        return operator.workSchedule[dayName]?.totalHours || 0;
     };
     
      const calculateShiftHours = (shift: Shift | null): { ordinary: number, overtime: number } => {
@@ -751,7 +758,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                     for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
                         if (isWithinInterval(day, monthInterval)) {
                             const dayName = dayIndexToName[getDay(day)];
-                            const contractualHours = operator.workSchedule[dayName] || 0;
+                            const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
                             if (contractualHours > 0) {
                                 if (req.type === 'ferie') ferieDaysCount++;
                                 if (req.type === 'malattia') malattiaDaysCount++;
@@ -985,7 +992,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                 daysInInterval.forEach(day => {
                     if (isWithinInterval(day, monthInterval)) {
                         const dayName = dayIndexToName[getDay(day)];
-                        const contractualHours = operator?.workSchedule[dayName] || 0;
+                        const contractualHours = operator?.workSchedule[dayName]?.totalHours || 0;
                         if (contractualHours > 0) {
                             allDays.push({ day, request: item });
                         }
