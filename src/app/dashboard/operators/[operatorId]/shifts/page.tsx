@@ -538,29 +538,31 @@ export default function ShiftApprovalPage() {
             return { workDuration: 0, calculationStart: null };
         }
 
+        const clockInTime = clockInEvent.timestamp.toDate();
         const shiftDate = clockInEvent.timestamp.toDate();
         const dayName = dayIndexToName[getDayFns(shiftDate)];
         const schedule = operator.workSchedule[dayName];
-        const contractualStartTimeStr = schedule?.startTime || '00:00';
-
-        const [contractualHours, contractualMinutes] = contractualStartTimeStr.split(':').map(Number);
-        const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-
-        let calculationStart = clockInEvent.timestamp.toDate();
-
-        const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
         
-        if (minutesDifference <= 15) { // Includes clocking in early up to 15 mins late
-            calculationStart = contractualStart;
-        } else {
-            // Round up to the next half hour
-            const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-            if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                nextHalfHour.setMinutes(30);
-            } else if (nextHalfHour.getMinutes() > 30) {
-                nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+        let calculationStart = clockInTime;
+        
+        // Apply rounding rules only if a start time is defined in the schedule
+        if (schedule?.startTime) {
+            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+            const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
+        
+            if (minutesDifference <= 15) { // Includes clocking in early up to 15 mins late
+                calculationStart = contractualStart;
+            } else {
+                // Round up to the next half hour
+                const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
+                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                    nextHalfHour.setMinutes(30);
+                } else if (nextHalfHour.getMinutes() > 30) {
+                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                }
+                calculationStart = nextHalfHour;
             }
-            calculationStart = nextHalfHour;
         }
         
         let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
@@ -647,7 +649,7 @@ export default function ShiftApprovalPage() {
     const handleApprovalProcess = (shift: Shift) => {
         if (!operator || !shift.events[0]) return;
 
-        const hasBreak = shift.events.some(e => e.type === 'pausa') && shift.events.some(e => e.type === 'fine_pausa');
+        const hasBreak = shift.events.some(e => e.type === 'pausa');
         const dayName = dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())];
         const mandatoryBreakMinutes = operator.workSchedule[dayName]?.breakMinutes || 0;
 

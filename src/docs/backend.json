@@ -25,14 +25,13 @@
         },
         "workSchedule": {
             "type": "object",
-            "description": "The contractual work schedule for the operator.",
+            "description": "The contractual work schedule for the operator. Start time is optional.",
             "patternProperties": {
                 "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$": {
                     "type": "object",
                     "properties": {
                         "totalHours": { "type": "number", "description": "Total contractual hours for the day." },
-                        "startTime": { "type": "string", "format": "time", "description": "The specific start time for the shift (e.g., '08:00')." },
-                        "endTime": { "type": "string", "format": "time", "description": "The specific end time for the shift (e.g., '17:00')." },
+                        "startTime": { "type": "string", "format": "time", "description": "Optional: The specific start time for the shift (e.g., '08:00'). Used for lateness calculations." },
                         "breakMinutes": { "type": "number", "description": "Mandatory break duration in minutes." }
                     }
                 }
@@ -346,6 +345,6 @@
         }
       }
     ],
-    "reasoning": "Updated the Operator entity to use a more flexible workSchedule object, allowing for specific start/end times and mandatory break durations per day."
+    "reasoning": "Updated the Operator entity to simplify the workSchedule object, removing the derived 'endTime' and making 'startTime' optional to allow for more flexible hour calculation based on either a fixed start or just total hours."
   }
 }

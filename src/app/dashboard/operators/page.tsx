@@ -164,22 +164,6 @@ export default function ManageOperatorsPage() {
             } else {
                 (daySchedule as any)[field] = value || undefined;
             }
-            
-            // Auto-calculate end time
-            const { totalHours, startTime, breakMinutes } = daySchedule;
-            if (totalHours && totalHours > 0 && startTime) {
-                const [startH, startM] = startTime.split(':').map(Number);
-                const startDate = new Date(0);
-                startDate.setHours(startH, startM);
-                
-                const totalDurationMinutes = (totalHours * 60) + (breakMinutes || 0);
-                
-                const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
-                
-                daySchedule.endTime = `${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}`;
-            } else {
-                daySchedule.endTime = undefined;
-            }
 
             return { ...prev, [day]: daySchedule };
         });
@@ -245,7 +229,6 @@ export default function ManageOperatorsPage() {
                 const newDaySchedule: DailySchedule = {};
                 if (daySchedule.totalHours) newDaySchedule.totalHours = parseFloat(String(daySchedule.totalHours));
                 if (daySchedule.startTime) newDaySchedule.startTime = daySchedule.startTime;
-                if (daySchedule.endTime) newDaySchedule.endTime = daySchedule.endTime;
                 if (daySchedule.breakMinutes) newDaySchedule.breakMinutes = parseFloat(String(daySchedule.breakMinutes));
                 if (Object.keys(newDaySchedule).length > 0) {
                     finalWorkSchedule[day] = newDaySchedule;
@@ -367,7 +350,7 @@ export default function ManageOperatorsPage() {
                             </Button>
                         )}
                     </div>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 items-center gap-4 p-3 border rounded-md">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 items-center gap-4 p-3 border rounded-md">
                         <div className="space-y-1">
                             <Label htmlFor={`${prefix}-${day}-hours`}>Ore Totali</Label>
                             <Input 
@@ -398,16 +381,6 @@ export default function ManageOperatorsPage() {
                                 value={schedule[day]?.breakMinutes || ''}
                                 onChange={(e) => handler(day, 'breakMinutes', e.target.value)}
                                 min="0"
-                            />
-                        </div>
-                         <div className="space-y-1">
-                            <Label htmlFor={`${prefix}-${day}-end`}>Orario di Uscita Previsto</Label>
-                            <Input 
-                                id={`${prefix}-${day}-end`}
-                                type="time"
-                                value={schedule[day]?.endTime || ''}
-                                readOnly
-                                className="bg-muted"
                             />
                         </div>
                     </div>
