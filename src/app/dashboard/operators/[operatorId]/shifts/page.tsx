@@ -52,7 +52,7 @@ type Timbratura = {
     longitude?: number;
     isOvertime?: boolean;
     isAuto?: boolean;
-    shiftId?: string; // New property to group manual entries
+    shiftId?: string;
 };
 
 type Shift = {
@@ -82,12 +82,14 @@ type UnlockRequest = {
     type: 'sblocco_timbratura';
 }
 
-type ApprovalData = {
-    shiftToApprove: Shift | null;
+type ApprovalContext = {
+    shift: Shift;
     ordinaryHours: string;
     overtimeHours: string;
     leaveHours: string;
-};
+    manualBreak?: { start: string; end: string; };
+    createLeaveRequest: boolean;
+} | null;
 
 const ITEMS_PER_PAGE = 5;
 
@@ -128,11 +130,8 @@ export default function ShiftApprovalPage() {
     const [isAddBreakDialogOpen, setIsAddBreakDialogOpen] = useState(false);
     const [breakTimes, setBreakTimes] = useState<{ start: string, end: string }>({ start: '', end: '' });
 
-
-    const [approvalData, setApprovalData] = useState<ApprovalData>({ shiftToApprove: null, ordinaryHours: "0", overtimeHours: "0", leaveHours: "0"});
+    const [approvalContext, setApprovalContext] = useState<ApprovalContext>(null);
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
-    const [includeLeaveHours, setIncludeLeaveHours] = useState(false);
-    const [isLeaveWarningOpen, setIsLeaveWarningOpen] = useState(false);
 
 
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
@@ -298,51 +297,45 @@ export default function ShiftApprovalPage() {
         return { events, status, workDuration, isOnLeaveDay, isOvertime };
     };
 
-    const handleApprovalClick = () => {
-        if (parseFloat(approvalData.leaveHours) > 0 && !includeLeaveHours) {
-            setIsLeaveWarningOpen(true);
-        } else {
-            handleConfirmApprove();
-        }
-    };
+    const handleConfirmApprove = async () => {
+        if (!firestore || !approvalContext || !operator) return;
     
-    const handleConfirmLeaveWarning = () => {
-        setIsLeaveWarningOpen(false);
-        handleConfirmApprove(false); // Proceed without creating leave request
-    };
-
-    const handleConfirmApprove = async (createLeaveRequest = includeLeaveHours, manualBreak?: { start: Timestamp; end: Timestamp }) => {
-        const { shiftToApprove, ordinaryHours, overtimeHours, leaveHours } = approvalData;
-        if (!firestore || !shiftToApprove || !operator) return;
-    
+        const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak } = approvalContext;
         const approvedOvertime = parseFloat(overtimeHours) || 0;
         const approvedLeave = createLeaveRequest ? (parseFloat(leaveHours) || 0) : 0;
     
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        shiftToApprove.events.forEach(event => {
+        shift.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(timbratureRef, event.id);
                 batch.update(docRef, { status: 'confermata', viewedByOperator: false });
             }
         });
         
-        if (manualBreak) {
-            const shiftId = shiftToApprove.events[0]?.shiftId || shiftToApprove.id;
+        if (manualBreak && manualBreak.start && manualBreak.end) {
+            const shiftId = shift.events[0]?.shiftId || shift.id;
+            const shiftDate = shift.events[0].timestamp.toDate();
+
+            const createTimestamp = (time: string): Timestamp => {
+                const [hours, minutes] = time.split(':').map(Number);
+                return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+            };
+
             const breakStartRef = doc(timbratureRef);
             batch.set(breakStartRef, {
-                userId: operator.id, type: 'pausa', timestamp: manualBreak.start,
-                status: 'confermata', viewedByOperator: false, shiftId
+                userId: operator.id, type: 'pausa', timestamp: createTimestamp(manualBreak.start),
+                status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
             });
             const breakEndRef = doc(timbratureRef);
             batch.set(breakEndRef, {
-                userId: operator.id, type: 'fine_pausa', timestamp: manualBreak.end,
-                status: 'confermata', viewedByOperator: false, shiftId
+                userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end),
+                status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
             });
         }
     
-        const shiftDate = shiftToApprove.events[0].timestamp.toDate();
+        const shiftDate = shift.events[0].timestamp.toDate();
     
         if (approvedOvertime > 0) {
             const overtimeRequest = {
@@ -355,7 +348,7 @@ export default function ShiftApprovalPage() {
                 reason: 'Straordinario approvato da turno',
                 createdAt: serverTimestamp(),
                 viewedByOperator: false,
-                associatedShiftId: shiftToApprove.id, // Link to the shift
+                associatedShiftId: shift.id, // Link to the shift
             };
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
@@ -385,7 +378,7 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         } finally {
             setIsApproveDialogOpen(false);
-            setApprovalData({ shiftToApprove: null, ordinaryHours: "0", overtimeHours: "0", leaveHours: "0"});
+            setApprovalContext(null);
             setIsDetailOpen(false);
         }
     };
@@ -693,39 +686,27 @@ export default function ShiftApprovalPage() {
         setIsMissingBreakConfirmOpen(false);
     };
 
-    const handleAddBreakAndApprove = () => {
-        if (!firestore || !operatorId || !shiftForBreak || !breakTimes.start || !breakTimes.end) {
-             toast({ title: 'Dati mancanti', description: 'Inserisci inizio e fine della pausa', variant: 'destructive'});
-             return;
+    const handleAddBreakAndOpenApproval = () => {
+        if (!shiftForBreak || !breakTimes.start || !breakTimes.end) {
+            toast({ title: 'Dati mancanti', description: 'Inserisci inizio e fine della pausa', variant: 'destructive'});
+            return;
         }
-        
-        const shiftDate = shiftForBreak.events[0].timestamp.toDate();
-        const createTimestamp = (time: string): Timestamp => {
-            const [hours, minutes] = time.split(':').map(Number);
-            return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
-        };
-
-        const manualBreak = { 
-            start: createTimestamp(breakTimes.start), 
-            end: createTimestamp(breakTimes.end) 
-        };
-        
-        handleConfirmApprove(includeLeaveHours, manualBreak);
-        
+        handleOpenApproveDialog(shiftForBreak, { start: breakTimes.start, end: breakTimes.end });
         setIsAddBreakDialogOpen(false);
         setShiftForBreak(null);
     };
 
 
-    const handleOpenApproveDialog = (shift: Shift) => {
+    const handleOpenApproveDialog = (shift: Shift, manualBreak?: {start: string, end: string}) => {
         const { ordinary, overtime, leave } = calculateHours(shift);
-        setApprovalData({
-            shiftToApprove: shift,
+        setApprovalContext({
+            shift: shift,
             ordinaryHours: String(ordinary),
             overtimeHours: String(overtime),
             leaveHours: String(leave),
+            manualBreak: manualBreak,
+            createLeaveRequest: false
         });
-        setIncludeLeaveHours(false); // Reset checkbox
         setIsApproveDialogOpen(true);
     }
     
@@ -1443,54 +1424,41 @@ export default function ShiftApprovalPage() {
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
 
-            <AlertDialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
+            <AlertDialog open={isApproveDialogOpen} onOpenChange={(open) => { if (!open) setApprovalContext(null); setIsApproveDialogOpen(open); }}>
                 <AlertDialogContent>
                      <AlertDialogHeader>
                         <AlertDialogTitle>Riepilogo e Approvazione Turno</AlertDialogTitle>
                         <AlertDialogDescription>Verifica e modifica le ore calcolate prima di approvare il turno. Le ore verranno registrate come richieste separate.</AlertDialogDescription>
                     </AlertDialogHeader>
-                    <div className="py-4 space-y-4">
-                         <div>
-                            <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
-                            <Input id="ordinary-hours" type="number" value={approvalData.ordinaryHours} onChange={(e) => setApprovalData(p => ({...p, ordinaryHours: e.target.value}))} step="0.5" min="0" />
-                            <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
-                        </div>
-                        <div>
-                            <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
-                            <Input id="overtime-hours" type="number" value={approvalData.overtimeHours} onChange={(e) => setApprovalData(p => ({...p, overtimeHours: e.target.value}))} step="1" min="0" />
-                            <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 50° minuto. Modifica se necessario.</p>
-                        </div>
-                        {parseFloat(approvalData.leaveHours) > 0 && (
+                    {approvalContext && (
+                        <div className="py-4 space-y-4">
                             <div>
-                                <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
-                                <Input id="leave-hours" type="number" value={approvalData.leaveHours} onChange={(e) => setApprovalData(p => ({...p, leaveHours: e.target.value}))} step="0.5" min="0" />
-                                <div className="flex items-center space-x-2 mt-2">
-                                    <Checkbox id="include-leave" checked={includeLeaveHours} onCheckedChange={(checked) => setIncludeLeaveHours(checked as boolean)} />
-                                    <Label htmlFor="include-leave" className="text-sm font-normal">
-                                        Crea richiesta di permesso per queste ore
-                                    </Label>
-                                </div>
+                                <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
+                                <Input id="ordinary-hours" type="number" value={approvalContext.ordinaryHours} onChange={(e) => setApprovalContext(p => p ? {...p, ordinaryHours: e.target.value} : null)} step="0.5" min="0" />
+                                <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                             </div>
-                        )}
-                    </div>
+                            <div>
+                                <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
+                                <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
+                                <p className="text-xs text-muted-foreground mt-1">Calcolato con scatto al 50° minuto. Modifica se necessario.</p>
+                            </div>
+                            {parseFloat(approvalContext.leaveHours) > 0 && (
+                                <div>
+                                    <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
+                                    <Input id="leave-hours" type="number" value={approvalContext.leaveHours} onChange={(e) => setApprovalContext(p => p ? {...p, leaveHours: e.target.value} : null)} step="0.5" min="0" />
+                                    <div className="flex items-center space-x-2 mt-2">
+                                        <Checkbox id="include-leave" checked={approvalContext.createLeaveRequest} onCheckedChange={(checked) => setApprovalContext(p => p ? {...p, createLeaveRequest: !!checked} : null)} />
+                                        <Label htmlFor="include-leave" className="text-sm font-normal">
+                                            Crea richiesta di permesso per queste ore
+                                        </Label>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleApprovalClick}>Approva e Registra</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            
-            <AlertDialog open={isLeaveWarningOpen} onOpenChange={setIsLeaveWarningOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Attenzione</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Non hai selezionato l'ammanco delle ore mancanti. Vuoi continuare senza creare una richiesta di permesso?
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmLeaveWarning}>Continua</AlertDialogAction>
+                        <AlertDialogAction onClick={handleConfirmApprove}>Approva e Registra</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -1502,8 +1470,8 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Nessuna pausa registrata per questo turno. Vuoi aggiungerla manualmente?</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={handleApproveWithoutBreak}>No, approva senza</AlertDialogCancel>
                         <AlertDialogAction onClick={handleOpenAddBreakDialog}>Sì, aggiungi</AlertDialogAction>
+                        <AlertDialogCancel onClick={handleApproveWithoutBreak}>No, approva senza</AlertDialogCancel>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -1526,7 +1494,7 @@ export default function ShiftApprovalPage() {
                     </div>
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsAddBreakDialogOpen(false)}>Annulla</Button>
-                        <Button onClick={handleAddBreakAndApprove}>Aggiungi Pausa e Approva</Button>
+                        <Button onClick={handleAddBreakAndOpenApproval}>Aggiungi Pausa e Approva</Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
