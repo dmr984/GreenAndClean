@@ -132,11 +132,13 @@ const addAutomaticBreaksToShiftDetail = (events: Timbratura[], operator: Operato
 
 const calculateHours = (shift: Shift | null, operator: Operator | null): { ordinary: number, overtime: number, workedMinutes: number } => {
     if (!shift || !operator?.workSchedule || !shift.startTime) return { ordinary: 0, overtime: 0, workedMinutes: 0 };
+    
+    const clockInEvent = shift.events.find(e => e.type === 'entrata');
+    const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+    if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, workedMinutes: 0 };
 
-    const clockInTime = shift.startTime.toDate();
-    const clockOutTime = shift.endTime?.toDate();
-
-    if (!clockOutTime) return { ordinary: 0, overtime: 0, workedMinutes: 0 };
+    const clockInTime = clockInEvent.timestamp.toDate();
+    const clockOutTime = clockOutEvent.timestamp.toDate();
     
     const dayName = dayIndexToName[getDay(clockInTime)];
     const schedule = operator.workSchedule[dayName];
@@ -150,14 +152,16 @@ const calculateHours = (shift: Shift | null, operator: Operator | null): { ordin
     let calculationStartTime = clockInTime;
     const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
 
-    if (minutesLate <= 15) { // Includes clocking in early
+    if (minutesLate < 0) { // Clocked in early
+        calculationStartTime = contractualStartDateTime;
+    } else if (minutesLate <= 15) { // Clocked in within grace period
         calculationStartTime = contractualStartDateTime;
     } else {
         const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
-        if (nextHalfHour.getMinutes() > 30) {
-            nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
-        } else {
+        if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
             nextHalfHour.setMinutes(30);
+        } else if (nextHalfHour.getMinutes() > 30) {
+            nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
         }
         calculationStartTime = nextHalfHour;
     }
@@ -278,7 +282,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                      const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
 
                      if (startTime) {
-                        const augmentedEvents = dayTimbrature;
+                        const augmentedEvents = addAutomaticBreaksToShiftDetail(dayTimbrature, operator);
                         const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
                         let workDuration = 0;
                         
@@ -426,7 +430,36 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         
                         {selectedDay.shift ? (() => {
                             const { ordinary, overtime, workedMinutes } = calculateHours(selectedDay.shift, operator);
-                            const contractualHours = (selectedDay.shift.startTime && operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours) || 0;
+                            const clockInEvent = selectedDay.shift.events.find(e => e.type === 'entrata');
+                            const dayName = clockInEvent ? dayIndexToName[getDay(clockInEvent.timestamp.toDate())] : undefined;
+                            const schedule = dayName && operator ? operator.workSchedule[dayName] : undefined;
+                            const contractualHours = schedule?.totalHours || 0;
+                            const contractualStartTimeStr = schedule?.startTime || '00:00';
+
+                            let displayEvents = [...selectedDay.shift.events];
+
+                            if (clockInEvent && operator) {
+                                const clockInTime = clockInEvent.timestamp.toDate();
+                                const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
+                                const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+                                const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+
+                                let calculationStartTime = clockInTime;
+                                if (minutesLate <= 15) { // Includes clocking in early
+                                    calculationStartTime = contractualStartDateTime;
+                                }
+                                
+                                const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
+                                if (entrataIndex !== -1) {
+                                    const virtualEntrata = {
+                                        ...displayEvents[entrataIndex],
+                                        id: `virtual-${displayEvents[entrataIndex].id}`,
+                                        timestamp: Timestamp.fromDate(calculationStartTime)
+                                    };
+                                    displayEvents[entrataIndex] = virtualEntrata;
+                                }
+                            }
+
                             return (
                                 <>
                                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
@@ -451,7 +484,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {addAutomaticBreaksToShiftDetail(selectedDay.shift.events, operator).map((t, index) => (
+                                            {displayEvents.map((t, index) => (
                                                 <TableRow key={t.id || `auto-${index}`}>
                                                     <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                     <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>

@@ -128,14 +128,16 @@ const addAutomaticBreaks = (events: Timbratura[], operator: Operator | null): Ti
     return newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 };
 
-const calculateHours = (shift: Shift | null, operator: Operator | null): { ordinary: number, overtime: number, leave: number, workedMinutes: number } => {
+const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { ordinary: number, overtime: number, leave: number, workedMinutes: number } => {
     if (!shift || !operator?.workSchedule || !shift.startTime) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0 };
-
-    const clockInTime = shift.startTime.toDate();
-    const clockOutTime = shift.endTime?.toDate();
-
-    if (!clockOutTime) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0 };
     
+    const clockInEvent = shift.events.find(e => e.type === 'entrata');
+    const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+    if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0 };
+
+    const clockInTime = clockInEvent.timestamp.toDate();
+    const clockOutTime = clockOutEvent.timestamp.toDate();
+
     const dayName = dayIndexToName[getDay(clockInTime)];
     const schedule = operator.workSchedule[dayName];
     const contractualHours = schedule?.totalHours || 0;
@@ -148,14 +150,16 @@ const calculateHours = (shift: Shift | null, operator: Operator | null): { ordin
     let calculationStartTime = clockInTime;
     const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
 
-    if (minutesLate <= 15) { // Includes clocking in early
+    if (minutesLate < 0) { // Clocked in early
+        calculationStartTime = contractualStartDateTime;
+    } else if (minutesLate <= 15) { // Clocked in within grace period
         calculationStartTime = contractualStartDateTime;
     } else {
         const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
-        if (nextHalfHour.getMinutes() > 30) {
-            nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
-        } else {
+        if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
             nextHalfHour.setMinutes(30);
+        } else if (nextHalfHour.getMinutes() > 30) {
+            nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
         }
         calculationStartTime = nextHalfHour;
     }
@@ -304,11 +308,11 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                             startTime: startTime!,
                             endTime: endTime || null,
                             workDuration,
-                            isOvertime: augmentedEvents[0]?.isOvertime ?? false
+                            isOvertime: augmentedEvents.find(e => e.type === 'entrata')?.isOvertime ?? false
                         };
                         dayShift = shift;
                         
-                        const { overtime } = calculateHours(shift, operator);
+                        const { overtime } = calculateShiftHours(shift, operator);
                         const isPureOvertime = shift.isOvertime;
                         const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
 
@@ -427,8 +431,37 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         </ResponsiveDialogHeader>
                         
                         {selectedDay.shift ? (() => {
-                            const { ordinary, overtime, workedMinutes } = calculateHours(selectedDay.shift, operator);
-                            const contractualHours = (selectedDay.shift.startTime && operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours) || 0;
+                            const { ordinary, overtime, workedMinutes } = calculateShiftHours(selectedDay.shift, operator);
+                            const clockInEvent = selectedDay.shift.events.find(e => e.type === 'entrata');
+                            const dayName = clockInEvent ? dayIndexToName[getDay(clockInEvent.timestamp.toDate())] : undefined;
+                            const schedule = dayName && operator ? operator.workSchedule[dayName] : undefined;
+                            const contractualHours = schedule?.totalHours || 0;
+                            const contractualStartTimeStr = schedule?.startTime || '00:00';
+                            
+                            let displayEvents = [...selectedDay.shift.events];
+
+                            if (clockInEvent && operator) {
+                                const clockInTime = clockInEvent.timestamp.toDate();
+                                const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
+                                const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+                                const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+
+                                let calculationStartTime = clockInTime;
+                                if (minutesLate <= 15) { 
+                                    calculationStartTime = contractualStartDateTime;
+                                }
+                                
+                                const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
+                                if (entrataIndex !== -1) {
+                                    const virtualEntrata = {
+                                        ...displayEvents[entrataIndex],
+                                        id: `virtual-${displayEvents[entrataIndex].id}`,
+                                        timestamp: Timestamp.fromDate(calculationStartTime)
+                                    };
+                                    displayEvents[entrataIndex] = virtualEntrata;
+                                }
+                            }
+                            
                             return (
                                 <>
                                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
@@ -453,7 +486,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {selectedDay.shift.events.map((t, index) => (
+                                            {displayEvents.map((t, index) => (
                                                 <TableRow key={t.id || `auto-${index}`}>
                                                     <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                     <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
@@ -718,34 +751,37 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         const approvedRequests = requests;
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
 
-        const dailyTimbrature = timbrature.reduce((acc, t) => {
-            const dayString = t.timestamp.toDate().toDateString();
-            if (!acc[dayString]) acc[dayString] = [];
-            acc[dayString].push(t);
-            return acc;
-        }, {} as Record<string, Timbratura[]>);
+        const shiftsByDay: { [key: string]: Timbratura[] } = {};
+        timbrature.forEach(t => {
+            const dayString = startOfDay(t.timestamp.toDate()).toISOString();
+            if (!shiftsByDay[dayString]) {
+                shiftsByDay[dayString] = [];
+            }
+            shiftsByDay[dayString].push(t);
+        });
     
         let totalOrdinaryHours = 0;
         let ordinaryHoursByDay: {date: Date, hours: number, shift: Shift}[] = [];
 
-        Object.values(dailyTimbrature).forEach(dayEvents => {
-             if (dayEvents.length > 0) {
-                 const startTime = dayEvents.find(e => e.type === 'entrata')?.timestamp;
-                 const endTime = dayEvents.find(e => e.type === 'uscita')?.timestamp;
+        Object.values(shiftsByDay).forEach(dayEvents => {
+            if (dayEvents.length > 0) {
+                const startTime = dayEvents.find(e => e.type === 'entrata')?.timestamp;
+                const endTime = dayEvents.find(e => e.type === 'uscita')?.timestamp;
 
                 if (startTime && endTime) {
                     const shiftObject: Shift = {
                         events: [...dayEvents],
                         startTime: startTime,
                         endTime: endTime,
-                        workDuration: 0, // temp value, calculated inside calculateHours
+                        workDuration: 0, 
                         isOvertime: dayEvents.some(e => e.isOvertime)
                     };
-                     const { ordinary } = calculateHours(shiftObject, operator);
-                     totalOrdinaryHours += ordinary;
-                     if(ordinary > 0){
+                    const { ordinary, workedMinutes } = calculateShiftHours(shiftObject, operator);
+                    shiftObject.workDuration = workedMinutes; // Update work duration after calculation
+                    totalOrdinaryHours += ordinary;
+                    if(ordinary > 0){
                         ordinaryHoursByDay.push({date: startTime.toDate(), hours: ordinary, shift: shiftObject});
-                     }
+                    }
                 }
             }
         });
@@ -778,7 +814,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         }
     
         return {
-            workedDays: Object.keys(dailyTimbrature).length,
+            workedDays: Object.keys(shiftsByDay).length,
             workedHours: totalOrdinaryHours,
             overtimeHours: totalOvertimeHours,
             permessoHours: approvedRequests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval)).reduce((sum, r) => sum + (r.hours || 0), 0),
@@ -1146,7 +1182,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                          {shiftForDetail.startTime && <ResponsiveDialogDescription>Turno del {format(shiftForDetail.startTime.toDate(), 'PPP', { locale: it })}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
                     {(() => {
-                        const { ordinary, overtime, workedMinutes } = calculateHours(shiftForDetail, operator);
+                        const { ordinary, overtime, workedMinutes } = calculateShiftHours(shiftForDetail, operator);
                         const contractualHours = (shiftForDetail.startTime && operator?.workSchedule[dayIndexToName[getDay(shiftForDetail.startTime.toDate())]]?.totalHours) || 0;
                         const formatMinutes = (minutes: number) => {
                             if (isNaN(minutes) || minutes < 0) return '00:00';
