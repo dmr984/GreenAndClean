@@ -160,13 +160,14 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 const dayTimbrature = timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
                 if (dayTimbrature.length > 0) {
                      let workDuration = 0;
-                     const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
-                     const endTime = dayTimbrature.find(e => e.type === 'uscita')?.timestamp;
+                     const augmentedEvents = addAutomaticBreaksToShiftDetail({ events: dayTimbrature } as any, operator);
+                     const startTime = augmentedEvents.find(e => e.type === 'entrata')?.timestamp;
+                     const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
                      
                      if (startTime && endTime) {
                          let totalMillis = endTime.toMillis() - startTime.toMillis();
                          let breakStart: Timestamp | null = null;
-                         dayTimbrature.forEach(e => {
+                         augmentedEvents.forEach(e => {
                              if (e.type === 'pausa') breakStart = e.timestamp;
                              if (e.type === 'fine_pausa' && breakStart) {
                                  totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
@@ -177,11 +178,11 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                      }
                     
                     const shift: Shift = {
-                        events: dayTimbrature,
+                        events: augmentedEvents,
                         startTime: startTime!,
                         endTime: endTime || null,
                         workDuration,
-                        isOvertime: dayTimbrature[0]?.isOvertime ?? false
+                        isOvertime: augmentedEvents[0]?.isOvertime ?? false
                     };
                     dayShift = shift;
 
@@ -285,7 +286,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const addAutomaticBreaksToShiftDetail = (day: DayInfo | null): Timbratura[] => {
+    const addAutomaticBreaksToShiftDetail = (day: DayInfo | null, operator: Operator | null): Timbratura[] => {
         if (!day?.shift || !operator) return day?.shift?.events || [];
     
         const shift = day.shift;
@@ -298,24 +299,26 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             return shift.events;
         }
     
-        const hasBreakStart = shift.events.some(e => e.type === 'pausa');
-        const hasBreakEnd = shift.events.some(e => e.type === 'fine_pausa');
+        let breakStartEvent = shift.events.find(e => e.type === 'pausa');
+        let breakEndEvent = shift.events.find(e => e.type === 'fine_pausa');
+        
+        const newEvents = [...shift.events];
     
-        let events = [...shift.events];
-    
-        if (!hasBreakStart && !hasBreakEnd) {
-            const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
+        // Case 1: No break taken at all
+        if (!breakStartEvent && !breakEndEvent) {
+            const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
             const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-    
-            events.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata' });
-            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
-        } else if (hasBreakStart && !hasBreakEnd) {
-            const breakStartEvent = shift.events.find(e => e.type === 'pausa')!;
-            const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
+            
+            newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata' });
+            newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
+        }
+        // Case 2: Started break but didn't end it
+        else if (breakStartEvent && !breakEndEvent) {
+             const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+             newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
         }
     
-        return events.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        return newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
     };
 
     return (
@@ -398,7 +401,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                     <TableBody>
-                                        {addAutomaticBreaksToShiftDetail(selectedDay).map(t => (
+                                        {selectedDay.shift.events.map(t => (
                                             <TableRow key={t.id}>
                                                 <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                 <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>

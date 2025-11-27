@@ -145,7 +145,7 @@ export default function ShiftApprovalPage() {
 
 
     useEffect(() => {
-        if (!firestore || !operatorId) return;
+        if (!firestore || !operatorId || !operator) return;
         
         const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`));
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
@@ -176,15 +176,15 @@ export default function ShiftApprovalPage() {
             for (const event of allClockings) {
                 if (event.type === 'entrata' && currentShiftEvents.length > 0) {
                      const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                    const processed = processShift(currentShiftEvents, leaveDays);
-                    groupedShifts.push({ id: shiftId, events: currentShiftEvents, ...processed });
+                    const processed = processShift(currentShiftEvents, leaveDays, operator);
+                    groupedShifts.push({ id: shiftId, ...processed });
                     currentShiftEvents = [event];
                 } else {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
                         const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                        const processed = processShift(currentShiftEvents, leaveDays);
-                        groupedShifts.push({ id: shiftId, events: currentShiftEvents, ...processed });
+                        const processed = processShift(currentShiftEvents, leaveDays, operator);
+                        groupedShifts.push({ id: shiftId, ...processed });
                         currentShiftEvents = [];
                     }
                 }
@@ -192,8 +192,8 @@ export default function ShiftApprovalPage() {
 
             if (currentShiftEvents.length > 0) {
                  const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                const processed = processShift(currentShiftEvents, leaveDays);
-                groupedShifts.push({ id: shiftId, events: currentShiftEvents, ...processed });
+                const processed = processShift(currentShiftEvents, leaveDays, operator);
+                groupedShifts.push({ id: shiftId, ...processed });
             }
             
             setAllShifts(groupedShifts.reverse());
@@ -216,7 +216,7 @@ export default function ShiftApprovalPage() {
             unsubClockings();
             unsubOvertime();
         }
-    }, [firestore, operatorId, toast]);
+    }, [firestore, operatorId, toast, operator]);
 
     const { pendingShifts } = useMemo(() => {
         const pending = allShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
@@ -240,10 +240,11 @@ export default function ShiftApprovalPage() {
         return approvedShifts;
     }, [allShifts]);
 
-    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'events' | 'id'> => {
-        const hasPending = events.some(e => e.status === 'sospesa');
-        const hasRejected = events.some(e => e.status === 'rifiutata');
-        const isComplete = events.some(e => e.type === 'uscita');
+    const processShift = (events: Timbratura[], leaveDays: Set<string>, operator: Operator | null): Omit<Shift, 'id'> => {
+        const augmentedEvents = addAutomaticBreaks(events, operator);
+        const hasPending = augmentedEvents.some(e => e.status === 'sospesa');
+        const hasRejected = augmentedEvents.some(e => e.status === 'rifiutata');
+        const isComplete = augmentedEvents.some(e => e.type === 'uscita');
         
         let status: Shift['status'];
         if (hasRejected) {
@@ -257,13 +258,13 @@ export default function ShiftApprovalPage() {
         }
 
         let workDuration = 0;
-        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+        const startTime = augmentedEvents.find(e => e.type === 'entrata')?.timestamp;
+        const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
 
         if (startTime && endTime) {
             let totalMillis = endTime.toMillis() - startTime.toMillis();
             let breakStart: Timestamp | null = null;
-            events.forEach(e => {
+            augmentedEvents.forEach(e => {
                 if (e.type === 'pausa') breakStart = e.timestamp;
                 if (e.type === 'fine_pausa' && breakStart) {
                     totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
@@ -275,9 +276,9 @@ export default function ShiftApprovalPage() {
         
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
-        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
+        const isOvertime = augmentedEvents.find(e => e.type === 'entrata')?.isOvertime ?? false;
 
-        return { status, workDuration, isOnLeaveDay, isOvertime };
+        return { events: augmentedEvents, status, workDuration, isOnLeaveDay, isOvertime };
     };
 
     const handleApprovalClick = () => {
@@ -302,17 +303,14 @@ export default function ShiftApprovalPage() {
     
         const batch = writeBatch(firestore);
         
-        // Add automatic break events if necessary
-        const shiftWithAutoBreaks = addAutomaticBreaks(shiftToApprove, operator);
-        const newAutoEvents = shiftWithAutoBreaks.events.filter(e => e.isAuto && !shiftToApprove.events.some(orig => orig.id === e.id));
+        const newAutoEvents = shiftToApprove.events.filter(e => e.isAuto && !e.id.startsWith('auto-'));
 
         newAutoEvents.forEach(autoEvent => {
-            const {id, ...eventData} = autoEvent; // remove virtual id
+            const {id, ...eventData} = autoEvent; 
             const newDocRef = doc(collection(firestore, `app-users/${operator.id}/timbrature`));
             batch.set(newDocRef, eventData);
         });
 
-        // Update existing events
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
@@ -500,48 +498,47 @@ export default function ShiftApprovalPage() {
         });
     };
     
-    const addAutomaticBreaks = (shift: Shift, operator: Operator): Shift => {
-        const shiftDate = shift.events[0].timestamp.toDate();
+    const addAutomaticBreaks = (events: Timbratura[], operator: Operator | null): Timbratura[] => {
+        if (!operator || events.length === 0) return events;
+
+        const shiftDate = events[0].timestamp.toDate();
         const dayName = dayIndexToName[getDayFns(shiftDate)];
         const dailySchedule = operator.workSchedule[dayName];
         const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-        const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+        
+        if (mandatoryBreakMinutes <= 0) return events;
+
+        const clockInEvent = events.find(e => e.type === 'entrata');
+        const clockOutEvent = events.find(e => e.type === 'uscita');
     
-        if (!mandatoryBreakMinutes || !clockInEvent || !clockOutEvent) {
-            return shift;
+        if (!clockInEvent || !clockOutEvent) {
+            return events;
         }
         
-        let breakStartEvent = shift.events.find(e => e.type === 'pausa');
-        let breakEndEvent = shift.events.find(e => e.type === 'fine_pausa');
+        let breakStartEvent = events.find(e => e.type === 'pausa');
+        let breakEndEvent = events.find(e => e.type === 'fine_pausa');
         
-        const newEvents = [...shift.events];
+        const newEvents = [...events];
     
         // Case 1: No break taken at all
         if (!breakStartEvent && !breakEndEvent) {
             const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
             const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
             
-            newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true, userId: operator.id });
-            newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true, userId: operator.id });
+            newEvents.push({ id: `auto-start-${Date.now()}`, type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
+            newEvents.push({ id: `auto-end-${Date.now()}`, type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
         }
         // Case 2: Started break but didn't end it
         else if (breakStartEvent && !breakEndEvent) {
              const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-             newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true, userId: operator.id });
+             newEvents.push({ id: `auto-end-${Date.now()}`, type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
         }
     
-        newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-        return { ...shift, events: newEvents };
+        return newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
     };
 
     const handleOpenDetailDialog = (shift: Shift) => {
-        if (operator && shift.status === 'in_sospeso') {
-            const augmentedShift = addAutomaticBreaks(shift, operator);
-            setDetailShift(augmentedShift);
-        } else {
-            setDetailShift(shift);
-        }
+        setDetailShift(shift);
         setIsDetailOpen(true);
     }
     
