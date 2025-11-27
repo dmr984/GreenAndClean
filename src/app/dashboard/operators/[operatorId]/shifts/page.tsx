@@ -52,6 +52,7 @@ type Timbratura = {
     longitude?: number;
     isOvertime?: boolean;
     isAuto?: boolean;
+    shiftId?: string; // New property to group manual entries
 };
 
 type Shift = {
@@ -170,16 +171,34 @@ export default function ShiftApprovalPage() {
                 }
             });
             
-            const groupedShifts: Shift[] = [];
-            let currentShiftEvents: Timbratura[] = [];
+            const shiftsByDay: { [key: string]: Timbratura[] } = {};
+            const shiftsByManualId: { [key: string]: Timbratura[] } = {};
 
             for (const event of allClockings) {
-                if (event.type === 'entrata' && currentShiftEvents.length > 0) {
-                     const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                    const processed = processShift(currentShiftEvents, leaveDays, operator);
-                    groupedShifts.push({ id: shiftId, ...processed });
-                    currentShiftEvents = [event];
-                } else {
+                if (event.shiftId) { // Group by manual shiftId first
+                    if (!shiftsByManualId[event.shiftId]) shiftsByManualId[event.shiftId] = [];
+                    shiftsByManualId[event.shiftId].push(event);
+                } else { // Then group by day for automatic shifts
+                    const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                    if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
+                    shiftsByDay[dayString].push(event);
+                }
+            }
+
+            const groupedShifts: Shift[] = [];
+            
+            // Process manual shifts
+            for (const shiftId in shiftsByManualId) {
+                const events = shiftsByManualId[shiftId];
+                const processed = processShift(events, leaveDays, operator);
+                groupedShifts.push({ id: shiftId, ...processed });
+            }
+
+            // Process automatic shifts day by day
+            for (const day in shiftsByDay) {
+                const dayEvents = shiftsByDay[day];
+                let currentShiftEvents: Timbratura[] = [];
+                for (const event of dayEvents) {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
                         const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
@@ -188,15 +207,21 @@ export default function ShiftApprovalPage() {
                         currentShiftEvents = [];
                     }
                 }
-            }
-
-            if (currentShiftEvents.length > 0) {
-                 const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                const processed = processShift(currentShiftEvents, leaveDays, operator);
-                groupedShifts.push({ id: shiftId, ...processed });
+                // Handle incomplete shifts for the day
+                if (currentShiftEvents.length > 0) {
+                    const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                    const processed = processShift(currentShiftEvents, leaveDays, operator);
+                    groupedShifts.push({ id: shiftId, ...processed });
+                }
             }
             
-            setAllShifts(groupedShifts.reverse());
+            groupedShifts.sort((a,b) => {
+                const dateA = a.events[0]?.timestamp.toMillis() || 0;
+                const dateB = b.events[0]?.timestamp.toMillis() || 0;
+                return dateB - dateA;
+            })
+
+            setAllShifts(groupedShifts);
             setIsLoading(false);
 
         }, error => {
@@ -557,21 +582,19 @@ export default function ShiftApprovalPage() {
     
     const roundOrdinaryHours = (minutes: number): number => {
         if (minutes <= 0) return 0;
-        const totalHalfHours = Math.floor(minutes / 30);
-        const remainingMinutes = minutes % 30;
-        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+        const contractualMinutes = minutes;
+        const ordinaryWorkedHours = Math.floor(contractualMinutes / 30) / 2;
+        return ordinaryWorkedHours;
     };
 
     const roundOvertimeHours = (minutes: number): number => {
-        if (minutes <= 0) return 0;
-        const totalHours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+        if (minutes < 50) return 0;
+        return Math.floor(minutes / 60) + (minutes % 60 >= 50 ? 1 : 0);
     };
 
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
-
+    
         if (shift.isOvertime) {
             return {
                 ordinary: 0,
@@ -580,25 +603,23 @@ export default function ShiftApprovalPage() {
             };
         }
     
-        const shiftDate = shift.events[0].timestamp.toDate();
-        const dayName = dayIndexToName[getDayFns(shiftDate)];
-        const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
+        const contractualHours = getContractualHoursForShift(shift);
         const contractualMinutes = contractualHours * 60;
-
-        const totalMinutesWorked = shift.workDuration;
+    
+        const totalMinutesWorked = Math.round(shift.workDuration);
         
-        const ordinaryWorkedMinutes = Math.min(totalMinutesWorked, contractualMinutes);
-        const ordinaryWorkedHours = roundOrdinaryHours(ordinaryWorkedMinutes);
-
+        const ordinaryMinutes = Math.min(totalMinutesWorked, contractualMinutes);
+        const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
+    
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
-        const overtimeWorkedHours = roundOvertimeHours(overtimeMinutes);
-
-        const leaveMinutes = Math.max(0, contractualMinutes - totalMinutesWorked);
+        const overtimeHours = roundOvertimeHours(overtimeMinutes);
+    
+        const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - totalMinutesWorked : 0;
         const leaveHours = roundOrdinaryHours(leaveMinutes);
-
+    
         return { 
-            ordinary: ordinaryWorkedHours, 
-            overtime: overtimeWorkedHours, 
+            ordinary: ordinaryHours, 
+            overtime: overtimeHours, 
             leave: leaveHours
         };
     };
@@ -687,7 +708,7 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
             return;
         }
-
+    
         const createTimestamp = (time: string): Timestamp => {
             const [hours, minutes] = time.split(':').map(Number);
             return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
@@ -696,23 +717,31 @@ export default function ShiftApprovalPage() {
         const dayName = dayIndexToName[getDayFns(newShiftDate)];
         const isWorkDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
         const isOvertime = !isWorkDay;
-
         
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        
+        // Generate a unique ID for this manual shift
+        const manualShiftId = doc(timbratureCollectionRef).id;
+    
         const events: { type: Timbratura['type'], time: string }[] = [
             { type: 'entrata', time: newShiftTimes.entrata },
             { type: 'uscita', time: newShiftTimes.uscita },
             { type: 'pausa', time: newShiftTimes.pausa },
             { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
         ];
-
+    
         for (const event of events) {
             if (event.time) {
                 const newDocRef = doc(timbratureCollectionRef);
                 batch.set(newDocRef, {
-                    userId: operatorId, type: event.type, timestamp: createTimestamp(event.time),
-                    status: 'sospesa' as const, viewedByOperator: false, isOvertime
+                    userId: operatorId, 
+                    type: event.type, 
+                    timestamp: createTimestamp(event.time),
+                    status: 'sospesa' as const, 
+                    viewedByOperator: false, 
+                    isOvertime,
+                    shiftId: manualShiftId // Associate all events with the same manual shift ID
                 });
             }
         }
