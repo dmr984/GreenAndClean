@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils';
 type Operator = {
     id: string;
     username: string;
+    firstName: string;
+    lastName: string;
 };
 
 type Request = {
@@ -279,8 +281,8 @@ export default function LeaveRequestsPage() {
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <CardTitle>Richieste di {operator.username}</CardTitle>
-                        <CardDescription>Approva, rifiuta o aggiungi richieste di ferie, permessi, ecc.</CardDescription>
+                        <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                        <p className="text-muted-foreground">Gestione Richieste (Codice: {operator.username})</p>
                     </div>
                      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                         <DialogTrigger asChild>

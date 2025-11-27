@@ -390,8 +390,10 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
 
         shiftToDelete.events.forEach(event => {
-            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-            batch.delete(docRef);
+            if (!event.id.startsWith('auto-')) {
+                const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+                batch.delete(docRef);
+            }
         });
 
         try {
@@ -929,8 +931,8 @@ export default function ShiftApprovalPage() {
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <CardTitle>Approvazione Turni di {operator.username}</CardTitle>
-                        <CardDescription>Conferma o rifiuta i turni di lavoro in sospeso.</CardDescription>
+                        <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                        <p className="text-muted-foreground">Gestione Turni (Codice: {operator.username})</p>
                     </div>
                     <Button onClick={() => setIsAddShiftOpen(true)}>
                         <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale
