@@ -51,6 +51,7 @@ type Timbratura = {
     latitude?: number;
     longitude?: number;
     isOvertime?: boolean;
+    isAuto?: boolean;
 };
 
 type Shift = {
@@ -88,6 +89,42 @@ type ApprovalData = {
 };
 
 const ITEMS_PER_PAGE = 5;
+
+const addAutomaticBreaks = (shift: Shift, operator: Operator): Shift => {
+    const shiftDate = shift.events[0].timestamp.toDate();
+    const dayName = dayIndexToName[getDayFns(shiftDate)];
+    const dailySchedule = operator.workSchedule[dayName];
+    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
+    const clockInEvent = shift.events.find(e => e.type === 'entrata');
+    const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+
+    if (!mandatoryBreakMinutes || !clockInEvent || !clockOutEvent) {
+        return shift;
+    }
+    
+    let breakStartEvent = shift.events.find(e => e.type === 'pausa');
+    let breakEndEvent = shift.events.find(e => e.type === 'fine_pausa');
+    
+    const newEvents = [...shift.events];
+
+    // Case 1: No break taken at all
+    if (!breakStartEvent && !breakEndEvent) {
+        const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
+        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+        
+        newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
+        newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
+    }
+    // Case 2: Started break but didn't end it
+    else if (breakStartEvent && !breakEndEvent) {
+         const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+         newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
+    }
+
+    newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+    return { ...shift, events: newEvents };
+};
+
 
 export default function ShiftApprovalPage() {
     const firestore = useFirestore();
@@ -484,7 +521,12 @@ export default function ShiftApprovalPage() {
     };
     
     const handleOpenDetailDialog = (shift: Shift) => {
-        setDetailShift(shift);
+        if (operator) {
+            const augmentedShift = addAutomaticBreaks(shift, operator);
+            setDetailShift(augmentedShift);
+        } else {
+            setDetailShift(shift);
+        }
         setIsDetailOpen(true);
     }
     
@@ -1171,8 +1213,8 @@ export default function ShiftApprovalPage() {
                             <TableBody>
                                 {detailShift?.events.map(t => (
                                     <TableRow key={t.id}>
-                                        <TableCell className="whitespace-nowrap">{formatTime(t.timestamp)}</TableCell>
-                                        <TableCell className="capitalize whitespace-nowrap">{t.type.replace('_', ' ')}</TableCell>
+                                        <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>{formatTime(t.timestamp)}</TableCell>
+                                        <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                         <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
                                         <TableCell className="whitespace-nowrap">
                                            {t.latitude && t.longitude ? (

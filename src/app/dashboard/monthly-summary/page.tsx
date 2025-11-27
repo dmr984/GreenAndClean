@@ -57,6 +57,7 @@ type Timbratura = {
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata' | 'rifiutata';
     isOvertime?: boolean;
+    isAuto?: boolean;
 };
 
 type StraordinarioEvent = {
@@ -280,6 +281,39 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
+    const handleOpenDetailDialog = (day: DayInfo) => {
+        if (!day.shift || !operator) {
+            setSelectedDay(day);
+            return;
+        }
+
+        const shiftDate = day.shift.startTime.toDate();
+        const dayName = dayIndexToName[getDay(shiftDate)];
+        const dailySchedule = operator.workSchedule[dayName];
+        const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
+
+        let processedEvents = [...day.shift.events];
+
+        if (mandatoryBreakMinutes > 0) {
+            const hasBreakStart = processedEvents.some(e => e.type === 'pausa');
+            const hasBreakEnd = processedEvents.some(e => e.type === 'fine_pausa');
+
+            if (!hasBreakStart && !hasBreakEnd) {
+                const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
+                const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+                processedEvents.push({ id: 'auto-start', userId: operatorId, type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
+                processedEvents.push({ id: 'auto-end', userId: operatorId, type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
+            } else if (hasBreakStart && !hasBreakEnd) {
+                const breakStartEvent = processedEvents.find(e => e.type === 'pausa')!;
+                const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+                processedEvents.push({ id: 'auto-end', userId: operatorId, type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
+            }
+        }
+
+        processedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        setSelectedDay({ ...day, shift: { ...day.shift, events: processedEvents } });
+    };
+
     return (
         <div className="space-y-4">
              <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
@@ -313,7 +347,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                         <Button 
                                             variant="ghost" 
                                             size="icon" 
-                                            onClick={() => setSelectedDay(day)}
+                                            onClick={() => handleOpenDetailDialog(day)}
                                             disabled={day.status === 'vuoto' || day.status === 'futuro'}
                                         >
                                             <Eye className="h-5 w-5"/>
@@ -363,8 +397,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <TableBody>
                                         {selectedDay.shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
                                             <TableRow key={t.id}>
-                                                <TableCell>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                <TableCell className="capitalize">{t.type.replace('_', ' ')}</TableCell>
+                                                <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                                <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
