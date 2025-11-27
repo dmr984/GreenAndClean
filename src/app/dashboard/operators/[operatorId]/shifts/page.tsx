@@ -90,42 +90,6 @@ type ApprovalData = {
 
 const ITEMS_PER_PAGE = 5;
 
-const addAutomaticBreaks = (shift: Shift, operator: Operator): Shift => {
-    const shiftDate = shift.events[0].timestamp.toDate();
-    const dayName = dayIndexToName[getDayFns(shiftDate)];
-    const dailySchedule = operator.workSchedule[dayName];
-    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-    const clockInEvent = shift.events.find(e => e.type === 'entrata');
-    const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-
-    if (!mandatoryBreakMinutes || !clockInEvent || !clockOutEvent) {
-        return shift;
-    }
-    
-    let breakStartEvent = shift.events.find(e => e.type === 'pausa');
-    let breakEndEvent = shift.events.find(e => e.type === 'fine_pausa');
-    
-    const newEvents = [...shift.events];
-
-    // Case 1: No break taken at all
-    if (!breakStartEvent && !breakEndEvent) {
-        const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
-        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-        
-        newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
-        newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-    }
-    // Case 2: Started break but didn't end it
-    else if (breakStartEvent && !breakEndEvent) {
-         const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-         newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-    }
-
-    newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-    return { ...shift, events: newEvents };
-};
-
-
 export default function ShiftApprovalPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
@@ -335,9 +299,20 @@ export default function ShiftApprovalPage() {
     
         const approvedOvertime = parseFloat(overtimeHours) || 0;
         const approvedLeave = createLeaveRequest ? (parseFloat(leaveHours) || 0) : 0;
-
+    
         const batch = writeBatch(firestore);
         
+        // Add automatic break events if necessary
+        const shiftWithAutoBreaks = addAutomaticBreaks(shiftToApprove, operator);
+        const newAutoEvents = shiftWithAutoBreaks.events.filter(e => e.isAuto && !shiftToApprove.events.some(orig => orig.id === e.id));
+
+        newAutoEvents.forEach(autoEvent => {
+            const {id, ...eventData} = autoEvent; // remove virtual id
+            const newDocRef = doc(collection(firestore, `app-users/${operator.id}/timbrature`));
+            batch.set(newDocRef, eventData);
+        });
+
+        // Update existing events
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
@@ -346,7 +321,7 @@ export default function ShiftApprovalPage() {
         });
     
         const shiftDate = shiftToApprove.events[0].timestamp.toDate();
-
+    
         if (approvedOvertime > 0) {
             const overtimeRequest = {
                 userId: operator.id,
@@ -363,7 +338,7 @@ export default function ShiftApprovalPage() {
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
         }
-
+    
         if (approvedLeave > 0) {
             const leaveRequest = {
                 userId: operator.id,
@@ -474,6 +449,7 @@ export default function ShiftApprovalPage() {
         }
         
         for (const event of editingShift.events) {
+            if (event.id.startsWith('auto-')) continue; // Skip virtual events
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             if (newEventsMap[event.type]) {
                 batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp, viewedByOperator: false });
@@ -509,6 +485,10 @@ export default function ShiftApprovalPage() {
     
     const handleConfirmDeleteTimbratura = async () => {
         if (!firestore || !deletingTimbratura || !operator) return;
+        if (deletingTimbratura.id.startsWith('auto-')) {
+            toast({ title: 'Azione non permessa', description: 'Non puoi eliminare una timbratura automatica.', variant: 'destructive'});
+            return;
+        }
         const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, deletingTimbratura.id);
         await deleteDoc(docRef).then(() => {
             toast({ title: 'Successo', description: 'Timbratura eliminata.' });
@@ -520,8 +500,43 @@ export default function ShiftApprovalPage() {
         });
     };
     
+    const addAutomaticBreaks = (shift: Shift, operator: Operator): Shift => {
+        const shiftDate = shift.events[0].timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const dailySchedule = operator.workSchedule[dayName];
+        const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+    
+        if (!mandatoryBreakMinutes || !clockInEvent || !clockOutEvent) {
+            return shift;
+        }
+        
+        let breakStartEvent = shift.events.find(e => e.type === 'pausa');
+        let breakEndEvent = shift.events.find(e => e.type === 'fine_pausa');
+        
+        const newEvents = [...shift.events];
+    
+        // Case 1: No break taken at all
+        if (!breakStartEvent && !breakEndEvent) {
+            const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
+            const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+            
+            newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true, userId: operator.id });
+            newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true, userId: operator.id });
+        }
+        // Case 2: Started break but didn't end it
+        else if (breakStartEvent && !breakEndEvent) {
+             const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+             newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true, userId: operator.id });
+        }
+    
+        newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        return { ...shift, events: newEvents };
+    };
+
     const handleOpenDetailDialog = (shift: Shift) => {
-        if (operator) {
+        if (operator && shift.status === 'in_sospeso') {
             const augmentedShift = addAutomaticBreaks(shift, operator);
             setDetailShift(augmentedShift);
         } else {

@@ -286,36 +286,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
     };
 
     const handleOpenDetailDialog = (day: DayInfo) => {
-        if (!day.shift || !operator) {
-            setSelectedDay(day);
-            return;
-        }
-
-        const shiftDate = day.shift.startTime.toDate();
-        const dayName = dayIndexToName[getDay(shiftDate)];
-        const dailySchedule = operator.workSchedule[dayName];
-        const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-
-        let processedEvents = [...day.shift.events];
-
-        if (mandatoryBreakMinutes > 0) {
-            const hasBreakStart = processedEvents.some(e => e.type === 'pausa');
-            const hasBreakEnd = processedEvents.some(e => e.type === 'fine_pausa');
-
-            if (!hasBreakStart && !hasBreakEnd) {
-                const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
-                const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-                processedEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
-                processedEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-            } else if (hasBreakStart && !hasBreakEnd) {
-                const breakStartEvent = processedEvents.find(e => e.type === 'pausa')!;
-                const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-                processedEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-            }
-        }
-
-        processedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-        setSelectedDay({ ...day, shift: { ...day.shift, events: processedEvents } });
+       setSelectedDay(day);
     };
 
     return (
