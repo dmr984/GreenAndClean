@@ -152,9 +152,7 @@ const calculateHours = (shift: Shift | null, operator: Operator | null): { ordin
     let calculationStartTime = clockInTime;
     const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
 
-    if (minutesLate < 0) { // Clocked in early
-        calculationStartTime = contractualStartDateTime;
-    } else if (minutesLate <= 15) { // Clocked in within grace period
+    if (minutesLate <= 15) { // Includes clocking in early
         calculationStartTime = contractualStartDateTime;
     } else {
         const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
@@ -165,7 +163,7 @@ const calculateHours = (shift: Shift | null, operator: Operator | null): { ordin
         }
         calculationStartTime = nextHalfHour;
     }
-
+    
     let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
     
     let breakDurationMillis = 0;
@@ -274,22 +272,22 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     dayStatus = leaveRequest.type;
                 }
 
-                const dayTimbrature = confirmedTimbrature
+                const dayTimbratureRaw = confirmedTimbrature
                     .filter(t => isSameDay(t.timestamp.toDate(), day))
                     .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
-                if (dayTimbrature.length > 0) {
-                     const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
+                if (dayTimbratureRaw.length > 0) {
+                     const startTime = dayTimbratureRaw.find(e => e.type === 'entrata')?.timestamp;
 
                      if (startTime) {
-                        const augmentedEvents = addAutomaticBreaksToShiftDetail(dayTimbrature, operator);
-                        const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
+                        const dayTimbrature = addAutomaticBreaksToShiftDetail(dayTimbratureRaw, operator);
+                        const endTime = dayTimbrature.find(e => e.type === 'uscita')?.timestamp;
                         let workDuration = 0;
                         
                         if (endTime) {
                            let totalMillis = endTime.toMillis() - startTime.toMillis();
                             let breakStart: Timestamp | null = null;
-                            augmentedEvents.forEach(e => {
+                            dayTimbrature.forEach(e => {
                                 if (e.type === 'pausa') breakStart = e.timestamp;
                                 if (e.type === 'fine_pausa' && breakStart) {
                                     totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
@@ -300,11 +298,11 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         }
                         
                         const shift: Shift = {
-                            events: augmentedEvents,
+                            events: dayTimbrature,
                             startTime: startTime!,
                             endTime: endTime || null,
                             workDuration,
-                            isOvertime: augmentedEvents[0]?.isOvertime ?? false
+                            isOvertime: dayTimbrature.find(e => e.type === 'entrata')?.isOvertime ?? false
                         };
                         dayShift = shift;
 
@@ -320,7 +318,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 }
                 
                 const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
-                if(permissionRequest && dayTimbrature.length === 0) dayStatus = 'permesso';
+                if(permissionRequest && dayTimbratureRaw.length === 0) dayStatus = 'permesso';
 
 
                 return { date: day, status: dayStatus, shift: dayShift };
@@ -437,16 +435,23 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                             const contractualStartTimeStr = schedule?.startTime || '00:00';
 
                             let displayEvents = [...selectedDay.shift.events];
+                            let calculationStartTime = clockInEvent?.timestamp.toDate();
 
-                            if (clockInEvent && operator) {
-                                const clockInTime = clockInEvent.timestamp.toDate();
+                            if (clockInEvent && operator && calculationStartTime) {
                                 const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
-                                const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-                                const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+                                const contractualStartDateTime = set(calculationStartTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+                                const minutesLate = (calculationStartTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
 
-                                let calculationStartTime = clockInTime;
-                                if (minutesLate <= 15) { // Includes clocking in early
+                                if (minutesLate <= 15) { 
                                     calculationStartTime = contractualStartDateTime;
+                                } else {
+                                     const nextHalfHour = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
+                                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                                        nextHalfHour.setMinutes(30);
+                                    } else if (nextHalfHour.getMinutes() > 30) {
+                                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                                    }
+                                    calculationStartTime = nextHalfHour;
                                 }
                                 
                                 const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
