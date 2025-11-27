@@ -220,17 +220,27 @@ export default function ManageOperatorsPage() {
         }
         
         const finalWorkSchedule: WorkSchedule = {};
-        weekDays.forEach(day => {
+        for (const day of weekDays) {
             const daySchedule = workSchedule[day];
             if (daySchedule && (daySchedule.totalHours || daySchedule.startTime)) {
-                 finalWorkSchedule[day] = {
-                    totalHours: parseFloat(String(daySchedule.totalHours || 0)),
-                    startTime: daySchedule.startTime || undefined,
-                    endTime: daySchedule.endTime || undefined,
-                    breakMinutes: daySchedule.breakMinutes || 0
-                 };
+                const newDaySchedule: DailySchedule = {};
+                if (daySchedule.totalHours) {
+                    newDaySchedule.totalHours = parseFloat(String(daySchedule.totalHours));
+                }
+                if (daySchedule.startTime) {
+                    newDaySchedule.startTime = daySchedule.startTime;
+                }
+                if (daySchedule.endTime) {
+                    newDaySchedule.endTime = daySchedule.endTime;
+                }
+                if (daySchedule.breakMinutes) {
+                    newDaySchedule.breakMinutes = daySchedule.breakMinutes;
+                }
+                if (Object.keys(newDaySchedule).length > 0) {
+                    finalWorkSchedule[day] = newDaySchedule;
+                }
             }
-        });
+        }
         
         const operatorData = {
             username: operatorCode.trim(),
