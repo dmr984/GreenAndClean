@@ -29,7 +29,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays } from 'date-fns';
 
 type ClockingEvent = {
     id: string;
@@ -142,6 +142,57 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
         return () => unsubscribe();
     }, [firestore, authUser]);
+
+     useEffect(() => {
+        if (!firestore || !authUser?.id) return;
+
+        const checkAndVoidOpenShifts = async () => {
+            const yesterday = subDays(new Date(), 1);
+            const startOfYesterday = startOfDay(yesterday);
+            const endOfYesterday = endOfDay(yesterday);
+
+            const q = query(
+                collection(firestore, `app-users/${authUser.id}/timbrature`),
+                where('timestamp', '>=', startOfYesterday),
+                where('timestamp', '<=', endOfYesterday),
+                orderBy('timestamp', 'desc')
+            );
+            
+            const yesterdaySnapshot = await getDocs(q);
+            if (yesterdaySnapshot.empty) return;
+
+            const lastEvent = yesterdaySnapshot.docs[0].data() as ClockingEvent;
+            
+            if (lastEvent.type !== 'uscita') {
+                // If the last event of yesterday was not a clock-out, void the shift.
+                const voidClockOut: Omit<ClockingEvent, 'id'> = {
+                    userId: authUser.id,
+                    type: 'uscita',
+                    timestamp: Timestamp.fromDate(endOfYesterday), // Set it to 23:59:59 of yesterday
+                    latitude: 0,
+                    longitude: 0,
+                    status: 'rifiutata',
+                    viewedByOperator: false,
+                };
+                
+                try {
+                    await addDoc(collection(firestore, `app-users/${authUser.id}/timbrature`), voidClockOut);
+                    toast({
+                        variant: 'destructive',
+                        title: 'Turno Annullato Automaticamente',
+                        description: 'Non hai timbrato l\'uscita ieri. Il turno è stato annullato.',
+                        duration: 10000,
+                    });
+                } catch (error) {
+                    console.error("Failed to void open shift:", error);
+                }
+            }
+        };
+
+        checkAndVoidOpenShifts();
+
+    }, [firestore, authUser, toast]);
+
 
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
     const today = new Date();
