@@ -534,8 +534,8 @@ export default function ShiftApprovalPage() {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
-        if (!clockInEvent || !clockOutEvent) {
-            return { workDuration: 0, breakDuration: 0, calculationStart: null };
+        if (!clockInEvent) {
+             return { workDuration: 0, breakDuration: 0, calculationStart: null };
         }
 
         const clockInTime = clockInEvent.timestamp.toDate();
@@ -565,7 +565,7 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
+        let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
         for (const e of events) {
@@ -575,7 +575,11 @@ export default function ShiftApprovalPage() {
                 breakStartTs = null;
             }
         }
-        totalMillis -= breakDurationMillis;
+        
+        // Apply the "any break counts as 1 hour" rule
+        if (breakDurationMillis > 0) {
+            totalMillis -= (60 * 60 * 1000); // Subtract one hour in milliseconds
+        }
         
         const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0; // duration in minutes
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
@@ -609,26 +613,8 @@ export default function ShiftApprovalPage() {
     const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
 
-        const { workDuration: initialWorkDuration, breakDuration: initialBreakDuration } = calculateShiftDurations(shift.events);
-
-        let totalMinutesWorked = initialWorkDuration;
-        let breakMinutes = initialBreakDuration;
-
-        // If a manual break is added, recalculate total worked time based on that
-        if (manualBreak?.start && manualBreak?.end) {
-            const startDate = parse(manualBreak.start, 'HH:mm', new Date());
-            const endDate = parse(manualBreak.end, 'HH:mm', new Date());
-            if (endDate > startDate) {
-                breakMinutes = (endDate.getTime() - startDate.getTime()) / 60000;
-                totalMinutesWorked = (shift.events.find(e => e.type === 'uscita')!.timestamp.toMillis() - getAdjustedStartTime(shift)!.getTime()) / 60000 - breakMinutes;
-            }
-        }
+        let { workDuration: totalMinutesWorked, breakDuration: breakMinutes } = calculateShiftDurations(shift.events);
         
-        // If there was any break, subtract a full hour
-        if (breakMinutes > 0) {
-            totalMinutesWorked -= 60 - breakMinutes; // Subtract the difference to make it a full hour
-        }
-
         if (shift.isOvertime) {
             return {
                 ordinary: 0,
@@ -1300,7 +1286,7 @@ export default function ShiftApprovalPage() {
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
                         return (
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center my-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
