@@ -25,14 +25,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [pendingSupplyRequests, setPendingSupplyRequests] = useState(0);
 
-  useEffect(() => {
-    // This is the single "gatekeeper" for the dashboard.
-    // If the state is done loading and there's no user, redirect to login.
-    if (!isLoading && !user) {
-        router.replace('/');
-    }
-  }, [user, isLoading, router]);
-
   // Listener for supply request notifications, only for admins
   useEffect(() => {
     if (!firestore || user?.role !== 'admin') {

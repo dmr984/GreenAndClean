@@ -1,6 +1,6 @@
 'use client';
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 type User = {
   id: string;
@@ -32,50 +32,48 @@ function sendUserToServiceWorker(user: User | null) {
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter(); // Using router for potential redirects
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        // Invia i dati utente al SW quando l'app si carica
-        if (navigator.serviceWorker.ready) {
-           navigator.serviceWorker.ready.then(() => {
-              sendUserToServiceWorker(parsedUser);
-           });
+    const checkUser = () => {
+      let userFound = null;
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          userFound = JSON.parse(storedUser);
+          setUser(userFound);
+          if (navigator.serviceWorker.ready) {
+            navigator.serviceWorker.ready.then(() => {
+              sendUserToServiceWorker(userFound);
+            });
+          }
         }
+      } catch (error) {
+        console.error("Failed to parse user from localStorage", error);
+        localStorage.removeItem('user');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to parse user from localStorage", error);
-      localStorage.removeItem('user'); // Clear corrupted data
-    } finally {
-      setIsLoading(false);
-    }
+      
+      // Gatekeeper logic
+      // If loading is finished and no user is found, redirect to login page,
+      // but only if we are not already on the login page.
+      if (!userFound && !pathname.startsWith('/_next') && pathname !== '/') {
+          router.replace('/');
+      }
+       // If a user IS found, but they are on the login page, redirect to dashboard.
+      if (userFound && pathname === '/') {
+        router.replace('/dashboard');
+      }
+    };
+
+    checkUser();
 
     // Optional: Listen for storage changes to sync across tabs
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'user') {
-        setIsLoading(true);
-        const storedUser = event.newValue;
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-           if (navigator.serviceWorker.ready) {
-             navigator.serviceWorker.ready.then(() => {
-                sendUserToServiceWorker(parsedUser);
-             });
-           }
-        } else {
-          setUser(null);
-           if (navigator.serviceWorker.ready) {
-             navigator.serviceWorker.ready.then(() => {
-                sendUserToServiceWorker(null);
-             });
-           }
-        }
-        setIsLoading(false);
+        window.location.reload(); // Simplest way to re-evaluate auth state across tabs
       }
     };
 
@@ -83,7 +81,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [pathname, router]);
 
   return (
     <UserContext.Provider value={{ user, isLoading }}>
