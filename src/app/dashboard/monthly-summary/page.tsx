@@ -294,24 +294,26 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             return shift.events;
         }
     
-        const hasBreakStart = shift.events.some(e => e.type === 'pausa');
-        const hasBreakEnd = shift.events.some(e => e.type === 'fine_pausa');
+        let breakStartEvent = shift.events.find(e => e.type === 'pausa');
+        let breakEndEvent = shift.events.find(e => e.type === 'fine_pausa');
+        
+        const newEvents = [...shift.events];
     
-        let events = [...shift.events];
-    
-        if (!hasBreakStart && !hasBreakEnd) {
-            const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
+        // Case 1: No break taken at all
+        if (!breakStartEvent && !breakEndEvent) {
+            const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
             const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-    
-            events.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata', userId: operator.id });
-            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata', userId: operator.id });
-        } else if (hasBreakStart && !hasBreakEnd) {
-            const breakStartEvent = shift.events.find(e => e.type === 'pausa')!;
-            const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata', userId: operator.id });
+            
+            newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata', userId: operator.id });
+            newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata', userId: operator.id });
+        }
+        // Case 2: Started break but didn't end it
+        else if (breakStartEvent && !breakEndEvent) {
+             const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+             newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata', userId: operator.id });
         }
     
-        return events.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        return newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
     };
 
     return (
@@ -395,8 +397,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                     <TableBody>
-                                        {addAutomaticBreaksToShiftDetail(selectedDay).map(t => (
-                                            <TableRow key={t.id}>
+                                        {addAutomaticBreaksToShiftDetail(selectedDay).map((t, index) => (
+                                            <TableRow key={t.id || `auto-${index}`}>
                                                 <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                 <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                             </TableRow>
@@ -502,5 +504,3 @@ export default function MonthlySummaryPage() {
         </Suspense>
     );
 }
-
-    
