@@ -127,13 +127,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
 
         const unsub = onSnapshot(timbratureQuery, async (timbratureSnap) => {
             const requestsSnap = await getDocs(requestsQuery);
-            let allRequests = requestsSnap.docs.map(d => d.data() as Request);
-            let allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
+            const allRequests = requestsSnap.docs.map(d => d.data() as Request);
+            const allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
             allTimbrature.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
-
             const approvedRequests = allRequests;
-            const timbrature = allTimbrature.filter(t => t.status === 'confermata');
+            const confirmedTimbrature = allTimbrature.filter(t => t.status === 'confermata');
 
             const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
             const today = startOfDay(new Date());
@@ -156,13 +155,14 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     dayStatus = leaveRequest.type;
                 }
 
-                const dayTimbrature = timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
+                const dayTimbrature = confirmedTimbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
+                
                 if (dayTimbrature.length > 0) {
                      const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
 
                      if (startTime) {
                         let workDuration = 0;
-                        const augmentedEvents = addAutomaticBreaksToShiftDetail({ events: dayTimbrature } as any, operator);
+                        const augmentedEvents = dayTimbrature;
                         const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
                         
                         if (endTime) {
@@ -308,15 +308,13 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         
         const newEvents = [...shift.events];
     
-        // Case 1: No break taken at all
-        if (!breakStartEvent && !breakEndEvent) {
+        if (!shift.events.some(e => e.type === 'pausa')) {
             const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
             const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
             
             newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata' });
             newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
         }
-        // Case 2: Started break but didn't end it
         else if (breakStartEvent && !breakEndEvent) {
              const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
              newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
