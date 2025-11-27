@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -121,6 +121,14 @@ export default function ShiftApprovalPage() {
     
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
+    
+    // State for break dialogs
+    const [shiftForBreak, setShiftForBreak] = useState<Shift | null>(null);
+    const [isMissingBreakConfirmOpen, setIsMissingBreakConfirmOpen] = useState(false);
+    const [isNoBreakSecondConfirmOpen, setIsNoBreakSecondConfirmOpen] = useState(false);
+    const [isAddBreakDialogOpen, setIsAddBreakDialogOpen] = useState(false);
+    const [breakTimes, setBreakTimes] = useState<{ start: string, end: string }>({ start: '', end: '' });
+
 
     const [approvalData, setApprovalData] = useState<ApprovalData>({ shiftToApprove: null, ordinaryHours: "0", overtimeHours: "0", leaveHours: "0"});
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
@@ -190,7 +198,7 @@ export default function ShiftApprovalPage() {
             // Process manual shifts
             for (const shiftId in shiftsByManualId) {
                 const events = shiftsByManualId[shiftId];
-                const processed = processShift(events, leaveDays, operator);
+                const processed = processShift(events, leaveDays);
                 groupedShifts.push({ id: shiftId, ...processed });
             }
 
@@ -202,7 +210,7 @@ export default function ShiftApprovalPage() {
                     currentShiftEvents.push(event);
                     if (event.type === 'uscita') {
                         const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                        const processed = processShift(currentShiftEvents, leaveDays, operator);
+                        const processed = processShift(currentShiftEvents, leaveDays);
                         groupedShifts.push({ id: shiftId, ...processed });
                         currentShiftEvents = [];
                     }
@@ -210,7 +218,7 @@ export default function ShiftApprovalPage() {
                 // Handle incomplete shifts for the day
                 if (currentShiftEvents.length > 0) {
                     const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
-                    const processed = processShift(currentShiftEvents, leaveDays, operator);
+                    const processed = processShift(currentShiftEvents, leaveDays);
                     groupedShifts.push({ id: shiftId, ...processed });
                 }
             }
@@ -265,11 +273,10 @@ export default function ShiftApprovalPage() {
         return approvedShifts;
     }, [allShifts]);
 
-    const processShift = (events: Timbratura[], leaveDays: Set<string>, operator: Operator | null): Omit<Shift, 'id'> => {
-        const augmentedEvents = addAutomaticBreaks(events, operator);
-        const hasPending = augmentedEvents.some(e => e.status === 'sospesa');
-        const hasRejected = augmentedEvents.some(e => e.status === 'rifiutata');
-        const isComplete = augmentedEvents.some(e => e.type === 'uscita');
+    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
+        const hasPending = events.some(e => e.status === 'sospesa');
+        const hasRejected = events.some(e => e.status === 'rifiutata');
+        const isComplete = events.some(e => e.type === 'uscita');
         
         let status: Shift['status'];
         if (hasRejected) {
@@ -282,14 +289,14 @@ export default function ShiftApprovalPage() {
             status = 'confermato';
         }
 
-        const { workDuration } = calculateShiftDuration(augmentedEvents, operator);
+        const { workDuration } = calculateShiftDuration(events);
         
-        const startTime = augmentedEvents.find(e => e.type === 'entrata')?.timestamp;
+        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
-        const isOvertime = augmentedEvents.find(e => e.type === 'entrata')?.isOvertime ?? false;
+        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
 
-        return { events: augmentedEvents, status, workDuration, isOnLeaveDay, isOvertime };
+        return { events, status, workDuration, isOnLeaveDay, isOvertime };
     };
 
     const handleApprovalClick = () => {
@@ -314,14 +321,6 @@ export default function ShiftApprovalPage() {
     
         const batch = writeBatch(firestore);
         
-        const newAutoEvents = shiftToApprove.events.filter(e => e.isAuto && !e.id.startsWith('auto-'));
-
-        newAutoEvents.forEach(autoEvent => {
-            const {id, ...eventData} = autoEvent; 
-            const newDocRef = doc(collection(firestore, `app-users/${operator.id}/timbrature`));
-            batch.set(newDocRef, eventData);
-        });
-
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
@@ -401,7 +400,7 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
 
         shiftToDelete.events.forEach(event => {
-            if (!event.id.startsWith('auto-')) {
+            if (!event.isAuto) {
                 const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
                 batch.delete(docRef);
             }
@@ -460,7 +459,7 @@ export default function ShiftApprovalPage() {
         }
         
         for (const event of editingShift.events) {
-            if (event.id.startsWith('auto-')) continue; // Skip virtual events
+            if (event.isAuto) continue; // Skip virtual events
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             if (newEventsMap[event.type]) {
                 batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp, viewedByOperator: false });
@@ -496,7 +495,7 @@ export default function ShiftApprovalPage() {
     
     const handleConfirmDeleteTimbratura = async () => {
         if (!firestore || !deletingTimbratura || !operator) return;
-        if (deletingTimbratura.id.startsWith('auto-')) {
+        if (deletingTimbratura.isAuto) {
             toast({ title: 'Azione non permessa', description: 'Non puoi eliminare una timbratura automatica.', variant: 'destructive'});
             return;
         }
@@ -510,52 +509,13 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile eliminare la timbratura.', variant: 'destructive' });
         });
     };
-    
-    const addAutomaticBreaks = (events: Timbratura[], operator: Operator | null): Timbratura[] => {
-        if (!operator || events.length === 0) return events;
-
-        const shiftDate = events[0].timestamp.toDate();
-        const dayName = dayIndexToName[getDayFns(shiftDate)];
-        const dailySchedule = operator.workSchedule[dayName];
-        const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-        
-        if (mandatoryBreakMinutes <= 0) return events;
-
-        const clockInEvent = events.find(e => e.type === 'entrata');
-        const clockOutEvent = events.find(e => e.type === 'uscita');
-    
-        if (!clockInEvent || !clockOutEvent) {
-            return events;
-        }
-        
-        let breakStartEvent = events.find(e => e.type === 'pausa');
-        let breakEndEvent = events.find(e => e.type === 'fine_pausa');
-        
-        const newEvents = [...events];
-    
-        // Case 1: No break taken at all
-        if (!breakStartEvent && !breakEndEvent) {
-            const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
-            const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-            
-            newEvents.push({ id: `auto-start-${Date.now()}`, type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
-            newEvents.push({ id: `auto-end-${Date.now()}`, type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-        }
-        // Case 2: Started break but didn't end it
-        else if (breakStartEvent && !breakEndEvent) {
-             const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-             newEvents.push({ id: `auto-end-${Date.now()}`, type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-        }
-    
-        return newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-    };
 
     const handleOpenDetailDialog = (shift: Shift) => {
         setDetailShift(shift);
         setIsDetailOpen(true);
     }
     
-    const calculateShiftDuration = (events: Timbratura[], operator: Operator | null): { workDuration: number, calculationStart: Date | null } => {
+    const calculateShiftDuration = (events: Timbratura[]): { workDuration: number, calculationStart: Date | null } => {
         if (!events || events.length === 0 || !operator) {
             return { workDuration: 0, calculationStart: null };
         }
@@ -578,13 +538,18 @@ export default function ShiftApprovalPage() {
         let calculationStart = shiftDate;
 
         const minutesDifference = (shiftDate.getTime() - contractualStart.getTime()) / 60000;
-
-        if (minutesDifference < 0) { // Clocked in early
+        
+        if (minutesDifference <= 15) { // Includes clocking in early up to 15 mins late
             calculationStart = contractualStart;
-        } else if (minutesDifference <= 15) { // Clocked in within grace period
-            calculationStart = contractualStart;
-        } else { // Clocked in late
-            calculationStart = shiftDate;
+        } else {
+            // Round up to the next half hour
+            const nextHalfHour = set(shiftDate, { seconds: 0, milliseconds: 0 });
+            if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                nextHalfHour.setMinutes(30);
+            } else if (nextHalfHour.getMinutes() > 30) {
+                nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+            }
+            calculationStart = nextHalfHour;
         }
         
         let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
@@ -658,7 +623,104 @@ export default function ShiftApprovalPage() {
             leave: leaveHours
         };
     };
+    
+    const handleApprovalProcess = (shift: Shift) => {
+        if (!operator || !shift.events[0]) return;
 
+        const hasBreak = shift.events.some(e => e.type === 'pausa') && shift.events.some(e => e.type === 'fine_pausa');
+        const dayName = dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())];
+        const mandatoryBreakMinutes = operator.workSchedule[dayName]?.breakMinutes || 0;
+
+        if (isSameDay(shift.events[0].timestamp.toDate(), new Date()) && !shift.events.some(e=> e.type === 'uscita')){
+             toast({ title: 'Turno in corso', description: 'Non puoi approvare un turno non ancora terminato.', variant: 'destructive'});
+             return;
+        }
+
+        if (!hasBreak && mandatoryBreakMinutes > 0) {
+            setShiftForBreak(shift);
+            setIsMissingBreakConfirmOpen(true);
+        } else {
+            handleOpenApproveDialog(shift);
+        }
+    };
+
+    const handleApproveWithoutBreak = () => {
+        setIsNoBreakSecondConfirmOpen(false);
+        if (shiftForBreak) {
+            handleOpenApproveDialog(shiftForBreak);
+        }
+        setShiftForBreak(null);
+    };
+
+    const handleOpenAddBreakDialog = () => {
+        if (!shiftForBreak || !operator) return;
+
+        const shiftDate = shiftForBreak.events[0].timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const mandatoryBreakMinutes = operator.workSchedule[dayName]?.breakMinutes || 0;
+
+        const existingBreakStart = shiftForBreak.events.find(e => e.type === 'pausa');
+        
+        let prefilledStart = '12:30';
+        let prefilledEnd = '13:30'; // Default if 60 mins
+
+        if (existingBreakStart) {
+            prefilledStart = format(existingBreakStart.timestamp.toDate(), 'HH:mm');
+            const endTime = new Date(existingBreakStart.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+            prefilledEnd = format(endTime, 'HH:mm');
+        } else if (mandatoryBreakMinutes) {
+            const startTime = set(shiftDate, { hours: 12, minutes: 30 });
+            const endTime = new Date(startTime.getTime() + mandatoryBreakMinutes * 60000);
+            prefilledEnd = format(endTime, 'HH:mm');
+        }
+
+        setBreakTimes({ start: prefilledStart, end: prefilledEnd });
+        setIsAddBreakDialogOpen(true);
+    };
+
+    const handleAddBreakAndApprove = async () => {
+        if (!firestore || !operatorId || !shiftForBreak || !breakTimes.start || !breakTimes.end) {
+             toast({ title: 'Dati mancanti', description: 'Inserisci inizio e fine della pausa', variant: 'destructive'});
+             return;
+        }
+        
+        const shiftDate = shiftForBreak.events[0].timestamp.toDate();
+        const createTimestamp = (time: string): Timestamp => {
+            const [hours, minutes] = time.split(':').map(Number);
+            return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+        };
+
+        const batch = writeBatch(firestore);
+        const timbratureRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+
+        const breakStartEvent = shiftForBreak.events.find(e => e.type === 'pausa');
+        const breakEndEvent = shiftForBreak.events.find(e => e.type === 'fine_pausa');
+
+        if (!breakStartEvent) {
+             const newDocRef = doc(timbratureRef);
+             batch.set(newDocRef, {
+                userId: operatorId, type: 'pausa', timestamp: createTimestamp(breakTimes.start),
+                status: 'sospesa', viewedByOperator: false,
+             });
+        }
+         if (!breakEndEvent) {
+             const newDocRef = doc(timbratureRef);
+             batch.set(newDocRef, {
+                userId: operatorId, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end),
+                status: 'sospesa', viewedByOperator: false,
+             });
+        }
+
+        try {
+            await batch.commit();
+            toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta. Ora puoi approvare il turno.'});
+            setIsAddBreakDialogOpen(false);
+            setIsDetailOpen(false); // Close detail to force re-render
+        } catch (error) {
+             toast({ title: 'Errore', description: 'Impossibile aggiungere la pausa.', variant: 'destructive'});
+        }
+
+    };
 
     const handleOpenApproveDialog = (shift: Shift) => {
         const { ordinary, overtime, leave } = calculateHours(shift);
@@ -756,7 +818,6 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        // Generate a unique ID for this manual shift
         const manualShiftId = doc(timbratureCollectionRef).id;
     
         const events: { type: Timbratura['type'], time: string }[] = [
@@ -776,7 +837,7 @@ export default function ShiftApprovalPage() {
                     status: 'sospesa' as const, 
                     viewedByOperator: false, 
                     isOvertime,
-                    shiftId: manualShiftId // Associate all events with the same manual shift ID
+                    shiftId: manualShiftId
                 });
             }
         }
@@ -1283,7 +1344,7 @@ export default function ShiftApprovalPage() {
                             <Button variant="destructive" onClick={() => handleRejectShift(detailShift)}>
                                 <XCircle className="mr-2 h-4 w-4"/> Rifiuta Turno
                             </Button>
-                            <Button onClick={() => handleOpenApproveDialog(detailShift)}>
+                            <Button onClick={() => handleApprovalProcess(detailShift)}>
                                 <CheckCircle className="mr-2 h-4 w-4"/> Approva Turno
                             </Button>
                           </>
@@ -1438,6 +1499,57 @@ export default function ShiftApprovalPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            
+            <AlertDialog open={isMissingBreakConfirmOpen} onOpenChange={setIsMissingBreakConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Pausa Mancante</AlertDialogTitle>
+                        <AlertDialogDescription>Nessuna pausa registrata per questo turno. Vuoi aggiungerla manualmente?</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setIsNoBreakSecondConfirmOpen(true)}>No, approva senza</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => { setIsMissingBreakConfirmOpen(false); handleOpenAddBreakDialog(); }}>Sì, aggiungi</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            
+            <AlertDialog open={isNoBreakSecondConfirmOpen} onOpenChange={setIsNoBreakSecondConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Approvare il turno senza pausa potrebbe risultare in un calcolo di ore lavorate superiore a quelle reali.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleApproveWithoutBreak}>Approva comunque</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <ResponsiveDialog open={isAddBreakDialogOpen} onOpenChange={setIsAddBreakDialogOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Aggiungi Pausa Manuale</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>Inserisci gli orari di inizio e fine della pausa. I campi sono pre-compilati ma modificabili.</ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="break-start">Inizio Pausa</Label>
+                            <Input id="break-start" type="time" value={breakTimes.start} onChange={e => setBreakTimes(p => ({...p, start: e.target.value}))} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="break-end">Fine Pausa</Label>
+                            <Input id="break-end" type="time" value={breakTimes.end} onChange={e => setBreakTimes(p => ({...p, end: e.target.value}))} />
+                        </div>
+                    </div>
+                    <ResponsiveDialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddBreakDialogOpen(false)}>Annulla</Button>
+                        <Button onClick={handleAddBreakAndApprove}>Aggiungi Pausa e Approva</Button>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
 
 
             <AlertDialog open={isDeleteTimbraturaDialogOpen} onOpenChange={setIsDeleteTimbraturaDialogOpen}>
