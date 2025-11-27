@@ -154,40 +154,43 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
 
                 const dayTimbrature = timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
                 if (dayTimbrature.length > 0) {
-                     let workDuration = 0;
                      const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
-                     const endTime = dayTimbrature.find(e => e.type === 'uscita')?.timestamp;
-                     
-                     if (startTime && endTime) {
-                         let totalMillis = endTime.toMillis() - startTime.toMillis();
-                         let breakStart: Timestamp | null = null;
-                         dayTimbrature.forEach(e => {
-                             if (e.type === 'pausa') breakStart = e.timestamp;
-                             if (e.type === 'fine_pausa' && breakStart) {
-                                 totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                                 breakStart = null;
-                             }
-                         });
-                         workDuration = totalMillis / (1000 * 60);
+                     if (startTime) {
+                        let workDuration = 0;
+                        const augmentedEvents = addAutomaticBreaksToShiftDetail({ events: dayTimbrature } as any, operator);
+                        const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
+                        
+                        if (endTime) {
+                            let totalMillis = endTime.toMillis() - startTime.toMillis();
+                            let breakStart: Timestamp | null = null;
+                            augmentedEvents.forEach(e => {
+                                if (e.type === 'pausa') breakStart = e.timestamp;
+                                if (e.type === 'fine_pausa' && breakStart) {
+                                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                                    breakStart = null;
+                                }
+                            });
+                            workDuration = totalMillis / (1000 * 60);
+                        }
+                        
+                        const shift: Shift = {
+                            events: augmentedEvents,
+                            startTime: startTime!,
+                            endTime: endTime || null,
+                            workDuration,
+                            isOvertime: augmentedEvents[0]?.isOvertime ?? false
+                        };
+                        dayShift = shift;
+
+                        const hasOvertime = (calculateShiftHours(shift).overtime > 0);
+                        const isPureOvertime = shift.isOvertime;
+                        const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
+
+                        if (isPureOvertime) dayStatus = 'straordinario';
+                        else if (permissionRequest) dayStatus = 'ordinario/permesso';
+                        else if (hasOvertime) dayStatus = 'lavorato/straordinario';
+                        else dayStatus = 'lavorato';
                      }
-                    
-                    const shift: Shift = {
-                        events: dayTimbrature,
-                        startTime: startTime!,
-                        endTime: endTime || null,
-                        workDuration,
-                        isOvertime: dayTimbrature[0]?.isOvertime ?? false
-                    };
-                    dayShift = shift;
-
-                    const hasOvertime = (calculateShiftHours(shift).overtime > 0);
-                    const isPureOvertime = shift.isOvertime;
-                    const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
-
-                    if (isPureOvertime) dayStatus = 'straordinario';
-                    else if (permissionRequest) dayStatus = 'ordinario/permesso';
-                    else if (hasOvertime) dayStatus = 'lavorato/straordinario';
-                    else dayStatus = 'lavorato';
                 }
                 
                 const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
@@ -236,7 +239,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
     };
     
     const calculateShiftHours = (shift: Shift | null): { ordinary: number, overtime: number } => {
-        if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0 };
+        if (!shift || !operator?.workSchedule || !shift.startTime) return { ordinary: 0, overtime: 0 };
     
         const contractualHours = (operator.workSchedule[dayIndexToName[getDay(shift.startTime.toDate())]]?.totalHours || 0);
         const totalMinutesWorked = Math.round(shift.workDuration);
@@ -281,10 +284,13 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    const addAutomaticBreaksToShiftDetail = (day: DayInfo | null): Timbratura[] => {
+    const addAutomaticBreaksToShiftDetail = (day: DayInfo | null, operator: Operator | null): Timbratura[] => {
         if (!day?.shift || !operator) return day?.shift?.events || [];
     
         const shift = day.shift;
+
+        if(!shift.startTime) return shift.events;
+
         const shiftDate = shift.startTime.toDate();
         const dayName = dayIndexToName[getDay(shiftDate)];
         const dailySchedule = operator.workSchedule[dayName];
@@ -378,7 +384,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-2xl font-bold">{operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours || 0}h</p>
+                                    <p className="text-2xl font-bold">{selectedDay.shift.startTime ? (operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours || 0) : 0}h</p>
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
@@ -397,7 +403,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                     <TableBody>
-                                        {addAutomaticBreaksToShiftDetail(selectedDay).map((t, index) => (
+                                        {addAutomaticBreaksToShiftDetail(selectedDay, operator).map((t, index) => (
                                             <TableRow key={t.id || `auto-${index}`}>
                                                 <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                 <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
