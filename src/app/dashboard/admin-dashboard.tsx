@@ -38,6 +38,17 @@ export function AdminDashboard() {
 
             // For each operator, set up listeners for pending items
             usersData.forEach(op => {
+                // Pending Shifts (Timbrature)
+                const shiftsQuery = query(collection(firestore, `app-users/${op.id}/timbrature`), where('status', '==', 'sospesa'));
+                 onSnapshot(shiftsQuery, (shiftSnapshot) => {
+                    const pendingDays = new Set(shiftSnapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
+                     setPendingCounts(prev => ({
+                        ...prev,
+                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingDays.size }
+                    }));
+                });
+
+
                 // Pending Leave Requests
                 const leavesQuery = query(collection(firestore, `app-users/${op.id}/requests`), where('status', '==', 'in_attesa'));
                 onSnapshot(leavesQuery, (leaveSnapshot) => {
