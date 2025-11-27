@@ -1275,7 +1275,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-center my-4">
+                        <div className="grid grid-cols-4 gap-4 text-center my-4">
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                 <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
