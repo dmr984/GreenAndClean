@@ -191,7 +191,7 @@ export default function EndOfMonthPage() {
         };
     }, [firestore, user, currentMonth]);
     
-    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date } => {
+    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, operator: Operator | null): { workedMinutes: number, calculationStart: Date } => {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -222,7 +222,8 @@ export default function EndOfMonthPage() {
         
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
-        for (const e of events) {
+        const eventsWithBreaks = addAutomaticBreaks(events, operator);
+        for (const e of eventsWithBreaks) {
             if (e.type === 'pausa') breakStartTs = e.timestamp;
             if (e.type === 'fine_pausa' && breakStartTs) {
                 breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
@@ -285,7 +286,7 @@ export default function EndOfMonthPage() {
                 const clockInEvent = events.find(e => e.type === 'entrata');
                 
                 if (clockInEvent) {
-                    const shiftDetails = calculateShiftDetails(events, dailySchedule);
+                    const shiftDetails = calculateShiftDetails(events, dailySchedule, operator);
                     workedMinutes = shiftDetails.workedMinutes;
                     calculationStart = shiftDetails.calculationStart;
 

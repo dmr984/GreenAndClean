@@ -168,7 +168,8 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
     // IMPORTANT: Use the full event list to calculate breaks, including manual/auto ones.
-    for (const e of shift.events) {
+    const eventsWithBreaks = addAutomaticBreaks(shift.events, operator);
+    for (const e of eventsWithBreaks) {
         if (e.type === 'pausa') breakStartTs = e.timestamp;
         if (e.type === 'fine_pausa' && breakStartTs) {
             breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
@@ -753,89 +754,91 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     }, [firestore, operatorId, currentDate, toast]);
     
     const summary = useMemo(() => {
-    if (!operator) {
-        return { workedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [] };
-    }
-
-    const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
-
-    const timbratureByDay: { [key: string]: Timbratura[] } = {};
-    timbrature.forEach(t => {
-        const dayString = startOfDay(t.timestamp.toDate()).toISOString();
-        if (!timbratureByDay[dayString]) timbratureByDay[dayString] = [];
-        timbratureByDay[dayString].push(t);
-    });
-
-    const ordinaryHoursByDay: { date: Date; hours: number; shift: Shift }[] = [];
-    let totalOvertimeHours = 0;
-
-    Object.values(timbratureByDay).forEach(dayEvents => {
-        if (dayEvents.length === 0) return;
-        
-        dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-        
-        const startTime = dayEvents.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = dayEvents.find(e => e.type === 'uscita')?.timestamp;
-
-        if (startTime && endTime) {
-            const shift: Shift = {
-                events: dayEvents,
-                startTime: startTime,
-                endTime: endTime,
-                workDuration: 0, // This will be calculated inside calculateShiftHours
-                isOvertime: dayEvents.some(e => e.isOvertime)
-            };
-            
-            const { ordinary, overtime, workedMinutes } = calculateShiftHours(shift, operator);
-            shift.workDuration = workedMinutes; // Update work duration
-
-            if (ordinary > 0) {
-                ordinaryHoursByDay.push({ date: startTime.toDate(), hours: ordinary, shift });
-            }
-            if (overtime > 0) {
-                totalOvertimeHours += overtime;
-            }
+        if (!operator) {
+            return { workedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [] };
         }
-    });
 
-    const totalOrdinaryHours = ordinaryHoursByDay.reduce((sum, day) => sum + day.hours, 0);
+        const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
 
-    const requestOvertime = requests
-        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
-        .reduce((sum, r) => sum + (r.hours || 0), 0);
+        const timbratureByDay: { [key: string]: Timbratura[] } = {};
+        timbrature.forEach(t => {
+            const dayString = startOfDay(t.timestamp.toDate()).toISOString();
+            if (!timbratureByDay[dayString]) timbratureByDay[dayString] = [];
+            timbratureByDay[dayString].push(t);
+        });
 
-    totalOvertimeHours += requestOvertime;
+        const ordinaryHoursByDay: { date: Date; hours: number; shift: Shift }[] = [];
+        let totalOvertimeHours = 0;
 
-    let ferieDaysCount = 0;
-    let malattiaDaysCount = 0;
-    const processedLeaveDays = new Set<string>();
+        Object.values(timbratureByDay).forEach(dayEvents => {
+            if (dayEvents.length === 0) return;
+            
+            dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            const startTime = dayEvents.find(e => e.type === 'entrata')?.timestamp;
+            const endTime = dayEvents.find(e => e.type === 'uscita')?.timestamp;
 
-    requests.forEach(req => {
-        if (req.type === 'ferie' || req.type === 'malattia') {
-            for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                const dayString = day.toDateString();
-                if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
-                    const dayName = dayIndexToName[getDay(day)];
-                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
-                    if (contractualHours > 0) {
-                        if (req.type === 'ferie') ferieDaysCount++;
-                        if (req.type === 'malattia') malattiaDaysCount++;
-                        processedLeaveDays.add(dayString);
+            if (startTime && endTime) {
+                const shift: Shift = {
+                    events: dayEvents,
+                    startTime: startTime,
+                    endTime: endTime,
+                    workDuration: 0, // This will be calculated inside calculateShiftHours
+                    isOvertime: dayEvents.some(e => e.isOvertime)
+                };
+                
+                const { ordinary, overtime, workedMinutes } = calculateShiftHours(shift, operator);
+                shift.workDuration = workedMinutes; // Update work duration
+
+                if (ordinary > 0) {
+                    ordinaryHoursByDay.push({ date: startTime.toDate(), hours: ordinary, shift });
+                }
+                if (overtime > 0) {
+                    totalOvertimeHours += overtime;
+                }
+            }
+        });
+
+        const totalOrdinaryHours = ordinaryHoursByDay.reduce((sum, day) => sum + day.hours, 0);
+
+        const requestOvertime = requests
+            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
+            .reduce((sum, r) => sum + (r.hours || 0), 0);
+            
+        totalOvertimeHours += requestOvertime;
+        
+        const totalPermessoHours = requests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval)).reduce((sum, r) => sum + (r.hours || 0), 0);
+
+        let ferieDaysCount = 0;
+        let malattiaDaysCount = 0;
+        const processedLeaveDays = new Set<string>();
+
+        requests.forEach(req => {
+            if (req.type === 'ferie' || req.type === 'malattia') {
+                for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+                    const dayString = day.toDateString();
+                    if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
+                        const dayName = dayIndexToName[getDay(day)];
+                        const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
+                        if (contractualHours > 0) {
+                            if (req.type === 'ferie') ferieDaysCount++;
+                            if (req.type === 'malattia') malattiaDaysCount++;
+                            processedLeaveDays.add(dayString);
+                        }
                     }
                 }
             }
-        }
-    });
+        });
 
-    return {
-        workedDays: Object.keys(timbratureByDay).filter(day => timbratureByDay[day].some(t => t.type === 'uscita')).length,
-        workedHours: totalOrdinaryHours,
-        overtimeHours: totalOvertimeHours,
-        permessoHours: requests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval)).reduce((sum, r) => sum + (r.hours || 0), 0),
-        malattiaDays: malattiaDaysCount,
-        ferieDays: ferieDaysCount,
-        ordinaryHoursByDay: ordinaryHoursByDay
-    };
+        return {
+            workedDays: Object.keys(timbratureByDay).filter(day => timbratureByDay[day].some(t => t.type === 'uscita')).length,
+            workedHours: totalOrdinaryHours,
+            overtimeHours: totalOvertimeHours,
+            permessoHours: totalPermessoHours,
+            malattiaDays: malattiaDaysCount,
+            ferieDays: ferieDaysCount,
+            ordinaryHoursByDay: ordinaryHoursByDay
+        };
     }, [timbrature, requests, operator, currentDate]);
 
 
