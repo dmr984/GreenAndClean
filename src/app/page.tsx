@@ -15,7 +15,7 @@ export default function LoginPage() {
             className="h-60 w-60 mx-auto rounded-full"
             priority
           />
-          <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">Serveco Cleaning</h1>
+          <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">SERVECO GREEN & CLEAN</h1>
           <p className="text-balance text-muted-foreground">
             Inserisci il tuo codice operatore per accedere.
           </p>

@@ -5,8 +5,8 @@ import { FirebaseClientProvider } from '@/firebase';
 import { UserProvider } from '@/providers/user-provider';
 
 export const metadata: Metadata = {
-  title: 'Serveco Hub',
-  description: 'Gestisci le tue operazioni di pulizia con facilità.',
+  title: 'SERVECO GREEN & CLEAN',
+  description: 'Gestisci le tue operazioni con facilità.',
   manifest: "/manifest.json",
 };
 
