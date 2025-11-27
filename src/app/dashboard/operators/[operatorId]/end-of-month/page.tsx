@@ -22,7 +22,6 @@ const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday',
 type DailySchedule = {
     totalHours?: number;
     startTime?: string; // "HH:mm"
-    endTime?: string; // "HH:mm"
     breakMinutes?: number;
 };
 
@@ -158,32 +157,35 @@ export default function EndOfMonthPage() {
         };
     }, [firestore, operatorId, currentMonth]);
     
-    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, operator: Operator | null): { workedMinutes: number, calculationStart: Date } => {
+    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null } => {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
-        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: new Date() };
+        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null };
 
         const clockInTime = clockInEvent.timestamp.toDate();
         const clockOutTime = clockOutEvent.timestamp.toDate();
-        const contractualStartTimeStr = schedule?.startTime || '00:00';
-        const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
-        const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
 
         let calculationStartTime = clockInTime;
-        const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
         
-        if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
-            calculationStartTime = contractualStartDateTime;
-        } else {
-             const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
-            if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                nextHalfHour.setMinutes(30);
-            } else if (nextHalfHour.getMinutes() > 30) {
-                nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+        if (schedule?.startTime) {
+            const [contractualH, contractualM] = schedule.startTime.split(':').map(Number);
+            const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+            const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+            
+            if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
+                calculationStartTime = contractualStartDateTime;
+            } else {
+                 const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
+                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                    nextHalfHour.setMinutes(30);
+                } else if (nextHalfHour.getMinutes() > 30) {
+                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                }
+                calculationStartTime = nextHalfHour;
             }
-            calculationStartTime = nextHalfHour;
         }
+
 
         let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
         
@@ -251,7 +253,7 @@ export default function EndOfMonthPage() {
                 const clockInEvent = events.find(e => e.type === 'entrata');
                 
                 if (clockInEvent) {
-                    const shiftDetails = calculateShiftDetails(events, dailySchedule, operator);
+                    const shiftDetails = calculateShiftDetails(events, dailySchedule);
                     workedMinutes = shiftDetails.workedMinutes;
                     calculationStart = shiftDetails.calculationStart;
 

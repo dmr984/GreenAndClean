@@ -27,7 +27,6 @@ const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday',
 type DailySchedule = {
     totalHours?: number;
     startTime?: string; // "HH:mm"
-    endTime?: string; // "HH:mm"
     breakMinutes?: number;
 };
 
