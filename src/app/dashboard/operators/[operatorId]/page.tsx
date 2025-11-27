@@ -137,8 +137,8 @@ export default function OperatorDetailPage() {
                     <AvatarFallback className="text-xl">{getAvatarFallback(operator.firstName, operator.lastName)}</AvatarFallback>
                 </Avatar>
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">{`${operator.firstName} ${operator.lastName}`}</h1>
-                    <p className="text-lg text-muted-foreground">Codice: {operator.username}</p>
+                    <h1 className="text-4xl font-bold tracking-tight">{`${operator.firstName} ${operator.lastName}`}</h1>
+                    <p className="text-md text-muted-foreground">Codice: {operator.username}</p>
                     <p className="text-muted-foreground">{formatWorkSchedule(operator.workSchedule)}</p>
                 </div>
             </div>
