@@ -1286,14 +1286,10 @@ export default function ShiftApprovalPage() {
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
                         return (
-                            <div className="grid grid-cols-5 gap-4 text-center my-4">
+                            <div className="grid grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Minuti Pausa</p>
-                                    <p className="text-xl font-bold">{Math.round(breakDuration)}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Approvate</p>
