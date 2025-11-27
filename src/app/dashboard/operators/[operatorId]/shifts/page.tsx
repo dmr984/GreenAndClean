@@ -82,12 +82,14 @@ type UnlockRequest = {
     type: 'sblocco_timbratura';
 }
 
+type ManualBreak = { start: string; end: string; };
+
 type ApprovalContext = {
     shift: Shift;
     ordinaryHours: string;
     overtimeHours: string;
     leaveHours: string;
-    manualBreak?: { start: string; end: string; };
+    manualBreak?: ManualBreak;
     createLeaveRequest: boolean;
 } | null;
 
@@ -599,7 +601,7 @@ export default function ShiftApprovalPage() {
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
-    const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
+    const calculateHours = (shift: Shift | null, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
     
         if (shift.isOvertime) {
@@ -610,11 +612,20 @@ export default function ShiftApprovalPage() {
             };
         }
     
+        let totalMinutesWorked = Math.round(shift.workDuration);
+
+        if (manualBreak?.start && manualBreak?.end) {
+            const startDate = parse(manualBreak.start, 'HH:mm', new Date());
+            const endDate = parse(manualBreak.end, 'HH:mm', new Date());
+            if (endDate > startDate) {
+                const breakMinutes = (endDate.getTime() - startDate.getTime()) / 60000;
+                totalMinutesWorked -= breakMinutes;
+            }
+        }
+
         const contractualHours = getContractualHoursForShift(shift);
         const contractualMinutes = contractualHours * 60;
-    
-        const totalMinutesWorked = Math.round(shift.workDuration);
-        
+            
         const ordinaryMinutes = Math.min(totalMinutesWorked, contractualMinutes);
         const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
     
@@ -697,8 +708,8 @@ export default function ShiftApprovalPage() {
     };
 
 
-    const handleOpenApproveDialog = (shift: Shift, manualBreak?: {start: string, end: string}) => {
-        const { ordinary, overtime, leave } = calculateHours(shift);
+    const handleOpenApproveDialog = (shift: Shift, manualBreak?: ManualBreak) => {
+        const { ordinary, overtime, leave } = calculateHours(shift, manualBreak);
         setApprovalContext({
             shift: shift,
             ordinaryHours: String(ordinary),
@@ -1470,8 +1481,8 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Nessuna pausa registrata per questo turno. Vuoi aggiungerla manualmente?</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogAction onClick={handleOpenAddBreakDialog}>Sì, aggiungi</AlertDialogAction>
-                        <AlertDialogCancel onClick={handleApproveWithoutBreak}>No, approva senza</AlertDialogCancel>
+                        <Button variant="outline" onClick={handleApproveWithoutBreak}>No, approva senza</Button>
+                        <Button onClick={handleOpenAddBreakDialog}>Sì, aggiungi</Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
