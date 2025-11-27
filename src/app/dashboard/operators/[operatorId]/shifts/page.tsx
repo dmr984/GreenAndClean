@@ -1274,26 +1274,33 @@ export default function ShiftApprovalPage() {
                         </div>
                     </ResponsiveDialogHeader>
 
-                     {detailShift && detailShift.status !== 'in_corso' && operator && (
-                        <div className="grid grid-cols-4 gap-4 text-center my-4">
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                     {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const label = overtime > 0 ? "Straordinari" : "Permessi";
+                        const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
+
+                        return (
+                            <div className="grid grid-cols-4 gap-4 text-center my-4">
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
+                                    <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Effettuate</p>
+                                    <p className="text-2xl font-bold">{formatMinutes(worked)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Approvate</p>
+                                    <p className="text-2xl font-bold">{ordinary}h</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                                    <p className="text-2xl font-bold">{value}</p>
+                                </div>
                             </div>
-                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Effettuate</p>
-                                <p className="text-2xl font-bold">{formatMinutes(calculateHours(detailShift).worked)}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Approvate</p>
-                                <p className="text-2xl font-bold">{calculateHours(detailShift).ordinary}h</p>
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Straordinari/Permessi</p>
-                                <p className="text-2xl font-bold">{calculateHours(detailShift).overtime > 0 ? `${calculateHours(detailShift).overtime}h` : `${calculateHours(detailShift).leave}h`}</p>
-                            </div>
-                        </div>
-                    )}
+                        );
+                    })()}
+
 
                     <div className="overflow-x-auto mt-2 max-h-80 overflow-y-auto">
                         <Table>
