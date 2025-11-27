@@ -87,7 +87,6 @@ type ApprovalContext = {
     shift: Shift;
     ordinaryHours: string;
     overtimeHours: string;
-
     leaveHours: string;
     manualBreak?: ManualBreak;
     createLeaveRequest: boolean;
@@ -605,14 +604,15 @@ export default function ShiftApprovalPage() {
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
-    const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number } => {
-        if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
+    const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number } => {
+        if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0 };
     
         if (shift.isOvertime) {
             return {
                 ordinary: 0,
                 overtime: roundOvertimeHours(shift.workDuration),
-                leave: 0
+                leave: 0,
+                worked: shift.workDuration
             };
         }
     
@@ -642,7 +642,8 @@ export default function ShiftApprovalPage() {
         return { 
             ordinary: ordinaryHours, 
             overtime: overtimeHours, 
-            leave: leaveHours
+            leave: leaveHours,
+            worked: totalMinutesWorked
         };
     };
     
@@ -1274,18 +1275,22 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (
-                        <div className="grid grid-cols-3 gap-4 text-center my-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-center my-4">
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                 <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
                             </div>
-                            <div>
-                                <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
-                                <p className="text-2xl font-bold">{formatMinutes(detailShift.workDuration)}</p>
+                             <div>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Effettuate</p>
+                                <p className="text-2xl font-bold">{formatMinutes(calculateHours(detailShift).worked)}</p>
                             </div>
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Straordinari</p>
-                                <p className="text-2xl font-bold">{calculateHours(detailShift).overtime}h</p>
+                                <p className="text-sm font-medium text-muted-foreground">Ore Approvate</p>
+                                <p className="text-2xl font-bold">{calculateHours(detailShift).ordinary}h</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Straordinari/Permessi</p>
+                                <p className="text-2xl font-bold">{calculateHours(detailShift).overtime > 0 ? `${calculateHours(detailShift).overtime}h` : `${calculateHours(detailShift).leave}h`}</p>
                             </div>
                         </div>
                     )}
