@@ -4,7 +4,7 @@ import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -185,6 +185,25 @@ export default function ManageOperatorsPage() {
         });
     };
 
+    const handleCopyFromPreviousDay = (
+        setter: React.Dispatch<React.SetStateAction<WorkSchedule>>,
+        day: DayOfWeek
+    ) => {
+        const previousDayIndex = weekDays.indexOf(day) - 1;
+        if (previousDayIndex < 0) return;
+
+        const previousDayKey = weekDays[previousDayIndex];
+
+        setter(prev => {
+            const previousDaySchedule = prev[previousDayKey] || {};
+            return {
+                ...prev,
+                [day]: { ...previousDaySchedule }
+            };
+        });
+        toast({ title: 'Copiato!', description: `Orario di ${dayLabels[day]} impostato come quello di ${dayLabels[previousDayKey]}.`, duration: 2000 });
+    };
+
     const handleFormSubmit = async (
         e: React.FormEvent,
         action: 'add' | 'edit'
@@ -333,13 +352,22 @@ export default function ManageOperatorsPage() {
     const renderWorkScheduleFields = (
         schedule: WorkSchedule,
         handler: (day: DayOfWeek, field: keyof DailySchedule, value: string | number) => void,
+        copyHandler: (day: DayOfWeek) => void,
         prefix: string
     ) => (
         <div className="space-y-4">
-            {weekDays.map(day => (
+            {weekDays.map((day, index) => (
                 <div key={`${prefix}-${day}`}>
-                    <Label className="font-semibold">{dayLabels[day]}</Label>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 items-center gap-4 mt-1 p-3 border rounded-md">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Label className="font-semibold">{dayLabels[day]}</Label>
+                        {index > 0 && (
+                             <Button type="button" variant="outline" size="sm" onClick={() => copyHandler(day)} className="h-6 px-2">
+                                <Copy className="h-3 w-3 mr-1"/>
+                                Copia dal precedente
+                            </Button>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 items-center gap-4 p-3 border rounded-md">
                         <div className="space-y-1">
                             <Label htmlFor={`${prefix}-${day}-hours`}>Ore Totali</Label>
                             <Input 
@@ -431,7 +459,12 @@ export default function ManageOperatorsPage() {
                                         <div>
                                             <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
                                              <Separator className="my-2" />
-                                            {renderWorkScheduleFields(newWorkSchedule, (day, field, value) => handleWorkScheduleChange(setNewWorkSchedule, day, field, value), 'new')}
+                                            {renderWorkScheduleFields(
+                                                newWorkSchedule, 
+                                                (day, field, value) => handleWorkScheduleChange(setNewWorkSchedule, day, field, value), 
+                                                (day) => handleCopyFromPreviousDay(setNewWorkSchedule, day),
+                                                'new'
+                                            )}
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -519,7 +552,12 @@ export default function ManageOperatorsPage() {
                             <div>
                                 <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
                                 <Separator className="my-2" />
-                                {renderWorkScheduleFields(editingWorkSchedule, (day, field, value) => handleWorkScheduleChange(setEditingWorkSchedule, day, field, value), 'edit')}
+                                {renderWorkScheduleFields(
+                                    editingWorkSchedule, 
+                                    (day, field, value) => handleWorkScheduleChange(setEditingWorkSchedule, day, field, value), 
+                                    (day) => handleCopyFromPreviousDay(setEditingWorkSchedule, day),
+                                    'edit'
+                                )}
                             </div>
                         </div>
                         <DialogFooter>
