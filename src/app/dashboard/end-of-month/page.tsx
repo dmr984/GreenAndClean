@@ -91,6 +91,38 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
     </div>
 );
 
+const addAutomaticBreaks = (events: Timbratura[], operator: Operator | null): Timbratura[] => {
+    if (!operator || events.length === 0) return events;
+
+    const shiftDate = events[0].timestamp.toDate();
+    const dayName = dayIndexToName[getDay(shiftDate)];
+    const dailySchedule = operator.workSchedule[dayName];
+    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
+    
+    if (mandatoryBreakMinutes <= 0) return events;
+
+    if (!events.some(e => e.type === 'uscita')) return events;
+    
+    let breakStartEvent = events.find(e => e.type === 'pausa');
+    let breakEndEvent = events.find(e => e.type === 'fine_pausa');
+    
+    const newEvents = [...events];
+
+    if (!breakStartEvent && !breakEndEvent) {
+        const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
+        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+        
+        newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata' });
+        newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
+    }
+    else if (breakStartEvent && !breakEndEvent) {
+         const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+         newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
+    }
+
+    return newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+};
+
 
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
@@ -245,7 +277,8 @@ export default function EndOfMonthPage() {
             const workedEventsRaw = dailyTimbrature[dayString];
 
             if (workedEventsRaw) {
-                let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                let eventsWithBreaks = addAutomaticBreaks(workedEventsRaw, operator);
+                let events = [...eventsWithBreaks].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 let workedMinutes = 0;
                 let calculationStart: Date | null = null;
@@ -257,7 +290,7 @@ export default function EndOfMonthPage() {
                     calculationStart = shiftDetails.calculationStart;
 
                     const entrataIndex = events.findIndex(e => e.type === 'entrata');
-                    if (entrataIndex !== -1) {
+                    if (entrataIndex !== -1 && calculationStart) {
                          const virtualEntrata = { ...events[entrataIndex], timestamp: Timestamp.fromDate(calculationStart) };
                          events[entrataIndex] = virtualEntrata;
                     }
