@@ -31,11 +31,19 @@ import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
+import { Separator } from '@/components/ui/separator';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string;
+    endTime?: string;
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 const dayLabels: Record<DayOfWeek, string> = {
@@ -145,13 +153,36 @@ export default function ManageOperatorsPage() {
     const handleWorkScheduleChange = (
       setter: React.Dispatch<React.SetStateAction<WorkSchedule>>,
       day: DayOfWeek,
+      field: keyof DailySchedule,
       value: string
     ) => {
-        const hours = value ? parseFloat(value) : 0;
-        setter(prev => ({
-            ...prev,
-            [day]: hours >= 0 ? hours : 0
-        }));
+        setter(prev => {
+            const daySchedule = prev[day] || {};
+            const newDaySchedule = { ...daySchedule, [field]: value };
+
+            // Auto-calculate end time if start time and total hours are set
+            if (field === 'startTime' || field === 'totalHours') {
+                const totalHours = field === 'totalHours' ? parseFloat(value) : newDaySchedule.totalHours;
+                const startTime = field === 'startTime' ? value : newDaySchedule.startTime;
+
+                if (startTime && totalHours && totalHours > 0) {
+                    const [startH, startM] = startTime.split(':').map(Number);
+                    const startDate = new Date(0);
+                    startDate.setHours(startH, startM);
+                    
+                    // Assume 1 hour break for shifts >= 6 hours
+                    const breakMinutes = totalHours >= 6 ? 60 : 0;
+                    const totalDurationMinutes = totalHours * 60 + breakMinutes;
+                    
+                    const endDate = new Date(startDate.getTime() + totalDurationMinutes * 60000);
+                    
+                    newDaySchedule.endTime = `${String(endDate.getHours()).padStart(2,'0')}:${String(endDate.getMinutes()).padStart(2,'0')}`;
+                    newDaySchedule.breakMinutes = breakMinutes;
+                }
+            }
+
+            return { ...prev, [day]: newDaySchedule };
+        });
     };
 
     const handleFormSubmit = async (
@@ -190,7 +221,15 @@ export default function ManageOperatorsPage() {
         
         const finalWorkSchedule: WorkSchedule = {};
         weekDays.forEach(day => {
-            finalWorkSchedule[day] = workSchedule[day] || 0;
+            const daySchedule = workSchedule[day];
+            if (daySchedule && (daySchedule.totalHours || daySchedule.startTime)) {
+                 finalWorkSchedule[day] = {
+                    totalHours: parseFloat(String(daySchedule.totalHours || 0)),
+                    startTime: daySchedule.startTime || undefined,
+                    endTime: daySchedule.endTime || undefined,
+                    breakMinutes: daySchedule.breakMinutes || 0
+                 };
+            }
         });
         
         const operatorData = {
@@ -269,9 +308,16 @@ export default function ManageOperatorsPage() {
         const dayMapping: Record<DayOfWeek, string> = { monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom' };
         
         return weekDays
-            .filter(day => schedule[day] && schedule[day]! > 0)
-            .map(day => `${dayMapping[day]}: ${schedule[day]}h`)
-            .join(', ');
+            .filter(day => schedule[day] && (schedule[day]?.totalHours || 0) > 0)
+            .map(day => {
+                const s = schedule[day];
+                let display = `${dayMapping[day]}: ${s?.totalHours}h`;
+                if(s?.startTime) {
+                    display += ` (${s.startTime})`
+                }
+                return display;
+            })
+            .join(' | ');
     };
     
     if (isUserLoading) {
@@ -284,22 +330,36 @@ export default function ManageOperatorsPage() {
 
     const renderWorkScheduleFields = (
         schedule: WorkSchedule,
-        handler: (day: DayOfWeek, value: string) => void,
+        handler: (day: DayOfWeek, field: keyof DailySchedule, value: string) => void,
         prefix: string
     ) => (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+        <div className="space-y-4">
             {weekDays.map(day => (
-                <div key={`${prefix}-${day}`} className="grid grid-cols-2 items-center gap-2">
-                    <Label htmlFor={`${prefix}-${day}`}>{dayLabels[day]}</Label>
-                    <Input 
-                        id={`${prefix}-${day}`}
-                        type="number"
-                        placeholder="Ore"
-                        value={schedule[day] || ''}
-                        onChange={(e) => handler(day, e.target.value)}
-                        min="0"
-                        step="0.5"
-                    />
+                <div key={`${prefix}-${day}`}>
+                    <Label className="font-semibold">{dayLabels[day]}</Label>
+                    <div className="grid grid-cols-2 items-center gap-4 mt-1 p-3 border rounded-md">
+                        <div className="space-y-1">
+                            <Label htmlFor={`${prefix}-${day}-hours`}>Ore Totali</Label>
+                            <Input 
+                                id={`${prefix}-${day}-hours`}
+                                type="number"
+                                placeholder="Es: 8"
+                                value={schedule[day]?.totalHours || ''}
+                                onChange={(e) => handler(day, 'totalHours', e.target.value)}
+                                min="0"
+                                step="0.5"
+                            />
+                        </div>
+                         <div className="space-y-1">
+                            <Label htmlFor={`${prefix}-${day}-start`}>Orario Inizio (Opz.)</Label>
+                            <Input 
+                                id={`${prefix}-${day}-start`}
+                                type="time"
+                                value={schedule[day]?.startTime || ''}
+                                onChange={(e) => handler(day, 'startTime', e.target.value)}
+                            />
+                        </div>
+                    </div>
                 </div>
             ))}
         </div>
@@ -328,7 +388,7 @@ export default function ManageOperatorsPage() {
                                             Inserisci i dati e il programma lavorativo settimanale.
                                         </DialogDescription>
                                     </DialogHeader>
-                                    <div className="grid gap-6 py-4">
+                                    <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <Label htmlFor="new-code">Codice Operatore</Label>
@@ -346,8 +406,9 @@ export default function ManageOperatorsPage() {
                                             </div>
                                         </div>
                                         <div>
-                                            <Label className="mb-2 block">Programma Lavorativo (ore per giorno)</Label>
-                                            {renderWorkScheduleFields(newWorkSchedule, (day, value) => handleWorkScheduleChange(setNewWorkSchedule, day, value), 'new')}
+                                            <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
+                                             <Separator className="my-2" />
+                                            {renderWorkScheduleFields(newWorkSchedule, (day, field, value) => handleWorkScheduleChange(setNewWorkSchedule, day, field, value), 'new')}
                                         </div>
                                     </div>
                                     <DialogFooter>
@@ -415,7 +476,7 @@ export default function ManageOperatorsPage() {
                                 Modifica i dati e il programma lavorativo dell'operatore.
                             </DialogDescription>
                         </DialogHeader>
-                         <div className="grid gap-6 py-4">
+                         <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
                             <div className="grid grid-cols-2 gap-4">
                                  <div>
                                     <Label htmlFor="editing-code">Codice Operatore</Label>
@@ -433,8 +494,9 @@ export default function ManageOperatorsPage() {
                                 </div>
                             </div>
                             <div>
-                                <Label className="mb-2 block">Programma Lavorativo (ore per giorno)</Label>
-                                {renderWorkScheduleFields(editingWorkSchedule, (day, value) => handleWorkScheduleChange(setEditingWorkSchedule, day, value), 'edit')}
+                                <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
+                                <Separator className="my-2" />
+                                {renderWorkScheduleFields(editingWorkSchedule, (day, field, value) => handleWorkScheduleChange(setEditingWorkSchedule, day, field, value), 'edit')}
                             </div>
                         </div>
                         <DialogFooter>

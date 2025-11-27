@@ -25,15 +25,17 @@
         },
         "workSchedule": {
             "type": "object",
-            "description": "The contractual work schedule for the operator, mapping days to hours.",
-            "properties": {
-                "monday": { "type": "number" },
-                "tuesday": { "type": "number" },
-                "wednesday": { "type": "number" },
-                "thursday": { "type": "number" },
-                "friday": { "type": "number" },
-                "saturday": { "type": "number" },
-                "sunday": { "type": "number" }
+            "description": "The contractual work schedule for the operator.",
+            "patternProperties": {
+                "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$": {
+                    "type": "object",
+                    "properties": {
+                        "totalHours": { "type": "number", "description": "Total contractual hours for the day." },
+                        "startTime": { "type": "string", "format": "time", "description": "The specific start time for the shift (e.g., '08:00')." },
+                        "endTime": { "type": "string", "format": "time", "description": "The specific end time for the shift (e.g., '17:00')." },
+                        "breakMinutes": { "type": "number", "description": "Mandatory break duration in minutes." }
+                    }
+                }
             }
         }
       },
@@ -344,6 +346,6 @@
         }
       }
     ],
-    "reasoning": "Updated the Operator entity to use a unique operator code for login instead of a visible username. Removed the 'visibleInLogin' property as it is no longer needed."
+    "reasoning": "Updated the Operator entity to use a more flexible workSchedule object, allowing for specific start/end times and mandatory break durations per day."
   }
 }

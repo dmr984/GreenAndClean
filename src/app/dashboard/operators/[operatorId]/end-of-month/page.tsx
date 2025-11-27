@@ -7,7 +7,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -19,8 +19,15 @@ import html2canvas from 'html2canvas';
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string; // "HH:mm"
+    endTime?: string; // "HH:mm"
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 type Operator = {
@@ -182,7 +189,8 @@ export default function EndOfMonthPage() {
 
         for (const day of allDaysOfMonth) {
             const dayName = dayIndexToName[getDay(day)];
-            const contractualHours = operator.workSchedule[dayName] || 0;
+            const dailySchedule = operator.workSchedule[dayName];
+            const contractualHours = dailySchedule?.totalHours || 0;
             const dayString = day.toDateString();
 
             const leaveRequest = monthlyData.requests.find(r =>
@@ -193,24 +201,51 @@ export default function EndOfMonthPage() {
             const workedEvents = dailyTimbrature[dayString];
 
             if (workedEvents) {
-                const events = workedEvents;
+                const events = workedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                
                 let workedMinutes = 0;
-                const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-                const endTime = events.find(e => e.type === 'uscita')?.timestamp;
-                if (startTime && endTime) {
-                    let totalMillis = endTime.toMillis() - startTime.toMillis();
+                const clockInEvent = events.find(e => e.type === 'entrata');
+                const clockOutEvent = events.find(e => e.type === 'uscita');
+
+                if (clockInEvent && clockOutEvent) {
+                    const scheduledStartTime = dailySchedule?.startTime ? parse(dailySchedule.startTime, 'HH:mm', day) : day;
+                    
+                    // Apply 15 minute grace period
+                    const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
+                    
+                    const effectiveStartTime = clockInEvent.timestamp.toDate() > gracePeriodEnd 
+                        ? clockInEvent.timestamp.toDate() 
+                        : scheduledStartTime;
+
+                    // If clocked in early, calculation still starts from scheduled time
+                    const calculationStartTime = clockInEvent.timestamp.toDate() < scheduledStartTime 
+                        ? scheduledStartTime 
+                        : effectiveStartTime;
+
+                    let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStartTime.getTime();
+
+                    let breakDurationMillis = 0;
                     let breakStart: Timestamp | null = null;
                     events.forEach(e => {
                         if (e.type === 'pausa') breakStart = e.timestamp;
                         if (e.type === 'fine_pausa' && breakStart) {
-                            totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                            breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
                             breakStart = null;
                         }
                     });
+
+                    // If no break was clocked, but one is mandatory, deduct it.
+                    if (breakDurationMillis === 0 && dailySchedule?.breakMinutes && dailySchedule.breakMinutes > 0) {
+                         breakDurationMillis = dailySchedule.breakMinutes * 60000;
+                    }
+                    
+                    totalMillis -= breakDurationMillis;
                     workedMinutes = totalMillis / (1000 * 60);
                 }
+
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
                 let ordinaryHours = 0, overtimeHours = 0;
+
                 if (isOvertimeShift) {
                     overtimeHours = roundOvertimeHours(workedMinutes);
                 } else {
@@ -222,6 +257,7 @@ export default function EndOfMonthPage() {
                         ordinaryHours = roundOrdinaryHours(workedMinutes);
                     }
                 }
+
                  const permissionHours = monthlyData.requests
                     .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                     .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -271,7 +307,7 @@ export default function EndOfMonthPage() {
                     const dayString = day.toDateString();
                     if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                         const dayName = dayIndexToName[getDay(day)];
-                        if ((operator.workSchedule[dayName] || 0) > 0) {
+                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0) {
                             if (req.type === 'ferie') ferieDays++;
                             if (req.type === 'malattia') malattiaDays++;
                             processedLeaveDays.add(dayString);

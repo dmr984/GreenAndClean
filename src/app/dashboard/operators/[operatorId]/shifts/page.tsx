@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay } from 'date-fns';
+import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -24,8 +24,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string; // "HH:mm"
+    endTime?: string; // "HH:mm"
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 type Operator = {
@@ -487,7 +494,7 @@ export default function ShiftApprovalPage() {
         if (!shiftDate) return 0;
         const dayOfWeek = getDayFns(shiftDate);
         const dayName = dayIndexToName[dayOfWeek];
-        return operator.workSchedule[dayName] || 0;
+        return operator.workSchedule[dayName]?.totalHours || 0;
     };
     
     const roundOrdinaryHours = (minutes: number): number => {
@@ -506,9 +513,54 @@ export default function ShiftApprovalPage() {
 
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
         if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
+    
+        const shiftDate = shift.events[0].timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const dailySchedule = operator.workSchedule[dayName];
+        const contractualHours = dailySchedule?.totalHours || 0;
+    
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        if (!clockInEvent) return { ordinary: 0, overtime: 0, leave: 0 };
+    
+        let effectiveStart = clockInEvent.timestamp.toDate();
+        let leaveMinutes = 0;
+    
+        if (dailySchedule?.startTime) {
+            const scheduledStartTime = parse(dailySchedule.startTime, 'HH:mm', shiftDate);
+            const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
+    
+            if (effectiveStart < scheduledStartTime) {
+                effectiveStart = scheduledStartTime; // Clocked in early, count from scheduled time
+            } else if (effectiveStart > gracePeriodEnd) {
+                // Clocked in late, after grace period
+                leaveMinutes = (effectiveStart.getTime() - scheduledStartTime.getTime()) / 60000;
+                effectiveStart = scheduledStartTime; // Still calculate ordinary hours from schedule start
+            } else {
+                // Clocked in within grace period
+                effectiveStart = scheduledStartTime;
+            }
+        }
+    
+        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+        if (!clockOutEvent) return { ordinary: 0, overtime: 0, leave: roundOrdinaryHours(leaveMinutes / 60) };
+    
+        let totalWorkMillis = clockOutEvent.timestamp.toMillis() - effectiveStart.getTime();
+        let breakDurationMillis = 0;
+        let breakStart: Timestamp | null = null;
+        shift.events.forEach(e => {
+            if (e.type === 'pausa') breakStart = e.timestamp;
+            if (e.type === 'fine_pausa' && breakStart) {
+                breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
+                breakStart = null;
+            }
+        });
 
-        const contractualHours = getContractualHoursForShift(shift);
-        const totalMinutesWorked = Math.round(shift.workDuration);
+        if (breakDurationMillis === 0 && dailySchedule?.breakMinutes && dailySchedule.breakMinutes > 0) {
+            breakDurationMillis = dailySchedule.breakMinutes * 60000;
+        }
+
+        totalWorkMillis -= breakDurationMillis;
+        const totalMinutesWorked = totalWorkMillis / (1000 * 60);
 
         if (shift.isOvertime) {
             return {
@@ -517,18 +569,18 @@ export default function ShiftApprovalPage() {
                 leave: 0
             };
         }
-
+    
         const contractualMinutes = contractualHours * 60;
         const ordinaryWorkedMinutes = Math.min(totalMinutesWorked, contractualMinutes);
         const ordinaryWorkedHours = roundOrdinaryHours(ordinaryWorkedMinutes);
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeWorkedHours = roundOvertimeHours(overtimeMinutes);
-        const leaveHours = Math.max(0, contractualHours - ordinaryWorkedHours);
+        const finalLeaveHours = roundOrdinaryHours((leaveMinutes / 60) + Math.max(0, contractualHours - ordinaryWorkedHours));
 
         return { 
             ordinary: ordinaryWorkedHours, 
             overtime: overtimeWorkedHours, 
-            leave: leaveHours
+            leave: finalLeaveHours
         };
     };
 
@@ -623,7 +675,7 @@ export default function ShiftApprovalPage() {
         };
         
         const dayName = dayIndexToName[getDayFns(newShiftDate)];
-        const isWorkDay = (operator.workSchedule[dayName] || 0) > 0;
+        const isWorkDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
         const isOvertime = !isWorkDay;
 
         
