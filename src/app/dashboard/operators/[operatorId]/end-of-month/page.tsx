@@ -202,7 +202,7 @@ export default function EndOfMonthPage() {
             const workedEvents = dailyTimbrature[dayString];
 
             if (workedEvents) {
-                let events = workedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                let events = [...workedEvents].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 let workedMinutes = 0;
                 const clockInEvent = events.find(e => e.type === 'entrata');
@@ -227,27 +227,22 @@ export default function EndOfMonthPage() {
                     let breakStartEvent = events.find(e => e.type === 'pausa');
                     let breakEndEvent = events.find(e => e.type === 'fine_pausa');
 
-                    if (breakStartEvent && !breakEndEvent && mandatoryBreakMinutes > 0) {
-                        const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-                        breakEndEvent = {
-                            id: 'auto-end',
-                            type: 'fine_pausa',
-                            timestamp: Timestamp.fromDate(autoEndTime),
-                            status: 'confermata',
-                            isAuto: true,
-                        };
-                        events.push(breakEndEvent);
-                    } else if (!breakStartEvent && !breakEndEvent && mandatoryBreakMinutes > 0 && (clockOutEvent.timestamp.toMillis() - clockInEvent.timestamp.toMillis()) / 60000 > mandatoryBreakMinutes) {
-                        const autoStartTime = set(day, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
-                        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-                        
-                        breakStartEvent = { id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true };
-                        breakEndEvent = { id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true };
-                        
-                        events.push(breakStartEvent, breakEndEvent);
+                    if (mandatoryBreakMinutes > 0) {
+                         if (!breakStartEvent && !breakEndEvent) {
+                            const autoStartTime = set(day, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
+                            const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+                            events.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
+                            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
+                            events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                            breakStartEvent = events.find(e => e.type === 'pausa');
+                            breakEndEvent = events.find(e => e.type === 'fine_pausa');
+                        } else if (breakStartEvent && !breakEndEvent) {
+                            const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+                            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
+                            events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                            breakEndEvent = events.find(e => e.type === 'fine_pausa' && e.isAuto);
+                        }
                     }
-                    
-                    events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                     
                     let breakStartTs: Timestamp | null = null;
                     for (const e of events) {
