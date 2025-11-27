@@ -173,6 +173,49 @@ export default function EndOfMonthPage() {
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
+    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date } => {
+        const clockInEvent = events.find(e => e.type === 'entrata');
+        const clockOutEvent = events.find(e => e.type === 'uscita');
+
+        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: new Date() };
+
+        const clockInTime = clockInEvent.timestamp.toDate();
+        const clockOutTime = clockOutEvent.timestamp.toDate();
+        const contractualStartTimeStr = schedule?.startTime || '00:00';
+        const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
+        const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+
+        let calculationStartTime = clockInTime;
+        const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+        
+        if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
+            calculationStartTime = contractualStartDateTime;
+        } else {
+             const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
+            if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                nextHalfHour.setMinutes(30);
+            } else if (nextHalfHour.getMinutes() > 30) {
+                nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+            }
+            calculationStartTime = nextHalfHour;
+        }
+
+        let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+        
+        let breakDurationMillis = 0;
+        let breakStartTs: Timestamp | null = null;
+        for (const e of events) {
+            if (e.type === 'pausa') breakStartTs = e.timestamp;
+            if (e.type === 'fine_pausa' && breakStartTs) {
+                breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
+                breakStartTs = null;
+            }
+        }
+        totalMillis -= breakDurationMillis;
+        
+        return { workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, calculationStart: calculationStartTime };
+    };
+
     const { monthlySummary, dailyDetails } = useMemo(() => {
         if (!operator) return { monthlySummary: {} as any, dailyDetails: [] };
 
@@ -227,18 +270,8 @@ export default function EndOfMonthPage() {
                     }
                     events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                     
-                    let totalMillis = clockOutEvent.timestamp.toMillis() - clockInEvent.timestamp.toMillis();
-                    let breakDurationMillis = 0;
-                    let breakStartTs: Timestamp | null = null;
-                    for (const e of events) {
-                        if (e.type === 'pausa') breakStartTs = e.timestamp;
-                        if (e.type === 'fine_pausa' && breakStartTs) {
-                            breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
-                            breakStartTs = null;
-                        }
-                    }
-                    totalMillis -= breakDurationMillis;
-                    workedMinutes = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+                    const shiftDetails = calculateShiftDetails(events, dailySchedule);
+                    workedMinutes = shiftDetails.workedMinutes;
                 }
 
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
