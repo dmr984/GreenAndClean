@@ -210,14 +210,12 @@ export default function EndOfMonthPage() {
                 if (clockInEvent && clockOutEvent) {
                     const scheduledStartTime = dailySchedule?.startTime ? parse(dailySchedule.startTime, 'HH:mm', day) : day;
                     
-                    // Apply 15 minute grace period
                     const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
                     
                     const effectiveStartTime = clockInEvent.timestamp.toDate() > gracePeriodEnd 
                         ? clockInEvent.timestamp.toDate() 
                         : scheduledStartTime;
 
-                    // If clocked in early, calculation still starts from scheduled time
                     const calculationStartTime = clockInEvent.timestamp.toDate() < scheduledStartTime 
                         ? scheduledStartTime 
                         : effectiveStartTime;
@@ -226,17 +224,27 @@ export default function EndOfMonthPage() {
 
                     let breakDurationMillis = 0;
                     let breakStart: Timestamp | null = null;
+                    let breakClocked = false;
                     events.forEach(e => {
-                        if (e.type === 'pausa') breakStart = e.timestamp;
+                        if (e.type === 'pausa') {
+                            breakStart = e.timestamp;
+                            breakClocked = true;
+                        }
                         if (e.type === 'fine_pausa' && breakStart) {
                             breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
                             breakStart = null;
                         }
                     });
 
-                    // If no break was clocked, but one is mandatory, deduct it.
-                    if (breakDurationMillis === 0 && dailySchedule?.breakMinutes && dailySchedule.breakMinutes > 0) {
-                         breakDurationMillis = dailySchedule.breakMinutes * 60000;
+                    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
+                    if (breakClocked) {
+                        // If break was clocked, but was shorter than mandatory, still deduct mandatory time.
+                        if ((breakDurationMillis / 60000) < mandatoryBreakMinutes) {
+                            breakDurationMillis = mandatoryBreakMinutes * 60000;
+                        }
+                    } else if (mandatoryBreakMinutes > 0) {
+                        // If no break was clocked, but one is mandatory, deduct it.
+                        breakDurationMillis = mandatoryBreakMinutes * 60000;
                     }
                     
                     totalMillis -= breakDurationMillis;

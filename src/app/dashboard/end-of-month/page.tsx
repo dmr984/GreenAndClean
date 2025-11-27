@@ -200,13 +200,30 @@ export default function EndOfMonthPage() {
                 if (startTime && endTime) {
                     let totalMillis = endTime.toMillis() - startTime.toMillis();
                     let breakStart: Timestamp | null = null;
+                    let breakClocked = false;
+                    let breakDurationMillis = 0;
+                    
                     events.forEach(e => {
-                        if (e.type === 'pausa') breakStart = e.timestamp;
+                        if (e.type === 'pausa') {
+                            breakStart = e.timestamp;
+                            breakClocked = true;
+                        }
                         if (e.type === 'fine_pausa' && breakStart) {
-                            totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                            breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
                             breakStart = null;
                         }
                     });
+
+                    const mandatoryBreakMinutes = contractualHours >= 6 ? 60 : 0; // Example: 1h break for >=6h shift
+                     if (breakClocked) {
+                        if ((breakDurationMillis / 60000) < mandatoryBreakMinutes) {
+                            breakDurationMillis = mandatoryBreakMinutes * 60000;
+                        }
+                    } else if (mandatoryBreakMinutes > 0) {
+                        breakDurationMillis = mandatoryBreakMinutes * 60000;
+                    }
+                    
+                    totalMillis -= breakDurationMillis;
                     workedMinutes = totalMillis / (1000 * 60);
                 }
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;

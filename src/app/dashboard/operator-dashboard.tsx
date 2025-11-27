@@ -193,6 +193,53 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     }, [firestore, authUser, toast]);
 
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (isOnBreak && shifts.length > 0 && shifts[0].endTime === null) {
+                const lastEvent = shifts[0].events[shifts[0].events.length - 1];
+                if (lastEvent && lastEvent.type === 'pausa') {
+                    const breakStartTime = lastEvent.timestamp.toMillis();
+                    const now = new Date().getTime();
+                    const breakDurationMinutes = (now - breakStartTime) / (1000 * 60);
+
+                    // 1 hour 15 minutes = 75 minutes
+                    if (breakDurationMinutes > 75) {
+                        handleAutoEndBreak(lastEvent);
+                    }
+                }
+            }
+        }, 60000); // Check every minute
+
+        return () => clearInterval(interval);
+    }, [isOnBreak, shifts]);
+
+  const handleAutoEndBreak = async (lastEvent: ClockingEvent) => {
+    if (!firestore || !operator) return;
+
+    const autoEndBreakEvent: Omit<ClockingEvent, 'id'> = {
+      userId: operator.id,
+      type: 'fine_pausa',
+      timestamp: serverTimestamp(),
+      status: 'rifiutata', // Mark as auto-generated and invalid
+      latitude: 0,
+      longitude: 0,
+      viewedByOperator: false,
+    };
+
+    try {
+      await addDoc(collection(firestore, `app-users/${operator.id}/timbrature`), autoEndBreakEvent);
+      toast({
+        variant: 'destructive',
+        title: 'Pausa Terminata Automaticamente',
+        description: 'La pausa è stata interrotta per superamento del limite di tempo.',
+        duration: 10000,
+      });
+      // The onSnapshot listener for clockings will handle the UI update
+    } catch (error) {
+      console.error("Failed to auto-end break:", error);
+    }
+  };
+
 
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
     const today = new Date();
