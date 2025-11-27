@@ -457,7 +457,7 @@ export default function EndOfMonthPage() {
                                     
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
-                                            <div className="text-sm text-muted-foreground mt-1 mb-2">
+                                            <div className="text-sm text-muted-foreground mt-1 mb-3">
                                                  {detail.shift.events.map(e => 
                                                     <span key={e.id} className={cn(e.isAuto && "text-red-500")}>
                                                         {`${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`}
