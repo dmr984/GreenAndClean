@@ -209,47 +209,26 @@ export default function EndOfMonthPage() {
                 const clockOutEvent = events.find(e => e.type === 'uscita');
 
                 if (clockInEvent && clockOutEvent) {
-                    let calculationStartTime = clockInEvent.timestamp.toDate();
-
-                    if (dailySchedule?.startTime) {
-                        const scheduledStartTime = parse(dailySchedule.startTime, 'HH:mm', day);
-                        const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
-                        
-                        if (calculationStartTime < scheduledStartTime) {
-                            calculationStartTime = scheduledStartTime;
-                        } else if (calculationStartTime > gracePeriodEnd) {
-                            // Late clock-in is handled by permission hours, but calculation still starts from scheduled time for worked hours
-                             calculationStartTime = scheduledStartTime;
-                        } else { // Within grace period
-                            calculationStartTime = scheduledStartTime;
-                        }
-                    }
-
-                    let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStartTime.getTime();
-
                     const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-                    let breakDurationMillis = 0;
                     
                     let breakStartEvent = events.find(e => e.type === 'pausa');
                     let breakEndEvent = events.find(e => e.type === 'fine_pausa');
 
-                    if (mandatoryBreakMinutes > 0) {
+                    if (mandatoryBreakMinutes > 0 && clockOutEvent) {
                          if (!breakStartEvent && !breakEndEvent) {
                             const autoStartTime = set(day, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
                             const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
                             events.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
                             events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-                            events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                            breakStartEvent = events.find(e => e.type === 'pausa');
-                            breakEndEvent = events.find(e => e.type === 'fine_pausa');
                         } else if (breakStartEvent && !breakEndEvent) {
                             const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
                             events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-                            events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                            breakEndEvent = events.find(e => e.type === 'fine_pausa' && e.isAuto);
                         }
                     }
+                    events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                     
+                    let totalMillis = clockOutEvent.timestamp.toMillis() - clockInEvent.timestamp.toMillis();
+                    let breakDurationMillis = 0;
                     let breakStartTs: Timestamp | null = null;
                     for (const e of events) {
                         if (e.type === 'pausa') breakStartTs = e.timestamp;
@@ -258,17 +237,7 @@ export default function EndOfMonthPage() {
                             breakStartTs = null;
                         }
                     }
-
-                    if (mandatoryBreakMinutes > 0) {
-                        if (breakDurationMillis / 60000 < mandatoryBreakMinutes) {
-                            totalMillis -= (mandatoryBreakMinutes * 60000);
-                        } else {
-                            totalMillis -= breakDurationMillis;
-                        }
-                    } else {
-                         totalMillis -= breakDurationMillis;
-                    }
-                    
+                    totalMillis -= breakDurationMillis;
                     workedMinutes = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
                 }
 
@@ -279,12 +248,11 @@ export default function EndOfMonthPage() {
                     overtimeHours = roundOvertimeHours(workedMinutes);
                 } else {
                     const contractualMinutes = contractualHours * 60;
-                    if (workedMinutes > contractualMinutes) {
-                        ordinaryHours = roundOrdinaryHours(contractualMinutes);
-                        overtimeHours = roundOvertimeHours(workedMinutes - contractualMinutes);
-                    } else {
-                        ordinaryHours = roundOrdinaryHours(workedMinutes);
-                    }
+                    const ordinaryWorkedMinutes = Math.min(workedMinutes, contractualMinutes);
+                    ordinaryHours = roundOrdinaryHours(ordinaryWorkedMinutes);
+                    
+                    const overtimeWorkedMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
+                    overtimeHours = roundOvertimeHours(overtimeWorkedMinutes);
                 }
 
                  const permissionHours = monthlyData.requests
