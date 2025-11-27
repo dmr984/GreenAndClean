@@ -311,7 +311,7 @@ export default function ShiftApprovalPage() {
         handleConfirmApprove(false); // Proceed without creating leave request
     };
 
-    const handleConfirmApprove = async (createLeaveRequest = includeLeaveHours, manualBreak: { start: Timestamp; end: Timestamp } | null = null) => {
+    const handleConfirmApprove = async (createLeaveRequest = includeLeaveHours, manualBreak?: { start: Timestamp; end: Timestamp }) => {
         const { shiftToApprove, ordinaryHours, overtimeHours, leaveHours } = approvalData;
         if (!firestore || !shiftToApprove || !operator) return;
     
@@ -329,7 +329,7 @@ export default function ShiftApprovalPage() {
         });
         
         if (manualBreak) {
-            const shiftId = shiftToApprove.id;
+            const shiftId = shiftToApprove.events[0]?.shiftId || shiftToApprove.id;
             const breakStartRef = doc(timbratureRef);
             batch.set(breakStartRef, {
                 userId: operator.id, type: 'pausa', timestamp: manualBreak.start,
@@ -549,15 +549,15 @@ export default function ShiftApprovalPage() {
         const [contractualHours, contractualMinutes] = contractualStartTimeStr.split(':').map(Number);
         const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
 
-        let calculationStart = shiftDate;
+        let calculationStart = clockInEvent.timestamp.toDate();
 
-        const minutesDifference = (shiftDate.getTime() - contractualStart.getTime()) / 60000;
+        const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
         
         if (minutesDifference <= 15) { // Includes clocking in early up to 15 mins late
             calculationStart = contractualStart;
         } else {
             // Round up to the next half hour
-            const nextHalfHour = set(shiftDate, { seconds: 0, milliseconds: 0 });
+            const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
             if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
                 nextHalfHour.setMinutes(30);
             } else if (nextHalfHour.getMinutes() > 30) {
@@ -662,6 +662,7 @@ export default function ShiftApprovalPage() {
         if (shiftForBreak) {
             handleOpenApproveDialog(shiftForBreak);
         }
+        setIsMissingBreakConfirmOpen(false);
         setShiftForBreak(null);
     };
 
@@ -689,9 +690,10 @@ export default function ShiftApprovalPage() {
 
         setBreakTimes({ start: prefilledStart, end: prefilledEnd });
         setIsAddBreakDialogOpen(true);
+        setIsMissingBreakConfirmOpen(false);
     };
 
-    const handleAddBreakAndApprove = async () => {
+    const handleAddBreakAndApprove = () => {
         if (!firestore || !operatorId || !shiftForBreak || !breakTimes.start || !breakTimes.end) {
              toast({ title: 'Dati mancanti', description: 'Inserisci inizio e fine della pausa', variant: 'destructive'});
              return;
@@ -703,15 +705,17 @@ export default function ShiftApprovalPage() {
             return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
 
-        const breakStartTimestamp = createTimestamp(breakTimes.start);
-        const breakEndTimestamp = createTimestamp(breakTimes.end);
-
+        const manualBreak = { 
+            start: createTimestamp(breakTimes.start), 
+            end: createTimestamp(breakTimes.end) 
+        };
+        
+        handleConfirmApprove(includeLeaveHours, manualBreak);
+        
         setIsAddBreakDialogOpen(false);
         setShiftForBreak(null);
-
-        // Directly call the final approval function with the manual break data
-        handleConfirmApprove(includeLeaveHours, { start: breakStartTimestamp, end: breakEndTimestamp });
     };
+
 
     const handleOpenApproveDialog = (shift: Shift) => {
         const { ordinary, overtime, leave } = calculateHours(shift);
@@ -809,7 +813,6 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        // This is a temporary ID for client-side grouping, not the doc ID.
         const manualShiftId = doc(collection(firestore, 'app-users')).id;
     
         const events: { type: Timbratura['type'], time: string }[] = [
@@ -1499,8 +1502,8 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Nessuna pausa registrata per questo turno. Vuoi aggiungerla manualmente?</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => { setIsMissingBreakConfirmOpen(false); handleApproveWithoutBreak(); }}>No, approva senza</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => { setIsMissingBreakConfirmOpen(false); handleOpenAddBreakDialog(); }}>Sì, aggiungi</AlertDialogAction>
+                        <AlertDialogCancel onClick={handleApproveWithoutBreak}>No, approva senza</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleOpenAddBreakDialog}>Sì, aggiungi</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
