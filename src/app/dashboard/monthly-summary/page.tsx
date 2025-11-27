@@ -114,8 +114,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
         const timbratureQuery = query(
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
-            where('timestamp', '<=', Timestamp.fromDate(monthEnd)),
-            orderBy('timestamp', 'asc')
+            where('timestamp', '<=', Timestamp.fromDate(monthEnd))
         );
 
         const requestsQuery = query(
@@ -127,6 +126,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             const requestsSnap = await getDocs(requestsQuery);
             let allRequests = requestsSnap.docs.map(d => d.data() as Request);
             let allTimbrature = timbratureSnap.docs.map(d => ({id: d.id, ...d.data()} as Timbratura));
+            allTimbrature.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
 
             const approvedRequests = allRequests;
             const timbrature = allTimbrature.filter(t => t.status === 'confermata');
@@ -155,6 +156,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 const dayTimbrature = timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
                 if (dayTimbrature.length > 0) {
                      const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
+
                      if (startTime) {
                         let workDuration = 0;
                         const augmentedEvents = addAutomaticBreaksToShiftDetail({ events: dayTimbrature } as any, operator);

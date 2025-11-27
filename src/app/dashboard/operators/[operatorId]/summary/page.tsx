@@ -118,7 +118,6 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(monthStart)),
             where('timestamp', '<=', Timestamp.fromDate(monthEnd))
-            // orderBy('timestamp', 'asc') // Temporarily removed for stability
         );
 
         const requestsQuery = query(
@@ -167,7 +166,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
                         
                         if (endTime) {
-                            let totalMillis = endTime.toMillis() - startTime.toMillis();
+                           let totalMillis = endTime.toMillis() - startTime.toMillis();
                             let breakStart: Timestamp | null = null;
                             augmentedEvents.forEach(e => {
                                 if (e.type === 'pausa') breakStart = e.timestamp;
@@ -387,7 +386,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-2xl font-bold">{selectedDay.shift.startTime ? (operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours || 0) : 0}h</p>
+                                    <p className="text-2xl font-bold">{(selectedDay.shift.startTime && operator.workSchedule[dayIndexToName[getDay(selectedDay.shift.startTime.toDate())]]?.totalHours) || 0}h</p>
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Lavorate</p>
@@ -406,8 +405,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                     <TableBody>
-                                        {addAutomaticBreaksToShiftDetail(selectedDay, operator).map(t => (
-                                            <TableRow key={t.id}>
+                                        {addAutomaticBreaksToShiftDetail(selectedDay, operator).map((t, index) => (
+                                            <TableRow key={t.id || `auto-${index}`}>
                                                 <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
                                                 <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                             </TableRow>
@@ -632,20 +631,19 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             collection(firestore, `app-users/${operatorId}/timbrature`),
             where('timestamp', '>=', Timestamp.fromDate(startOfMonthValue)),
             where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue))
-            // orderBy('timestamp', 'asc') // Temporarily removed for stability
         );
         
         const unsubRequests = onSnapshot(requestsQuery, s => {
             const allRequests = s.docs.map(d => ({id: d.id, ...d.data()} as Request));
             setRequests(allRequests);
-            setIsLoading(false); // Set loading to false once requests are loaded
+            setIsLoading(false); 
         }, () => setIsLoading(false));
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             const allTimbrature = s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             allTimbrature.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             setTimbrature(allTimbrature.filter(t => t.status === 'confermata'));
-            setIsLoading(false); // Also set loading to false once timbrature are loaded
+            setIsLoading(false); 
         }, (error) => {
             console.error("Error fetching timbrature", error);
             if (error.code === 'failed-precondition') {
