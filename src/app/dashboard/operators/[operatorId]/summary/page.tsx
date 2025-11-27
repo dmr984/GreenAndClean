@@ -96,39 +96,6 @@ type DayInfo = {
     shift: Shift | null;
 }
 
-const addAutomaticBreaks = (events: Timbratura[], operator: Operator | null): Timbratura[] => {
-    if (!operator || events.length === 0) return events;
-
-    const shiftDate = events[0].timestamp.toDate();
-    const dayName = dayIndexToName[getDay(shiftDate)];
-    const dailySchedule = operator.workSchedule[dayName];
-    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-    
-    if (mandatoryBreakMinutes <= 0) return events;
-
-    // Only add breaks to completed shifts
-    if (!events.some(e => e.type === 'uscita')) return events;
-    
-    let breakStartEvent = events.find(e => e.type === 'pausa');
-    let breakEndEvent = events.find(e => e.type === 'fine_pausa');
-    
-    const newEvents = [...events];
-
-    if (!breakStartEvent && !breakEndEvent) {
-        const autoStartTime = set(shiftDate, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
-        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-        
-        newEvents.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), isAuto: true, status: 'confermata' });
-        newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
-    }
-    else if (breakStartEvent && !breakEndEvent) {
-         const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-         newEvents.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), isAuto: true, status: 'confermata' });
-    }
-
-    return newEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-};
-
 const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { ordinary: number, overtime: number, leave: number, workedMinutes: number } => {
     if (!shift || !operator?.workSchedule || !shift.startTime) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0 };
     
@@ -167,9 +134,7 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
     
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
-    // IMPORTANT: Use the full event list to calculate breaks, including manual/auto ones.
-    const eventsWithBreaks = addAutomaticBreaks(shift.events, operator);
-    for (const e of eventsWithBreaks) {
+    for (const e of shift.events) {
         if (e.type === 'pausa') breakStartTs = e.timestamp;
         if (e.type === 'fine_pausa' && breakStartTs) {
             breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
@@ -277,15 +242,14 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                     dayStatus = leaveRequest.type;
                 }
                 
-                const dayTimbratureRaw = confirmedTimbrature
+                const dayTimbrature = confirmedTimbrature
                     .filter(t => isSameDay(t.timestamp.toDate(), day))
                     .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
-                if (dayTimbratureRaw.length > 0) {
-                     const startTime = dayTimbratureRaw.find(e => e.type === 'entrata')?.timestamp;
+                if (dayTimbrature.length > 0) {
+                     const startTime = dayTimbrature.find(e => e.type === 'entrata')?.timestamp;
 
                      if (startTime) {
-                        const dayTimbrature = addAutomaticBreaks(dayTimbratureRaw, operator);
                         const endTime = dayTimbrature.find(e => e.type === 'uscita')?.timestamp;
                         let workDuration = 0;
                         
@@ -323,7 +287,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                 }
                 
                 const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
-                if(permissionRequest && dayTimbratureRaw.length === 0) dayStatus = 'permesso';
+                if(permissionRequest && dayTimbrature.length === 0) dayStatus = 'permesso';
 
 
                 return { date: day, status: dayStatus, shift: dayShift };
@@ -1209,7 +1173,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                             return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
                         };
                         
-                        let displayEvents = addAutomaticBreaks(shiftForDetail.events, operator);
+                        let displayEvents = shiftForDetail.events;
                         const clockInEvent = displayEvents.find(e => e.type === 'entrata');
                         let calculationStartTime = clockInEvent?.timestamp.toDate();
 
