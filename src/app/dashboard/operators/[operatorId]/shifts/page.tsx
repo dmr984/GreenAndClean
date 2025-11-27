@@ -447,7 +447,9 @@ export default function ShiftApprovalPage() {
         }
 
         const batch = writeBatch(firestore);
+        const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         const shiftDate = editingShift.events[0].timestamp.toDate();
+        const shiftId = editingShift.id; // Use the existing shift ID
 
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
@@ -456,7 +458,7 @@ export default function ShiftApprovalPage() {
             return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
         
-        const newEventsMap: Partial<Record<Timbratura['type'], { timestamp: Timestamp }>> = {};
+        const newEventData: Partial<Record<Timbratura['type'], Timestamp>> = {};
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
             const time = editShiftTimes[type];
             if (time) {
@@ -465,32 +467,44 @@ export default function ShiftApprovalPage() {
                     toast({ title: 'Orario non valido', description: `L'orario per '${type}' non è valido.`, variant: 'destructive' });
                     return;
                 }
-                newEventsMap[type] = { timestamp };
+                newEventData[type] = timestamp;
             }
         }
         
-        for (const event of editingShift.events) {
-            if (event.isAuto) continue; // Skip virtual events
-            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-            if (newEventsMap[event.type]) {
-                batch.update(docRef, { timestamp: newEventsMap[event.type]!.timestamp, viewedByOperator: false });
-                delete newEventsMap[event.type];
-            } else {
-                batch.delete(docRef);
-            }
+        if (newEventData.pausa && !newEventData.fine_pausa) {
+             toast({ title: 'Pausa incompleta', description: 'Se inserisci l\'inizio della pausa, devi inserire anche la fine.', variant: 'destructive' });
+             return;
         }
 
-        for (const type in newEventsMap) {
-            const eventType = type as Timbratura['type'];
-            const newDocRef = doc(collection(firestore, `app-users/${operator.id}/timbrature`));
-            batch.set(newDocRef, {
-                userId: operator.id,
-                type: eventType,
-                timestamp: newEventsMap[eventType]!.timestamp,
-                status: 'sospesa', // New manual entries should be pending
-                viewedByOperator: false,
-                isOvertime: editingShift.isOvertime,
-            });
+
+        // Map existing events by type for easier lookup
+        const existingEvents = new Map(editingShift.events.map(e => [e.type, e]));
+
+        for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
+            const existingEvent = existingEvents.get(type);
+            const newTimestamp = newEventData[type];
+
+            if (newTimestamp && existingEvent) {
+                // Event exists and needs update
+                const docRef = doc(timbratureCollectionRef, existingEvent.id);
+                batch.update(docRef, { timestamp: newTimestamp, viewedByOperator: false });
+            } else if (newTimestamp && !existingEvent) {
+                // Event is new
+                const newDocRef = doc(timbratureCollectionRef);
+                batch.set(newDocRef, {
+                    userId: operator.id,
+                    type: type,
+                    timestamp: newTimestamp,
+                    status: 'sospesa',
+                    viewedByOperator: false,
+                    isOvertime: editingShift.isOvertime,
+                    shiftId: shiftId 
+                });
+            } else if (!newTimestamp && existingEvent) {
+                // Event needs to be deleted
+                const docRef = doc(timbratureCollectionRef, existingEvent.id);
+                batch.delete(docRef);
+            }
         }
         
         await batch.commit().then(() => {
@@ -545,16 +559,14 @@ export default function ShiftApprovalPage() {
         
         let calculationStart = clockInTime;
         
-        // Apply rounding rules only if a start time is defined in the schedule
         if (schedule?.startTime) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
         
-            if (minutesDifference <= 15) { // Includes clocking in early up to 15 mins late
+            if (minutesDifference <= 15) { 
                 calculationStart = contractualStart;
             } else {
-                // Round up to the next half hour
                 const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
                 if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
                     nextHalfHour.setMinutes(30);
@@ -566,6 +578,7 @@ export default function ShiftApprovalPage() {
         }
         
         let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
+        
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
         for (const e of events) {
@@ -576,12 +589,7 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        // Apply the "any break counts as 1 hour" rule
-        if (breakDurationMillis > 0) {
-            totalMillis -= (60 * 60 * 1000); // Subtract one hour in milliseconds
-        }
-        
-        const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0; // duration in minutes
+        const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
         return { workDuration, breakDuration, calculationStart };
@@ -1281,7 +1289,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, break: breakDuration } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
@@ -1301,7 +1309,7 @@ export default function ShiftApprovalPage() {
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Effettive</p>
-                                    <p className="text-xl font-bold">{formatMinutes(detailShift.workDuration)}</p>
+                                    <p className="text-xl font-bold">{formatMinutes(worked)}</p>
                                 </div>
                             </div>
                         );
