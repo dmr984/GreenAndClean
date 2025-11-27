@@ -1,105 +1,128 @@
-// This is a basic service worker for PWA functionality.
+// --- IndexedDB per la gestione dei dati utente ---
+const DB_NAME = 'user-db';
+const STORE_NAME = 'user-store';
 
-// The version of the cache.
-const CACHE_VERSION = 1;
-const CACHE_NAME = `serveco-cache-v${CACHE_VERSION}`;
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onerror = () => reject("Errore nell'apertura del DB");
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+      }
+    };
+  });
+}
 
-// The URLs to cache when the service worker is installed.
-const urlsToCache = [
-  '/',
-  '/dashboard',
-  '/manifest.json',
-  // Add other important assets here, like CSS, JS, and key images.
-];
+async function setUserData(data) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put({ key: 'currentUser', ...data });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject("Impossibile salvare i dati utente");
+  });
+}
 
-// Install the service worker and cache the assets.
+async function getUserData() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get('currentUser');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject("Impossibile leggere i dati utente");
+  });
+}
+
+
+// --- Eventi del Service Worker ---
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
-  self.skipWaiting();
+  console.log('Service Worker: installato.');
+  self.skipWaiting(); // Forza l'attivazione immediata del nuovo SW
 });
 
-// Activate the service worker and clean up old caches.
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
-  return self.clients.claim();
+  console.log('Service Worker: attivato.');
+  // Prende il controllo immediato della pagina
+  event.waitUntil(self.clients.claim());
 });
 
-
-// Intercept fetch requests and serve from cache if available.
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-
-        // Clone the request to use it in the cache and for the network request.
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then(
-          (response) => {
-            // Check if we received a valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
-          }
-        );
-      })
-  );
-});
-
-
-// Listen for push notifications.
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'Serveco Green & Clean', body: 'Hai una nuova notifica.' };
+  console.log('Service Worker: Push ricevuto.');
+
+  if (!event.data) {
+    console.error('Push event ma nessun dato.');
+    return;
+  }
+
+  const pushData = event.data.json();
   
+  const title = pushData.title || 'Nuova Notifica';
   const options = {
-    body: data.body,
-    icon: '/icons/icon-192x192.png', // Main app icon
-    badge: '/icons/icon-192x192.png', // Icon for the notification bar
+    body: pushData.body || '',
+    icon: pushData.icon || '/icon-192x192.png',
+    data: pushData.data || {}
   };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+  const notificationPromise = getUserData().then(user => {
+      if (!user) {
+          // Se non c'è utente, mostra solo notifiche generiche (senza role/userId)
+          if (!pushData.role && !pushData.userId) {
+              return self.registration.showNotification(title, options);
+          }
+          console.log('Nessun utente loggato, notifica ignorata:', pushData);
+          return Promise.resolve();
+      }
+
+      // Controlla se la notifica è per un ruolo specifico
+      if (pushData.role) {
+          if (user.role === pushData.role) {
+              return self.registration.showNotification(title, options);
+          } else {
+              console.log(`Notifica per ruolo ${pushData.role} ignorata, l'utente è ${user.role}`);
+              return Promise.resolve();
+          }
+      }
+
+      // Controlla se la notifica è per un utente specifico
+      if (pushData.userId) {
+          if (user.id === pushData.userId) {
+              return self.registration.showNotification(title, options);
+          } else {
+              console.log(`Notifica per utente ${pushData.userId} ignorata, l'utente è ${user.id}`);
+              return Promise.resolve();
+          }
+      }
+      
+      // Notifica generica, mostrata a tutti gli utenti loggati
+      return self.registration.showNotification(title, options);
+
+  }).catch(err => {
+      console.error("Errore nel mostrare la notifica:", err);
+      // Fallback per mostrare la notifica se il DB fallisce
+      return self.registration.showNotification(title, options);
+  });
+
+  event.waitUntil(notificationPromise);
 });
 
-// Handle notification click.
+
 self.addEventListener('notificationclick', (event) => {
+  console.log('Service Worker: Notifica cliccata.');
   event.notification.close();
-  
-  // Focus the client if it's already open.
+
+  const urlToOpen = event.notification.data?.url || '/';
+
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    }).then((clientList) => {
       if (clientList.length > 0) {
         let client = clientList[0];
         for (let i = 0; i < clientList.length; i++) {
@@ -107,9 +130,18 @@ self.addEventListener('notificationclick', (event) => {
             client = clientList[i];
           }
         }
-        return client.focus();
+        return client.focus().then(c => c.navigate(urlToOpen));
       }
-      return clients.openWindow('/');
+      return self.clients.openWindow(urlToOpen);
     })
   );
+});
+
+
+// Ascolta i messaggi dalla pagina per impostare l'utente
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SET_USER') {
+    console.log('Service Worker: Ricevuto utente dalla pagina:', event.data.user);
+    event.waitUntil(setUserData(event.data.user));
+  }
 });

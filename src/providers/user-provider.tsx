@@ -19,6 +19,16 @@ interface UserProviderProps {
   children: ReactNode;
 }
 
+// Funzione per inviare i dati dell'utente al Service Worker
+function sendUserToServiceWorker(user: User | null) {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SET_USER',
+      user: user,
+    });
+  }
+}
+
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,7 +38,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     try {
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        // Invia i dati utente al SW quando l'app si carica
+        if (navigator.serviceWorker.ready) {
+           navigator.serviceWorker.ready.then(() => {
+              sendUserToServiceWorker(parsedUser);
+           });
+        }
       }
     } catch (error) {
       console.error("Failed to parse user from localStorage", error);
@@ -43,9 +60,20 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setIsLoading(true);
         const storedUser = event.newValue;
         if (storedUser) {
-          setUser(JSON.parse(storedUser));
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+           if (navigator.serviceWorker.ready) {
+             navigator.serviceWorker.ready.then(() => {
+                sendUserToServiceWorker(parsedUser);
+             });
+           }
         } else {
           setUser(null);
+           if (navigator.serviceWorker.ready) {
+             navigator.serviceWorker.ready.then(() => {
+                sendUserToServiceWorker(null);
+             });
+           }
         }
         setIsLoading(false);
       }

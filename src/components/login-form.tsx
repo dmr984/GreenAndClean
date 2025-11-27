@@ -60,6 +60,15 @@ export default function LoginForm() {
         };
         
         localStorage.setItem('user', JSON.stringify(userToStore));
+        
+        // Invia i dati utente al Service Worker dopo il login
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'SET_USER',
+                user: userToStore
+            });
+        }
+        
         window.location.href = '/dashboard';
 
     } catch (error) {
