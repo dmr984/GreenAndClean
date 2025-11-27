@@ -125,7 +125,6 @@ export default function ShiftApprovalPage() {
     // State for break dialogs
     const [shiftForBreak, setShiftForBreak] = useState<Shift | null>(null);
     const [isMissingBreakConfirmOpen, setIsMissingBreakConfirmOpen] = useState(false);
-    const [isNoBreakSecondConfirmOpen, setIsNoBreakSecondConfirmOpen] = useState(false);
     const [isAddBreakDialogOpen, setIsAddBreakDialogOpen] = useState(false);
     const [breakTimes, setBreakTimes] = useState<{ start: string, end: string }>({ start: '', end: '' });
 
@@ -312,7 +311,7 @@ export default function ShiftApprovalPage() {
         handleConfirmApprove(false); // Proceed without creating leave request
     };
 
-    const handleConfirmApprove = async (createLeaveRequest = includeLeaveHours) => {
+    const handleConfirmApprove = async (createLeaveRequest = includeLeaveHours, manualBreak: { start: Timestamp; end: Timestamp } | null = null) => {
         const { shiftToApprove, ordinaryHours, overtimeHours, leaveHours } = approvalData;
         if (!firestore || !shiftToApprove || !operator) return;
     
@@ -320,13 +319,28 @@ export default function ShiftApprovalPage() {
         const approvedLeave = createLeaveRequest ? (parseFloat(leaveHours) || 0) : 0;
     
         const batch = writeBatch(firestore);
+        const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
         shiftToApprove.events.forEach(event => {
             if (event.status === 'sospesa') {
-                const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+                const docRef = doc(timbratureRef, event.id);
                 batch.update(docRef, { status: 'confermata', viewedByOperator: false });
             }
         });
+        
+        if (manualBreak) {
+            const shiftId = shiftToApprove.id;
+            const breakStartRef = doc(timbratureRef);
+            batch.set(breakStartRef, {
+                userId: operator.id, type: 'pausa', timestamp: manualBreak.start,
+                status: 'confermata', viewedByOperator: false, shiftId
+            });
+            const breakEndRef = doc(timbratureRef);
+            batch.set(breakEndRef, {
+                userId: operator.id, type: 'fine_pausa', timestamp: manualBreak.end,
+                status: 'confermata', viewedByOperator: false, shiftId
+            });
+        }
     
         const shiftDate = shiftToApprove.events[0].timestamp.toDate();
     
@@ -643,9 +657,8 @@ export default function ShiftApprovalPage() {
             handleOpenApproveDialog(shift);
         }
     };
-
+    
     const handleApproveWithoutBreak = () => {
-        setIsNoBreakSecondConfirmOpen(false);
         if (shiftForBreak) {
             handleOpenApproveDialog(shiftForBreak);
         }
@@ -690,36 +703,14 @@ export default function ShiftApprovalPage() {
             return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
 
-        const batch = writeBatch(firestore);
-        const timbratureRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        const breakStartTimestamp = createTimestamp(breakTimes.start);
+        const breakEndTimestamp = createTimestamp(breakTimes.end);
 
-        const breakStartEvent = shiftForBreak.events.find(e => e.type === 'pausa');
-        const breakEndEvent = shiftForBreak.events.find(e => e.type === 'fine_pausa');
+        setIsAddBreakDialogOpen(false);
+        setShiftForBreak(null);
 
-        if (!breakStartEvent) {
-             const newDocRef = doc(timbratureRef);
-             batch.set(newDocRef, {
-                userId: operatorId, type: 'pausa', timestamp: createTimestamp(breakTimes.start),
-                status: 'sospesa', viewedByOperator: false,
-             });
-        }
-         if (!breakEndEvent) {
-             const newDocRef = doc(timbratureRef);
-             batch.set(newDocRef, {
-                userId: operatorId, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end),
-                status: 'sospesa', viewedByOperator: false,
-             });
-        }
-
-        try {
-            await batch.commit();
-            toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta. Ora puoi approvare il turno.'});
-            setIsAddBreakDialogOpen(false);
-            setIsDetailOpen(false); // Close detail to force re-render
-        } catch (error) {
-             toast({ title: 'Errore', description: 'Impossibile aggiungere la pausa.', variant: 'destructive'});
-        }
-
+        // Directly call the final approval function with the manual break data
+        handleConfirmApprove(includeLeaveHours, { start: breakStartTimestamp, end: breakEndTimestamp });
     };
 
     const handleOpenApproveDialog = (shift: Shift) => {
@@ -818,7 +809,8 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        const manualShiftId = doc(timbratureCollectionRef).id;
+        // This is a temporary ID for client-side grouping, not the doc ID.
+        const manualShiftId = doc(collection(firestore, 'app-users')).id;
     
         const events: { type: Timbratura['type'], time: string }[] = [
             { type: 'entrata', time: newShiftTimes.entrata },
@@ -837,7 +829,7 @@ export default function ShiftApprovalPage() {
                     status: 'sospesa' as const, 
                     viewedByOperator: false, 
                     isOvertime,
-                    shiftId: manualShiftId
+                    shiftId: manualShiftId // Associate all events of this manual shift
                 });
             }
         }
@@ -1507,23 +1499,8 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Nessuna pausa registrata per questo turno. Vuoi aggiungerla manualmente?</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setIsNoBreakSecondConfirmOpen(true)}>No, approva senza</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => { setIsMissingBreakConfirmOpen(false); handleApproveWithoutBreak(); }}>No, approva senza</AlertDialogCancel>
                         <AlertDialogAction onClick={() => { setIsMissingBreakConfirmOpen(false); handleOpenAddBreakDialog(); }}>Sì, aggiungi</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            
-            <AlertDialog open={isNoBreakSecondConfirmOpen} onOpenChange={setIsNoBreakSecondConfirmOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Approvare il turno senza pausa potrebbe risultare in un calcolo di ore lavorate superiore a quelle reali.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleApproveWithoutBreak}>Approva comunque</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
