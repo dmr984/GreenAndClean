@@ -104,6 +104,7 @@ export default function ShiftApprovalPage() {
 
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
     const [overtimeShifts, setOvertimeShifts] = useState<StraordinarioShift[]>([]);
+    const [bookedShiftDays, setBookedShiftDays] = useState<Date[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     
@@ -230,6 +231,7 @@ export default function ShiftApprovalPage() {
             })
 
             setAllShifts(groupedShifts);
+            setBookedShiftDays(groupedShifts.map(s => startOfDay(s.events[0].timestamp.toDate())));
             setIsLoading(false);
 
         }, error => {
@@ -612,7 +614,7 @@ export default function ShiftApprovalPage() {
             };
         }
     
-        let totalMinutesWorked = Math.round(shift.workDuration);
+        let { workDuration: totalMinutesWorked } = calculateShiftDuration(shift.events);
 
         if (manualBreak?.start && manualBreak?.end) {
             const startDate = parse(manualBreak.start, 'HH:mm', new Date());
@@ -698,11 +700,8 @@ export default function ShiftApprovalPage() {
     };
 
     const handleAddBreakAndOpenApproval = () => {
-        if (!shiftForBreak || !breakTimes.start || !breakTimes.end) {
-            toast({ title: 'Dati mancanti', description: 'Inserisci inizio e fine della pausa', variant: 'destructive'});
-            return;
-        }
-        handleOpenApproveDialog(shiftForBreak, { start: breakTimes.start, end: breakTimes.end });
+        if (!shiftForBreak) return;
+        handleOpenApproveDialog(shiftForBreak, breakTimes);
         setIsAddBreakDialogOpen(false);
         setShiftForBreak(null);
     };
@@ -1199,7 +1198,7 @@ export default function ShiftApprovalPage() {
                                   }
                                 }}
                                 className="rounded-md border" 
-                                disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
+                                disabled={[(date) => date > new Date() && !isSameDay(date, new Date()), ...bookedShiftDays]}
                            />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
