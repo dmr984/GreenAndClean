@@ -719,7 +719,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     
     const summary = useMemo(() => {
         if (!operator) {
-            return { workedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [] };
+            return { workedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [], overtimeHoursByDay: [] };
         }
 
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
@@ -731,46 +731,51 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             timbratureByDay[dayString].push(t);
         });
 
-        const ordinaryHoursByDay: { date: Date; hours: number; shift: Shift }[] = [];
-        let totalOvertimeHours = 0;
-
-        Object.values(timbratureByDay).forEach(dayEvents => {
-            if (dayEvents.length === 0) return;
-            
-            dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            
+        const allWorkedShifts: Shift[] = [];
+        for (const dayString in timbratureByDay) {
+            const dayEvents = timbratureByDay[dayString];
             const startTime = dayEvents.find(e => e.type === 'entrata')?.timestamp;
-            const endTime = dayEvents.find(e => e.type === 'uscita')?.timestamp;
-
-            if (startTime && endTime) {
-                const shift: Shift = {
+            if (startTime) {
+                const endTime = dayEvents.find(e => e.type === 'uscita')?.timestamp;
+                let workDuration = 0;
+                if(endTime) {
+                    let totalMillis = endTime.toMillis() - startTime.toMillis();
+                    let breakStart: Timestamp | null = null;
+                    dayEvents.forEach(e => {
+                        if (e.type === 'pausa') breakStart = e.timestamp;
+                        if (e.type === 'fine_pausa' && breakStart) {
+                            totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                            breakStart = null;
+                        }
+                    });
+                    workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+                }
+                allWorkedShifts.push({
                     events: dayEvents,
-                    startTime: startTime,
-                    endTime: endTime,
-                    workDuration: 0, // This will be calculated inside calculateShiftHours
+                    startTime,
+                    endTime: endTime || null,
+                    workDuration,
                     isOvertime: dayEvents.some(e => e.isOvertime)
-                };
-                
-                const { ordinary, overtime, workedMinutes } = calculateShiftHours(shift, operator);
-                shift.workDuration = workedMinutes; // Update work duration
+                });
+            }
+        }
+        
+        const ordinaryHoursByDay: { date: Date; hours: number; shift: Shift }[] = [];
+        const overtimeHoursByDay: { date: Date; hours: number; shift: Shift }[] = [];
 
-                if (ordinary > 0) {
-                    ordinaryHoursByDay.push({ date: startTime.toDate(), hours: ordinary, shift });
-                }
-                if (overtime > 0) {
-                    totalOvertimeHours += overtime;
-                }
+        allWorkedShifts.forEach(shift => {
+            const { ordinary, overtime } = calculateShiftHours(shift, operator);
+            if (ordinary > 0) {
+                ordinaryHoursByDay.push({ date: shift.startTime.toDate(), hours: ordinary, shift });
+            }
+            if (overtime > 0) {
+                overtimeHoursByDay.push({ date: shift.startTime.toDate(), hours: overtime, shift });
             }
         });
-
-        const totalOrdinaryHours = ordinaryHoursByDay.reduce((sum, day) => sum + day.hours, 0);
-
-        const requestOvertime = requests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
-            .reduce((sum, r) => sum + (r.hours || 0), 0);
-            
-        totalOvertimeHours += requestOvertime;
         
+        const totalOrdinaryHours = ordinaryHoursByDay.reduce((sum, day) => sum + day.hours, 0);
+        let totalOvertimeHours = overtimeHoursByDay.reduce((sum, day) => sum + day.hours, 0);
+
         const totalPermessoHours = requests.filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval)).reduce((sum, r) => sum + (r.hours || 0), 0);
 
         let ferieDaysCount = 0;
@@ -795,13 +800,14 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         });
 
         return {
-            workedDays: Object.keys(timbratureByDay).filter(day => timbratureByDay[day].some(t => t.type === 'uscita')).length,
+            workedDays: allWorkedShifts.filter(s => s.endTime).length,
             workedHours: totalOrdinaryHours,
             overtimeHours: totalOvertimeHours,
             permessoHours: totalPermessoHours,
             malattiaDays: malattiaDaysCount,
             ferieDays: ferieDaysCount,
-            ordinaryHoursByDay: ordinaryHoursByDay
+            ordinaryHoursByDay: ordinaryHoursByDay,
+            overtimeHoursByDay: overtimeHoursByDay
         };
     }, [timbrature, requests, operator, currentDate]);
 
@@ -815,6 +821,11 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
 
         if (type === 'ordinarie') {
             setDetailView({ type, title, items: summary.ordinaryHoursByDay });
+            return;
+        }
+
+        if (type === 'straordinario') {
+            setDetailView({ type, title, items: summary.overtimeHoursByDay });
             return;
         }
 
@@ -975,15 +986,16 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
 
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
         
-        if (detailView.type === 'ordinarie') {
+        if (detailView.type === 'ordinarie' || detailView.type === 'straordinario') {
              const items = detailView.items as {date: Date, hours: number, shift: Shift}[];
+             const title = detailView.type === 'ordinarie' ? 'Ore Ordinarie' : 'Ore Straordinarie';
              return (
                 <div className="overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Giorno</TableHead>
-                                <TableHead>Ore Ordinarie</TableHead>
+                                <TableHead>{title}</TableHead>
                                 <TableHead className="text-right">Dettaglio</TableHead>
                             </TableRow>
                         </TableHeader>
