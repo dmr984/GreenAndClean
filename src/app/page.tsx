@@ -8,14 +8,13 @@ export default function LoginPage() {
       <div className="mx-auto grid w-full max-w-md gap-6 p-4 sm:p-6 lg:p-8">
         <div className="grid gap-3 text-center">
           <Image
-            src="https://i.postimg.cc/GhwM2hg1/1764199658760.png"
+            src="https://i.postimg.cc/CLXQbsxc/1764199275620.png"
             alt="Serveco Logo"
             width={240}
             height={240}
             className="h-60 w-60 mx-auto rounded-full"
             priority
           />
-          <h1 className="text-3xl font-bold font-headline tracking-wider uppercase">SERVECO GREEN & CLEAN</h1>
           <p className="text-balance text-muted-foreground">
             Inserisci il tuo codice operatore per accedere.
           </p>
