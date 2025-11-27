@@ -843,7 +843,7 @@ export default function ShiftApprovalPage() {
     
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
-    const formatTime = (date: Timestamp | undefined) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
+    const formatTime = (date: Timestamp | undefined | null) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
     const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
     
     const totalPages = Math.ceil(historicalShifts.length / ITEMS_PER_PAGE);
@@ -1002,6 +1002,12 @@ export default function ShiftApprovalPage() {
         });
     }
 
+    const getAdjustedStartTime = (shift: Shift): Date | null => {
+        if (!operator) return null;
+        const { calculationStart } = calculateShiftDuration(shift.events);
+        return calculationStart;
+    }
+
     return (
         <div className="space-y-6">
 
@@ -1132,10 +1138,11 @@ export default function ShiftApprovalPage() {
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const startTime = shift.events[0]?.timestamp;
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+                                        const adjustedStartTime = getAdjustedStartTime(shift);
                                         return (
                                             <TableRow key={index}>
                                                 <TableCell>{formatDate(startTime)}</TableCell>
-                                                <TableCell>{formatTime(startTime)}</TableCell>
+                                                <TableCell>{adjustedStartTime ? format(adjustedStartTime, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
                                                 <TableCell>{formatTime(endTime)}</TableCell>
                                                 <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell>
