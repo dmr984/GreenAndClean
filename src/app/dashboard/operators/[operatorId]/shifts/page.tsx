@@ -88,6 +88,7 @@ type ApprovalContext = {
     shift: Shift;
     ordinaryHours: string;
     overtimeHours: string;
+
     leaveHours: string;
     manualBreak?: ManualBreak;
     createLeaveRequest: boolean;
@@ -605,8 +606,8 @@ export default function ShiftApprovalPage() {
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
-    const calculateHours = (shift: Shift | null, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number } => {
-        if (!shift || !operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
+    const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number } => {
+        if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0 };
     
         if (shift.isOvertime) {
             return {
@@ -1201,6 +1202,7 @@ export default function ShiftApprovalPage() {
                                 }}
                                 className="rounded-md border" 
                                 disabled={[(date) => date > new Date() && !isSameDay(date, new Date()), ...bookedShiftDays]}
+                                locale={it}
                            />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
