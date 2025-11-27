@@ -299,11 +299,18 @@ export default function EndOfMonthPage() {
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
                 
                 const contractualMinutes = contractualHours * 60;
-                const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-                
-                const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
-                const overtimeHours = roundOvertimeHours(overtimeMinutes);
+                let ordinaryHours = 0;
+                let overtimeHours = 0;
+
+                if (isOvertimeShift) {
+                    overtimeHours = roundOvertimeHours(workedMinutes);
+                } else {
+                    const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+                    ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
+                    
+                    const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
+                    overtimeHours = roundOvertimeHours(overtimeMinutes);
+                }
 
                  const permissionHours = monthlyData.requests
                     .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))

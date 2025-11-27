@@ -753,41 +753,55 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     
     const summary = useMemo(() => {
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
-
-        let totalOrdinaryHours = 0;
-        let ordinaryHoursByDay: {date: Date, hours: number, shift: Shift}[] = [];
-
+    
         const shiftsByDay: { [key: string]: Shift } = {};
-
-        timbrature.forEach(t => {
+        const allConfirmedTimbrature = timbrature.filter(t => t.status === 'confermata');
+    
+        // Group timbrature by day
+        allConfirmedTimbrature.forEach(t => {
             const dayString = startOfDay(t.timestamp.toDate()).toISOString();
             if (!shiftsByDay[dayString]) {
                 shiftsByDay[dayString] = { events: [], startTime: t.timestamp, endTime: null, workDuration: 0, isOvertime: false };
             }
             shiftsByDay[dayString].events.push(t);
         });
-
+    
+        const ordinaryHoursByDay: { date: Date; hours: number; shift: Shift }[] = [];
+        let totalOvertimeHours = 0;
+    
+        // Process each shift
         Object.values(shiftsByDay).forEach(shift => {
             shift.events.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
             const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-            
+    
             if (startTime && endTime) {
                 shift.startTime = startTime;
                 shift.endTime = endTime;
                 shift.isOvertime = shift.events.some(e => e.isOvertime);
-                const { ordinary, workedMinutes } = calculateShiftHours(shift, operator);
+                
+                // Use the master calculation function
+                const { ordinary, overtime, workedMinutes } = calculateShiftHours(shift, operator);
+                
                 shift.workDuration = workedMinutes;
-                totalOrdinaryHours += ordinary;
+    
                 if (ordinary > 0) {
-                    ordinaryHoursByDay.push({ date: startTime.toDate(), hours: ordinary, shift: shift });
+                    ordinaryHoursByDay.push({ date: startTime.toDate(), hours: ordinary, shift });
+                }
+                if (overtime > 0) {
+                    totalOvertimeHours += overtime;
                 }
             }
         });
-        
-        const totalOvertimeHours = requests
+    
+        const totalOrdinaryHours = ordinaryHoursByDay.reduce((sum, day) => sum + day.hours, 0);
+    
+        // Add overtime from 'straordinario' requests
+        const requestOvertime = requests
             .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
+    
+        totalOvertimeHours += requestOvertime;
     
         let ferieDaysCount = 0;
         let malattiaDaysCount = 0;
