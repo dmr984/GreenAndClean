@@ -282,25 +282,9 @@ export default function ShiftApprovalPage() {
             status = 'confermato';
         }
 
-        let workDuration = 0;
-        const startTime = augmentedEvents.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = augmentedEvents.find(e => e.type === 'uscita')?.timestamp;
-
-        if (startTime && endTime) {
-            let totalMillis = endTime.toMillis() - startTime.toMillis();
-            let breakDurationMillis = 0;
-            let breakStart: Timestamp | null = null;
-            augmentedEvents.forEach(e => {
-                if (e.type === 'pausa') breakStart = e.timestamp;
-                if (e.type === 'fine_pausa' && breakStart) {
-                    breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
-                    breakStart = null;
-                }
-            });
-            totalMillis -= breakDurationMillis;
-            workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0; // duration in minutes
-        }
+        const { workDuration } = calculateShiftDuration(augmentedEvents, operator);
         
+        const startTime = augmentedEvents.find(e => e.type === 'entrata')?.timestamp;
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
         const isOvertime = augmentedEvents.find(e => e.type === 'entrata')?.isOvertime ?? false;
@@ -571,6 +555,55 @@ export default function ShiftApprovalPage() {
         setIsDetailOpen(true);
     }
     
+    const calculateShiftDuration = (events: Timbratura[], operator: Operator | null): { workDuration: number, calculationStart: Date | null } => {
+        if (!events || events.length === 0 || !operator) {
+            return { workDuration: 0, calculationStart: null };
+        }
+
+        const clockInEvent = events.find(e => e.type === 'entrata');
+        const clockOutEvent = events.find(e => e.type === 'uscita');
+
+        if (!clockInEvent || !clockOutEvent) {
+            return { workDuration: 0, calculationStart: null };
+        }
+
+        const shiftDate = clockInEvent.timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const schedule = operator.workSchedule[dayName];
+        const contractualStartTimeStr = schedule?.startTime || '00:00';
+
+        const [contractualHours, contractualMinutes] = contractualStartTimeStr.split(':').map(Number);
+        const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+
+        let calculationStart = shiftDate;
+
+        const minutesDifference = (shiftDate.getTime() - contractualStart.getTime()) / 60000;
+
+        if (minutesDifference < 0) { // Clocked in early
+            calculationStart = contractualStart;
+        } else if (minutesDifference <= 15) { // Clocked in within grace period
+            calculationStart = contractualStart;
+        } else { // Clocked in late
+            calculationStart = shiftDate;
+        }
+        
+        let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
+        let breakDurationMillis = 0;
+        let breakStartTs: Timestamp | null = null;
+        for (const e of events) {
+            if (e.type === 'pausa') breakStartTs = e.timestamp;
+            if (e.type === 'fine_pausa' && breakStartTs) {
+                breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
+                breakStartTs = null;
+            }
+        }
+        totalMillis -= breakDurationMillis;
+        
+        const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0; // duration in minutes
+
+        return { workDuration, calculationStart };
+    };
+
     const getContractualHoursForShift = (shift: Shift | null): number => {
         if (!shift || !operator?.workSchedule) return 0;
         const shiftDate = shift.events[0]?.timestamp.toDate();
@@ -582,14 +615,16 @@ export default function ShiftApprovalPage() {
     
     const roundOrdinaryHours = (minutes: number): number => {
         if (minutes <= 0) return 0;
-        const contractualMinutes = minutes;
-        const ordinaryWorkedHours = Math.floor(contractualMinutes / 30) / 2;
-        return ordinaryWorkedHours;
+        const totalHalfHours = Math.floor(minutes / 30);
+        const remainingMinutes = minutes % 30;
+        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
     };
 
     const roundOvertimeHours = (minutes: number): number => {
-        if (minutes < 50) return 0;
-        return Math.floor(minutes / 60) + (minutes % 60 >= 50 ? 1 : 0);
+        if (minutes <= 0) return 0;
+        const totalHours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
     const calculateHours = (shift: Shift | null): { ordinary: number, overtime: number, leave: number } => {
@@ -923,7 +958,7 @@ export default function ShiftApprovalPage() {
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                         <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
                         <p className="text-muted-foreground">Gestione Turni (Codice: {operator.username})</p>
                     </div>
                     <Button onClick={() => setIsAddShiftOpen(true)}>
@@ -1176,7 +1211,7 @@ export default function ShiftApprovalPage() {
                     <ResponsiveDialogHeader>
                         <div className="flex justify-between items-start">
                             <div>
-                                <ResponsiveDialogTitle>Dettaglio Turno</ResponsiveDialogTitle>
+                                 <ResponsiveDialogTitle>Dettaglio Turno per {operator.firstName}</ResponsiveDialogTitle>
                                 {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
                             </div>
                              {detailShift?.isOnLeaveDay && (
@@ -1265,7 +1300,7 @@ export default function ShiftApprovalPage() {
             <ResponsiveDialog open={isDetailOvertimeOpen} onOpenChange={setIsDetailOvertimeOpen}>
                 <ResponsiveDialogContent className="sm:max-w-3xl">
                     <ResponsiveDialogHeader>
-                        <ResponsiveDialogTitle>Dettaglio Turno Straordinario</ResponsiveDialogTitle>
+                        <ResponsiveDialogTitle>Dettaglio Turno Straordinario per {operator.firstName}</ResponsiveDialogTitle>
                         {detailOvertimeShift?.date && <ResponsiveDialogDescription>Turno del {formatDate(detailOvertimeShift.date)}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
                     {detailOvertimeShift && (

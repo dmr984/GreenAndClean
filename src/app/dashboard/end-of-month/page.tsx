@@ -199,10 +199,11 @@ export default function EndOfMonthPage() {
                 isWithinInterval(day, { start: r.startDate.toDate(), end: r.endDate.toDate() })
             );
 
-            const workedEvents = dailyTimbrature[dayString];
+            const workedEventsRaw = dailyTimbrature[dayString];
 
-            if (workedEvents) {
-                let events = [...workedEvents].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            if (workedEventsRaw) {
+                let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                
                 let workedMinutes = 0;
                 const clockInEvent = events.find(e => e.type === 'entrata');
                 const clockOutEvent = events.find(e => e.type === 'uscita');
@@ -242,17 +243,14 @@ export default function EndOfMonthPage() {
                 }
 
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
-                let ordinaryHours = 0, overtimeHours = 0;
-                if (isOvertimeShift) {
-                    overtimeHours = roundOvertimeHours(workedMinutes);
-                } else {
-                    const contractualMinutes = contractualHours * 60;
-                    const ordinaryWorkedMinutes = Math.min(workedMinutes, contractualMinutes);
-                    ordinaryHours = roundOrdinaryHours(ordinaryWorkedMinutes);
-                    
-                    const overtimeWorkedMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
-                    overtimeHours = roundOvertimeHours(overtimeWorkedMinutes);
-                }
+
+                const contractualMinutes = contractualHours * 60;
+                const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+                const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
+                
+                const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
+                const overtimeHours = roundOvertimeHours(overtimeMinutes);
+
                  const permissionHours = monthlyData.requests
                     .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                     .reduce((sum, r) => sum + (r.hours || 0), 0);

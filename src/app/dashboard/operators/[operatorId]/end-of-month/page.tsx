@@ -199,10 +199,10 @@ export default function EndOfMonthPage() {
                 isWithinInterval(day, { start: r.startDate.toDate(), end: r.endDate.toDate() })
             );
 
-            const workedEvents = dailyTimbrature[dayString];
+            const workedEventsRaw = dailyTimbrature[dayString];
 
-            if (workedEvents) {
-                let events = [...workedEvents].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            if (workedEventsRaw) {
+                let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 let workedMinutes = 0;
                 const clockInEvent = events.find(e => e.type === 'entrata');
@@ -242,18 +242,14 @@ export default function EndOfMonthPage() {
                 }
 
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
-                let ordinaryHours = 0, overtimeHours = 0;
+                
+                const contractualMinutes = contractualHours * 60;
+                const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+                const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
+                
+                const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
+                const overtimeHours = roundOvertimeHours(overtimeMinutes);
 
-                if (isOvertimeShift) {
-                    overtimeHours = roundOvertimeHours(workedMinutes);
-                } else {
-                    const contractualMinutes = contractualHours * 60;
-                    const ordinaryWorkedMinutes = Math.min(workedMinutes, contractualMinutes);
-                    ordinaryHours = roundOrdinaryHours(ordinaryWorkedMinutes);
-                    
-                    const overtimeWorkedMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
-                    overtimeHours = roundOvertimeHours(overtimeWorkedMinutes);
-                }
 
                  const permissionHours = monthlyData.requests
                     .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
@@ -569,10 +565,8 @@ export default function EndOfMonthPage() {
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div>
-                        <CardTitle className="text-2xl">Calcolo Fine Mese per {operator.firstName} {operator.lastName}</CardTitle>
-                        <CardDescription>
-                           Riepilogo delle ore, assenze e mancate timbrature per il mese selezionato.
-                        </CardDescription>
+                         <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                        <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex gap-2">
                          <Button onClick={handlePrintAndShare} disabled={isProcessing}>
