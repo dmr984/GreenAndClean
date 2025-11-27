@@ -88,8 +88,8 @@ type ApprovalContext = {
     ordinaryHours: string;
     overtimeHours: string;
     leaveHours: string;
-    manualBreak?: ManualBreak;
     createLeaveRequest: boolean;
+    manualBreak?: ManualBreak;
 } | null;
 
 const ITEMS_PER_PAGE = 5;
@@ -1314,25 +1314,44 @@ export default function ShiftApprovalPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {detailShift?.events.map(t => (
-                                    <TableRow key={t.id}>
-                                        <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>{formatTime(t.timestamp)}</TableCell>
-                                        <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                        <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
-                                        <TableCell className="whitespace-nowrap">
-                                           {t.latitude && t.longitude ? (
-                                                <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                                    <MapPin className="h-4 w-4"/> Mappa
-                                                </a>
-                                            ) : (
-                                                <span>Manuale</span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-right whitespace-nowrap">
-                                            <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {(() => {
+                                    if (!detailShift) return null;
+                                    
+                                    const { calculationStart } = calculateShiftDuration(detailShift.events);
+                                    let displayEvents = [...detailShift.events];
+
+                                    // Create a virtual event for the calculated start time
+                                    const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
+                                    if (entrataIndex !== -1 && calculationStart) {
+                                        const originalEntrata = displayEvents[entrataIndex];
+                                        const virtualEntrata = {
+                                            ...originalEntrata,
+                                            id: `virtual-${originalEntrata.id}`,
+                                            timestamp: Timestamp.fromDate(calculationStart),
+                                        };
+                                        displayEvents[entrataIndex] = virtualEntrata;
+                                    }
+
+                                    return displayEvents.map(t => (
+                                        <TableRow key={t.id}>
+                                            <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                            <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                            <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
+                                            <TableCell className="whitespace-nowrap">
+                                               {t.latitude && t.longitude ? (
+                                                    <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                        <MapPin className="h-4 w-4"/> Mappa
+                                                    </a>
+                                                ) : (
+                                                    <span>Manuale</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right whitespace-nowrap">
+                                                <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ));
+                                })()}
                             </TableBody>
                         </Table>
                     </div>
