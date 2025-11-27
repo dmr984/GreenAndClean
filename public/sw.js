@@ -1,75 +1,115 @@
-// self è il Service Worker stesso
-const self = this;
+// This is a basic service worker for PWA functionality.
 
-// Nome univoco per la cache, che cambia ad ogni build
-const CACHE_NAME = `serveco-cache-v${new Date().getTime()}`;
+// The version of the cache.
+const CACHE_VERSION = 1;
+const CACHE_NAME = `serveco-cache-v${CACHE_VERSION}`;
 
-// Evento di installazione: il Service Worker viene installato
-self.addEventListener("install", (event) => {
-  // Forza il nuovo Service Worker a diventare attivo immediatamente,
-  // senza attendere che il vecchio Service Worker venga deregistrato.
-  event.waitUntil(self.skipWaiting());
+// The URLs to cache when the service worker is installed.
+const urlsToCache = [
+  '/',
+  '/dashboard',
+  '/manifest.json',
+  // Add other important assets here, like CSS, JS, and key images.
+];
+
+// Install the service worker and cache the assets.
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Opened cache');
+        return cache.addAll(urlsToCache);
+      })
+  );
+  self.skipWaiting();
 });
 
-// Evento di attivazione: il nuovo Service Worker prende il controllo
-self.addEventListener("activate", (event) => {
+// Activate the service worker and clean up old caches.
+self.addEventListener('activate', (event) => {
+  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    (async () => {
-      // Prendi il controllo di tutte le pagine/client aperti senza doverli ricaricare.
-      // Questo assicura che il nuovo SW gestisca le richieste subito.
-      await self.clients.claim();
-
-      // Rimuovi le vecchie cache per fare pulizia e liberare spazio.
-      const cacheNames = await caches.keys();
-      await Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
       );
-    })()
+    })
+  );
+  return self.clients.claim();
+});
+
+
+// Intercept fetch requests and serve from cache if available.
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // Cache hit - return response
+        if (response) {
+          return response;
+        }
+
+        // Clone the request to use it in the cache and for the network request.
+        const fetchRequest = event.request.clone();
+
+        return fetch(fetchRequest).then(
+          (response) => {
+            // Check if we received a valid response
+            if (!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+
+            const responseToCache = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+
+            return response;
+          }
+        );
+      })
   );
 });
 
-// Evento di fetch: intercetta tutte le richieste di rete
-self.addEventListener("fetch", (event) => {
-  // Per le richieste di navigazione (pagine HTML), usa una strategia "network first".
-  // Questo garantisce che l'utente ottenga sempre la versione più recente della pagina se online.
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        try {
-          // Prova prima a ottenere la risorsa dalla rete.
-          const networkResponse = await fetch(event.request);
-          // Se la richiesta ha successo, clona la risposta e mettila in cache.
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(event.request, networkResponse.clone());
-          return networkResponse;
-        } catch (error) {
-          // Se la rete fallisce (offline), prova a servire dalla cache.
-          const cachedResponse = await caches.match(event.request);
-          return cachedResponse;
+
+// Listen for push notifications.
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : { title: 'Serveco Green & Clean', body: 'Hai una nuova notifica.' };
+  
+  const options = {
+    body: data.body,
+    icon: '/icons/icon-192x192.png', // Main app icon
+    badge: '/icons/icon-192x192.png', // Icon for the notification bar
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// Handle notification click.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  // Focus the client if it's already open.
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        for (let i = 0; i < clientList.length; i++) {
+          if (clientList[i].focused) {
+            client = clientList[i];
+          }
         }
-      })()
-    );
-    return;
-  }
-
-  // Per tutte le altre richieste (CSS, JS, immagini), usa una strategia "cache first".
-  // Questo rende l'app veloce e funzionante offline.
-  event.respondWith(
-    (async () => {
-      // Prova a trovare la risorsa nella cache.
-      const cachedResponse = await caches.match(event.request);
-      if (cachedResponse) {
-        return cachedResponse; // Se trovata, restituiscila subito.
+        return client.focus();
       }
-
-      // Se non è in cache, vai alla rete.
-      const networkResponse = await fetch(event.request);
-      // Metti la nuova risorsa in cache per le prossime volte.
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(event.request, networkResponse.clone());
-      return networkResponse;
-    })()
+      return clients.openWindow('/');
+    })
   );
 });
