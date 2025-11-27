@@ -12,8 +12,14 @@ import { useParams, useRouter } from 'next/navigation';
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string;
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 type Operator = {
@@ -108,8 +114,8 @@ export default function OperatorDetailPage() {
         const dayMapping: Record<DayOfWeek, string> = { monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom' };
         
         const scheduleString = dayIndexToName
-            .filter(day => schedule[day] && schedule[day]! > 0)
-            .map(day => `${dayMapping[day]}: ${schedule[day]}h`)
+            .filter(day => schedule[day]?.totalHours && schedule[day]!.totalHours! > 0)
+            .map(day => `${dayMapping[day]}: ${schedule[day]!.totalHours}h`)
             .join(' | ');
 
         return scheduleString || 'Nessun giorno lavorativo impostato.';
