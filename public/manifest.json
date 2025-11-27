@@ -1,5 +1,5 @@
 {
-  "name": "Serveco Hub",
+  "name": "Serveco Cleaning",
   "short_name": "Serveco",
   "description": "Gestisci le tue operazioni di pulizia con facilità.",
   "start_url": "/",
@@ -8,12 +8,12 @@
   "theme_color": "#1a1a1a",
   "icons": [
     {
-      "src": "https://i.postimg.cc/GhwM2hg1/1764199658760.png",
+      "src": "https://i.postimg.cc/3NT48HJc/Screenshot-20251127-083655-Google.jpg",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "https://i.postimg.cc/GhwM2hg1/1764199658760.png",
+      "src": "https://i.postimg.cc/3NT48HJc/Screenshot-20251127-083655-Google.jpg",
       "sizes": "512x512",
       "type": "image/png"
     }
