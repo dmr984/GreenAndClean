@@ -271,7 +271,7 @@ export default function ShiftApprovalPage() {
                     breakStart = null;
                 }
             });
-            workDuration = totalMillis / (1000 * 60); // duration in minutes
+            workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0; // duration in minutes
         }
         
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
@@ -578,29 +578,28 @@ export default function ShiftApprovalPage() {
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { ordinary: 0, overtime: 0, leave: 0 };
     
-        let effectiveStart = clockInEvent.timestamp.toDate();
+        let effectiveClockIn = clockInEvent.timestamp.toDate();
+        let calculationStartTime = effectiveClockIn;
         let leaveMinutes = 0;
     
         if (dailySchedule?.startTime) {
             const scheduledStartTime = parse(dailySchedule.startTime, 'HH:mm', shiftDate);
             const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
     
-            if (effectiveStart < scheduledStartTime) {
-                effectiveStart = scheduledStartTime; // Clocked in early, count from scheduled time
-            } else if (effectiveStart > gracePeriodEnd) {
-                // Clocked in late, after grace period
-                leaveMinutes = (effectiveStart.getTime() - scheduledStartTime.getTime()) / 60000;
-                effectiveStart = scheduledStartTime; // Still calculate ordinary hours from schedule start
+            if (effectiveClockIn < scheduledStartTime) {
+                calculationStartTime = scheduledStartTime;
+            } else if (effectiveClockIn > gracePeriodEnd) {
+                leaveMinutes = (effectiveClockIn.getTime() - scheduledStartTime.getTime()) / 60000;
+                calculationStartTime = scheduledStartTime;
             } else {
-                // Clocked in within grace period
-                effectiveStart = scheduledStartTime;
+                calculationStartTime = scheduledStartTime;
             }
         }
     
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockOutEvent) return { ordinary: 0, overtime: 0, leave: roundOrdinaryHours(leaveMinutes / 60) };
     
-        let totalWorkMillis = clockOutEvent.timestamp.toMillis() - effectiveStart.getTime();
+        let totalWorkMillis = clockOutEvent.timestamp.toMillis() - calculationStartTime.getTime();
         let breakDurationMillis = 0;
         let breakStart: Timestamp | null = null;
         shift.events.forEach(e => {
@@ -616,7 +615,7 @@ export default function ShiftApprovalPage() {
         }
 
         totalWorkMillis -= breakDurationMillis;
-        const totalMinutesWorked = totalWorkMillis / (1000 * 60);
+        const totalMinutesWorked = totalWorkMillis > 0 ? totalWorkMillis / (1000 * 60) : 0;
 
         if (shift.isOvertime) {
             return {

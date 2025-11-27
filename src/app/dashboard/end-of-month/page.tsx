@@ -7,7 +7,7 @@ import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, 
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, set } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, set, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -204,11 +204,26 @@ export default function EndOfMonthPage() {
             if (workedEvents) {
                 let events = [...workedEvents].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 let workedMinutes = 0;
-                const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-                const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+                const clockInEvent = events.find(e => e.type === 'entrata');
+                const clockOutEvent = events.find(e => e.type === 'uscita');
                 
-                if (startTime && endTime) {
-                    let totalMillis = endTime.toMillis() - startTime.toMillis();
+                if (clockInEvent && clockOutEvent) {
+                     let calculationStartTime = clockInEvent.timestamp.toDate();
+
+                    if (dailySchedule?.startTime) {
+                        const scheduledStartTime = parse(dailySchedule.startTime, 'HH:mm', day);
+                        const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
+                        
+                        if (calculationStartTime < scheduledStartTime) {
+                            calculationStartTime = scheduledStartTime;
+                        } else if (calculationStartTime > gracePeriodEnd) {
+                             calculationStartTime = scheduledStartTime;
+                        } else { // Within grace period
+                            calculationStartTime = scheduledStartTime;
+                        }
+                    }
+
+                    let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStartTime.getTime();
                     
                     const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
                     let breakDurationMillis = 0;
@@ -252,7 +267,7 @@ export default function EndOfMonthPage() {
                          totalMillis -= breakDurationMillis;
                     }
 
-                    workedMinutes = totalMillis / (1000 * 60);
+                    workedMinutes = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
                 }
 
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;

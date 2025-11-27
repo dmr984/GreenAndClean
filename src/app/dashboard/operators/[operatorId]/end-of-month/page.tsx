@@ -209,15 +209,21 @@ export default function EndOfMonthPage() {
                 const clockOutEvent = events.find(e => e.type === 'uscita');
 
                 if (clockInEvent && clockOutEvent) {
-                    const scheduledStartTime = dailySchedule?.startTime ? parse(dailySchedule.startTime, 'HH:mm', day) : day;
-                    
-                    const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
-                    
-                    const effectiveClockInTime = clockInEvent.timestamp.toDate();
+                    let calculationStartTime = clockInEvent.timestamp.toDate();
 
-                    const calculationStartTime = effectiveClockInTime < scheduledStartTime 
-                        ? scheduledStartTime 
-                        : (effectiveClockInTime <= gracePeriodEnd ? scheduledStartTime : effectiveClockInTime);
+                    if (dailySchedule?.startTime) {
+                        const scheduledStartTime = parse(dailySchedule.startTime, 'HH:mm', day);
+                        const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
+                        
+                        if (calculationStartTime < scheduledStartTime) {
+                            calculationStartTime = scheduledStartTime;
+                        } else if (calculationStartTime > gracePeriodEnd) {
+                            // Late clock-in is handled by permission hours, but calculation still starts from scheduled time for worked hours
+                             calculationStartTime = scheduledStartTime;
+                        } else { // Within grace period
+                            calculationStartTime = scheduledStartTime;
+                        }
+                    }
 
                     let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStartTime.getTime();
 
@@ -263,7 +269,7 @@ export default function EndOfMonthPage() {
                          totalMillis -= breakDurationMillis;
                     }
                     
-                    workedMinutes = totalMillis / (1000 * 60);
+                    workedMinutes = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
                 }
 
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
