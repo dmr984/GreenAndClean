@@ -159,20 +159,6 @@ export default function EndOfMonthPage() {
         };
     }, [firestore, user, currentMonth]);
     
-    const roundOrdinaryHours = (minutes: number): number => {
-        if (minutes <= 0) return 0;
-        const totalHalfHours = Math.floor(minutes / 30);
-        const remainingMinutes = minutes % 30;
-        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
-    };
-
-    const roundOvertimeHours = (minutes: number): number => {
-        if (minutes <= 0) return 0;
-        const totalHours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        return totalHours + (remainingMinutes >= 50 ? 1 : 0);
-    };
-    
     const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date } => {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
@@ -230,6 +216,20 @@ export default function EndOfMonthPage() {
 
         const allDaysOfMonth = eachDayOfInterval(monthInterval);
         const details: DailyDetail[] = [];
+        
+        const roundOrdinaryHours = (minutes: number): number => {
+            if (minutes <= 0) return 0;
+            const totalHalfHours = Math.floor(minutes / 30);
+            const remainingMinutes = minutes % 30;
+            return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+        };
+
+        const roundOvertimeHours = (minutes: number): number => {
+            if (minutes <= 0) return 0;
+            const totalHours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+        };
 
         for (const day of allDaysOfMonth) {
             const dayName = dayIndexToName[getDay(day)];
@@ -248,32 +248,21 @@ export default function EndOfMonthPage() {
                 let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 let workedMinutes = 0;
+                let calculationStart: Date | null = null;
                 const clockInEvent = events.find(e => e.type === 'entrata');
-                const clockOutEvent = events.find(e => e.type === 'uscita');
                 
-                if (clockInEvent && clockOutEvent) {
-                    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-                    
-                    let breakStartEvent = events.find(e => e.type === 'pausa');
-                    let breakEndEvent = events.find(e => e.type === 'fine_pausa');
-
-                     if (mandatoryBreakMinutes > 0 && clockOutEvent) {
-                         if (!breakStartEvent && !breakEndEvent) {
-                            const autoStartTime = set(day, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0 });
-                            const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
-                            events.push({ id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true });
-                            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-                        } else if (breakStartEvent && !breakEndEvent) {
-                            const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-                            events.push({ id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true });
-                        }
-                    }
-                    events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
+                if (clockInEvent) {
                     const shiftDetails = calculateShiftDetails(events, dailySchedule);
                     workedMinutes = shiftDetails.workedMinutes;
-                }
+                    calculationStart = shiftDetails.calculationStart;
 
+                    const entrataIndex = events.findIndex(e => e.type === 'entrata');
+                    if (entrataIndex !== -1) {
+                         const virtualEntrata = { ...events[entrataIndex], timestamp: Timestamp.fromDate(calculationStart) };
+                         events[entrataIndex] = virtualEntrata;
+                    }
+                }
+                
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
                 
                 const contractualMinutes = contractualHours * 60;
@@ -344,10 +333,7 @@ export default function EndOfMonthPage() {
 
 
         const totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-        const totalOvertimeFromShifts = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
-        const totalOvertimeFromRequests = monthlyData.requests
-             .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
-             .reduce((sum, r) => sum + (r.hours || 0), 0);
+        const totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
 
         const totalPermesso = monthlyData.requests
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -358,7 +344,7 @@ export default function EndOfMonthPage() {
             monthlySummary: {
                 workedDays: shifts.length,
                 ordinaryHours: totalOrdinary,
-                overtimeHours: totalOvertimeFromShifts + totalOvertimeFromRequests,
+                overtimeHours: totalOvertime,
                 ferieDays,
                 permessoHours: totalPermesso,
                 malattiaDays,
