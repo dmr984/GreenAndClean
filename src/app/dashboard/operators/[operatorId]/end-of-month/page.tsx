@@ -7,7 +7,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, parse } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, parse, set } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -53,6 +53,7 @@ type Timbratura = {
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata' | 'rifiutata';
     isOvertime?: boolean;
+    isAuto?: boolean; // Flag for automatic entries
 };
 
 type Shift = {
@@ -136,7 +137,7 @@ export default function EndOfMonthPage() {
         );
 
         const unsubTimbrature = onSnapshot(timbratureQuery, snapshot => {
-            const timbratureData = snapshot.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
+            const timbratureData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
             setMonthlyData(prev => ({ ...prev, timbrature: timbratureData }));
              if(!unsubRequests) setIsLoading(false);
         }, () => setIsLoading(false));
@@ -201,7 +202,7 @@ export default function EndOfMonthPage() {
             const workedEvents = dailyTimbrature[dayString];
 
             if (workedEvents) {
-                const events = workedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                let events = workedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 let workedMinutes = 0;
                 const clockInEvent = events.find(e => e.type === 'entrata');
@@ -212,42 +213,61 @@ export default function EndOfMonthPage() {
                     
                     const gracePeriodEnd = new Date(scheduledStartTime.getTime() + 15 * 60000);
                     
-                    const effectiveStartTime = clockInEvent.timestamp.toDate() > gracePeriodEnd 
-                        ? clockInEvent.timestamp.toDate() 
-                        : scheduledStartTime;
+                    const effectiveClockInTime = clockInEvent.timestamp.toDate();
 
-                    const calculationStartTime = clockInEvent.timestamp.toDate() < scheduledStartTime 
+                    const calculationStartTime = effectiveClockInTime < scheduledStartTime 
                         ? scheduledStartTime 
-                        : effectiveStartTime;
+                        : (effectiveClockInTime <= gracePeriodEnd ? scheduledStartTime : effectiveClockInTime);
 
                     let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStartTime.getTime();
 
-                    let breakDurationMillis = 0;
-                    let breakStart: Timestamp | null = null;
-                    let breakClocked = false;
-                    events.forEach(e => {
-                        if (e.type === 'pausa') {
-                            breakStart = e.timestamp;
-                            breakClocked = true;
-                        }
-                        if (e.type === 'fine_pausa' && breakStart) {
-                            breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
-                            breakStart = null;
-                        }
-                    });
-
                     const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-                    if (breakClocked) {
-                        // If break was clocked, but was shorter than mandatory, still deduct mandatory time.
-                        if ((breakDurationMillis / 60000) < mandatoryBreakMinutes) {
-                            breakDurationMillis = mandatoryBreakMinutes * 60000;
-                        }
-                    } else if (mandatoryBreakMinutes > 0) {
-                        // If no break was clocked, but one is mandatory, deduct it.
-                        breakDurationMillis = mandatoryBreakMinutes * 60000;
+                    let breakDurationMillis = 0;
+                    
+                    let breakStartEvent = events.find(e => e.type === 'pausa');
+                    let breakEndEvent = events.find(e => e.type === 'fine_pausa');
+
+                    if (breakStartEvent && !breakEndEvent && mandatoryBreakMinutes > 0) {
+                        const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+                        breakEndEvent = {
+                            id: 'auto-end',
+                            type: 'fine_pausa',
+                            timestamp: Timestamp.fromDate(autoEndTime),
+                            status: 'confermata',
+                            isAuto: true,
+                        };
+                        events.push(breakEndEvent);
+                    } else if (!breakStartEvent && !breakEndEvent && mandatoryBreakMinutes > 0 && (clockOutEvent.timestamp.toMillis() - clockInEvent.timestamp.toMillis()) / 60000 > mandatoryBreakMinutes) {
+                        const autoStartTime = set(day, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
+                        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+                        
+                        breakStartEvent = { id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true };
+                        breakEndEvent = { id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true };
+                        
+                        events.push(breakStartEvent, breakEndEvent);
                     }
                     
-                    totalMillis -= breakDurationMillis;
+                    events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                    
+                    let breakStartTs: Timestamp | null = null;
+                    for (const e of events) {
+                        if (e.type === 'pausa') breakStartTs = e.timestamp;
+                        if (e.type === 'fine_pausa' && breakStartTs) {
+                            breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
+                            breakStartTs = null;
+                        }
+                    }
+
+                    if (mandatoryBreakMinutes > 0) {
+                        if (breakDurationMillis / 60000 < mandatoryBreakMinutes) {
+                            totalMillis -= (mandatoryBreakMinutes * 60000);
+                        } else {
+                            totalMillis -= breakDurationMillis;
+                        }
+                    } else {
+                         totalMillis -= breakDurationMillis;
+                    }
+                    
                     workedMinutes = totalMillis / (1000 * 60);
                 }
 
@@ -402,7 +422,7 @@ export default function EndOfMonthPage() {
                         statusText = 'Lavorativo';
                     }
                     
-                    const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                    const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => `<span style="${e.isAuto ? 'color: red;' : ''}">${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}</span>`).join(' | ');
                     const hoursText = `
                         <span style="font-weight: 700; color: #6b7280;">Ore Previste:</span> ${shift.contractualHours}h | 
                          <span style="font-weight: 700; color: #6b7280;">Ore Lavorate:</span> ${formatMinutes(shift.workedMinutes)} | 
@@ -636,7 +656,12 @@ export default function EndOfMonthPage() {
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
+                                                {detail.shift.events.map(e => 
+                                                    <span key={e.id} className={cn(e.isAuto && "text-red-500")}>
+                                                        {`${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`}
+                                                        {`  |  `}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />

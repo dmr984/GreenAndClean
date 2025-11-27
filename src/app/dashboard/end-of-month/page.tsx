@@ -7,7 +7,7 @@ import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, 
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, set } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -19,8 +19,15 @@ import html2canvas from 'html2canvas';
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+type DailySchedule = {
+    totalHours?: number;
+    startTime?: string;
+    endTime?: string;
+    breakMinutes?: number;
+};
+
 type WorkSchedule = {
-    [key in DayOfWeek]?: number;
+    [key in DayOfWeek]?: DailySchedule;
 };
 
 type Operator = {
@@ -44,6 +51,7 @@ type Timbratura = {
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata' | 'rifiutata';
     isOvertime?: boolean;
+    isAuto?: boolean; // Flag for automatic entries
 };
 
 type Shift = {
@@ -129,7 +137,7 @@ export default function EndOfMonthPage() {
         );
 
         const unsubTimbrature = onSnapshot(timbratureQuery, snapshot => {
-            const timbratureData = snapshot.docs.map(d => d.data() as Timbratura).filter(t => t.status === 'confermata');
+            const timbratureData = snapshot.docs.map(d => ({id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
             setMonthlyData(prev => ({ ...prev, timbrature: timbratureData }));
              if(!unsubRequests) setIsLoading(false);
         }, () => setIsLoading(false));
@@ -182,7 +190,8 @@ export default function EndOfMonthPage() {
 
         for (const day of allDaysOfMonth) {
             const dayName = dayIndexToName[getDay(day)];
-            const contractualHours = operator.workSchedule[dayName] || 0;
+            const dailySchedule = operator.workSchedule[dayName];
+            const contractualHours = dailySchedule?.totalHours || 0;
             const dayString = day.toDateString();
 
             const leaveRequest = monthlyData.requests.find(r =>
@@ -193,39 +202,66 @@ export default function EndOfMonthPage() {
             const workedEvents = dailyTimbrature[dayString];
 
             if (workedEvents) {
-                const events = workedEvents;
+                let events = workedEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 let workedMinutes = 0;
                 const startTime = events.find(e => e.type === 'entrata')?.timestamp;
                 const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+                
                 if (startTime && endTime) {
                     let totalMillis = endTime.toMillis() - startTime.toMillis();
-                    let breakStart: Timestamp | null = null;
-                    let breakClocked = false;
+                    
+                    const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
                     let breakDurationMillis = 0;
                     
-                    events.forEach(e => {
-                        if (e.type === 'pausa') {
-                            breakStart = e.timestamp;
-                            breakClocked = true;
-                        }
-                        if (e.type === 'fine_pausa' && breakStart) {
-                            breakDurationMillis += (e.timestamp.toMillis() - breakStart.toMillis());
-                            breakStart = null;
-                        }
-                    });
+                    let breakStartEvent = events.find(e => e.type === 'pausa');
+                    let breakEndEvent = events.find(e => e.type === 'fine_pausa');
 
-                    const mandatoryBreakMinutes = contractualHours >= 6 ? 60 : 0; // Example: 1h break for >=6h shift
-                     if (breakClocked) {
-                        if ((breakDurationMillis / 60000) < mandatoryBreakMinutes) {
-                            breakDurationMillis = mandatoryBreakMinutes * 60000;
-                        }
-                    } else if (mandatoryBreakMinutes > 0) {
-                        breakDurationMillis = mandatoryBreakMinutes * 60000;
+                    if (breakStartEvent && !breakEndEvent && mandatoryBreakMinutes > 0) {
+                        // Forgot to clock out of break
+                        const autoEndTime = new Date(breakStartEvent.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
+                        breakEndEvent = {
+                            id: 'auto-end',
+                            type: 'fine_pausa',
+                            timestamp: Timestamp.fromDate(autoEndTime),
+                            status: 'confermata',
+                            isAuto: true,
+                        };
+                        events.push(breakEndEvent);
+                    } else if (!breakStartEvent && !breakEndEvent && mandatoryBreakMinutes > 0 && (endTime.toMillis() - startTime.toMillis()) / 60000 > mandatoryBreakMinutes) {
+                        // Forgot to take a break at all
+                        const autoStartTime = set(day, { hours: 12, minutes: 30, seconds: 0, milliseconds: 0});
+                        const autoEndTime = new Date(autoStartTime.getTime() + mandatoryBreakMinutes * 60000);
+                        
+                        breakStartEvent = { id: 'auto-start', type: 'pausa', timestamp: Timestamp.fromDate(autoStartTime), status: 'confermata', isAuto: true };
+                        breakEndEvent = { id: 'auto-end', type: 'fine_pausa', timestamp: Timestamp.fromDate(autoEndTime), status: 'confermata', isAuto: true };
+                        
+                        events.push(breakStartEvent, breakEndEvent);
                     }
                     
-                    totalMillis -= breakDurationMillis;
+                    events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                    
+                    let breakStartTs: Timestamp | null = null;
+                    for (const e of events) {
+                        if (e.type === 'pausa') breakStartTs = e.timestamp;
+                        if (e.type === 'fine_pausa' && breakStartTs) {
+                            breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
+                            breakStartTs = null;
+                        }
+                    }
+
+                    if (mandatoryBreakMinutes > 0) {
+                        if (breakDurationMillis / 60000 < mandatoryBreakMinutes) {
+                            totalMillis -= (mandatoryBreakMinutes * 60000);
+                        } else {
+                            totalMillis -= breakDurationMillis;
+                        }
+                    } else {
+                         totalMillis -= breakDurationMillis;
+                    }
+
                     workedMinutes = totalMillis / (1000 * 60);
                 }
+
                 const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
                 let ordinaryHours = 0, overtimeHours = 0;
                 if (isOvertimeShift) {
@@ -288,7 +324,7 @@ export default function EndOfMonthPage() {
                     const dayString = day.toDateString();
                     if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                         const dayName = dayIndexToName[getDay(day)];
-                        if ((operator.workSchedule[dayName] || 0) > 0) {
+                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0) {
                             if (req.type === 'ferie') ferieDays++;
                             if (req.type === 'malattia') malattiaDays++;
                             processedLeaveDays.add(dayString);
@@ -395,7 +431,12 @@ export default function EndOfMonthPage() {
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-2">
-                                                {detail.shift.events.map(e => `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join('  |  ')}
+                                                 {detail.shift.events.map(e => 
+                                                    <span key={e.id} className={cn(e.isAuto && "text-red-500")}>
+                                                        {`${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`}
+                                                        {`  |  `}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
