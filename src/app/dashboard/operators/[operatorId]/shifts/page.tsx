@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -59,6 +59,7 @@ type Shift = {
     events: Timbratura[];
     status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     workDuration: number; // total work minutes
+    breakDuration: number; // total break minutes
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
     isOvertime: boolean;
 };
@@ -290,14 +291,14 @@ export default function ShiftApprovalPage() {
             status = 'confermato';
         }
 
-        const { workDuration } = calculateShiftDuration(events);
+        const { workDuration, breakDuration } = calculateShiftDurations(events);
         
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
         const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
 
-        return { events, status, workDuration, isOnLeaveDay, isOvertime };
+        return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime };
     };
 
     const handleConfirmApprove = async () => {
@@ -525,16 +526,16 @@ export default function ShiftApprovalPage() {
         setIsDetailOpen(true);
     }
     
-    const calculateShiftDuration = (events: Timbratura[]): { workDuration: number, calculationStart: Date | null } => {
+    const calculateShiftDurations = (events: Timbratura[]): { workDuration: number, breakDuration: number, calculationStart: Date | null } => {
         if (!events || events.length === 0 || !operator) {
-            return { workDuration: 0, calculationStart: null };
+            return { workDuration: 0, breakDuration: 0, calculationStart: null };
         }
 
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
         if (!clockInEvent || !clockOutEvent) {
-            return { workDuration: 0, calculationStart: null };
+            return { workDuration: 0, breakDuration: 0, calculationStart: null };
         }
 
         const clockInTime = clockInEvent.timestamp.toDate();
@@ -577,8 +578,9 @@ export default function ShiftApprovalPage() {
         totalMillis -= breakDurationMillis;
         
         const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0; // duration in minutes
+        const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
-        return { workDuration, calculationStart };
+        return { workDuration, breakDuration, calculationStart };
     };
 
     const getContractualHoursForShift = (shift: Shift | null): number => {
@@ -604,29 +606,39 @@ export default function ShiftApprovalPage() {
         return totalHours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
-    const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number } => {
-        if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0 };
-    
-        if (shift.isOvertime) {
-            return {
-                ordinary: 0,
-                overtime: roundOvertimeHours(shift.workDuration),
-                leave: 0,
-                worked: shift.workDuration
-            };
-        }
-    
-        let { workDuration: totalMinutesWorked } = calculateShiftDuration(shift.events);
+    const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
+        if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
 
+        const { workDuration: initialWorkDuration, breakDuration: initialBreakDuration } = calculateShiftDurations(shift.events);
+
+        let totalMinutesWorked = initialWorkDuration;
+        let breakMinutes = initialBreakDuration;
+
+        // If a manual break is added, recalculate total worked time based on that
         if (manualBreak?.start && manualBreak?.end) {
             const startDate = parse(manualBreak.start, 'HH:mm', new Date());
             const endDate = parse(manualBreak.end, 'HH:mm', new Date());
             if (endDate > startDate) {
-                const breakMinutes = (endDate.getTime() - startDate.getTime()) / 60000;
-                totalMinutesWorked -= breakMinutes;
+                breakMinutes = (endDate.getTime() - startDate.getTime()) / 60000;
+                totalMinutesWorked = (shift.events.find(e => e.type === 'uscita')!.timestamp.toMillis() - getAdjustedStartTime(shift)!.getTime()) / 60000 - breakMinutes;
             }
         }
+        
+        // If there was any break, subtract a full hour
+        if (breakMinutes > 0) {
+            totalMinutesWorked -= 60 - breakMinutes; // Subtract the difference to make it a full hour
+        }
 
+        if (shift.isOvertime) {
+            return {
+                ordinary: 0,
+                overtime: roundOvertimeHours(totalMinutesWorked),
+                leave: 0,
+                worked: totalMinutesWorked,
+                break: breakMinutes
+            };
+        }
+    
         const contractualHours = getContractualHoursForShift(shift);
         const contractualMinutes = contractualHours * 60;
             
@@ -643,7 +655,8 @@ export default function ShiftApprovalPage() {
             ordinary: ordinaryHours, 
             overtime: overtimeHours, 
             leave: leaveHours,
-            worked: totalMinutesWorked
+            worked: totalMinutesWorked,
+            break: breakMinutes
         };
     };
     
@@ -1004,7 +1017,7 @@ export default function ShiftApprovalPage() {
 
     const getAdjustedStartTime = (shift: Shift): Date | null => {
         if (!operator) return null;
-        const { calculationStart } = calculateShiftDuration(shift.events);
+        const { calculationStart } = calculateShiftDurations(shift.events);
         return calculationStart;
     }
 
@@ -1282,19 +1295,19 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, break: breakDuration } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
                         return (
-                            <div className="grid grid-cols-4 gap-4 text-center my-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-2xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Ore Effettuate</p>
-                                    <p className="text-2xl font-bold">{formatMinutes(worked)}</p>
+                                    <p className="text-sm font-medium text-muted-foreground">Minuti Pausa</p>
+                                    <p className="text-2xl font-bold">{Math.round(breakDuration)}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Approvate</p>
@@ -1303,6 +1316,10 @@ export default function ShiftApprovalPage() {
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">{label}</p>
                                     <p className="text-2xl font-bold">{value}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Ore Effettive</p>
+                                    <p className="text-2xl font-bold">{formatMinutes(detailShift.workDuration)}</p>
                                 </div>
                             </div>
                         );
@@ -1324,7 +1341,7 @@ export default function ShiftApprovalPage() {
                                 {(() => {
                                     if (!detailShift) return null;
                                     
-                                    const { calculationStart } = calculateShiftDuration(detailShift.events);
+                                    const { calculationStart } = calculateShiftDurations(detailShift.events);
                                     let displayEvents = [...detailShift.events];
 
                                     // Create a virtual event for the calculated start time
