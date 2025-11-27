@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 type Operator = {
     id: string;
     username: string;
-    role: string;
     firstName: string;
     lastName: string;
 };
@@ -32,7 +31,7 @@ export function AdminDashboard() {
         const operatorsQuery = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
         const unsubscribeOperators = onSnapshot(operatorsQuery, (snapshot) => {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
-            usersData.sort((a,b) => a.username.localeCompare(b.username, undefined, { numeric: true }));
+            usersData.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName, undefined, { numeric: true }));
             setOperators(usersData);
             setIsLoading(false);
 

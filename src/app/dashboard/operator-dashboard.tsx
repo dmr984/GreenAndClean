@@ -109,7 +109,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   
-  const [isWorkDay, setIsWorkDay] = useState(true);
+  const [isWorkDay, setIsWorkDay] = useState<boolean | null>(null);
   const [leaveStatus, setLeaveStatus] = useState<LeaveStatus>({ onLeave: false, type: null });
 
   const [hasUnreadShifts, setHasUnreadShifts] = useState(false);
@@ -127,6 +127,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     useEffect(() => {
         if (!firestore || !authUser?.id) {
             setOperator(null);
+            setIsWorkDay(null);
             return;
         }
 
@@ -200,31 +201,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     }, [firestore, authUser, toast]);
 
-    useEffect(() => {
-      if (!isOnBreak || !shifts.length || !operator?.workSchedule) return;
-  
-      const interval = setInterval(() => {
-        if (shifts[0].endTime === null) {
-          const lastEvent = shifts[0].events[shifts[0].events.length - 1];
-          if (lastEvent && lastEvent.type === 'pausa') {
-            const breakStartTime = lastEvent.timestamp.toMillis();
-            const now = new Date().getTime();
-            const breakDurationMinutes = (now - breakStartTime) / (1000 * 60);
-  
-            const dayName = dayIndexToName[getDay(lastEvent.timestamp.toDate())];
-            const mandatoryBreakMinutes = operator.workSchedule?.[dayName]?.breakMinutes || 60;
-            const toleranceMinutes = 15;
-            const autoEndThreshold = mandatoryBreakMinutes + toleranceMinutes;
-  
-            if (breakDurationMinutes > autoEndThreshold) {
-              handleAutoEndBreak(lastEvent, mandatoryBreakMinutes);
-            }
-          }
-        }
-      }, 60000); // Check every minute
-  
-      return () => clearInterval(interval);
-  }, [isOnBreak, shifts, operator]);
+    
+
 
   const handleAutoEndBreak = async (lastEvent: ClockingEvent, mandatoryBreakMinutes: number) => {
       if (!firestore || !operator) return;
@@ -379,6 +357,32 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     setHasUnreadShifts(groupedShifts.some(s => s.hasUnread));
     return groupedShifts.reverse();
   }, [clockings]);
+
+    useEffect(() => {
+      if (!isOnBreak || !shifts || shifts.length === 0 || !operator?.workSchedule) return;
+  
+      const interval = setInterval(() => {
+        if (shifts[0].endTime === null) {
+          const lastEvent = shifts[0].events[shifts[0].events.length - 1];
+          if (lastEvent && lastEvent.type === 'pausa') {
+            const breakStartTime = lastEvent.timestamp.toMillis();
+            const now = new Date().getTime();
+            const breakDurationMinutes = (now - breakStartTime) / (1000 * 60);
+  
+            const dayName = dayIndexToName[getDay(lastEvent.timestamp.toDate())];
+            const mandatoryBreakMinutes = operator.workSchedule?.[dayName]?.breakMinutes || 60;
+            const toleranceMinutes = 15;
+            const autoEndThreshold = mandatoryBreakMinutes + toleranceMinutes;
+  
+            if (breakDurationMinutes > autoEndThreshold) {
+              handleAutoEndBreak(lastEvent, mandatoryBreakMinutes);
+            }
+          }
+        }
+      }, 60000); // Check every minute
+  
+      return () => clearInterval(interval);
+  }, [isOnBreak, shifts, operator]);
 
 
   useEffect(() => {
@@ -728,7 +732,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }
 
-  if (isUserLoading || !operator) {
+  if (isUserLoading || operator === null || isWorkDay === null) {
       return <div className="flex items-center justify-center h-full">
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="h-8 w-8 animate-spin" />
