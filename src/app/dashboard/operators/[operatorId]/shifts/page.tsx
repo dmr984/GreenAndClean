@@ -1152,6 +1152,7 @@ export default function ShiftApprovalPage() {
                                         <TableHead>Data</TableHead>
                                         <TableHead>Inizio</TableHead>
                                         <TableHead>Fine</TableHead>
+                                        <TableHead>Pausa</TableHead>
                                         <TableHead>Durata</TableHead>
                                         <TableHead>Stato</TableHead>
                                         <TableHead className="text-right">Azioni</TableHead>
@@ -1167,6 +1168,7 @@ export default function ShiftApprovalPage() {
                                                 <TableCell>{formatDate(startTime)}</TableCell>
                                                 <TableCell>{adjustedStartTime ? format(adjustedStartTime, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
                                                 <TableCell>{formatTime(endTime)}</TableCell>
+                                                <TableCell>{shift.breakDuration}m</TableCell>
                                                 <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell>
                                                     <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
@@ -1305,7 +1307,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
