@@ -587,9 +587,7 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        if (breakDurationMillis > 0) {
-             totalMillis -= 60 * 60 * 1000; // Subtract 1 hour in milliseconds
-        }
+        totalMillis -= breakDurationMillis;
 
         const workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
@@ -649,9 +647,7 @@ export default function ShiftApprovalPage() {
             }
         }
     
-        if (breakDurationMillis > 0) {
-            totalMillis -= 60 * 60 * 1000; // Subtract 1 hour in milliseconds
-        }
+        totalMillis -= breakDurationMillis;
     
         let totalMinutesWorked = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
         
@@ -1111,14 +1107,14 @@ export default function ShiftApprovalPage() {
     }
 
     const getAdjustedStartTime = (shift: Shift): { display: string; calculationStart: Date | null } => {
-        if (!operator) return { display: '--:--', calculationStart: null };
+        if (!operator || !shift?.events?.length) return { display: '--:--', calculationStart: null };
         const { calculationStart } = calculateShiftDurations(shift.events);
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!calculationStart || !clockInEvent) return { display: '--:--', calculationStart: null };
     
         const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
     
-        if (Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) < 60000) {
+        if (Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) < 1000) {
             return { display: originalTime, calculationStart };
         }
     
@@ -1134,15 +1130,9 @@ export default function ShiftApprovalPage() {
 
         const minutes = calculationEnd.getMinutes();
 
-        if (minutes < 10) {
-            calculationEnd.setMinutes(0);
-        } else if (minutes >= 10 && minutes < 25) {
-            // This case doesn't seem right based on user logic, usually it's symmetrical.
-            // Let's assume it rounds down.
+        if (minutes < 25) {
              calculationEnd.setMinutes(0);
-        } else if (minutes >= 25 && minutes < 30) {
-             calculationEnd.setMinutes(30);
-        } else if (minutes >= 30 && minutes < 50) {
+        } else if (minutes >= 25 && minutes < 50) {
              calculationEnd.setMinutes(30);
         } else if (minutes >= 50) {
              calculationEnd.setMinutes(0);
@@ -1150,7 +1140,7 @@ export default function ShiftApprovalPage() {
         }
 
         const originalTime = format(clockOutTime, 'HH:mm:ss');
-         if (Math.abs(calculationEnd.getTime() - clockOutTime.getTime()) < 60000) {
+         if (Math.abs(calculationEnd.getTime() - clockOutTime.getTime()) < 1000) {
             return { display: originalTime, calculationEnd };
         }
 
@@ -1292,7 +1282,7 @@ export default function ShiftApprovalPage() {
                                         const { calculationStart } = getAdjustedStartTime(shift);
                                         const breakStartTime = shift.events.find(e => e.type === 'pausa')?.timestamp;
                                         const breakEndTime = shift.events.find(e => e.type === 'fine_pausa')?.timestamp;
-                                        const isBreakAuto = shift.events.some(e => e.type === 'pausa' && e.isAuto);
+                                        const isBreakAuto = shift.events.some(e => (e.type === 'pausa' || e.type === 'fine_pausa') && e.isAuto);
 
                                         return (
                                             <TableRow key={index}>
@@ -1443,11 +1433,9 @@ export default function ShiftApprovalPage() {
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
                         const { ordinary, overtime, leave, worked, break: breakMinutes } = calculateHours(detailShift);
-                        const label = overtime > 0 ? "Straordinari" : "Permessi";
-                        const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
-
+                        
                         return (
-                             <div className="grid grid-cols-4 gap-2 text-center my-4">
+                             <div className="grid grid-cols-4 gap-4 text-center my-4">
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
@@ -1457,8 +1445,8 @@ export default function ShiftApprovalPage() {
                                     <p className="text-xl font-bold">{ordinary}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
-                                    <p className="text-xs font-medium text-muted-foreground">{label}</p>
-                                    <p className="text-xl font-bold">{value}</p>
+                                    <p className="text-xs font-medium text-muted-foreground">{overtime > 0 ? "Straordinari" : "Permessi"}</p>
+                                    <p className="text-xl font-bold">{overtime > 0 ? `${overtime}h` : `${leave}h`}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
@@ -1729,4 +1717,5 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
+
 
