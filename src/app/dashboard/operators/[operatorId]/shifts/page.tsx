@@ -147,6 +147,12 @@ export default function ShiftApprovalPage() {
     
     const [currentPage, setCurrentPage] = useState(0);
 
+    const contractualStartTime = useMemo(() => {
+        if (!newShiftDate || !operator?.workSchedule) return null;
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
+        return operator.workSchedule[dayName]?.startTime || null;
+    }, [newShiftDate, operator]);
+
      useEffect(() => {
         if (!firestore || !operatorId) return;
         const operatorDocRef = doc(firestore, 'app-users', operatorId);
@@ -157,6 +163,32 @@ export default function ShiftApprovalPage() {
         });
     }, [firestore, operatorId]);
 
+    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
+        const hasPending = events.some(e => e.status === 'sospesa');
+        const hasRejected = events.some(e => e.status === 'rifiutata');
+        const isComplete = events.some(e => e.type === 'uscita');
+        
+        let status: Shift['status'];
+        if (hasRejected) {
+            status = 'rifiutato';
+        } else if (!isComplete) {
+            status = 'in_corso';
+        } else if (hasPending) {
+            status = 'in_sospeso';
+        } else {
+            status = 'confermato';
+        }
+
+        const { workDuration, breakDuration } = calculateShiftDurations(events);
+        
+        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+        const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
+        const isOnLeaveDay = leaveDays.has(shiftDateStr);
+        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
+        const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart ?? false;
+
+        return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
+    };
 
     useEffect(() => {
         if (!firestore || !operatorId || !operator) return;
@@ -279,41 +311,7 @@ export default function ShiftApprovalPage() {
         return approvedShifts;
     }, [allShifts]);
 
-    const contractualStartTime = useMemo(() => {
-        if (!newShiftDate || !operator?.workSchedule) return null;
-        const dayName = dayIndexToName[getDayFns(newShiftDate)];
-        return operator.workSchedule[dayName]?.startTime || null;
-    }, [newShiftDate, operator]);
-
-
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
-
-    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
-        const hasPending = events.some(e => e.status === 'sospesa');
-        const hasRejected = events.some(e => e.status === 'rifiutata');
-        const isComplete = events.some(e => e.type === 'uscita');
-        
-        let status: Shift['status'];
-        if (hasRejected) {
-            status = 'rifiutato';
-        } else if (!isComplete) {
-            status = 'in_corso';
-        } else if (hasPending) {
-            status = 'in_sospeso';
-        } else {
-            status = 'confermato';
-        }
-
-        const { workDuration, breakDuration } = calculateShiftDurations(events);
-        
-        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-        const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
-        const isOnLeaveDay = leaveDays.has(shiftDateStr);
-        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
-        const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart ?? false;
-
-        return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
-    };
 
     const handleConfirmApprove = async () => {
         if (!firestore || !approvalContext || !operator) return;
