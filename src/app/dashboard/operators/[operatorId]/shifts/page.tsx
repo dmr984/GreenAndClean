@@ -1156,12 +1156,15 @@ export default function ShiftApprovalPage() {
         if (!calculationEnd || !clockOutEvent) return { display: '--:--', calculationEnd: null };
     
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
-    
-        if (Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) < 1000 || shift.ignoreContractualStart) {
-            return { display: originalTime, calculationEnd };
+        const shiftDate = clockOutEvent.timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const contractualEndStr = operator.workSchedule[dayName]?.endTime;
+
+        if (contractualEndStr && !shift.ignoreContractualStart) {
+            return { display: `${originalTime} (${contractualEndStr})`, calculationEnd };
         }
     
-        return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd };
+        return { display: originalTime, calculationEnd };
     }
 
     return (
@@ -1435,7 +1438,7 @@ export default function ShiftApprovalPage() {
             
              <ResponsiveDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
                 <ResponsiveDialogContent className="sm:max-w-3xl">
-                    <ResponsiveDialogHeader>
+                    <ResponsiveDialogHeader className="pb-2">
                         <div className="flex justify-between items-start">
                             <div>
                                  <ResponsiveDialogTitle>Dettaglio Turno per {operator.firstName}</ResponsiveDialogTitle>
@@ -1465,22 +1468,22 @@ export default function ShiftApprovalPage() {
                         const { worked, break: breakDuration } = calculateHours(detailShift);
                         
                         return (
-                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 text-center my-4">
-                                <div className="space-y-1 rounded-md border p-2">
+                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center my-2">
+                                <div className="space-y-1 rounded-md border p-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-lg md:text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                                    <p className="text-lg font-bold">{getContractualHoursForShift(detailShift)}h</p>
                                 </div>
-                                <div className="space-y-1 rounded-md border p-2">
+                                <div className="space-y-1 rounded-md border p-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Ordinarie</p>
-                                    <p className="text-lg md:text-xl font-bold">{ordinary}h</p>
+                                    <p className="text-lg font-bold">{ordinary}h</p>
                                 </div>
-                                <div className="space-y-1 rounded-md border p-2">
+                                <div className="space-y-1 rounded-md border p-1.5">
                                      <p className="text-xs font-medium text-muted-foreground">{mainResult.label}</p>
-                                    <p className="text-lg md:text-xl font-bold">{mainResult.value}</p>
+                                    <p className="text-lg font-bold">{mainResult.value}</p>
                                 </div>
-                                <div className="space-y-1 rounded-md border p-2">
+                                <div className="space-y-1 rounded-md border p-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
-                                    <p className="text-lg md:text-xl font-bold">{formatMinutes(worked)}</p>
+                                    <p className="text-lg font-bold">{formatMinutes(worked)}</p>
                                 </div>
                             </div>
                         );
@@ -1541,15 +1544,15 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="flex-col sm:flex-row pt-4 gap-2">
-                        <div className="flex-grow grid grid-cols-2 sm:flex sm:flex-row gap-2">
-                           <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                           <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
-                           {detailShift && detailShift.status !== 'in_sospeso' && (
-                            <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1">
+                            <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                             {detailShift && detailShift.status !== 'in_sospeso' && (
+                                <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                             )}
+                            <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                         </div>
                          {detailShift && detailShift.status === 'in_sospeso' && (
-                            <div className="flex-grow grid grid-cols-2 sm:flex sm:flex-row gap-2">
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-grow">
                                <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                                </Button>
