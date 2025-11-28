@@ -52,6 +52,7 @@ type Timbratura = {
     isOvertime?: boolean;
     isAuto?: boolean;
     shiftId?: string;
+    ignoreContractualStart?: boolean;
 };
 
 type Shift = {
@@ -62,6 +63,7 @@ type Shift = {
     breakDuration: number; // total break minutes
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
     isOvertime: boolean;
+    ignoreContractualStart?: boolean;
 };
 
 type StraordinarioEvent = {
@@ -125,6 +127,7 @@ export default function ShiftApprovalPage() {
 
     const [isConfirmingOvertimeDelete, setIsConfirmingOvertimeDelete] = useState(false);
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+    const [editIgnoreContractual, setEditIgnoreContractual] = useState(false);
     
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
@@ -142,6 +145,7 @@ export default function ShiftApprovalPage() {
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+    const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
     
     const [currentPage, setCurrentPage] = useState(0);
 
@@ -299,8 +303,9 @@ export default function ShiftApprovalPage() {
         const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
         const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
+        const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart ?? false;
 
-        return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime };
+        return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
     };
 
     const handleConfirmApprove = async () => {
@@ -439,6 +444,7 @@ export default function ShiftApprovalPage() {
             }
         });
         setEditShiftTimes(times);
+        setEditIgnoreContractual(shift.ignoreContractualStart || false);
         setIsEditShiftOpen(true);
     };
 
@@ -489,11 +495,15 @@ export default function ShiftApprovalPage() {
             if (newTimestamp && existingEvent) {
                 // Event exists, update its timestamp
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
-                batch.update(docRef, { timestamp: newTimestamp, viewedByOperator: false });
+                const updatePayload: any = { timestamp: newTimestamp, viewedByOperator: false };
+                if (type === 'entrata') {
+                    updatePayload.ignoreContractualStart = editIgnoreContractual;
+                }
+                batch.update(docRef, updatePayload);
             } else if (newTimestamp && !existingEvent) {
                 // Event is new, create it
                 const newDocRef = doc(timbratureCollectionRef);
-                batch.set(newDocRef, {
+                const newEventPayload: any = {
                     userId: operator.id,
                     type: type,
                     timestamp: newTimestamp,
@@ -501,7 +511,11 @@ export default function ShiftApprovalPage() {
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
                     shiftId: shiftId 
-                });
+                };
+                 if (type === 'entrata') {
+                    newEventPayload.ignoreContractualStart = editIgnoreContractual;
+                }
+                batch.set(newDocRef, newEventPayload);
             } else if (!newTimestamp && existingEvent) {
                 // Event was removed, delete it
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
@@ -561,7 +575,7 @@ export default function ShiftApprovalPage() {
         
         let calculationStart = clockInTime;
         
-        if (schedule?.startTime) {
+        if (schedule?.startTime && !clockInEvent.ignoreContractualStart) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             
@@ -681,8 +695,7 @@ export default function ShiftApprovalPage() {
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeHours = roundOvertimeHours(overtimeMinutes);
     
-        const leaveMinutes = contractualMinutes > ordinaryMinutes ? contractualMinutes - ordinaryMinutes : 0;
-        const leaveHours = roundOrdinaryHours(leaveMinutes);
+        const leaveHours = roundOrdinaryHours(contractualMinutes - ordinaryMinutes);
     
         return { 
             ordinary: ordinaryHours, 
@@ -934,15 +947,19 @@ export default function ShiftApprovalPage() {
         for (const event of events) {
             if (event.time) {
                 const newDocRef = doc(timbratureCollectionRef);
-                batch.set(newDocRef, {
+                const eventPayload: Omit<Timbratura, 'id'> = {
                     userId: operatorId, 
                     type: event.type, 
                     timestamp: createTimestamp(event.time),
                     status: 'sospesa' as const, 
                     viewedByOperator: false, 
                     isOvertime,
-                    shiftId: manualShiftId // Assign the same ID to all events of this shift
-                });
+                    shiftId: manualShiftId,
+                };
+                if (event.type === 'entrata') {
+                    eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
+                }
+                batch.set(newDocRef, eventPayload);
             }
         }
         try {
@@ -954,6 +971,7 @@ export default function ShiftApprovalPage() {
         
         setIsAddShiftOpen(false);
         setNewShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
+        setNewShiftIgnoreContractual(false);
     };
     
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
@@ -1125,7 +1143,7 @@ export default function ShiftApprovalPage() {
     
         const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
     
-        if (Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) < 1000) {
+        if (Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) < 1000 || shift.ignoreContractualStart) {
             return { display: originalTime, calculationStart };
         }
     
@@ -1393,6 +1411,12 @@ export default function ShiftApprovalPage() {
                                 <Input id="manual-fine-pausa" type="time" value={newShiftTimes.fine_pausa} onChange={e => setNewShiftTimes(p => ({...p, fine_pausa: e.target.value}))} />
                             </div>
                         </div>
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="add-ignore-contractual" checked={newShiftIgnoreContractual} onCheckedChange={(checked) => setNewShiftIgnoreContractual(!!checked)} />
+                            <Label htmlFor="add-ignore-contractual" className="text-sm font-normal">
+                                Ignora orario di inizio contrattuale
+                            </Label>
+                        </div>
                     </div>
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsAddShiftOpen(false)}>Annulla</Button>
@@ -1625,6 +1649,14 @@ export default function ShiftApprovalPage() {
                                 <Input id="edit-fine-pausa" type="time" value={editShiftTimes.fine_pausa} onChange={e => setEditShiftTimes(p => ({...p, fine_pausa: e.target.value}))} />
                             </div>
                         </div>
+                        {isEditShiftOpen && (
+                             <div className="flex items-center space-x-2">
+                                <Checkbox id="edit-ignore-contractual" checked={editIgnoreContractual} onCheckedChange={(checked) => setEditIgnoreContractual(!!checked)} />
+                                <Label htmlFor="edit-ignore-contractual" className="text-sm font-normal">
+                                    Ignora orario di inizio contrattuale
+                                </Label>
+                            </div>
+                        )}
                     </div>
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => { setIsEditShiftOpen(false); setIsEditOvertimeOpen(false); }}>Annulla</Button>
