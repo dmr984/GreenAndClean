@@ -558,21 +558,18 @@ export default function ShiftApprovalPage() {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             
-            if (calculationStart < contractualStart) {
+            const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
+            
+            if (minutesDifference <= 15) { // Also covers clocking in early
                 calculationStart = contractualStart;
             } else {
-                const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
-                if (minutesDifference <= 15) { 
-                    calculationStart = contractualStart;
-                } else {
-                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                        nextHalfHour.setMinutes(30);
-                    } else if (nextHalfHour.getMinutes() > 30) {
-                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
-                    }
-                    calculationStart = nextHalfHour;
+                const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
+                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                    nextHalfHour.setMinutes(30);
+                } else if (nextHalfHour.getMinutes() > 30) {
+                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
                 }
+                calculationStart = nextHalfHour;
             }
         }
         
@@ -588,13 +585,12 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        let workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
-        const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
-
-        // If any break is registered, subtract 1 hour
-        if (breakDuration > 0) {
-             workDuration = workDuration - 60;
+        if (breakDurationMillis > 0) {
+             totalMillis -= 60 * 60 * 1000; // Subtract 1 hour in milliseconds
         }
+
+        const workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
+        const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
         return { workDuration: Math.max(0, workDuration), breakDuration, calculationStart };
     };
@@ -629,34 +625,8 @@ export default function ShiftApprovalPage() {
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
 
-        const clockInTime = clockInEvent.timestamp.toDate();
-        const shiftDate = clockInTime;
-        const dayName = dayIndexToName[getDayFns(shiftDate)];
-        const schedule = operator.workSchedule[dayName];
-        
-        let calculationStart = clockInTime;
-        
-        if (schedule?.startTime) {
-            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
-            const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            
-            if (calculationStart < contractualStart) {
-                calculationStart = contractualStart;
-            } else {
-                const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
-                if (minutesDifference <= 15) { 
-                    calculationStart = contractualStart;
-                } else {
-                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                        nextHalfHour.setMinutes(30);
-                    } else if (nextHalfHour.getMinutes() > 30) {
-                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
-                    }
-                    calculationStart = nextHalfHour;
-                }
-            }
-        }
+        const { calculationStart } = getAdjustedStartTime(shift);
+        if (!calculationStart) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
         
         let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
         
@@ -1115,10 +1085,20 @@ export default function ShiftApprovalPage() {
         });
     }
 
-    const getAdjustedStartTime = (shift: Shift): Date | null => {
-        if (!operator) return null;
+    const getAdjustedStartTime = (shift: Shift): { display: string; calculationStart: Date | null } => {
+        if (!operator) return { display: '--:--', calculationStart: null };
         const { calculationStart } = calculateShiftDurations(shift.events);
-        return calculationStart;
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        if (!calculationStart || !clockInEvent) return { display: '--:--', calculationStart: null };
+    
+        const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
+    
+        // Don't show calculated time if it's the same as original (or within a minute, to be safe)
+        if (Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) < 60000) {
+            return { display: originalTime, calculationStart };
+        }
+    
+        return { display: `${originalTime} (calcolato da ${format(calculationStart, 'HH:mm')})`, calculationStart };
     }
 
     return (
@@ -1156,14 +1136,14 @@ export default function ShiftApprovalPage() {
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
                                         return (
                                             <TableRow key={index}>
-                                                <TableCell className='flex items-center gap-2'>
+                                                <TableCell className='flex items-center gap-2 whitespace-nowrap'>
                                                   {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
                                                   {formatDate(startTime)}
                                                 </TableCell>
-                                                <TableCell>{formatTime(startTime)}</TableCell>
-                                                <TableCell>{formatTime(endTime)}</TableCell>
-                                                <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">
                                                     <Badge variant={
                                                         shift.status === 'in_sospeso' ? 'default'
                                                         : shift.status === 'confermato' ? 'secondary'
@@ -1172,7 +1152,7 @@ export default function ShiftApprovalPage() {
                                                     {shift.status.replace('_', ' ')}
                                                     </Badge>
                                                 </TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="text-right whitespace-nowrap">
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                                         <Eye className="h-5 w-5" />
                                                     </Button>
@@ -1209,10 +1189,10 @@ export default function ShiftApprovalPage() {
                                 <TableBody>
                                     {pendingOvertimeShifts.map((shift) => (
                                         <TableRow key={shift.id}>
-                                            <TableCell>{formatDate(shift.date)}</TableCell>
-                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
-                                            <TableCell>{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="whitespace-nowrap">{formatDate(shift.date)}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
+                                            <TableCell className="text-right whitespace-nowrap">
                                                 <Button variant="ghost" size="icon" onClick={() => { setDetailOvertimeShift(shift); setIsDetailOvertimeOpen(true);}}>
                                                     <Eye className="h-5 w-5" />
                                                 </Button>
@@ -1252,7 +1232,7 @@ export default function ShiftApprovalPage() {
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const startTime = shift.events[0]?.timestamp;
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-                                        const adjustedStartTime = getAdjustedStartTime(shift);
+                                        const { calculationStart } = getAdjustedStartTime(shift);
                                         const breakStartTime = shift.events.find(e => e.type === 'pausa')?.timestamp;
                                         const breakEndTime = shift.events.find(e => e.type === 'fine_pausa')?.timestamp;
                                         const isBreakAuto = shift.events.some(e => e.type === 'pausa' && e.isAuto);
@@ -1260,7 +1240,7 @@ export default function ShiftApprovalPage() {
                                         return (
                                             <TableRow key={index}>
                                                 <TableCell className="whitespace-nowrap">{formatDate(startTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{adjustedStartTime ? format(adjustedStartTime, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{calculationStart ? format(calculationStart, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
                                                 <TableCell className={cn("whitespace-nowrap", isBreakAuto && "text-red-500")}>
                                                     {breakStartTime && breakEndTime 
@@ -1405,15 +1385,19 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked, break: breakMinutes } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
                         return (
-                             <div className="grid grid-cols-4 gap-2 text-center my-4">
+                             <div className="grid grid-cols-5 gap-2 text-center my-4">
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                                </div>
+                                <div className="space-y-1 rounded-md border p-2">
+                                    <p className="text-xs font-medium text-muted-foreground">Minuti Pausa</p>
+                                    <p className="text-xl font-bold">{Math.round(breakMinutes)}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Approvate</p>
@@ -1451,9 +1435,20 @@ export default function ShiftApprovalPage() {
                                     
                                     displayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
-                                    return displayEvents.map(t => (
+                                    return displayEvents.map(t => {
+                                        const { calculationStart } = getAdjustedStartTime(detailShift);
+                                        const isEntrata = t.type === 'entrata';
+                                        
+                                        return (
                                         <TableRow key={t.id}>
-                                            <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
+                                            <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>
+                                               {format(t.timestamp.toDate(), 'HH:mm:ss')}
+                                               {isEntrata && calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) >= 60000 && (
+                                                   <span className="text-muted-foreground italic ml-2">
+                                                       (Calcolato da {format(calculationStart, 'HH:mm')})
+                                                   </span>
+                                               )}
+                                            </TableCell>
                                             <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                             <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
                                             <TableCell className="whitespace-nowrap">
@@ -1469,7 +1464,7 @@ export default function ShiftApprovalPage() {
                                                 <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                             </TableCell>
                                         </TableRow>
-                                    ));
+                                    )});
                                 })()}
                             </TableBody>
                         </Table>
