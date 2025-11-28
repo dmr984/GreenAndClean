@@ -1330,7 +1330,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
@@ -1386,6 +1386,8 @@ export default function ShiftApprovalPage() {
                                         };
                                         displayEvents[entrataIndex] = virtualEntrata;
                                     }
+                                    
+                                    displayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
                                     return displayEvents.map(t => (
                                         <TableRow key={t.id}>
