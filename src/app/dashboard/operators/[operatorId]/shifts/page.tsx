@@ -445,11 +445,16 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Dati mancanti', description: 'Entrata e Uscita sono obbligatorie.', variant: 'destructive' });
             return;
         }
+        
+        if (editShiftTimes.pausa && !editShiftTimes.fine_pausa) {
+             toast({ title: 'Pausa incompleta', description: 'Se inserisci l\'inizio della pausa, devi inserire anche la fine.', variant: 'destructive' });
+             return;
+        }
 
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         const shiftDate = editingShift.events[0].timestamp.toDate();
-        const shiftId = editingShift.id; // Use the existing shift ID
+        const shiftId = editingShift.id; 
 
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
@@ -470,14 +475,7 @@ export default function ShiftApprovalPage() {
                 newEventData[type] = timestamp;
             }
         }
-        
-        if (newEventData.pausa && !newEventData.fine_pausa) {
-             toast({ title: 'Pausa incompleta', description: 'Se inserisci l\'inizio della pausa, devi inserire anche la fine.', variant: 'destructive' });
-             return;
-        }
 
-
-        // Map existing events by type for easier lookup
         const existingEvents = new Map(editingShift.events.map(e => [e.type, e]));
 
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
@@ -485,11 +483,9 @@ export default function ShiftApprovalPage() {
             const newTimestamp = newEventData[type];
 
             if (newTimestamp && existingEvent) {
-                // Event exists and needs update
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.update(docRef, { timestamp: newTimestamp, viewedByOperator: false });
             } else if (newTimestamp && !existingEvent) {
-                // Event is new
                 const newDocRef = doc(timbratureCollectionRef);
                 batch.set(newDocRef, {
                     userId: operator.id,
@@ -501,7 +497,6 @@ export default function ShiftApprovalPage() {
                     shiftId: shiftId 
                 });
             } else if (!newTimestamp && existingEvent) {
-                // Event needs to be deleted
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.delete(docRef);
             }
@@ -589,10 +584,13 @@ export default function ShiftApprovalPage() {
             }
         }
         
+        // Regola: se c'è una pausa, scala sempre 1 ora (60 minuti)
         const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+        const finalWorkDuration = breakDurationMillis > 0 ? workDuration - (workDuration > 0 ? 60 : 0) : workDuration;
+
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
-        return { workDuration, breakDuration, calculationStart };
+        return { workDuration: finalWorkDuration, breakDuration, calculationStart };
     };
 
     const getContractualHoursForShift = (shift: Shift | null): number => {
@@ -814,7 +812,7 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        const manualShiftId = doc(collection(firestore, 'app-users')).id;
+        const manualShiftId = doc(timbratureCollectionRef).id;
     
         const events: { type: Timbratura['type'], time: string }[] = [
             { type: 'entrata', time: newShiftTimes.entrata },
@@ -833,7 +831,7 @@ export default function ShiftApprovalPage() {
                     status: 'sospesa' as const, 
                     viewedByOperator: false, 
                     isOvertime,
-                    shiftId: manualShiftId // Associate all events of this manual shift
+                    shiftId: manualShiftId
                 });
             }
         }
@@ -1289,7 +1287,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
