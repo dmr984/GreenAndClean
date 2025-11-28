@@ -75,7 +75,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Timbratura",
       "type": "object",
-      "description": "Represents a single clock-in/out event.",
+      "description": "Represents a single clock-in/out event. Break start/end events are now typically added by an admin.",
       "properties": {
         "userId": {
           "type": "string",
@@ -345,6 +345,6 @@
         }
       }
     ],
-    "reasoning": "Updated the Operator entity to simplify the workSchedule object, removing the derived 'endTime' and making 'startTime' optional to allow for more flexible hour calculation based on either a fixed start or just total hours."
+    "reasoning": "Updated the Timbratura entity description to reflect that break start/end events are now primarily added by administrators, not clocked by operators."
   }
 }

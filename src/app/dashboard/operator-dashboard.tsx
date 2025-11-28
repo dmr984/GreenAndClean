@@ -206,36 +206,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     
 
 
-  const handleAutoEndBreak = async (lastEvent: ClockingEvent, mandatoryBreakMinutes: number) => {
-      if (!firestore || !operator) return;
-  
-      const breakStartTime = lastEvent.timestamp.toDate();
-      const autoEndTime = new Date(breakStartTime.getTime() + mandatoryBreakMinutes * 60000);
-  
-      const autoEndBreakEvent: Omit<ClockingEvent, 'id'> = {
-          userId: operator.id,
-          type: 'fine_pausa',
-          timestamp: Timestamp.fromDate(autoEndTime),
-          status: 'rifiutata', // Mark as auto-generated and invalid for manual approval
-          latitude: 0,
-          longitude: 0,
-          viewedByOperator: false,
-      };
-  
-      try {
-          await addDoc(collection(firestore, `app-users/${operator.id}/timbrature`), autoEndBreakEvent);
-          toast({
-              variant: 'destructive',
-              title: 'Pausa Terminata Automaticamente',
-              description: `La pausa è stata interrotta dopo ${mandatoryBreakMinutes} minuti.`,
-              duration: 10000,
-          });
-      } catch (error) {
-          console.error("Failed to auto-end break:", error);
-      }
-  };
-
-
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -360,32 +330,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     return groupedShifts.reverse();
   }, [clockings]);
 
-    useEffect(() => {
-      if (!isOnBreak || !shifts || shifts.length === 0 || !operator?.workSchedule) return;
-  
-      const interval = setInterval(() => {
-        if (shifts[0].endTime === null) {
-          const lastEvent = shifts[0].events[shifts[0].events.length - 1];
-          if (lastEvent && lastEvent.type === 'pausa') {
-            const breakStartTime = lastEvent.timestamp.toMillis();
-            const now = new Date().getTime();
-            const breakDurationMinutes = (now - breakStartTime) / (1000 * 60);
-  
-            const dayName = dayIndexToName[getDay(lastEvent.timestamp.toDate())];
-            const mandatoryBreakMinutes = operator.workSchedule?.[dayName]?.breakMinutes || 60;
-            const toleranceMinutes = 15;
-            const autoEndThreshold = mandatoryBreakMinutes + toleranceMinutes;
-  
-            if (breakDurationMinutes > autoEndThreshold) {
-              handleAutoEndBreak(lastEvent, mandatoryBreakMinutes);
-            }
-          }
-        }
-      }, 60000); // Check every minute
-  
-      return () => clearInterval(interval);
-  }, [isOnBreak, shifts, operator]);
-
 
   useEffect(() => {
     const timerId = setInterval(() => setTime(new Date()), 1000);
@@ -488,6 +432,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
     if (!firestore || !operator || isProcessing) return;
     
+    // Prevent starting a break if already on break, etc.
+    const lastValidEvent = [...(clockings || [])].filter(e => e.status !== 'rifiutata').pop();
+    if (type === 'pausa' && lastValidEvent?.type !== 'entrata' && lastValidEvent?.type !== 'fine_pausa') {
+        toast({ title: 'Azione non permessa', description: 'Puoi iniziare una pausa solo dopo essere entrato o aver finito un\'altra pausa.', variant: 'destructive'});
+        return;
+    }
+    
     try {
         const currentLoc = await getLocation();
         
@@ -541,10 +492,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     if (!date) return "--:--";
     const d = date instanceof Timestamp ? date.toDate() : date;
     return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  }
-  
-  const handleBreakToggle = (isToggled: boolean) => {
-      handleClocking(isToggled ? 'pausa' : 'fine_pausa');
   }
 
   const handleUnlockRequest = async () => {
@@ -799,22 +746,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             className="w-full" 
                             size="lg" 
                             variant="destructive"
-                            disabled={isProcessing || isOnBreak} 
+                            disabled={isProcessing} 
                             onClick={() => handleClocking('uscita')}
                         >
                              {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
                              Termina Turno
                         </Button>
-                        <div className="flex items-center space-x-2 justify-center pt-2">
-                            <PauseCircle className="h-5 w-5 text-muted-foreground"/>
-                            <Label htmlFor="break-toggle" className={isOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
-                            <Switch 
-                                id="break-toggle" 
-                                checked={isOnBreak}
-                                onCheckedChange={handleBreakToggle}
-                                disabled={isProcessing}
-                            />
-                        </div>
                     </>
                 ) : (
                     <Button 

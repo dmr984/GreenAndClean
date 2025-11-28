@@ -687,7 +687,7 @@ export default function ShiftApprovalPage() {
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeHours = roundOvertimeHours(overtimeMinutes);
     
-        const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - totalMinutesWorked : 0;
+        const leaveMinutes = contractualMinutes > ordinaryMinutes ? contractualMinutes - ordinaryMinutes : 0;
         const leaveHours = roundOrdinaryHours(leaveMinutes);
     
         return { 
@@ -904,7 +904,7 @@ export default function ShiftApprovalPage() {
             if (entryTime < fiveMinutesBefore) {
                  toast({ 
                     title: 'Orario non valido', 
-                    description: "L'orario di entrata è più di 5 minuti prima dell'inizio del turno. Seleziona 'Ignora orario di inizio contrattuale' per forzare.", 
+                    description: `L'orario di entrata è prima delle ${format(fiveMinutesBefore, 'HH:mm')}. Seleziona 'Ignora orario di inizio contrattuale' per forzare.`, 
                     variant: 'destructive',
                     duration: 7000
                 });
@@ -1425,9 +1425,14 @@ export default function ShiftApprovalPage() {
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
                         const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
-                        let mainResult = { label: 'Straordinari', value: `${overtime}h`};
-                        if (leave > 0) {
+                        let mainResult;
+
+                        if (overtime > 0) {
+                            mainResult = { label: 'Straordinari', value: `${overtime}h` };
+                        } else if (leave > 0) {
                             mainResult = { label: 'Permessi', value: `${leave}h` };
+                        } else {
+                            mainResult = { label: 'Straordinari', value: '0h' };
                         }
                         
                         return (
