@@ -557,18 +557,22 @@ export default function ShiftApprovalPage() {
         if (schedule?.startTime) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
-        
-            if (minutesDifference <= 15) { 
+            
+            if (calculationStart < contractualStart) {
                 calculationStart = contractualStart;
             } else {
-                const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                    nextHalfHour.setMinutes(30);
-                } else if (nextHalfHour.getMinutes() > 30) {
-                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
+                if (minutesDifference <= 15) { 
+                    calculationStart = contractualStart;
+                } else {
+                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
+                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                        nextHalfHour.setMinutes(30);
+                    } else if (nextHalfHour.getMinutes() > 30) {
+                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                    }
+                    calculationStart = nextHalfHour;
                 }
-                calculationStart = nextHalfHour;
             }
         }
         
@@ -584,13 +588,13 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        // Regola: se c'è una pausa, scala sempre 1 ora (60 minuti)
         const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
-        const finalWorkDuration = breakDurationMillis > 0 ? workDuration - (workDuration > 0 ? 60 : 0) : workDuration;
-
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
-        return { workDuration: finalWorkDuration, breakDuration, calculationStart };
+        // If any break is registered, subtract 1 hour
+        const finalWorkDuration = breakDuration > 0 ? workDuration - 60 : workDuration;
+
+        return { workDuration: Math.max(0, finalWorkDuration), breakDuration, calculationStart };
     };
 
     const getContractualHoursForShift = (shift: Shift | null): number => {
@@ -618,9 +622,23 @@ export default function ShiftApprovalPage() {
 
     const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-
+    
         let { workDuration: totalMinutesWorked, breakDuration: breakMinutes } = calculateShiftDurations(shift.events);
-        
+    
+        // If a manual break is provided, calculate its duration and force subtraction of 1 hour
+        if (manualBreak && manualBreak.start && manualBreak.end) {
+            const start = parse(manualBreak.start, 'HH:mm', new Date());
+            const end = parse(manualBreak.end, 'HH:mm', new Date());
+            const manualBreakDuration = (end.getTime() - start.getTime()) / (1000 * 60);
+    
+            if (manualBreakDuration > 0) {
+                 // Re-calculate work duration without the automatic 1-hour subtraction first
+                let { workDuration: initialWorkDuration } = calculateShiftDurations(shift.events);
+                totalMinutesWorked = initialWorkDuration - 60; // Subtract 1 hour as per rule
+                breakMinutes = manualBreakDuration;
+            }
+        }
+    
         if (shift.isOvertime) {
             return {
                 ordinary: 0,
@@ -1292,7 +1310,7 @@ export default function ShiftApprovalPage() {
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
                         return (
-                            <div className="grid grid-cols-4 gap-4 text-center my-4">
+                             <div className="grid grid-cols-4 gap-4 text-center my-4">
                                 <div>
                                     <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
                                     <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
