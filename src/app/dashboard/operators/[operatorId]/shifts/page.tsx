@@ -922,14 +922,36 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
             return;
         }
+
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
+        const schedule = operator.workSchedule[dayName];
+        
+        if (!newShiftIgnoreContractual && schedule?.startTime) {
+            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(newShiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+            
+            const [entryHours, entryMinutes] = newShiftTimes.entrata.split(':').map(Number);
+            const entryTime = set(newShiftDate, { hours: entryHours, minutes: entryMinutes, seconds: 0, milliseconds: 0 });
+
+            const fiveMinutesBefore = new Date(contractualStart.getTime() - 5 * 60000);
+
+            if (entryTime < fiveMinutesBefore) {
+                 toast({ 
+                    title: 'Orario non valido', 
+                    description: "L'orario di entrata è più di 5 minuti prima dell'inizio del turno. Seleziona 'Ignora orario di inizio contrattuale' per forzare.", 
+                    variant: 'destructive',
+                    duration: 7000
+                });
+                return;
+            }
+        }
     
         const createTimestamp = (time: string): Timestamp => {
             const [hours, minutes] = time.split(':').map(Number);
             return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
         
-        const dayName = dayIndexToName[getDayFns(newShiftDate)];
-        const isWorkDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+        const isWorkDay = (schedule?.totalHours || 0) > 0;
         const isOvertime = !isWorkDay;
         
         const batch = writeBatch(firestore);
