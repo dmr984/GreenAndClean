@@ -1198,6 +1198,12 @@ export default function ShiftApprovalPage() {
         return { display: `${originalTime} (calcolo fino ${format(calculationEnd, 'HH:mm')})`, calculationEnd };
     };
 
+    const contractualStartTime = useMemo(() => {
+        if (!newShiftDate || !operator?.workSchedule) return null;
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
+        return operator.workSchedule[dayName]?.startTime || null;
+    }, [newShiftDate, operator]);
+
 
     return (
         <div className="space-y-6">
@@ -1412,6 +1418,14 @@ export default function ShiftApprovalPage() {
                                 disabled={[(date) => date > new Date() && !isSameDay(date, new Date()), ...bookedShiftDays]}
                                 locale={it}
                            />
+                           {newShiftDate && (
+                                <p className="text-sm text-muted-foreground pt-2">
+                                    {contractualStartTime 
+                                        ? `Inizio turno previsto: ${contractualStartTime}`
+                                        : "Nessun orario di inizio specifico previsto per questo giorno."
+                                    }
+                                </p>
+                           )}
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
