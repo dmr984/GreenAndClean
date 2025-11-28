@@ -93,8 +93,6 @@ type ApprovalContext = {
     leaveHours: string;
     createLeaveRequest: boolean;
     manualBreak?: ManualBreak;
-    overtimeDetail?: { start: string, end: string };
-    leaveDetail?: { start: string, end: string };
 } | null;
 
 const ITEMS_PER_PAGE = 5;
@@ -280,6 +278,15 @@ export default function ShiftApprovalPage() {
     
         return approvedShifts;
     }, [allShifts]);
+
+    const contractualStartTime = useMemo(() => {
+        if (!newShiftDate || !operator?.workSchedule) return null;
+        const dayName = dayIndexToName[getDayFns(newShiftDate)];
+        return operator.workSchedule[dayName]?.startTime || null;
+    }, [newShiftDate, operator]);
+
+
+    if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
         const hasPending = events.some(e => e.status === 'sospesa');
@@ -645,15 +652,13 @@ export default function ShiftApprovalPage() {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
     
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        if (!clockInEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-
-        const { calculationStart } = getAdjustedStartTime(shift);
+        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+        if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
+    
+        const { calculationStart } = calculateShiftDurations(shift.events);
         if (!calculationStart) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
 
-        const { calculationEnd } = getAdjustedEndTime(shift);
-        if (!calculationEnd) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-        
-        let totalMillis = calculationEnd.getTime() - calculationStart.getTime();
+        let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
         
         let breakDurationMillis = 0;
     
@@ -695,7 +700,8 @@ export default function ShiftApprovalPage() {
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeHours = roundOvertimeHours(overtimeMinutes);
     
-        const leaveHours = roundOrdinaryHours(contractualMinutes - ordinaryMinutes);
+        const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - totalMinutesWorked : 0;
+        const leaveHours = roundOrdinaryHours(leaveMinutes);
     
         return { 
             ordinary: ordinaryHours, 
@@ -812,41 +818,14 @@ export default function ShiftApprovalPage() {
 
 
     const handleOpenApproveDialog = (shift: Shift, manualBreak?: ManualBreak) => {
-        const { ordinary, overtime, leave, worked } = calculateHours(shift, manualBreak);
-        const { calculationStart } = getAdjustedStartTime(shift);
-        const contractualHours = getContractualHoursForShift(shift);
-        
-        let overtimeDetail;
-        if (overtime > 0 && calculationStart) {
-            const ordinaryEndTime = new Date(calculationStart.getTime() + (contractualHours * 60 * 60 * 1000));
-            const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-            if (clockOutEvent) {
-                overtimeDetail = {
-                    start: format(ordinaryEndTime, 'HH:mm'),
-                    end: format(clockOutEvent.timestamp.toDate(), 'HH:mm')
-                };
-            }
-        }
-    
-        let leaveDetail;
-        if (leave > 0 && calculationStart) {
-            const workedUntilTime = new Date(calculationStart.getTime() + worked * 60 * 1000);
-            const contractualEndTime = new Date(calculationStart.getTime() + contractualHours * 60 * 60 * 1000);
-            leaveDetail = {
-                start: format(workedUntilTime, 'HH:mm'),
-                end: format(contractualEndTime, 'HH:mm')
-            };
-        }
-    
+        const { ordinary, overtime, leave } = calculateHours(shift, manualBreak);
         setApprovalContext({
             shift: shift,
             ordinaryHours: String(ordinary),
             overtimeHours: String(overtime),
             leaveHours: String(leave),
             manualBreak: manualBreak,
-            createLeaveRequest: false,
-            overtimeDetail,
-            leaveDetail
+            createLeaveRequest: false
         });
         setIsApproveDialogOpen(true);
     }
@@ -996,7 +975,6 @@ export default function ShiftApprovalPage() {
         setNewShiftIgnoreContractual(false);
     };
     
-    if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
     const formatTime = (date: Timestamp | undefined | null) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
     const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
@@ -1172,39 +1150,6 @@ export default function ShiftApprovalPage() {
         return { display: `${originalTime} (calcolato da ${format(calculationStart, 'HH:mm')})`, calculationStart };
     }
 
-    const getAdjustedEndTime = (shift: Shift): { display: string; calculationEnd: Date | null } => {
-        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-        if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
-
-        const clockOutTime = clockOutEvent.timestamp.toDate();
-        let calculationEnd = set(clockOutTime, { seconds: 0, milliseconds: 0 });
-
-        const minutes = calculationEnd.getMinutes();
-
-        if (minutes > 0 && minutes < 25) {
-             calculationEnd.setMinutes(0);
-        } else if (minutes >= 25 && minutes < 50) {
-             calculationEnd.setMinutes(30);
-        } else if (minutes >= 50) {
-             calculationEnd.setMinutes(0);
-             calculationEnd.setHours(calculationEnd.getHours() + 1);
-        }
-
-        const originalTime = format(clockOutTime, 'HH:mm:ss');
-         if (Math.abs(calculationEnd.getTime() - clockOutTime.getTime()) < 1000) {
-            return { display: originalTime, calculationEnd };
-        }
-
-        return { display: `${originalTime} (calcolo fino ${format(calculationEnd, 'HH:mm')})`, calculationEnd };
-    };
-
-    const contractualStartTime = useMemo(() => {
-        if (!newShiftDate || !operator?.workSchedule) return null;
-        const dayName = dayIndexToName[getDayFns(newShiftDate)];
-        return operator.workSchedule[dayName]?.startTime || null;
-    }, [newShiftDate, operator]);
-
-
     return (
         <div className="space-y-6">
 
@@ -1325,7 +1270,6 @@ export default function ShiftApprovalPage() {
                                     <TableRow>
                                         <TableHead className="whitespace-nowrap">Data</TableHead>
                                         <TableHead className="whitespace-nowrap">Inizio</TableHead>
-                                        <TableHead className="whitespace-nowrap">Intervallo Pausa</TableHead>
                                         <TableHead className="whitespace-nowrap">Fine</TableHead>
                                         <TableHead className="whitespace-nowrap">Durata</TableHead>
                                         <TableHead className="whitespace-nowrap">Stato</TableHead>
@@ -1336,20 +1280,10 @@ export default function ShiftApprovalPage() {
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const startTime = shift.events[0]?.timestamp;
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-                                        const { calculationStart } = getAdjustedStartTime(shift);
-                                        const breakStartTime = shift.events.find(e => e.type === 'pausa')?.timestamp;
-                                        const breakEndTime = shift.events.find(e => e.type === 'fine_pausa')?.timestamp;
-                                        const isBreakAuto = shift.events.some(e => (e.type === 'pausa' || e.type === 'fine_pausa') && e.isAuto);
-
                                         return (
                                             <TableRow key={index}>
                                                 <TableCell className="whitespace-nowrap">{formatDate(startTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{calculationStart ? format(calculationStart, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
-                                                <TableCell className={cn("whitespace-nowrap", isBreakAuto && "text-red-500")}>
-                                                    {breakStartTime && breakEndTime 
-                                                        ? `${formatTime(breakStartTime)} - ${formatTime(breakEndTime)}` 
-                                                        : '--:--'}
-                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">
@@ -1504,6 +1438,10 @@ export default function ShiftApprovalPage() {
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
                         const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        let mainResult = { label: 'Straordinari', value: `${overtime}h`};
+                        if (leave > 0) {
+                            mainResult = { label: 'Permessi', value: `${leave}h` };
+                        }
                         
                         return (
                              <div className="grid grid-cols-4 gap-4 text-center my-4">
@@ -1516,8 +1454,8 @@ export default function ShiftApprovalPage() {
                                     <p className="text-xl font-bold">{ordinary}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
-                                     <p className="text-xs font-medium text-muted-foreground">{overtime > 0 ? "Straordinari" : "Permessi"}</p>
-                                    <p className="text-xl font-bold">{overtime > 0 ? `${overtime}h` : `${leave}h`}</p>
+                                     <p className="text-xs font-medium text-muted-foreground">{mainResult.label}</p>
+                                    <p className="text-xl font-bold">{mainResult.value}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
@@ -1547,16 +1485,14 @@ export default function ShiftApprovalPage() {
 
                                     return displayEvents.map(t => {
                                         const { display: displayStart } = getAdjustedStartTime(detailShift);
-                                        const { display: displayEnd } = getAdjustedEndTime(detailShift);
                                         const isEntrata = t.type === 'entrata';
-                                        const isUscita = t.type === 'uscita';
                                         
                                         return (
                                         <TableRow key={t.id}>
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>
                                                <div className='flex flex-col'>
                                                   <span className='italic'>
-                                                     {isEntrata ? displayStart : isUscita ? displayEnd : format(t.timestamp.toDate(), 'HH:mm:ss')}
+                                                     {isEntrata ? displayStart : format(t.timestamp.toDate(), 'HH:mm:ss')}
                                                   </span>
                                                </div>
                                             </TableCell>
@@ -1714,33 +1650,18 @@ export default function ShiftApprovalPage() {
                                 <Input id="ordinary-hours" type="number" value={approvalContext.ordinaryHours} onChange={(e) => setApprovalContext(p => p ? {...p, ordinaryHours: e.target.value} : null)} step="0.5" min="0" />
                                 <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                             </div>
-                            
                             {parseFloat(approvalContext.overtimeHours) > 0 && (
-                                <>
-                                <Separator/>
                                 <div>
                                     <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
                                     <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
-                                    {approvalContext.overtimeDetail && (
-                                         <p className="text-xs text-muted-foreground mt-1">
-                                            Calcolato per l'intervallo: Inizio da {approvalContext.overtimeDetail.start}, Fine: {approvalContext.overtimeDetail.end}
-                                         </p>
-                                    )}
+                                    <p className="text-xs text-muted-foreground mt-1">Le ore che superano il monte ore giornaliero.</p>
                                 </div>
-                                </>
                             )}
-                            
                             {parseFloat(approvalContext.leaveHours) > 0 && (
-                                <>
-                                <Separator/>
                                 <div>
                                     <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
                                     <Input id="leave-hours" type="number" value={approvalContext.leaveHours} onChange={(e) => setApprovalContext(p => p ? {...p, leaveHours: e.target.value} : null)} step="0.5" min="0" />
-                                    {approvalContext.leaveDetail && (
-                                         <p className="text-xs text-muted-foreground mt-1">
-                                            Calcolato per l'intervallo: Dalle {approvalContext.leaveDetail.start}, Alle: {approvalContext.leaveDetail.end}
-                                         </p>
-                                    )}
+                                    <p className="text-xs text-muted-foreground mt-1">Le ore mancanti rispetto al monte ore giornaliero.</p>
                                     <div className="flex items-center space-x-2 mt-2">
                                         <Checkbox id="include-leave" checked={approvalContext.createLeaveRequest} onCheckedChange={(checked) => setApprovalContext(p => p ? {...p, createLeaveRequest: !!checked} : null)} />
                                         <Label htmlFor="include-leave" className="text-sm font-normal">
@@ -1748,7 +1669,6 @@ export default function ShiftApprovalPage() {
                                         </Label>
                                     </div>
                                 </div>
-                                </>
                             )}
                         </div>
                     )}
