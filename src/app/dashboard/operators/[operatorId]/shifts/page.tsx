@@ -413,10 +413,8 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
 
         shiftToDelete.events.forEach(event => {
-            if (!event.isAuto) {
-                const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-                batch.delete(docRef);
-            }
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            batch.delete(docRef);
         });
 
         try {
@@ -436,7 +434,9 @@ export default function ShiftApprovalPage() {
         setEditingShift(shift);
         const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
         shift.events.forEach(e => {
-            times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
+            if (times[e.type] === '') { // Only take the first one if there are duplicates
+               times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
+            }
         });
         setEditShiftTimes(times);
         setIsEditShiftOpen(true);
@@ -478,16 +478,20 @@ export default function ShiftApprovalPage() {
             }
         }
 
+        // Use a map to handle one event per type, preventing duplicates from original shift events.
         const existingEvents = new Map(editingShift.events.map(e => [e.type, e]));
+
 
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
             const existingEvent = existingEvents.get(type);
             const newTimestamp = newEventData[type];
 
             if (newTimestamp && existingEvent) {
+                // Event exists, update its timestamp
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.update(docRef, { timestamp: newTimestamp, viewedByOperator: false });
             } else if (newTimestamp && !existingEvent) {
+                // Event is new, create it
                 const newDocRef = doc(timbratureCollectionRef);
                 batch.set(newDocRef, {
                     userId: operator.id,
@@ -499,6 +503,7 @@ export default function ShiftApprovalPage() {
                     shiftId: shiftId 
                 });
             } else if (!newTimestamp && existingEvent) {
+                // Event was removed, delete it
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.delete(docRef);
             }
@@ -560,18 +565,22 @@ export default function ShiftApprovalPage() {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             
-            const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
-            
-            if (minutesDifference <= 15) { // Also covers clocking in early
+            // If operator clocks in earlier than contractual, calculation still starts from contractual time
+            if (calculationStart < contractualStart) {
                 calculationStart = contractualStart;
             } else {
-                const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                    nextHalfHour.setMinutes(30);
-                } else if (nextHalfHour.getMinutes() > 30) {
-                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                 const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
+                 if (minutesDifference <= 15) {
+                    calculationStart = contractualStart;
+                } else {
+                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
+                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                        nextHalfHour.setMinutes(30);
+                    } else if (nextHalfHour.getMinutes() > 30) {
+                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                    }
+                    calculationStart = nextHalfHour;
                 }
-                calculationStart = nextHalfHour;
             }
         }
         
@@ -622,13 +631,15 @@ export default function ShiftApprovalPage() {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
     
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-        if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
+        if (!clockInEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
 
         const { calculationStart } = getAdjustedStartTime(shift);
         if (!calculationStart) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
+
+        const { calculationEnd } = getAdjustedEndTime(shift);
+        if (!calculationEnd) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
         
-        let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
+        let totalMillis = calculationEnd.getTime() - calculationStart.getTime();
         
         let breakDurationMillis = 0;
     
@@ -670,8 +681,7 @@ export default function ShiftApprovalPage() {
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeHours = roundOvertimeHours(overtimeMinutes);
     
-        const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - totalMinutesWorked : 0;
-        const leaveHours = roundOrdinaryHours(leaveMinutes);
+        const leaveHours = roundOrdinaryHours(contractualMinutes - ordinaryMinutes);
     
         return { 
             ordinary: ordinaryHours, 
@@ -911,7 +921,7 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        const manualShiftId = doc(timbratureCollectionRef).id;
+        const manualShiftId = doc(timbratureCollectionRef).id; // Use a single ID for the whole manual shift
     
         const events: { type: Timbratura['type'], time: string }[] = [
             { type: 'entrata', time: newShiftTimes.entrata },
@@ -930,7 +940,7 @@ export default function ShiftApprovalPage() {
                     status: 'sospesa' as const, 
                     viewedByOperator: false, 
                     isOvertime,
-                    shiftId: manualShiftId
+                    shiftId: manualShiftId // Assign the same ID to all events of this shift
                 });
             }
         }
@@ -1130,7 +1140,7 @@ export default function ShiftApprovalPage() {
 
         const minutes = calculationEnd.getMinutes();
 
-        if (minutes < 25) {
+        if (minutes > 0 && minutes < 25) {
              calculationEnd.setMinutes(0);
         } else if (minutes >= 25 && minutes < 50) {
              calculationEnd.setMinutes(30);
@@ -1635,16 +1645,21 @@ export default function ShiftApprovalPage() {
                                 <Input id="ordinary-hours" type="number" value={approvalContext.ordinaryHours} onChange={(e) => setApprovalContext(p => p ? {...p, ordinaryHours: e.target.value} : null)} step="0.5" min="0" />
                                 <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                             </div>
-                            <Separator/>
-                            <div>
-                                <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
-                                <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
-                                {approvalContext.overtimeDetail && (
-                                     <p className="text-xs text-muted-foreground mt-1">
-                                        Calcolato per l'intervallo: Inizio da {approvalContext.overtimeDetail.start}, Fine: {approvalContext.overtimeDetail.end}
-                                     </p>
-                                )}
-                            </div>
+                            
+                            {parseFloat(approvalContext.overtimeHours) > 0 && (
+                                <>
+                                <Separator/>
+                                <div>
+                                    <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
+                                    <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
+                                    {approvalContext.overtimeDetail && (
+                                         <p className="text-xs text-muted-foreground mt-1">
+                                            Calcolato per l'intervallo: Inizio da {approvalContext.overtimeDetail.start}, Fine: {approvalContext.overtimeDetail.end}
+                                         </p>
+                                    )}
+                                </div>
+                                </>
+                            )}
                             
                             {parseFloat(approvalContext.leaveHours) > 0 && (
                                 <>
@@ -1721,6 +1736,3 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
-
-
-
