@@ -625,14 +625,41 @@ export default function ShiftApprovalPage() {
     const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
     
-        let { workDuration: totalMinutesWorked, breakDuration: breakMinutes, calculationStart } = calculateShiftDurations(shift.events);
-    
-        if (!calculationStart) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-    
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-        if (!clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-    
-        let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
+        if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
+
+        const clockInTime = clockInEvent.timestamp.toDate();
+        const shiftDate = clockInTime;
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const schedule = operator.workSchedule[dayName];
+        
+        let calculationStart = clockInTime;
+        
+        if (schedule?.startTime) {
+            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+            
+            if (calculationStart < contractualStart) {
+                calculationStart = contractualStart;
+            } else {
+                const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
+                if (minutesDifference <= 15) { 
+                    calculationStart = contractualStart;
+                } else {
+                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
+                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                        nextHalfHour.setMinutes(30);
+                    } else if (nextHalfHour.getMinutes() > 30) {
+                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                    }
+                    calculationStart = nextHalfHour;
+                }
+            }
+        }
+        
+        let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
+        
         let breakDurationMillis = 0;
     
         if (manualBreak && manualBreak.start && manualBreak.end) {
@@ -654,7 +681,7 @@ export default function ShiftApprovalPage() {
             totalMillis -= 60 * 60 * 1000; // Subtract 1 hour in milliseconds
         }
     
-        totalMinutesWorked = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+        let totalMinutesWorked = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
         
         if (shift.isOvertime) {
             return {
@@ -1330,7 +1357,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
                         const label = overtime > 0 ? "Straordinari" : "Permessi";
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
@@ -1338,19 +1365,19 @@ export default function ShiftApprovalPage() {
                              <div className="grid grid-cols-4 gap-2 text-center my-4">
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-lg font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                                    <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Approvate</p>
-                                    <p className="text-lg font-bold">{ordinary}h</p>
+                                    <p className="text-xl font-bold">{ordinary}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">{label}</p>
-                                    <p className="text-lg font-bold">{value}</p>
+                                    <p className="text-xl font-bold">{value}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
-                                    <p className="text-lg font-bold">{formatMinutes(worked)}</p>
+                                    <p className="text-xl font-bold">{formatMinutes(worked)}</p>
                                 </div>
                             </div>
                         );
