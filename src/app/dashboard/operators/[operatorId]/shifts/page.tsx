@@ -1540,26 +1540,24 @@ export default function ShiftApprovalPage() {
                         </Table>
                     </div>
 
-                    <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-                        <div className="flex-grow flex flex-col sm:flex-row gap-2">
-                             <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                             <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
-                             {detailShift && detailShift.status !== 'in_sospeso' && (
-                                <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
-                             )}
-                        </div>
-                        <div className="flex-grow flex flex-col sm:flex-row gap-2">
-                            {detailShift && detailShift.status === 'in_sospeso' && (
-                                <>
-                                <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
-                                    <XCircle className="mr-2 h-4 w-4"/> Rifiuta
-                                </Button>
-                                <Button className="w-full" onClick={() => handleApprovalProcess(detailShift)}>
-                                    <CheckCircle className="mr-2 h-4 w-4"/> Approva
-                                </Button>
-                                </>
+                    <ResponsiveDialogFooter className="flex-col sm:flex-row pt-4 gap-2">
+                        <div className="flex-grow grid grid-cols-2 sm:flex sm:flex-row gap-2">
+                           <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                           <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
+                           {detailShift && detailShift.status !== 'in_sospeso' && (
+                            <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
                             )}
                         </div>
+                         {detailShift && detailShift.status === 'in_sospeso' && (
+                            <div className="flex-grow grid grid-cols-2 sm:flex sm:flex-row gap-2">
+                               <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
+                                  <XCircle className="mr-2 h-4 w-4"/> Rifiuta
+                               </Button>
+                               <Button className="w-full" onClick={() => handleApprovalProcess(detailShift)}>
+                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva
+                               </Button>
+                            </div>
+                         )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
