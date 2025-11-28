@@ -102,49 +102,38 @@ export default function ShiftApprovalPage() {
     const { toast } = useToast();
     const params = useParams();
     const operatorId = params.operatorId as string;
+    
     const [operator, setOperator] = useState<Operator | null>(null);
-
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
     const [overtimeShifts, setOvertimeShifts] = useState<StraordinarioShift[]>([]);
     const [bookedShiftDays, setBookedShiftDays] = useState<Date[]>([]);
-
     const [isLoading, setIsLoading] = useState(true);
-    
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [editingShift, setEditingShift] = useState<Shift | null>(null);
     const [isEditShiftOpen, setIsEditShiftOpen] = useState(false);
-
     const [detailOvertimeShift, setDetailOvertimeShift] = useState<StraordinarioShift | null>(null);
     const [isDetailOvertimeOpen, setIsDetailOvertimeOpen] = useState(false);
     const [overtimeShiftToDelete, setOvertimeShiftToDelete] = useState<StraordinarioShift | null>(null);
     const [editingOvertimeShift, setEditingOvertimeShift] = useState<StraordinarioShift | null>(null);
     const [isEditOvertimeOpen, setIsEditOvertimeOpen] = useState(false);
-
     const [isConfirmingOvertimeDelete, setIsConfirmingOvertimeDelete] = useState(false);
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [editIgnoreContractual, setEditIgnoreContractual] = useState(false);
-    
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
-    
-    // State for break dialogs
     const [shiftForBreak, setShiftForBreak] = useState<Shift | null>(null);
     const [isMissingBreakConfirmOpen, setIsMissingBreakConfirmOpen] = useState(false);
     const [isAddBreakDialogOpen, setIsAddBreakDialogOpen] = useState(false);
     const [breakTimes, setBreakTimes] = useState<{ start: string, end: string }>({ start: '', end: '' });
-
     const [approvalContext, setApprovalContext] = useState<ApprovalContext>(null);
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
-
-
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
-    
     const [currentPage, setCurrentPage] = useState(0);
 
     const contractualStartTime = useMemo(() => {
@@ -152,16 +141,68 @@ export default function ShiftApprovalPage() {
         const dayName = dayIndexToName[getDayFns(newShiftDate)];
         return operator.workSchedule[dayName]?.startTime || null;
     }, [newShiftDate, operator]);
+    
+    const calculateShiftDurations = (events: Timbratura[]): { workDuration: number, breakDuration: number, calculationStart: Date | null } => {
+        if (!events || events.length === 0 || !operator) {
+            return { workDuration: 0, breakDuration: 0, calculationStart: null };
+        }
 
-     useEffect(() => {
-        if (!firestore || !operatorId) return;
-        const operatorDocRef = doc(firestore, 'app-users', operatorId);
-        getDoc(operatorDocRef).then(docSnap => {
-            if (docSnap.exists()) {
-                setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
+        const clockInEvent = events.find(e => e.type === 'entrata');
+        const clockOutEvent = events.find(e => e.type === 'uscita');
+
+        if (!clockInEvent) {
+             return { workDuration: 0, breakDuration: 0, calculationStart: null };
+        }
+
+        const clockInTime = clockInEvent.timestamp.toDate();
+        const shiftDate = clockInEvent.timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const schedule = operator.workSchedule[dayName];
+        
+        let calculationStart = clockInTime;
+        
+        if (schedule?.startTime && !clockInEvent.ignoreContractualStart) {
+            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+            
+            // If operator clocks in earlier than contractual, calculation still starts from contractual time
+            if (calculationStart < contractualStart) {
+                calculationStart = contractualStart;
+            } else {
+                 const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
+                 if (minutesDifference <= 15) {
+                    calculationStart = contractualStart;
+                } else {
+                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
+                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
+                        nextHalfHour.setMinutes(30);
+                    } else if (nextHalfHour.getMinutes() > 30) {
+                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                    }
+                    calculationStart = nextHalfHour;
+                }
             }
-        });
-    }, [firestore, operatorId]);
+        }
+        
+        let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
+        
+        let breakDurationMillis = 0;
+        let breakStartTs: Timestamp | null = null;
+        for (const e of events) {
+            if (e.type === 'pausa') breakStartTs = e.timestamp;
+            if (e.type === 'fine_pausa' && breakStartTs) {
+                breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
+                breakStartTs = null;
+            }
+        }
+        
+        totalMillis -= breakDurationMillis;
+
+        const workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
+        const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
+
+        return { workDuration: Math.max(0, workDuration), breakDuration, calculationStart };
+    };
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
         const hasPending = events.some(e => e.status === 'sospesa');
@@ -189,6 +230,16 @@ export default function ShiftApprovalPage() {
 
         return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
     };
+
+     useEffect(() => {
+        if (!firestore || !operatorId) return;
+        const operatorDocRef = doc(firestore, 'app-users', operatorId);
+        getDoc(operatorDocRef).then(docSnap => {
+            if (docSnap.exists()) {
+                setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
+            }
+        });
+    }, [firestore, operatorId]);
 
     useEffect(() => {
         if (!firestore || !operatorId || !operator) return;
@@ -561,68 +612,6 @@ export default function ShiftApprovalPage() {
         setIsDetailOpen(true);
     }
     
-    const calculateShiftDurations = (events: Timbratura[]): { workDuration: number, breakDuration: number, calculationStart: Date | null } => {
-        if (!events || events.length === 0 || !operator) {
-            return { workDuration: 0, breakDuration: 0, calculationStart: null };
-        }
-
-        const clockInEvent = events.find(e => e.type === 'entrata');
-        const clockOutEvent = events.find(e => e.type === 'uscita');
-
-        if (!clockInEvent) {
-             return { workDuration: 0, breakDuration: 0, calculationStart: null };
-        }
-
-        const clockInTime = clockInEvent.timestamp.toDate();
-        const shiftDate = clockInEvent.timestamp.toDate();
-        const dayName = dayIndexToName[getDayFns(shiftDate)];
-        const schedule = operator.workSchedule[dayName];
-        
-        let calculationStart = clockInTime;
-        
-        if (schedule?.startTime && !clockInEvent.ignoreContractualStart) {
-            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
-            const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            
-            // If operator clocks in earlier than contractual, calculation still starts from contractual time
-            if (calculationStart < contractualStart) {
-                calculationStart = contractualStart;
-            } else {
-                 const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
-                 if (minutesDifference <= 15) {
-                    calculationStart = contractualStart;
-                } else {
-                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                        nextHalfHour.setMinutes(30);
-                    } else if (nextHalfHour.getMinutes() > 30) {
-                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
-                    }
-                    calculationStart = nextHalfHour;
-                }
-            }
-        }
-        
-        let totalMillis = clockOutEvent ? clockOutEvent.timestamp.toMillis() - calculationStart.getTime() : 0;
-        
-        let breakDurationMillis = 0;
-        let breakStartTs: Timestamp | null = null;
-        for (const e of events) {
-            if (e.type === 'pausa') breakStartTs = e.timestamp;
-            if (e.type === 'fine_pausa' && breakStartTs) {
-                breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
-                breakStartTs = null;
-            }
-        }
-        
-        totalMillis -= breakDurationMillis;
-
-        const workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
-        const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
-
-        return { workDuration: Math.max(0, workDuration), breakDuration, calculationStart };
-    };
-
     const getContractualHoursForShift = (shift: Shift | null): number => {
         if (!shift || !operator?.workSchedule) return 0;
         const shiftDate = shift.events[0]?.timestamp.toDate();
