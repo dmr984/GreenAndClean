@@ -1465,22 +1465,22 @@ export default function ShiftApprovalPage() {
                         const { worked, break: breakDuration } = calculateHours(detailShift);
                         
                         return (
-                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center my-4">
+                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 text-center my-4">
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                                    <p className="text-lg md:text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Ordinarie</p>
-                                    <p className="text-xl font-bold">{ordinary}h</p>
+                                    <p className="text-lg md:text-xl font-bold">{ordinary}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                      <p className="text-xs font-medium text-muted-foreground">{mainResult.label}</p>
-                                    <p className="text-xl font-bold">{mainResult.value}</p>
+                                    <p className="text-lg md:text-xl font-bold">{mainResult.value}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
-                                    <p className="text-xl font-bold">{formatMinutes(worked)}</p>
+                                    <p className="text-lg md:text-xl font-bold">{formatMinutes(worked)}</p>
                                 </div>
                             </div>
                         );
@@ -1541,23 +1541,25 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-                        <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                        <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
-                        {detailShift && detailShift.status === 'in_sospeso' && (
-                          <>
-                            <Button variant="destructive" onClick={() => handleRejectShift(detailShift)}>
-                                <XCircle className="mr-2 h-4 w-4"/> Rifiuta Turno
-                            </Button>
-                            <Button onClick={() => handleApprovalProcess(detailShift)}>
-                                <CheckCircle className="mr-2 h-4 w-4"/> Approva Turno
-                            </Button>
-                          </>
-                        )}
-                        {detailShift && detailShift.status !== 'in_sospeso' && (
-                          <>
-                            <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
-                          </>
-                        )}
+                        <div className="flex-grow flex flex-col sm:flex-row gap-2">
+                             <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                             <Button variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
+                             {detailShift && detailShift.status !== 'in_sospeso' && (
+                                <Button variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
+                             )}
+                        </div>
+                        <div className="flex-grow flex flex-col sm:flex-row gap-2">
+                            {detailShift && detailShift.status === 'in_sospeso' && (
+                                <>
+                                <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
+                                    <XCircle className="mr-2 h-4 w-4"/> Rifiuta
+                                </Button>
+                                <Button className="w-full" onClick={() => handleApprovalProcess(detailShift)}>
+                                    <CheckCircle className="mr-2 h-4 w-4"/> Approva
+                                </Button>
+                                </>
+                            )}
+                        </div>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
