@@ -446,8 +446,8 @@ export default function ShiftApprovalPage() {
             return;
         }
         
-        if (editShiftTimes.pausa && !editShiftTimes.fine_pausa) {
-             toast({ title: 'Pausa incompleta', description: 'Se inserisci l\'inizio della pausa, devi inserire anche la fine.', variant: 'destructive' });
+        if ((editShiftTimes.pausa && !editShiftTimes.fine_pausa) || (!editShiftTimes.pausa && editShiftTimes.fine_pausa)) {
+             toast({ title: 'Pausa incompleta', description: 'Devi inserire sia l\'inizio che la fine della pausa.', variant: 'destructive' });
              return;
         }
 
@@ -588,13 +588,15 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        const workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+        let workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
         // If any break is registered, subtract 1 hour
-        const finalWorkDuration = breakDuration > 0 ? workDuration - 60 : workDuration;
+        if (breakDuration > 0) {
+             workDuration = workDuration - 60;
+        }
 
-        return { workDuration: Math.max(0, finalWorkDuration), breakDuration, calculationStart };
+        return { workDuration: Math.max(0, workDuration), breakDuration, calculationStart };
     };
 
     const getContractualHoursForShift = (shift: Shift | null): number => {
@@ -623,29 +625,44 @@ export default function ShiftApprovalPage() {
     const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
     
-        let { workDuration: totalMinutesWorked, breakDuration: breakMinutes } = calculateShiftDurations(shift.events);
+        let { workDuration: totalMinutesWorked, breakDuration: breakMinutes, calculationStart } = calculateShiftDurations(shift.events);
     
-        // If a manual break is provided, calculate its duration and force subtraction of 1 hour
+        if (!calculationStart) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
+    
+        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
+        if (!clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
+    
+        let totalMillis = clockOutEvent.timestamp.toMillis() - calculationStart.getTime();
+        let breakDurationMillis = 0;
+    
         if (manualBreak && manualBreak.start && manualBreak.end) {
             const start = parse(manualBreak.start, 'HH:mm', new Date());
             const end = parse(manualBreak.end, 'HH:mm', new Date());
-            const manualBreakDuration = (end.getTime() - start.getTime()) / (1000 * 60);
-    
-            if (manualBreakDuration > 0) {
-                 // Re-calculate work duration without the automatic 1-hour subtraction first
-                let { workDuration: initialWorkDuration } = calculateShiftDurations(shift.events);
-                totalMinutesWorked = initialWorkDuration - 60; // Subtract 1 hour as per rule
-                breakMinutes = manualBreakDuration;
+            breakDurationMillis = (end.getTime() - start.getTime());
+        } else {
+            let breakStartTs: Timestamp | null = null;
+            for (const e of shift.events) {
+                if (e.type === 'pausa') breakStartTs = e.timestamp;
+                if (e.type === 'fine_pausa' && breakStartTs) {
+                    breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
+                    breakStartTs = null;
+                }
             }
         }
     
+        if (breakDurationMillis > 0) {
+            totalMillis -= 60 * 60 * 1000; // Subtract 1 hour in milliseconds
+        }
+    
+        totalMinutesWorked = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+        
         if (shift.isOvertime) {
             return {
                 ordinary: 0,
                 overtime: roundOvertimeHours(totalMinutesWorked),
                 leave: 0,
                 worked: totalMinutesWorked,
-                break: breakMinutes
+                break: breakDurationMillis / (1000 * 60)
             };
         }
     
@@ -666,7 +683,7 @@ export default function ShiftApprovalPage() {
             overtime: overtimeHours, 
             leave: leaveHours,
             worked: totalMinutesWorked,
-            break: breakMinutes
+            break: breakDurationMillis / (1000 * 60)
         };
     };
     
@@ -1152,7 +1169,7 @@ export default function ShiftApprovalPage() {
                                         <TableHead>Data</TableHead>
                                         <TableHead>Inizio</TableHead>
                                         <TableHead>Fine</TableHead>
-                                        <TableHead>Pausa</TableHead>
+                                        <TableHead>Intervallo Pausa</TableHead>
                                         <TableHead>Durata</TableHead>
                                         <TableHead>Stato</TableHead>
                                         <TableHead className="text-right">Azioni</TableHead>
@@ -1163,12 +1180,18 @@ export default function ShiftApprovalPage() {
                                         const startTime = shift.events[0]?.timestamp;
                                         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
                                         const adjustedStartTime = getAdjustedStartTime(shift);
+                                        const breakStartTime = shift.events.find(e => e.type === 'pausa')?.timestamp;
+                                        const breakEndTime = shift.events.find(e => e.type === 'fine_pausa')?.timestamp;
                                         return (
                                             <TableRow key={index}>
                                                 <TableCell>{formatDate(startTime)}</TableCell>
                                                 <TableCell>{adjustedStartTime ? format(adjustedStartTime, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
                                                 <TableCell>{formatTime(endTime)}</TableCell>
-                                                <TableCell>{shift.breakDuration}m</TableCell>
+                                                <TableCell>
+                                                    {breakStartTime && breakEndTime 
+                                                        ? `${formatTime(breakStartTime)} - ${formatTime(breakEndTime)}` 
+                                                        : '--:--'}
+                                                </TableCell>
                                                 <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell>
                                                     <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
@@ -1312,22 +1335,22 @@ export default function ShiftApprovalPage() {
                         const value = overtime > 0 ? `${overtime}h` : `${leave}h`;
 
                         return (
-                             <div className="grid grid-cols-4 gap-4 text-center my-4">
-                                <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Ore Previste</p>
-                                    <p className="text-xl font-bold">{getContractualHoursForShift(detailShift)}h</p>
+                             <div className="grid grid-cols-4 gap-2 text-center my-4">
+                                <div className="space-y-1 rounded-md border p-2">
+                                    <p className="text-xs font-medium text-muted-foreground">Ore Previste</p>
+                                    <p className="text-lg font-bold">{getContractualHoursForShift(detailShift)}h</p>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Ore Approvate</p>
-                                    <p className="text-xl font-bold">{ordinary}h</p>
+                                <div className="space-y-1 rounded-md border p-2">
+                                    <p className="text-xs font-medium text-muted-foreground">Ore Approvate</p>
+                                    <p className="text-lg font-bold">{ordinary}h</p>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium text-muted-foreground">{label}</p>
-                                    <p className="text-xl font-bold">{value}</p>
+                                <div className="space-y-1 rounded-md border p-2">
+                                    <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                                    <p className="text-lg font-bold">{value}</p>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Ore Effettive</p>
-                                    <p className="text-xl font-bold">{formatMinutes(worked)}</p>
+                                <div className="space-y-1 rounded-md border p-2">
+                                    <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
+                                    <p className="text-lg font-bold">{formatMinutes(worked)}</p>
                                 </div>
                             </div>
                         );
