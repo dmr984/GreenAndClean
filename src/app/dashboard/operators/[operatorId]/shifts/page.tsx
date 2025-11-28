@@ -1268,8 +1268,8 @@ export default function ShiftApprovalPage() {
                                     <TableRow>
                                         <TableHead className="whitespace-nowrap">Data</TableHead>
                                         <TableHead className="whitespace-nowrap">Inizio</TableHead>
-                                        <TableHead className="whitespace-nowrap">Fine</TableHead>
                                         <TableHead className="whitespace-nowrap">Intervallo Pausa</TableHead>
+                                        <TableHead className="whitespace-nowrap">Fine</TableHead>
                                         <TableHead className="whitespace-nowrap">Durata</TableHead>
                                         <TableHead className="whitespace-nowrap">Stato</TableHead>
                                         <TableHead className="text-right whitespace-nowrap">Azioni</TableHead>
@@ -1288,12 +1288,12 @@ export default function ShiftApprovalPage() {
                                             <TableRow key={index}>
                                                 <TableCell className="whitespace-nowrap">{formatDate(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{calculationStart ? format(calculationStart, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
                                                 <TableCell className={cn("whitespace-nowrap", isBreakAuto && "text-red-500")}>
                                                     {breakStartTime && breakEndTime 
                                                         ? `${formatTime(breakStartTime)} - ${formatTime(breakEndTime)}` 
                                                         : '--:--'}
                                                 </TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">
                                                     <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
@@ -1432,7 +1432,7 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave, worked, break: breakMinutes } = calculateHours(detailShift);
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
                         
                         return (
                              <div className="grid grid-cols-4 gap-4 text-center my-4">
@@ -1483,7 +1483,11 @@ export default function ShiftApprovalPage() {
                                         return (
                                         <TableRow key={t.id}>
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>
-                                               {isEntrata ? displayStart : isUscita ? displayEnd : format(t.timestamp.toDate(), 'HH:mm:ss')}
+                                               <div className='flex flex-col'>
+                                                  <span>
+                                                     {isEntrata ? displayStart : isUscita ? displayEnd : format(t.timestamp.toDate(), 'HH:mm:ss')}
+                                                  </span>
+                                               </div>
                                             </TableCell>
                                             <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                             <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
@@ -1717,5 +1721,6 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
+
 
 
