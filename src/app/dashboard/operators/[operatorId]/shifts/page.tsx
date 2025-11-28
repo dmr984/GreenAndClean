@@ -454,7 +454,7 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         const shiftDate = editingShift.events[0].timestamp.toDate();
-        const shiftId = editingShift.id; 
+        const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id; 
 
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
@@ -769,11 +769,50 @@ export default function ShiftApprovalPage() {
         setIsMissingBreakConfirmOpen(false);
     };
 
-    const handleAddBreakAndOpenApproval = () => {
-        if (!shiftForBreak) return;
-        handleOpenApproveDialog(shiftForBreak, breakTimes);
-        setIsAddBreakDialogOpen(false);
-        setShiftForBreak(null);
+    const handleAddBreakAndReload = async () => {
+        if (!shiftForBreak || !firestore || !operator || !breakTimes.start || !breakTimes.end) return;
+
+        const batch = writeBatch(firestore);
+        const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+        
+        const shiftId = shiftForBreak.events[0]?.shiftId || shiftForBreak.id;
+        const shiftDate = shiftForBreak.events[0].timestamp.toDate();
+
+        const createTimestamp = (time: string): Timestamp => {
+            const [hours, minutes] = time.split(':').map(Number);
+            return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+        };
+
+        const breakStartRef = doc(timbratureRef);
+        batch.set(breakStartRef, {
+            userId: operator.id, type: 'pausa', timestamp: createTimestamp(breakTimes.start),
+            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+        });
+        const breakEndRef = doc(timbratureRef);
+        batch.set(breakEndRef, {
+            userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end),
+            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta al turno. Ora puoi approvare.' });
+            
+            const updatedEvents = [
+                ...shiftForBreak.events,
+                { id: breakStartRef.id, type: 'pausa', timestamp: createTimestamp(breakTimes.start), status: 'confermata', isAuto: true, shiftId } as Timbratura,
+                { id: breakEndRef.id, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end), status: 'confermata', isAuto: true, shiftId } as Timbratura
+            ].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+    
+            setDetailShift(prev => prev ? ({ ...prev, events: updatedEvents }) : null);
+
+        } catch (error) {
+            toast({ title: 'Errore', description: 'Impossibile aggiungere la pausa.', variant: 'destructive' });
+        } finally {
+            setIsAddBreakDialogOpen(false);
+            setShiftForBreak(null);
+            setBreakTimes({ start: '', end: '' });
+        }
     };
 
 
@@ -1399,20 +1438,7 @@ export default function ShiftApprovalPage() {
                                 {(() => {
                                     if (!detailShift) return null;
                                     
-                                    const { calculationStart } = calculateShiftDurations(detailShift.events);
                                     let displayEvents = [...detailShift.events];
-
-                                    // Create a virtual event for the calculated start time
-                                    const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
-                                    if (entrataIndex !== -1 && calculationStart) {
-                                        const originalEntrata = displayEvents[entrataIndex];
-                                        const virtualEntrata = {
-                                            ...originalEntrata,
-                                            id: `virtual-${originalEntrata.id}`,
-                                            timestamp: Timestamp.fromDate(calculationStart),
-                                        };
-                                        displayEvents[entrataIndex] = virtualEntrata;
-                                    }
                                     
                                     displayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
@@ -1622,7 +1648,7 @@ export default function ShiftApprovalPage() {
                     </div>
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsAddBreakDialogOpen(false)}>Annulla</Button>
-                        <Button onClick={handleAddBreakAndOpenApproval}>Aggiungi Pausa e Approva</Button>
+                        <Button onClick={handleAddBreakAndReload}>Aggiungi Pausa</Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
