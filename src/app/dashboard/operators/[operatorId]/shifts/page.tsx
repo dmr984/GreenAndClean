@@ -771,41 +771,48 @@ export default function ShiftApprovalPage() {
 
     const handleAddBreakAndReload = async () => {
         if (!shiftForBreak || !firestore || !operator || !breakTimes.start || !breakTimes.end) return;
-
+    
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
         const shiftId = shiftForBreak.events[0]?.shiftId || shiftForBreak.id;
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
-
+    
         const createTimestamp = (time: string): Timestamp => {
             const [hours, minutes] = time.split(':').map(Number);
             return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
-
+    
         const breakStartRef = doc(timbratureRef);
-        batch.set(breakStartRef, {
+        const breakStartData: Omit<Timbratura, 'id'> = {
             userId: operator.id, type: 'pausa', timestamp: createTimestamp(breakTimes.start),
             status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
-        });
+        };
+        batch.set(breakStartRef, breakStartData);
+    
         const breakEndRef = doc(timbratureRef);
-        batch.set(breakEndRef, {
+        const breakEndData: Omit<Timbratura, 'id'> = {
             userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end),
             status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
-        });
-
+        };
+        batch.set(breakEndRef, breakEndData);
+    
         try {
             await batch.commit();
-            toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta al turno. Ora puoi approvare.' });
+            toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta. Puoi approvare il turno.' });
             
+            // Manually update the state of the detailShift to reflect the changes
             const updatedEvents = [
                 ...shiftForBreak.events,
-                { id: breakStartRef.id, type: 'pausa', timestamp: createTimestamp(breakTimes.start), status: 'confermata', isAuto: true, shiftId } as Timbratura,
-                { id: breakEndRef.id, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end), status: 'confermata', isAuto: true, shiftId } as Timbratura
-            ].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                { ...breakStartData, id: breakStartRef.id } as Timbratura,
+                { ...breakEndData, id: breakEndRef.id } as Timbratura
+            ];
+            
+            // It's crucial to sort events chronologically after adding new ones
+            updatedEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
     
             setDetailShift(prev => prev ? ({ ...prev, events: updatedEvents }) : null);
-
+    
         } catch (error) {
             toast({ title: 'Errore', description: 'Impossibile aggiungere la pausa.', variant: 'destructive' });
         } finally {
@@ -1232,13 +1239,13 @@ export default function ShiftApprovalPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Inizio</TableHead>
-                                        <TableHead>Fine</TableHead>
-                                        <TableHead>Intervallo Pausa</TableHead>
-                                        <TableHead>Durata</TableHead>
-                                        <TableHead>Stato</TableHead>
-                                        <TableHead className="text-right">Azioni</TableHead>
+                                        <TableHead className="whitespace-nowrap">Data</TableHead>
+                                        <TableHead className="whitespace-nowrap">Inizio</TableHead>
+                                        <TableHead className="whitespace-nowrap">Fine</TableHead>
+                                        <TableHead className="whitespace-nowrap">Intervallo Pausa</TableHead>
+                                        <TableHead className="whitespace-nowrap">Durata</TableHead>
+                                        <TableHead className="whitespace-nowrap">Stato</TableHead>
+                                        <TableHead className="text-right whitespace-nowrap">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -1248,23 +1255,25 @@ export default function ShiftApprovalPage() {
                                         const adjustedStartTime = getAdjustedStartTime(shift);
                                         const breakStartTime = shift.events.find(e => e.type === 'pausa')?.timestamp;
                                         const breakEndTime = shift.events.find(e => e.type === 'fine_pausa')?.timestamp;
+                                        const isBreakAuto = shift.events.some(e => e.type === 'pausa' && e.isAuto);
+
                                         return (
                                             <TableRow key={index}>
-                                                <TableCell>{formatDate(startTime)}</TableCell>
-                                                <TableCell>{adjustedStartTime ? format(adjustedStartTime, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
-                                                <TableCell>{formatTime(endTime)}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatDate(startTime)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{adjustedStartTime ? format(adjustedStartTime, 'p', { locale: it }) : formatTime(startTime)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
+                                                <TableCell className={cn("whitespace-nowrap", isBreakAuto && "text-red-500")}>
                                                     {breakStartTime && breakEndTime 
                                                         ? `${formatTime(breakStartTime)} - ${formatTime(breakEndTime)}` 
                                                         : '--:--'}
                                                 </TableCell>
-                                                <TableCell>{formatMinutes(shift.workDuration)}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">
                                                     <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
                                                         {shift.status.charAt(0).toUpperCase() + shift.status.slice(1).replace('_', ' ')}
                                                     </Badge>
                                                 </TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="text-right whitespace-nowrap">
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                                         <Eye className="h-5 w-5" />
                                                     </Button>
