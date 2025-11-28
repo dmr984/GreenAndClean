@@ -681,7 +681,8 @@ export default function ShiftApprovalPage() {
         const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
         const overtimeHours = roundOvertimeHours(overtimeMinutes);
     
-        const leaveHours = roundOrdinaryHours(contractualMinutes - ordinaryMinutes);
+        const leaveMinutes = contractualMinutes > ordinaryMinutes ? contractualMinutes - ordinaryMinutes : 0;
+        const leaveHours = roundOrdinaryHours(leaveMinutes);
     
         return { 
             ordinary: ordinaryHours, 
@@ -1455,7 +1456,7 @@ export default function ShiftApprovalPage() {
                                     <p className="text-xl font-bold">{ordinary}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
-                                    <p className="text-xs font-medium text-muted-foreground">{overtime > 0 ? "Straordinari" : "Permessi"}</p>
+                                     <p className="text-xs font-medium text-muted-foreground">{overtime > 0 ? "Straordinari" : "Permessi"}</p>
                                     <p className="text-xl font-bold">{overtime > 0 ? `${overtime}h` : `${leave}h`}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-2">
@@ -1485,8 +1486,8 @@ export default function ShiftApprovalPage() {
                                     const displayEvents = [...detailShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
                                     return displayEvents.map(t => {
-                                        const { display: displayStart, calculationStart } = getAdjustedStartTime(detailShift);
-                                        const { display: displayEnd, calculationEnd } = getAdjustedEndTime(detailShift);
+                                        const { display: displayStart } = getAdjustedStartTime(detailShift);
+                                        const { display: displayEnd } = getAdjustedEndTime(detailShift);
                                         const isEntrata = t.type === 'entrata';
                                         const isUscita = t.type === 'uscita';
                                         
@@ -1494,7 +1495,7 @@ export default function ShiftApprovalPage() {
                                         <TableRow key={t.id}>
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>
                                                <div className='flex flex-col'>
-                                                  <span>
+                                                  <span className='italic'>
                                                      {isEntrata ? displayStart : isUscita ? displayEnd : format(t.timestamp.toDate(), 'HH:mm:ss')}
                                                   </span>
                                                </div>

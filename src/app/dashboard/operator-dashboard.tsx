@@ -29,7 +29,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set } from 'date-fns';
 
 type ClockingEvent = {
     id: string;
@@ -120,6 +120,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
+
+  const [canClockIn, setCanClockIn] = useState(true);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -413,6 +415,34 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
        setIsOnBreak(false);
     }
   }, [clockings]);
+
+  useEffect(() => {
+    if (isClockedIn || !operator || !isWorkDay) {
+        setCanClockIn(true); // Always allow clocking out, or clocking in for overtime
+        return;
+    }
+    const today = new Date();
+    const dayName = dayIndexToName[getDay(today)];
+    const shiftStartTimeStr = operator.workSchedule?.[dayName]?.startTime;
+
+    if (!shiftStartTimeStr) {
+        setCanClockIn(true); // If no start time is defined, can always clock in
+        return;
+    }
+
+    const [hours, minutes] = shiftStartTimeStr.split(':').map(Number);
+    const shiftStartTime = set(today, { hours, minutes, seconds: 0, milliseconds: 0 });
+    const activationTime = new Date(shiftStartTime.getTime() - 5 * 60 * 1000); // 5 minutes before
+
+    setCanClockIn(today >= activationTime);
+
+    const interval = setInterval(() => {
+        setCanClockIn(new Date() >= activationTime);
+    }, 1000 * 30); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+}, [operator, isWorkDay, isClockedIn]);
+
   
   const getLocation = (): Promise<{ latitude: number, longitude: number }> => {
     return new Promise((resolve, reject) => {
@@ -790,7 +820,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <Button 
                         className="w-full" 
                         size="lg"
-                        disabled={isProcessing} 
+                        disabled={isProcessing || !canClockIn} 
                         onClick={() => handleClocking('entrata')}
                         style={{backgroundColor: '#22c55e', color: 'white'}}
                     >
