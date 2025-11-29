@@ -81,6 +81,9 @@ type StraordinarioShift = {
     date: Timestamp;
 };
 
+type CombinedShiftHistoryItem = (Shift | StraordinarioShift) & { type: 'regular' | 'overtime' };
+
+
 type UnlockRequest = {
     id: string;
     startDate: Timestamp;
@@ -372,17 +375,25 @@ export default function ShiftApprovalPage() {
         return { pendingOvertimeShifts: pending };
     }, [overtimeShifts]);
 
-    const historicalShifts = useMemo(() => {
-        const approvedShifts = allShifts
+    const historicalShifts: CombinedShiftHistoryItem[] = useMemo(() => {
+        const approvedRegularShifts = allShifts
             .filter(s => s.status === 'confermato' || s.status === 'rifiutato')
-            .sort((a, b) => {
-                const dateA = a.events[0]?.timestamp.toMillis() || 0;
-                const dateB = b.events[0]?.timestamp.toMillis() || 0;
-                return dateB - dateA;
-            });
+            .map(s => ({ ...s, type: 'regular' as const }));
     
-        return approvedShifts;
-    }, [allShifts]);
+        const historicalOvertimeShifts = overtimeShifts
+            .filter(s => s.status === 'approvato' || s.status === 'rifiutato')
+            .map(s => ({ ...s, type: 'overtime' as const }));
+    
+        const combined = [...approvedRegularShifts, ...historicalOvertimeShifts];
+    
+        combined.sort((a, b) => {
+            const dateA = a.type === 'regular' ? a.events[0]?.timestamp.toMillis() : (a as StraordinarioShift).date.toMillis();
+            const dateB = b.type === 'regular' ? b.events[0]?.timestamp.toMillis() : (b as StraordinarioShift).date.toMillis();
+            return (dateB || 0) - (dateA || 0);
+        });
+    
+        return combined;
+    }, [allShifts, overtimeShifts]);
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
 
@@ -629,9 +640,14 @@ export default function ShiftApprovalPage() {
         });
     };
 
-    const handleOpenDetailDialog = (shift: Shift) => {
-        setDetailShift(shift);
-        setIsDetailOpen(true);
+    const handleOpenDetailDialog = (shift: CombinedShiftHistoryItem) => {
+        if (shift.type === 'regular') {
+            setDetailShift(shift);
+            setIsDetailOpen(true);
+        } else {
+            setDetailOvertimeShift(shift);
+            setIsDetailOvertimeOpen(true);
+        }
     }
     
     const getContractualHoursForShift = (shift: Shift | null): number => {
@@ -1241,6 +1257,36 @@ export default function ShiftApprovalPage() {
 
         return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
     }
+    
+    const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
+        const startTimeEvent = shift.events.find(e => e.type === 'entrata');
+        const endTimeEvent = shift.events.find(e => e.type === 'uscita');
+        if (!startTimeEvent || !endTimeEvent) return { start: '--:--', end: '--:--' };
+    
+        const originalStartTime = format(startTimeEvent.timestamp.toDate(), 'HH:mm:ss');
+        const originalEndTime = format(endTimeEvent.timestamp.toDate(), 'HH:mm:ss');
+    
+        const workedMinutes = calculateOvertimeShiftMinutes(shift);
+        const calculatedHours = roundOvertimeHours(workedMinutes);
+        
+        // Calculate the end time based on the calculated hours
+        const breakDuration = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+            const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+            return acc;
+        }, 0);
+        
+        const calculatedEndTime = new Date(startTimeEvent.timestamp.toDate().getTime() + (calculatedHours * 60 * 60000) + breakDuration);
+    
+        const endDisplay = Math.abs(calculatedEndTime.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000
+            ? `${originalEndTime} (${format(calculatedEndTime, 'HH:mm')})`
+            : originalEndTime;
+    
+        return {
+            start: originalStartTime,
+            end: endDisplay
+        };
+    };
 
     return (
         <div className="space-y-6">
@@ -1294,7 +1340,7 @@ export default function ShiftApprovalPage() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right whitespace-nowrap">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'regular' })}>
                                                         <Eye className="h-5 w-5" />
                                                     </Button>
                                                 </TableCell>
@@ -1334,7 +1380,7 @@ export default function ShiftApprovalPage() {
                                             <TableCell className="whitespace-nowrap">{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
                                             <TableCell className="whitespace-nowrap">{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
                                             <TableCell className="text-right whitespace-nowrap">
-                                                <Button variant="ghost" size="icon" onClick={() => { setDetailOvertimeShift(shift); setIsDetailOvertimeOpen(true);}}>
+                                                <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'overtime' })}>
                                                     <Eye className="h-5 w-5" />
                                                 </Button>
                                             </TableCell>
@@ -1361,6 +1407,7 @@ export default function ShiftApprovalPage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="whitespace-nowrap">Data</TableHead>
+                                        <TableHead className="whitespace-nowrap">Tipo</TableHead>
                                         <TableHead className="whitespace-nowrap">Inizio</TableHead>
                                         <TableHead className="whitespace-nowrap">Fine</TableHead>
                                         <TableHead className="whitespace-nowrap">Durata</TableHead>
@@ -1370,16 +1417,26 @@ export default function ShiftApprovalPage() {
                                 </TableHeader>
                                 <TableBody>
                                     {paginatedApprovedShifts.map((shift, index) => {
-                                        const startTime = shift.events[0]?.timestamp;
-                                        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+                                        const isRegular = shift.type === 'regular';
+                                        const displayShift = shift as Shift; // Treat as Shift for common properties
+                                        const displayOvertime = shift as StraordinarioShift;
+
+                                        const startTime = isRegular ? displayShift.events[0]?.timestamp : displayOvertime.events.find(e => e.type === 'entrata')?.timestamp;
+                                        const endTime = isRegular ? displayShift.events.find(e => e.type === 'uscita')?.timestamp : displayOvertime.events.find(e => e.type === 'uscita')?.timestamp;
+                                        const duration = isRegular ? displayShift.workDuration : calculateOvertimeShiftMinutes(displayOvertime);
+                                        const date = isRegular ? startTime : displayOvertime.date;
+
                                         return (
-                                            <TableRow key={index}>
-                                                <TableCell className="whitespace-nowrap">{formatDate(startTime)}</TableCell>
+                                            <TableRow key={`${shift.id}-${index}`}>
+                                                <TableCell className="whitespace-nowrap">{formatDate(date)}</TableCell>
+                                                <TableCell className='whitespace-nowrap'>
+                                                    {isRegular ? <Badge variant="secondary">Ordinario</Badge> : <Badge className="bg-amber-500 text-white">Straordinario</Badge>}
+                                                </TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{formatMinutes(duration)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">
-                                                    <Badge variant={shift.status === 'confermato' ? 'secondary' : 'destructive'}>
+                                                    <Badge variant={shift.status === 'confermato' || shift.status === 'approvato' ? 'secondary' : 'destructive'}>
                                                         {shift.status.charAt(0).toUpperCase() + shift.status.slice(1).replace('_', ' ')}
                                                     </Badge>
                                                 </TableCell>
@@ -1666,9 +1723,14 @@ export default function ShiftApprovalPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {detailOvertimeShift?.events.map((e, i) => (
+                                {detailOvertimeShift?.events.map((e, i) => {
+                                      const adjustedTimes = getAdjustedOvertimeTimes(detailOvertimeShift);
+                                      const isEntrata = e.type === 'entrata';
+                                      const isUscita = e.type === 'uscita';
+                                      const displayTime = isEntrata ? adjustedTimes.start : (isUscita ? adjustedTimes.end : formatTime(e.timestamp));
+                                    return (
                                     <TableRow key={i}>
-                                        <TableCell>{formatTime(e.timestamp)}</TableCell>
+                                        <TableCell><span className='italic'>{displayTime}</span></TableCell>
                                         <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
                                         <TableCell className="whitespace-nowrap">
                                            {e.latitude && e.longitude ? (
@@ -1680,7 +1742,7 @@ export default function ShiftApprovalPage() {
                                             )}
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                )})}
                             </TableBody>
                         </Table>
                     </div>
