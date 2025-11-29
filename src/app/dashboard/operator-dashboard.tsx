@@ -887,7 +887,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     Come utilizzare il sistema di timbratura in modo corretto.
                 </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
-            <ScrollArea className="h-72">
+            <ScrollArea>
                 <div className="py-4 pr-6 space-y-4 text-sm">
                     <div>
                         <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
@@ -900,7 +900,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                      <div>
                         <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
                         <p className="text-muted-foreground">
-                           Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita e inserita direttamente dall'amministratore in fase di approvazione del tuo turno.
+                           Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
                         </p>
                     </div>
                      <div>
