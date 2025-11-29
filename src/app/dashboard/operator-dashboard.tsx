@@ -89,6 +89,8 @@ type LeaveStatus = {
 type StraordinarioEvent = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
+    latitude: number;
+    longitude: number;
 }
 
 type StraordinarioShift = {
@@ -582,28 +584,34 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   
   const handleOvertimeClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
         if (!firestore || !operator) return;
-
-        const newEvent: StraordinarioEvent = { type, timestamp: Timestamp.now() };
-
-        let updatedShift: StraordinarioShift;
-
-        if (currentOvertimeShift) {
-            updatedShift = { ...currentOvertimeShift, events: [...currentOvertimeShift.events, newEvent] };
-        } else {
-            updatedShift = {
-                events: [newEvent],
-                status: 'in_corso',
-                date: Timestamp.fromDate(startOfDay(new Date())),
-            };
-        }
-
-        if (type === 'uscita') {
-            updatedShift.status = 'in_attesa_di_approvazione';
-        }
-
-        const collectionRef = collection(firestore, `app-users/${operator.id}/straordinari`);
         
         try {
+            const currentLoc = await getLocation();
+            const newEvent: StraordinarioEvent = { 
+                type, 
+                timestamp: Timestamp.now(),
+                latitude: currentLoc.latitude,
+                longitude: currentLoc.longitude
+            };
+
+            let updatedShift: StraordinarioShift;
+
+            if (currentOvertimeShift) {
+                updatedShift = { ...currentOvertimeShift, events: [...currentOvertimeShift.events, newEvent] };
+            } else {
+                updatedShift = {
+                    events: [newEvent],
+                    status: 'in_corso',
+                    date: Timestamp.fromDate(startOfDay(new Date())),
+                };
+            }
+
+            if (type === 'uscita') {
+                updatedShift.status = 'in_attesa_di_approvazione';
+            }
+
+            const collectionRef = collection(firestore, `app-users/${operator.id}/straordinari`);
+            
             if (updatedShift.id) {
                 const docRef = doc(collectionRef, updatedShift.id);
                 await updateDoc(docRef, { events: updatedShift.events, status: updatedShift.status });
@@ -685,8 +693,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     const renderOvertimeClockingInterface = () => {
         if (!currentOvertimeShift) return null;
-        const isOvertimeOnBreak = currentOvertimeShift.events[currentOvertimeShift.events.length - 1]?.type === 'pausa';
-
+        
         return (
             <Card>
                 <CardHeader className="pb-4">
@@ -701,7 +708,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
-                    <Button className="w-full" size="lg" variant="destructive" disabled={isOvertimeOnBreak} onClick={() => handleOvertimeClocking('uscita')}>
+                    <Button className="w-full" size="lg" variant="destructive" onClick={() => handleOvertimeClocking('uscita')}>
                         <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
                     </Button>
                 </CardFooter>

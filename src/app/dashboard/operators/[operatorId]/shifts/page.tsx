@@ -70,6 +70,8 @@ type Shift = {
 type StraordinarioEvent = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
+    latitude?: number;
+    longitude?: number;
 };
 
 type StraordinarioShift = {
@@ -1024,8 +1026,8 @@ export default function ShiftApprovalPage() {
                 const [hours, minutes] = time.split(':').map(Number);
                 return Timestamp.fromDate(set(shift.date.toDate(), { hours, minutes, seconds: 0, milliseconds: 0 }));
             };
-            eventsToProcess.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start) });
-            eventsToProcess.push({ type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end) });
+            eventsToProcess.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start), latitude: 0, longitude: 0 });
+            eventsToProcess.push({ type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end), latitude: 0, longitude: 0 });
         }
 
 
@@ -1043,8 +1045,8 @@ export default function ShiftApprovalPage() {
                 timestamp: event.timestamp,
                 status: 'confermata',
                 viewedByOperator: false,
-                latitude: null,
-                longitude: null,
+                latitude: event.latitude ?? null,
+                longitude: event.longitude ?? null,
                 isOvertime: true
             });
         });
@@ -1150,7 +1152,7 @@ export default function ShiftApprovalPage() {
                     toast({ title: 'Orario non valido', description: `L'orario per '${type}' non è valido.`, variant: 'destructive' });
                     return;
                 }
-                newEvents.push({ type, timestamp });
+                newEvents.push({ type, timestamp, latitude: 0, longitude: 0 }); // Lat/Lon can be dummy for manual edits
             }
         }
         
