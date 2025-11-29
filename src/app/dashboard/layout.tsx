@@ -125,11 +125,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <Calendar className="h-5 w-5" /> Riepilogo Attività
                             </Button>
                         </Link>
-                        <Link href="/dashboard/end-of-month" passHref>
-                            <Button variant={pathname === '/dashboard/end-of-month' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <Calculator className="h-5 w-5" /> Calcolo Fine Mese
-                            </Button>
-                        </Link>
                         <Link href="/dashboard/requests" passHref>
                             <Button variant={pathname === '/dashboard/requests' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Plane className="h-5 w-5" /> Ferie e Permessi
