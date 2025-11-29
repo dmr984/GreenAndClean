@@ -173,7 +173,7 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
     const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
     const overtimeHours = roundOvertimeHours(overtimeMinutes);
 
-    const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - totalMinutesWorked : 0;
+    const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - ordinaryMinutes : 0;
     const leaveHours = roundOrdinaryHours(leaveMinutes);
 
     return { 
@@ -394,7 +394,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         </ResponsiveDialogHeader>
                         
                         {selectedDay.shift ? (() => {
-                            const { ordinary, overtime, workedMinutes } = calculateShiftHours(selectedDay.shift, operator);
+                            const { ordinary, overtime, leave, workedMinutes } = calculateShiftHours(selectedDay.shift, operator);
                             const clockInEvent = selectedDay.shift.events.find(e => e.type === 'entrata');
                             const dayName = clockInEvent ? dayIndexToName[getDay(clockInEvent.timestamp.toDate())] : undefined;
                             const schedule = dayName && operator ? operator.workSchedule[dayName] : undefined;
@@ -431,6 +431,14 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     displayEvents[entrataIndex] = virtualEntrata;
                                 }
                             }
+
+                            let finalResultLabel = 'Straordinari Calcolati';
+                            let finalResultValue = `${overtime}h`;
+
+                            if (leave > 0) {
+                                finalResultLabel = 'Permessi';
+                                finalResultValue = `${leave}h`;
+                            }
                             
                             return (
                                 <>
@@ -448,8 +456,8 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                         <p className="text-2xl font-bold">{ordinary}h</p>
                                     </div>
                                     <div>
-                                        <p className="text-sm font-medium text-muted-foreground">Straordinari Calcolati</p>
-                                        <p className="text-2xl font-bold">{overtime}h</p>
+                                        <p className="text-sm font-medium text-muted-foreground">{finalResultLabel}</p>
+                                        <p className="text-2xl font-bold">{finalResultValue}</p>
                                     </div>
                                 </div>
                                 <div className="max-h-64 overflow-y-auto">
