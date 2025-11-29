@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PackageSearch, Loader2, Send, Circle, Trash2, AlertCircle } from 'lucide-react';
+import { PackageSearch, Loader2, Send, Circle, Trash2, AlertCircle, Info } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 
 type Product = {
     id: string;
@@ -57,6 +58,7 @@ export default function SupplyRequestPage() {
     
     const [requestToDelete, setRequestToDelete] = useState<SupplyRequest | null>(null);
     const [quantities, setQuantities] = useState<Quantities>({});
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
 
     useEffect(() => {
         if (!firestore) return;
@@ -223,6 +225,9 @@ export default function SupplyRequestPage() {
                     <div className="flex items-center gap-3">
                         <PackageSearch className="h-6 w-6 text-primary" />
                         <CardTitle className="text-2xl">Crea Nuova Richiesta Fornitura</CardTitle>
+                        <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                            <Info className="h-5 w-5" />
+                        </Button>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -344,6 +349,43 @@ export default function SupplyRequestPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Guida alla Richiesta Forniture</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Come richiedere il materiale di cui hai bisogno.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                <div className="py-4 space-y-4 text-sm">
+                    <div>
+                        <h4 className="font-semibold mb-1">Come fare una richiesta</h4>
+                        <p className="text-muted-foreground">
+                            Nella tabella trovi l'elenco di tutti i prodotti disponibili in magazzino. Inserisci la quantità desiderata per ogni prodotto di cui hai bisogno. Puoi richiedere più prodotti contemporaneamente. Una volta inserite tutte le quantità, clicca sul pulsante <span className="font-bold text-primary-foreground">Invia Richieste</span>.
+                        </p>
+                    </div>
+                     <div>
+                        <h4 className="font-semibold mb-1">Prodotti Esauriti</h4>
+                        <p className="text-muted-foreground">
+                            Se un prodotto è etichettato come <span className="font-bold text-destructive">Esaurito</span>, significa che non è al momento disponibile in magazzino e non può essere richiesto.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Storico Richieste</h4>
+                        <p className="text-muted-foreground">
+                            Nella seconda tabella puoi vedere lo storico di tutte le tue richieste. Potrai vedere lo stato (<Badge variant="default">in attesa</Badge>, <Badge variant="secondary">approvata</Badge>, o <Badge variant="destructive">rifiutata</Badge>) e, in caso di approvazione, la quantità effettivamente approvata dall'amministratore.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Annullare una Richiesta</h4>
+                        <p className="text-muted-foreground">
+                            Finché una richiesta è "in attesa", puoi annullarla cliccando sull'icona del cestino <Trash2 className="h-4 w-4 inline-block text-destructive" />.
+                        </p>
+                    </div>
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
         </>
     );
 }

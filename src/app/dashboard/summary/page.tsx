@@ -4,7 +4,7 @@ import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive, Clock, MoreHorizontal, Sun, Moon, Activity, Bed } from 'lucide-react';
+import { Loader2, User, ClipboardList, PackageSearch, ListChecks, Calendar as CalendarIcon, CheckCircle, XCircle, MapPin, Briefcase, Plus, Hash, Plane, UserCheck, Stethoscope, Trash2, Eye, Pencil, AlertCircle, Circle, Archive, Clock, MoreHorizontal, Sun, Moon, Activity, Bed, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -497,6 +497,7 @@ export default function OperatorSummaryPage() {
     const searchParams = useSearchParams();
     const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('monthly');
     const [dailyViewDate, setDailyViewDate] = useState(new Date());
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
 
 
     useEffect(() => {
@@ -527,9 +528,12 @@ export default function OperatorSummaryPage() {
                                <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
                                <p className="text-muted-foreground">Riepilogo Attività (Codice: {operator.username})</p>
                             </div>
-                              <div className="flex gap-2">
+                              <div className="flex items-center gap-2">
                                 <Button variant={currentView === 'monthly' ? 'secondary' : 'outline'} onClick={() => setCurrentView('monthly')}>Mensile</Button>
                                 <Button variant={currentView === 'daily' ? 'secondary' : 'outline'} onClick={() => setCurrentView('daily')}>Giornaliero</Button>
+                                <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}>
+                                    <Info className="h-5 w-5" />
+                                </Button>
                             </div>
                         </div>
                     </CardHeader>
@@ -551,6 +555,36 @@ export default function OperatorSummaryPage() {
                     </CardContent>
                 </Card>
             </div>
+             <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Guida al Riepilogo Attività</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>
+                            Come leggere i tuoi riepiloghi mensili e giornalieri.
+                        </ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                    <div className="py-4 space-y-4 text-sm">
+                        <div>
+                            <h4 className="font-semibold mb-1">Vista Mensile</h4>
+                            <p className="text-muted-foreground">
+                                La vista mensile ti offre una panoramica di tutte le tue attività nel mese selezionato. Puoi vedere il totale dei giorni lavorati, le ore ordinarie e straordinarie, e i giorni di ferie, malattia o ore di permesso. Clicca su una delle card per vedere il dettaglio di quella voce.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Vista Giornaliera</h4>
+                            <p className="text-muted-foreground">
+                                La vista giornaliera ti mostra un calendario del mese. Ogni giorno ha uno stato (Ordinario, Straordinario, Ferie, etc.) per darti un'idea immediata di cosa è successo. Clicca sull'icona a forma di occhio <Eye className="h-4 w-4 inline-block"/> per vedere il dettaglio delle timbrature di un giorno specifico.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Orari di Riferimento</h4>
+                            <p className="text-muted-foreground">
+                                Quando visualizzi i dettagli di un turno, potresti vedere un orario tra parentesi, es. `08:05 (08:00)`. L'orario fuori dalle parentesi è quando hai timbrato, mentre quello tra parentesi è l'orario che il sistema usa per i calcoli, basato sulle regole di arrotondamento.
+                            </p>
+                        </div>
+                    </div>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
         </Suspense>
     );
 }

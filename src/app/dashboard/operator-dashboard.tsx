@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
@@ -30,14 +30,15 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
 import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set } from 'date-fns';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 
 type ClockingEvent = {
     id: string;
     userId: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
     status: 'sospesa' | 'confermata' | 'rifiutata';
     viewedByOperator?: boolean;
 };
@@ -91,8 +92,8 @@ type LeaveStatus = {
 type StraordinarioEvent = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
 }
 
 type StraordinarioShift = {
@@ -125,6 +126,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
 
   const [canClockIn, setCanClockIn] = useState(true);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -705,6 +707,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <div className="flex items-center gap-3">
                         <Clock className="h-6 w-6 text-primary" />
                         <CardTitle className="text-2xl">Gestione Turno Straordinario</CardTitle>
+                         <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                            <Info className="h-5 w-5" />
+                        </Button>
                     </div>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center gap-4">
@@ -746,6 +751,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               <div className="flex items-center gap-3">
                 <Clock className="h-6 w-6 text-primary" />
                 <CardTitle className="text-2xl">Gestione Turno</CardTitle>
+                <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                    <Info className="h-5 w-5" />
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center gap-4">
@@ -881,6 +889,49 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         </CardContent>
       </Card>
     </div>
+
+    <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+        <ResponsiveDialogContent>
+            <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle>Guida alla Gestione del Turno</ResponsiveDialogTitle>
+                <ResponsiveDialogDescription>
+                    Come utilizzare il sistema di timbratura.
+                </ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
+            <div className="py-4 space-y-4 text-sm">
+                <div>
+                    <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
+                    <p className="text-muted-foreground">
+                        Usa il pulsante <span className="font-bold text-green-500">Inizia Turno</span> per registrare la tua entrata e <span className="font-bold text-red-500">Termina Turno</span> per registrare la tua uscita. Il sistema richiede l'accesso alla tua posizione GPS solo al momento della timbratura per verificarne la correttezza.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-1">Pause</h4>
+                    <p className="text-muted-foreground">
+                        Durante il turno, puoi usare l'interruttore <span className="font-bold">Pausa</span> per registrare l'inizio e la fine di una pausa.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Turno Straordinario</h4>
+                    <p className="text-muted-foreground">
+                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante <span className="font-bold text-blue-500">Avvia Turno Straordinario</span>. Questo ti permette di registrare ore di lavoro extra. La timbratura della pausa non è disponibile per gli straordinari; verrà gestita dall'amministratore.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
+                    <p className="text-muted-foreground">
+                        Ogni timbratura (entrata, uscita, pausa) viene inviata all'amministratore per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default">in sospeso</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
+                    <p className="text-muted-foreground">
+                        Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
+                    </p>
+                </div>
+            </div>
+        </ResponsiveDialogContent>
+    </ResponsiveDialog>
     </>
   );
 }

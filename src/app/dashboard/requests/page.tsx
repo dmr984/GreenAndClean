@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plane, PlusCircle, Loader2, Circle, Trash2 } from 'lucide-react';
+import { Plane, PlusCircle, Loader2, Circle, Trash2, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -22,6 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useUser } from '@/hooks/use-user';
 import { RequestForm } from '@/components/request-form';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 
 
 type Request = {
@@ -47,6 +48,7 @@ export default function RequestsPage() {
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
     
     useEffect(() => {
         if (!firestore || !user?.id) {
@@ -146,6 +148,9 @@ export default function RequestsPage() {
                 <div className="flex items-center gap-3">
                     <Plane className="h-8 w-8 text-primary" />
                     <CardTitle className="text-3xl font-bold tracking-tight">Gestione Richieste</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}>
+                        <Info className="h-5 w-5" />
+                    </Button>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
@@ -232,6 +237,37 @@ export default function RequestsPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+         <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Guida alla Gestione Richieste</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Come creare e gestire le tue richieste di ferie e permessi.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                <div className="py-4 space-y-4 text-sm">
+                    <div>
+                        <h4 className="font-semibold mb-1">Creare una Nuova Richiesta</h4>
+                        <p className="text-muted-foreground">
+                            Clicca sul pulsante <span className="font-bold text-primary-foreground">Nuova Richiesta</span> per aprire il modulo. Seleziona il tipo di richiesta (Ferie o Permesso), le date e, se necessario, il numero di ore.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Stato della Richiesta</h4>
+                        <p className="text-muted-foreground">
+                            Dopo l'invio, la tua richiesta sarà <Badge variant="default" className="bg-yellow-500 text-white">in attesa</Badge>. Un amministratore la esaminerà. Lo stato diventerà <Badge variant="secondary">approvato</Badge> o <Badge variant="destructive">rifiutato</Badge>. Vedrai un pallino rosso <Circle fill="red" className="h-2 w-2 text-red-500 inline-block" /> accanto alle richieste il cui stato è cambiato e che non hai ancora visualizzato.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Annullare una Richiesta</h4>
+                        <p className="text-muted-foreground">
+                            Puoi annullare una richiesta solo se è ancora in stato "in attesa". Per farlo, clicca sull'icona del cestino <Trash2 className="h-4 w-4 inline-block text-destructive" />.
+                        </p>
+                    </div>
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
         </>
     );
 }
