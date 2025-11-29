@@ -1225,10 +1225,14 @@ export default function ShiftApprovalPage() {
         
         const { ordinary, overtime } = calculateHours(shift);
         const totalCalculatedMinutes = (ordinary + overtime) * 60;
-        const breakDurationMinutes = shift.breakDuration;
-        const totalMinutesOnSite = totalCalculatedMinutes + breakDurationMinutes;
+        
+        const breakDurationMinutes = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+            const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+            if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+            return acc;
+        }, 0) / 60000;
 
-        const calculatedEndTime = new Date(calculationStart.getTime() + totalMinutesOnSite * 60000);
+        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + (breakDurationMinutes * 60000));
 
         // Only show parenthesis if there is a meaningful difference due to rounding
         if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
@@ -1658,6 +1662,7 @@ export default function ShiftApprovalPage() {
                                 <TableRow>
                                     <TableHead>Orario</TableHead>
                                     <TableHead>Evento</TableHead>
+                                    <TableHead>Posizione</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1665,6 +1670,15 @@ export default function ShiftApprovalPage() {
                                     <TableRow key={i}>
                                         <TableCell>{formatTime(e.timestamp)}</TableCell>
                                         <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                           {e.latitude && e.longitude ? (
+                                                <a href={`https://www.google.com/maps?q=${e.latitude},${e.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                    <MapPin className="h-4 w-4"/> Mappa
+                                                </a>
+                                            ) : (
+                                                <span>N/D</span>
+                                            )}
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>

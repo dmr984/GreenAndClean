@@ -74,6 +74,8 @@ type Operator = {
 type UserData = {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
   role: 'admin' | 'operator';
 };
 
@@ -627,9 +629,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 setCurrentOvertimeShift(null);
             }
 
-        } catch (error) {
-            console.error("Error saving overtime shift:", error);
-            toast({ title: 'Errore', description: 'Impossibile salvare il turno straordinario.', variant: 'destructive'});
+        } catch (error: any) {
+             toast({
+                variant: 'destructive',
+                title: 'Errore di Geolocalizzazione o Salvataggio',
+                description: error.message || "Non è stato possibile registrare il turno straordinario.",
+            });
         }
     };
 
@@ -752,6 +757,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <CardFooter className="flex flex-col gap-4">
                  {isClockedIn ? (
                     <>
+                         <div className="flex items-center space-x-2">
+                            <Switch id="break-mode" checked={isOnBreak} onCheckedChange={(checked) => handleClocking(checked ? 'pausa': 'fine_pausa')} />
+                            <Label htmlFor="break-mode">Pausa</Label>
+                        </div>
                         <Button 
                             className="w-full" 
                             size="lg" 
