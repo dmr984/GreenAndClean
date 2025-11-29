@@ -501,7 +501,7 @@ export default function OperatorSummaryPage() {
     const [monthToClean, setMonthToClean] = useState<Date | null>(null);
 
     const searchParams = useSearchParams();
-    const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('daily');
+    const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('monthly');
     const [dailyViewDate, setDailyViewDate] = useState(new Date());
 
 
