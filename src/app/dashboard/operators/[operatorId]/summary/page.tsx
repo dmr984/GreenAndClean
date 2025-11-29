@@ -471,12 +471,36 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {displayEvents.map((t, index) => (
-                                                <TableRow key={t.id || `auto-${index}`}>
-                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {displayEvents.map((t, index) => {
+                                                 const originalTime = format(t.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 
+                                                  if (t.type === 'entrata') {
+                                                        if (calculationStartTime && Math.abs(calculationStartTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStartTime, 'HH:mm')})`;
+                                                        }
+                                                  } else if (t.type === 'uscita') {
+                                                        const breakDuration = selectedDay.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                            const finePausa = selectedDay.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                        }, 0);
+                                                        if (calculationStartTime) {
+                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
+                                                            const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                        }
+                                                  }
+
+                                                return (
+                                                    <TableRow key={t.id || `auto-${index}`}>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -498,9 +522,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
 
 
 export default function OperatorSummaryPage() {
-    const params = useParams();
-    const router = useRouter();
-    const operatorId = params.operatorId as string;
+    const { user, isLoading: isUserLoading } = useUser();
     const { toast } = useToast();
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
@@ -514,9 +536,9 @@ export default function OperatorSummaryPage() {
 
 
     useEffect(() => {
-        if (!firestore || !operatorId) return;
+        if (!firestore || !user?.id) return;
         setIsLoading(true);
-        const operatorDocRef = doc(firestore, 'app-users', operatorId);
+        const operatorDocRef = doc(firestore, 'app-users', user.id);
         getDoc(operatorDocRef).then(docSnap => {
             if (docSnap.exists()) {
                 setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
@@ -525,10 +547,10 @@ export default function OperatorSummaryPage() {
             }
             setIsLoading(false);
         });
-    }, [firestore, operatorId, toast]);
+    }, [firestore, user, toast]);
 
     const handleCleanMonth = async () => {
-        if (!firestore || !operatorId || !monthToClean) return;
+        if (!firestore || !user?.id || !monthToClean) return;
         setIsCleaning(true);
     
         const monthStart = startOfMonth(monthToClean);
@@ -538,7 +560,7 @@ export default function OperatorSummaryPage() {
             const batch = writeBatch(firestore);
     
             const timbratureQuery = query(
-                collection(firestore, `app-users/${operatorId}/timbrature`),
+                collection(firestore, `app-users/${user.id}/timbrature`),
                 where('timestamp', '>=', monthStart),
                 where('timestamp', '<=', monthEnd)
             );
@@ -546,7 +568,7 @@ export default function OperatorSummaryPage() {
             timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
     
             const requestsQuery = query(
-                collection(firestore, `app-users/${operatorId}/requests`),
+                collection(firestore, `app-users/${user.id}/requests`),
                  where('endDate', '>=', monthStart)
             );
             const requestsSnapshot = await getDocs(requestsQuery);
@@ -576,7 +598,7 @@ export default function OperatorSummaryPage() {
                         createdAt: serverTimestamp(),
                         viewedByOperator: false,
                     };
-                    const newDocRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
+                    const newDocRef = doc(collection(firestore, `app-users/${user.id}/requests`));
                     batch.set(newDocRef, newRequestData);
                     continue;
                 }
@@ -609,7 +631,7 @@ export default function OperatorSummaryPage() {
     };
 
 
-    if (isLoading || !operator) {
+    if (isUserLoading || isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
@@ -632,13 +654,13 @@ export default function OperatorSummaryPage() {
                     <CardContent>
                        {currentView === 'monthly' ? (
                             <MonthlySummary 
-                                operatorId={operatorId} 
+                                operatorId={user.id} 
                                 operator={operator} 
                                 onCleanMonth={(date) => setMonthToClean(date)}
                             />
                        ) : (
                            <DailySummaryContent 
-                                operatorId={operatorId} 
+                                operatorId={user.id}
                                 operator={operator} 
                                 initialDate={dailyViewDate}
                                 onMonthChange={setDailyViewDate}
@@ -681,6 +703,8 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     const [shiftForDetail, setShiftForDetail] = useState<Shift | null>(null);
     
     const {toast} = useToast();
+    const { user } = useUser();
+
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -1134,7 +1158,9 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                 <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
                 <h4 className="text-lg font-semibold capitalize text-center flex-1">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
-                 <Button variant="destructive" size="icon" onClick={() => onCleanMonth(currentDate)}><Archive className="h-4 w-4" /></Button>
+                {user?.role === 'admin' && (
+                     <Button variant="destructive" size="icon" onClick={() => onCleanMonth(currentDate)}><Archive className="h-4 w-4" /></Button>
+                )}
             </div>
             
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1257,12 +1283,36 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {displayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
-                                                <TableRow key={t.id}>
-                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {displayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
+                                                const originalTime = format(t.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 
+                                                  if (t.type === 'entrata') {
+                                                        if (calculationStartTime && Math.abs(calculationStartTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStartTime, 'HH:mm')})`;
+                                                        }
+                                                  } else if (t.type === 'uscita') {
+                                                        const breakDuration = shiftForDetail!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                            const finePausa = shiftForDetail!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                        }, 0);
+                                                        if (calculationStartTime) {
+                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
+                                                            const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                        }
+                                                  }
+
+                                                return (
+                                                    <TableRow key={t.id}>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>

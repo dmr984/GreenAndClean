@@ -471,12 +471,36 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {displayEvents.map((t, index) => (
-                                                <TableRow key={t.id || `auto-${index}`}>
-                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {displayEvents.map((t, index) => {
+                                                 const originalTime = format(t.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 
+                                                  if (t.type === 'entrata') {
+                                                        if (calculationStartTime && Math.abs(calculationStartTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStartTime, 'HH:mm')})`;
+                                                        }
+                                                  } else if (t.type === 'uscita') {
+                                                        const breakDuration = selectedDay.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                            const finePausa = selectedDay.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                        }, 0);
+                                                        if (calculationStartTime) {
+                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
+                                                            const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                        }
+                                                  }
+
+                                                return (
+                                                    <TableRow key={t.id || `auto-${index}`}>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -577,6 +601,8 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     const [shiftForDetail, setShiftForDetail] = useState<Shift | null>(null);
     
     const {toast} = useToast();
+    const { user } = useUser();
+
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -869,6 +895,9 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                 <Button variant="outline" onClick={() => handleMonthChange(-1)}>Prec.</Button>
                 <h4 className="text-lg font-semibold capitalize text-center flex-1">{format(currentDate, 'MMMM yyyy', { locale: it })}</h4>
                 <Button variant="outline" onClick={() => handleMonthChange(1)}>Succ.</Button>
+                 {user?.role === 'admin' && (
+                    <Button variant="destructive" size="icon" onClick={() => onCleanMonth(currentDate)}><Archive className="h-4 w-4" /></Button>
+                 )}
             </div>
             
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -991,12 +1020,36 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {displayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
-                                                <TableRow key={t.id}>
-                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm:ss')}</TableCell>
-                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {displayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
+                                                const originalTime = format(t.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 
+                                                  if (t.type === 'entrata') {
+                                                        if (calculationStartTime && Math.abs(calculationStartTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStartTime, 'HH:mm')})`;
+                                                        }
+                                                  } else if (t.type === 'uscita') {
+                                                        const breakDuration = shiftForDetail!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                            const finePausa = shiftForDetail!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                        }, 0);
+                                                        if (calculationStartTime) {
+                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
+                                                            const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                        }
+                                                  }
+
+                                                return (
+                                                    <TableRow key={t.id}>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -1008,6 +1061,40 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
+        )}
+
+        { user?.role === 'admin' && (
+            <>
+                <AlertDialog open={!!itemToModify} onOpenChange={(open) => !open && setItemToModify(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                            Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normally.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Chiudi</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleCancelSingleDayOfLeave}>Annulla Giorno di Assenza</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+                
+                <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                            Sei sicuro di voler eliminare questa richiesta? L'azione è permanente.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Annulla</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteRequest}>Elimina</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </>
         )}
         </>
     );

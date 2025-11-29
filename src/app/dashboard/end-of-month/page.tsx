@@ -470,12 +470,39 @@ export default function EndOfMonthPage() {
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                 {detail.shift.events.map(e => 
-                                                    <span key={e.id} className={cn(e.isAuto && "text-red-500")}>
-                                                        {`${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`}
-                                                        {`  |  `}
-                                                    </span>
-                                                )}
+                                                 {detail.shift.events.map(e => {
+                                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                    let referenceTime = '';
+
+                                                    if (e.type === 'entrata') {
+                                                        const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], operator);
+                                                        if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                        }
+                                                    } else if (e.type === 'uscita') {
+                                                         const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], operator);
+                                                         const breakDuration = detail.shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
+                                                            const finePausa = detail.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                         }, 0);
+                                                         if (calculationStart) {
+                                                            const totalCalculatedMinutes = (detail.shift.ordinaryHours + detail.shift.overtimeHours) * 60;
+                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                             if (Math.abs(calculatedEndTime.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                         }
+                                                    }
+
+
+                                                    return (
+                                                        <span key={e.id} className={cn('mr-2', e.isAuto && "text-red-500")}>
+                                                            {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
+                                                            {` | `}
+                                                        </span>
+                                                    )
+                                                })}
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
