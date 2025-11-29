@@ -173,8 +173,7 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
     const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
     const overtimeHours = roundOvertimeHours(overtimeMinutes);
 
-    const leaveMinutes = contractualMinutes > totalMinutesWorked ? contractualMinutes - ordinaryMinutes : 0;
-    const leaveHours = roundOrdinaryHours(leaveMinutes);
+    const leaveHours = contractualHours > ordinaryHours ? contractualHours - ordinaryHours : 0;
 
     return { 
         ordinary: ordinaryHours, 
@@ -275,12 +274,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         };
                         dayShift = shift;
                         
-                        const { overtime } = calculateShiftHours(shift, operator);
+                        const { ordinary, overtime, leave } = calculateShiftHours(shift, operator);
                         const isPureOvertime = shift.isOvertime;
                         const permissionRequest = approvedRequests.find(req => req.type === 'permesso' && isSameDay(day, req.startDate.toDate()));
 
                         if (isPureOvertime) dayStatus = 'straordinario';
-                        else if (permissionRequest) dayStatus = 'ordinario/permesso';
+                        else if (permissionRequest || leave > 0 && ordinary > 0) dayStatus = 'ordinario/permesso';
                         else if (overtime > 0) dayStatus = 'lavorato/straordinario';
                         else dayStatus = 'lavorato';
                      }
