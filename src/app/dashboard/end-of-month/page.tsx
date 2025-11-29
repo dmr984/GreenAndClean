@@ -191,11 +191,12 @@ export default function EndOfMonthPage() {
         };
     }, [firestore, user, currentMonth]);
     
-    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, operator: Operator | null): { workedMinutes: number, calculationStart: Date } => {
+    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, operator: Operator | null): { workedMinutes: number, calculationStart: Date | null } => {
+        if (!operator) return { workedMinutes: 0, calculationStart: null };
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
-        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: new Date() };
+        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null };
 
         const clockInTime = clockInEvent.timestamp.toDate();
         const clockOutTime = clockOutEvent.timestamp.toDate();
@@ -474,14 +475,14 @@ export default function EndOfMonthPage() {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
 
-                                                    if (e.type === 'entrata') {
+                                                    if (e.type === 'entrata' && operator) {
                                                         const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], operator);
                                                         if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
-                                                    } else if (e.type === 'uscita') {
+                                                    } else if (e.type === 'uscita' && operator) {
                                                          const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], operator);
-                                                         const breakDuration = detail.shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
+                                                         const breakDuration = detail.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
                                                             const finePausa = detail.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
                                                             if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
                                                             return acc;

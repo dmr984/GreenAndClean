@@ -96,12 +96,12 @@ type DayInfo = {
     shift: Shift | null;
 }
 
-const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { ordinary: number, overtime: number, leave: number, workedMinutes: number } => {
-    if (!shift || !operator?.workSchedule || !shift.startTime) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0 };
+const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { ordinary: number, overtime: number, leave: number, workedMinutes: number, calculationStart: Date | null } => {
+    if (!shift || !operator?.workSchedule || !shift.startTime) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0, calculationStart: null };
     
     const clockInEvent = shift.events.find(e => e.type === 'entrata');
     const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-    if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0 };
+    if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, leave: 0, workedMinutes: 0, calculationStart: null };
 
     const clockInTime = clockInEvent.timestamp.toDate();
     const clockOutTime = clockOutEvent.timestamp.toDate();
@@ -168,6 +168,7 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
             overtime: roundOvertimeHours(totalMinutesWorked),
             leave: 0,
             workedMinutes: totalMinutesWorked,
+            calculationStart: calculationStartTime
         };
     }
     
@@ -184,6 +185,7 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
         overtime: overtimeHours, 
         leave: leaveHours,
         workedMinutes: totalMinutesWorked,
+        calculationStart: calculationStartTime
     };
 };
 
@@ -397,48 +399,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         </ResponsiveDialogHeader>
                         
                         {selectedDay.shift ? (() => {
-                            const { ordinary, overtime, leave, workedMinutes } = calculateShiftHours(selectedDay.shift, operator);
+                            const { ordinary, overtime, leave, workedMinutes, calculationStart } = calculateShiftHours(selectedDay.shift, operator);
                             const clockInEvent = selectedDay.shift.events.find(e => e.type === 'entrata');
                             const dayName = clockInEvent ? dayIndexToName[getDay(clockInEvent.timestamp.toDate())] : undefined;
                             const schedule = dayName && operator ? operator.workSchedule[dayName] : undefined;
                             const contractualHours = schedule?.totalHours || 0;
-                            const contractualStartTimeStr = schedule?.startTime || '00:00';
                             
-                            let displayEvents = [...selectedDay.shift.events];
-                            let calculationStartTime = clockInEvent?.timestamp.toDate();
-
-                            if (clockInEvent && operator && calculationStartTime) {
-                                const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
-                                const contractualStartDateTime = set(calculationStartTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-                                const minutesLate = (calculationStartTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-
-                                if (minutesLate <= 15) { 
-                                    calculationStartTime = contractualStartDateTime;
-                                } else {
-                                     const minutes = calculationStartTime.getMinutes();
-                                    const roundedTime = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
-
-                                    if (minutes > 15 && minutes <= 45) {
-                                        roundedTime.setMinutes(30);
-                                    } else if (minutes > 45) {
-                                        roundedTime.setHours(roundedTime.getHours() + 1, 0);
-                                    } else { // minutes <= 15
-                                         roundedTime.setMinutes(0);
-                                    }
-                                    calculationStartTime = roundedTime;
-                                }
-                                
-                                const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
-                                if (entrataIndex !== -1) {
-                                    const virtualEntrata = {
-                                        ...displayEvents[entrataIndex],
-                                        id: `virtual-${displayEvents[entrataIndex].id}`,
-                                        timestamp: Timestamp.fromDate(calculationStartTime)
-                                    };
-                                    displayEvents[entrataIndex] = virtualEntrata;
-                                }
-                            }
-
                             let finalResultLabel = 'Straordinari Calcolati';
                             let finalResultValue = `${overtime}h`;
 
@@ -471,13 +437,13 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {displayEvents.map((t, index) => {
+                                            {selectedDay.shift.events.map((t, index) => {
                                                  const originalTime = format(t.timestamp.toDate(), 'HH:mm');
                                                  let referenceTime = '';
                                                  
                                                   if (t.type === 'entrata') {
-                                                        if (calculationStartTime && Math.abs(calculationStartTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
-                                                            referenceTime = `(${format(calculationStartTime, 'HH:mm')})`;
+                                                        if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
                                                   } else if (t.type === 'uscita') {
                                                         const breakDuration = selectedDay.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
@@ -485,9 +451,9 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                                             if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
                                                             return acc;
                                                         }, 0);
-                                                        if (calculationStartTime) {
+                                                        if (calculationStart) {
                                                             const totalCalculatedMinutes = (ordinary + overtime) * 60;
-                                                            const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
                                                             if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
                                                                 referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
                                                             }
@@ -534,11 +500,20 @@ export default function OperatorSummaryPage() {
     const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('monthly');
     const [dailyViewDate, setDailyViewDate] = useState(new Date());
 
+    const { operatorId: routeOperatorId } = useParams();
 
     useEffect(() => {
-        if (!firestore || !user?.id) return;
+        if (!firestore) return;
+        
+        const idToFetch = user?.role === 'admin' ? routeOperatorId as string : user?.id;
+
+        if (!idToFetch) {
+            if(!isUserLoading) setIsLoading(false);
+            return;
+        };
+
         setIsLoading(true);
-        const operatorDocRef = doc(firestore, 'app-users', user.id);
+        const operatorDocRef = doc(firestore, 'app-users', idToFetch);
         getDoc(operatorDocRef).then(docSnap => {
             if (docSnap.exists()) {
                 setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
@@ -547,10 +522,10 @@ export default function OperatorSummaryPage() {
             }
             setIsLoading(false);
         });
-    }, [firestore, user, toast]);
+    }, [firestore, user, routeOperatorId, isUserLoading, toast]);
 
     const handleCleanMonth = async () => {
-        if (!firestore || !user?.id || !monthToClean) return;
+        if (!firestore || !operator?.id || !monthToClean) return;
         setIsCleaning(true);
     
         const monthStart = startOfMonth(monthToClean);
@@ -560,7 +535,7 @@ export default function OperatorSummaryPage() {
             const batch = writeBatch(firestore);
     
             const timbratureQuery = query(
-                collection(firestore, `app-users/${user.id}/timbrature`),
+                collection(firestore, `app-users/${operator.id}/timbrature`),
                 where('timestamp', '>=', monthStart),
                 where('timestamp', '<=', monthEnd)
             );
@@ -568,7 +543,7 @@ export default function OperatorSummaryPage() {
             timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
     
             const requestsQuery = query(
-                collection(firestore, `app-users/${user.id}/requests`),
+                collection(firestore, `app-users/${operator.id}/requests`),
                  where('endDate', '>=', monthStart)
             );
             const requestsSnapshot = await getDocs(requestsQuery);
@@ -598,7 +573,7 @@ export default function OperatorSummaryPage() {
                         createdAt: serverTimestamp(),
                         viewedByOperator: false,
                     };
-                    const newDocRef = doc(collection(firestore, `app-users/${user.id}/requests`));
+                    const newDocRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
                     batch.set(newDocRef, newRequestData);
                     continue;
                 }
@@ -654,13 +629,13 @@ export default function OperatorSummaryPage() {
                     <CardContent>
                        {currentView === 'monthly' ? (
                             <MonthlySummary 
-                                operatorId={user.id} 
+                                operatorId={operator.id} 
                                 operator={operator} 
                                 onCleanMonth={(date) => setMonthToClean(date)}
                             />
                        ) : (
                            <DailySummaryContent 
-                                operatorId={user.id}
+                                operatorId={operator.id}
                                 operator={operator} 
                                 initialDate={dailyViewDate}
                                 onMonthChange={setDailyViewDate}
@@ -1217,7 +1192,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                          {shiftForDetail.startTime && <ResponsiveDialogDescription>Turno del {format(shiftForDetail.startTime.toDate(), 'PPP', { locale: it })}</ResponsiveDialogDescription>}
                     </ResponsiveDialogHeader>
                     {(() => {
-                        const { ordinary, overtime, workedMinutes } = calculateShiftHours(shiftForDetail, operator);
+                        const { ordinary, overtime, workedMinutes, calculationStart } = calculateShiftHours(shiftForDetail, operator);
                         const contractualHours = (shiftForDetail.startTime && operator?.workSchedule[dayIndexToName[getDay(shiftForDetail.startTime.toDate())]]?.totalHours) || 0;
                         const formatMinutes = (minutes: number) => {
                             if (isNaN(minutes) || minutes < 0) return '00:00';
@@ -1226,43 +1201,6 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                             return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
                         };
                         
-                        let displayEvents = shiftForDetail.events;
-                        const clockInEvent = displayEvents.find(e => e.type === 'entrata');
-                        let calculationStartTime = clockInEvent?.timestamp.toDate();
-
-                        if(clockInEvent && operator && calculationStartTime) {
-                             const contractualStartTimeStr = operator.workSchedule[dayIndexToName[getDay(calculationStartTime)]]?.startTime || '00:00';
-                             const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
-                             const contractualStartDateTime = set(calculationStartTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-                             const minutesLate = (calculationStartTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-                             
-                             if (minutesLate <= 15) { 
-                                calculationStartTime = contractualStartDateTime;
-                             } else {
-                                const minutes = calculationStartTime.getMinutes();
-                                const roundedTime = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
-
-                                if (minutes > 15 && minutes <= 45) {
-                                    roundedTime.setMinutes(30);
-                                } else if (minutes > 45) {
-                                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
-                                } else { // minutes <= 15
-                                     roundedTime.setMinutes(0);
-                                }
-                                calculationStartTime = roundedTime;
-                             }
-                            
-                             const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
-                             if (entrataIndex !== -1) {
-                                const virtualEntrata = {
-                                    ...displayEvents[entrataIndex],
-                                    id: `virtual-${displayEvents[entrataIndex].id}`,
-                                    timestamp: Timestamp.fromDate(calculationStartTime)
-                                };
-                                displayEvents[entrataIndex] = virtualEntrata;
-                             }
-                        }
-
                         return (
                             <>
                                 <div className="grid grid-cols-3 gap-4 text-center my-4">
@@ -1283,13 +1221,13 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {displayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
+                                            {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
                                                 const originalTime = format(t.timestamp.toDate(), 'HH:mm');
                                                  let referenceTime = '';
                                                  
                                                   if (t.type === 'entrata') {
-                                                        if (calculationStartTime && Math.abs(calculationStartTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
-                                                            referenceTime = `(${format(calculationStartTime, 'HH:mm')})`;
+                                                        if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
                                                   } else if (t.type === 'uscita') {
                                                         const breakDuration = shiftForDetail!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
@@ -1297,9 +1235,9 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                                             if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
                                                             return acc;
                                                         }, 0);
-                                                        if (calculationStartTime) {
+                                                        if (calculationStart) {
                                                             const totalCalculatedMinutes = (ordinary + overtime) * 60;
-                                                            const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
                                                             if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
                                                                 referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
                                                             }
@@ -1327,7 +1265,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         )}
 
 
-         <AlertDialog open={!!itemToModify} onOpenChange={(open) => !open && setItemToModify(null)}>
+         <AlertDialog open={!!itemToModify && user?.role === 'admin'} onOpenChange={(open) => !open && setItemToModify(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
@@ -1342,7 +1280,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             </AlertDialogContent>
         </AlertDialog>
         
-         <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+         <AlertDialog open={!!requestToDelete && user?.role === 'admin'} onOpenChange={(open) => !open && setRequestToDelete(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>

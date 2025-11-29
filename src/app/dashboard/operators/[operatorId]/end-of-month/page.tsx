@@ -681,14 +681,14 @@ export default function EndOfMonthPage() {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
 
-                                                    if (e.type === 'entrata') {
+                                                    if (e.type === 'entrata' && operator) {
                                                         const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                         if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
-                                                    } else if (e.type === 'uscita') {
+                                                    } else if (e.type === 'uscita' && operator) {
                                                          const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
-                                                         const breakDuration = detail.shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
+                                                         const breakDuration = detail.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
                                                             const finePausa = detail.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
                                                             if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
                                                             return acc;
