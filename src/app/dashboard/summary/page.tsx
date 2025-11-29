@@ -399,7 +399,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         </ResponsiveDialogHeader>
                         
                         {selectedDay.shift ? (() => {
-                            const { ordinary, overtime, leave, workedMinutes, calculationStart } = calculateShiftHours(selectedDay.shift, operator);
+                            const { ordinary, overtime, leave, workedMinutes } = calculateShiftHours(selectedDay.shift, operator);
                             const clockInEvent = selectedDay.shift.events.find(e => e.type === 'entrata');
                             const dayName = clockInEvent ? dayIndexToName[getDay(clockInEvent.timestamp.toDate())] : undefined;
                             const schedule = dayName && operator ? operator.workSchedule[dayName] : undefined;
@@ -437,36 +437,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {selectedDay.shift.events.map((t, index) => {
-                                                 const originalTime = format(t.timestamp.toDate(), 'HH:mm');
-                                                 let referenceTime = '';
-                                                 
-                                                  if (t.type === 'entrata') {
-                                                        if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
-                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        }
-                                                  } else if (t.type === 'uscita') {
-                                                        const breakDuration = selectedDay.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
-                                                            const finePausa = selectedDay.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
-                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
-                                                            return acc;
-                                                        }, 0);
-                                                        if (calculationStart) {
-                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
-                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
-                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
-                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
-                                                            }
-                                                        }
-                                                  }
-
-                                                return (
-                                                    <TableRow key={t.id || `auto-${index}`}>
-                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
-                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
+                                            {selectedDay.shift.events.map((t, index) => (
+                                                <TableRow key={t.id || `auto-${index}`}>
+                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm')}</TableCell>
+                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                </TableRow>
+                                            ))}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -577,9 +553,9 @@ export default function OperatorSummaryPage() {
                             </p>
                         </div>
                         <div>
-                            <h4 className="font-semibold mb-1">Orari di Riferimento</h4>
-                            <p className="text-muted-foreground">
-                                Quando visualizzi i dettagli di un turno, potresti vedere un orario tra parentesi, es. `08:05 (08:00)`. L'orario fuori dalle parentesi è quando hai timbrato, mentre quello tra parentesi è l'orario che il sistema usa per i calcoli, basato sulle regole di arrotondamento.
+                            <h4 className="font-semibold mb-1">Calcolo Ore</h4>
+                             <p className="text-muted-foreground">
+                                Le ore ordinarie vengono calcolate a scatti di mezz'ora. Le ore straordinarie vengono calcolate a scatti di un'ora intera.
                             </p>
                         </div>
                     </div>
@@ -983,36 +959,12 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
-                                                const originalTime = format(t.timestamp.toDate(), 'HH:mm');
-                                                 let referenceTime = '';
-                                                 
-                                                  if (t.type === 'entrata') {
-                                                        if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
-                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        }
-                                                  } else if (t.type === 'uscita') {
-                                                        const breakDuration = shiftForDetail!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
-                                                            const finePausa = shiftForDetail!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
-                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
-                                                            return acc;
-                                                        }, 0);
-                                                        if (calculationStart) {
-                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
-                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
-                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
-                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
-                                                            }
-                                                        }
-                                                  }
-
-                                                return (
-                                                    <TableRow key={t.id}>
-                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
-                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
+                                            {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
+                                                <TableRow key={t.id}>
+                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm')}</TableCell>
+                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                </TableRow>
+                                            ))}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -1026,39 +978,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             </ResponsiveDialog>
         )}
 
-        { user?.role === 'admin' && (
-            <>
-                <AlertDialog open={!!itemToModify} onOpenChange={(open) => !open && setItemToModify(null)}>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                            Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normally.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Chiudi</AlertDialogCancel>
-                            {/* Admin-only action removed from operator view */}
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-                
-                <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                            Sei sicuro di voler eliminare questa richiesta? L'azione è permanente.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Annulla</AlertDialogCancel>
-                           {/* Admin-only action removed from operator view */}
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </>
-        )}
+        {/* Admin-only dialogs removed from operator view */}
         </>
     );
 };
