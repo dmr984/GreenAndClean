@@ -136,6 +136,10 @@ export default function ShiftApprovalPage() {
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
     const [currentPage, setCurrentPage] = useState(0);
+    const [overtimeShiftForBreak, setOvertimeShiftForBreak] = useState<StraordinarioShift | null>(null);
+    const [isOvertimeMissingBreakConfirmOpen, setIsOvertimeMissingBreakConfirmOpen] = useState(false);
+    const [isOvertimeAddBreakDialogOpen, setIsOvertimeAddBreakDialogOpen] = useState(false);
+
 
     const contractualStartTime = useMemo(() => {
         if (!newShiftDate || !operator?.workSchedule) return null;
@@ -984,7 +988,25 @@ export default function ShiftApprovalPage() {
         (currentPage + 1) * ITEMS_PER_PAGE
     );
     
-    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
+    const handleOvertimeShiftApprovalProcess = (shift: StraordinarioShift) => {
+        if (!operator) return;
+
+        const hasBreak = shift.events.some(e => e.type === 'pausa');
+        
+        if (isSameDay(shift.date.toDate(), new Date()) && !shift.events.some(e=> e.type === 'uscita')){
+             toast({ title: 'Turno in corso', description: 'Non puoi approvare un turno non ancora terminato.', variant: 'destructive'});
+             return;
+        }
+
+        if (!hasBreak) {
+            setOvertimeShiftForBreak(shift);
+            setIsOvertimeMissingBreakConfirmOpen(true);
+        } else {
+            handleOvertimeShiftAction(shift, 'approve');
+        }
+    };
+    
+    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', manualBreak?: ManualBreak) => {
         if (!firestore || !operatorId || !operator) return;
     
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
@@ -996,13 +1018,24 @@ export default function ShiftApprovalPage() {
             return;
         }
     
-        const workMinutes = calculateOvertimeShiftMinutes(shift);
+        let eventsToProcess = [...shift.events];
+        if (manualBreak && manualBreak.start && manualBreak.end) {
+             const createTimestamp = (time: string): Timestamp => {
+                const [hours, minutes] = time.split(':').map(Number);
+                return Timestamp.fromDate(set(shift.date.toDate(), { hours, minutes, seconds: 0, milliseconds: 0 }));
+            };
+            eventsToProcess.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start) });
+            eventsToProcess.push({ type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end) });
+        }
+
+
+        const workMinutes = calculateOvertimeShiftMinutes({ ...shift, events: eventsToProcess });
         const overtimeHours = roundOvertimeHours(workMinutes);
     
         const batch = writeBatch(firestore);
     
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
-        shift.events.forEach(event => {
+        eventsToProcess.forEach(event => {
             const newTimbraturaRef = doc(timbratureCollectionRef);
             batch.set(newTimbraturaRef, {
                 userId: operatorId,
@@ -1059,7 +1092,7 @@ export default function ShiftApprovalPage() {
                     breakStart = null;
                 }
             });
-            workDuration = totalMillis / (1000 * 60);
+            workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
         }
         return workDuration;
     };
@@ -1133,6 +1166,29 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
         });
     }
+    
+    const handleApproveOvertimeWithoutBreak = () => {
+        if (overtimeShiftForBreak) {
+            handleOvertimeShiftAction(overtimeShiftForBreak, 'approve');
+        }
+        setIsOvertimeMissingBreakConfirmOpen(false);
+        setOvertimeShiftForBreak(null);
+    };
+
+    const handleAddOvertimeBreak = () => {
+        if (!overtimeShiftForBreak) return;
+        setIsOvertimeAddBreakDialogOpen(true);
+        setIsOvertimeMissingBreakConfirmOpen(false);
+    };
+    
+    const handleConfirmAddOvertimeBreak = () => {
+        if (!overtimeShiftForBreak || !breakTimes.start || !breakTimes.end) return;
+        handleOvertimeShiftAction(overtimeShiftForBreak, 'approve', breakTimes);
+        setIsOvertimeAddBreakDialogOpen(false);
+        setOvertimeShiftForBreak(null);
+        setBreakTimes({ start: '', end: '' });
+    };
+
 
     const getAdjustedStartTime = (shift: Shift): { display: string; calculationStart: Date | null } => {
         if (!operator || !shift?.events?.length) return { display: '--:--', calculationStart: null };
@@ -1543,24 +1599,22 @@ export default function ShiftApprovalPage() {
                         </Table>
                     </div>
 
-                    <ResponsiveDialogFooter className="flex-col sm:flex-row pt-4 gap-2">
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1">
-                            <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                             {detailShift && detailShift.status !== 'in_sospeso' && (
-                                <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
-                            )}
-                            <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
-                        </div>
-                         {detailShift && detailShift.status === 'in_sospeso' && (
-                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-grow">
-                               <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
-                                  <XCircle className="mr-2 h-4 w-4"/> Rifiuta
-                               </Button>
-                               <Button className="w-full" onClick={() => handleApprovalProcess(detailShift)}>
-                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva
-                               </Button>
-                            </div>
-                         )}
+                    <ResponsiveDialogFooter className="grid grid-cols-2 gap-2 mt-4 sm:flex">
+                        <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                         {detailShift && detailShift.status !== 'in_sospeso' && (
+                            <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                        )}
+                        <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
+                     {detailShift && detailShift.status === 'in_sospeso' && (
+                        <>
+                           <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
+                              <XCircle className="mr-2 h-4 w-4"/> Rifiuta
+                           </Button>
+                           <Button className="w-full" onClick={() => handleApprovalProcess(detailShift)}>
+                              <CheckCircle className="mr-2 h-4 w-4"/> Approva
+                           </Button>
+                        </>
+                     )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
@@ -1601,22 +1655,22 @@ export default function ShiftApprovalPage() {
                             </TableBody>
                         </Table>
                     </div>
-                     <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-end gap-2 pt-4">
-                        <Button variant="outline" onClick={() => setIsDetailOvertimeOpen(false)}>Chiudi</Button>
+                     <ResponsiveDialogFooter className="grid grid-cols-2 gap-2 mt-4 sm:flex">
+                        <Button className="w-full" variant="outline" onClick={() => setIsDetailOvertimeOpen(false)}>Chiudi</Button>
                          {detailOvertimeShift && detailOvertimeShift.status === 'in_attesa_di_approvazione' && (
                             <>
-                               <Button variant="destructive" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject')}>
+                               <Button variant="destructive" className="w-full" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject')}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                                </Button>
-                               <Button onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'approve')}>
+                               <Button className="w-full" onClick={() => handleOvertimeShiftApprovalProcess(detailOvertimeShift)}>
                                   <CheckCircle className="mr-2 h-4 w-4"/> Approva
                                </Button>
                             </>
                          )}
                          {detailOvertimeShift && (
                             <>
-                                <Button variant="destructive" onClick={() => { setOvertimeShiftToDelete(detailOvertimeShift); setIsConfirmingOvertimeDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
-                                <Button variant="outline" onClick={() => handleOpenEditOvertimeDialog(detailOvertimeShift)}><Pencil className="mr-2 h-4 w-4"/> Modifica</Button>
+                                <Button variant="destructive" className="w-full" onClick={() => { setOvertimeShiftToDelete(detailOvertimeShift); setIsConfirmingOvertimeDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
+                                <Button variant="outline" className="w-full" onClick={() => handleOpenEditOvertimeDialog(detailOvertimeShift)}><Pencil className="mr-2 h-4 w-4"/> Modifica</Button>
                             </>
                          )}
                     </ResponsiveDialogFooter>
@@ -1737,6 +1791,42 @@ export default function ShiftApprovalPage() {
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsAddBreakDialogOpen(false)}>Annulla</Button>
                         <Button onClick={handleAddBreakAndReload}>Aggiungi Pausa</Button>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+
+             <AlertDialog open={isOvertimeMissingBreakConfirmOpen} onOpenChange={setIsOvertimeMissingBreakConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Pausa Mancante (Straordinario)</AlertDialogTitle>
+                        <AlertDialogDescription>Nessuna pausa registrata per questo turno straordinario. Vuoi aggiungerla manualmente?</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <Button variant="outline" onClick={handleApproveOvertimeWithoutBreak}>No, approva senza</Button>
+                        <Button onClick={handleAddOvertimeBreak}>Sì, aggiungi</Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+             <ResponsiveDialog open={isOvertimeAddBreakDialogOpen} onOpenChange={setIsOvertimeAddBreakDialogOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Aggiungi Pausa Manuale (Straordinario)</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>Inserisci gli orari di inizio e fine della pausa.</ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="overtime-break-start">Inizio Pausa</Label>
+                            <Input id="overtime-break-start" type="time" value={breakTimes.start} onChange={e => setBreakTimes(p => ({...p, start: e.target.value}))} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="overtime-break-end">Fine Pausa</Label>
+                            <Input id="overtime-break-end" type="time" value={breakTimes.end} onChange={e => setBreakTimes(p => ({...p, end: e.target.value}))} />
+                        </div>
+                    </div>
+                    <ResponsiveDialogFooter>
+                        <Button variant="outline" onClick={() => setIsOvertimeAddBreakDialogOpen(false)}>Annulla</Button>
+                        <Button onClick={handleConfirmAddOvertimeBreak}>Aggiungi e Approva</Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
