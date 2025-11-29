@@ -118,16 +118,20 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
     let calculationStartTime = clockInTime;
     const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
 
-    if (minutesLate <= 15) { // Includes clocking in early
+    if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
         calculationStartTime = contractualStartDateTime;
     } else {
-        const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
-        if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-            nextHalfHour.setMinutes(30);
-        } else if (nextHalfHour.getMinutes() > 30) {
-            nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+        const minutes = clockInTime.getMinutes();
+        const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+
+        if (minutes > 15 && minutes <= 45) {
+            roundedTime.setMinutes(30);
+        } else if (minutes > 45) {
+            roundedTime.setHours(roundedTime.getHours() + 1, 0);
+        } else { // minutes <= 15
+             roundedTime.setMinutes(0);
         }
-        calculationStartTime = nextHalfHour;
+        calculationStartTime = roundedTime;
     }
     
     let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
@@ -411,13 +415,17 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 if (minutesLate <= 15) { 
                                     calculationStartTime = contractualStartDateTime;
                                 } else {
-                                     const nextHalfHour = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
-                                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                                        nextHalfHour.setMinutes(30);
-                                    } else if (nextHalfHour.getMinutes() > 30) {
-                                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                                     const minutes = calculationStartTime.getMinutes();
+                                    const roundedTime = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
+
+                                    if (minutes > 15 && minutes <= 45) {
+                                        roundedTime.setMinutes(30);
+                                    } else if (minutes > 45) {
+                                        roundedTime.setHours(roundedTime.getHours() + 1, 0);
+                                    } else { // minutes <= 15
+                                         roundedTime.setMinutes(0);
                                     }
-                                    calculationStartTime = nextHalfHour;
+                                    calculationStartTime = roundedTime;
                                 }
                                 
                                 const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');
@@ -1205,13 +1213,17 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                              if (minutesLate <= 15) { 
                                 calculationStartTime = contractualStartDateTime;
                              } else {
-                                const nextHalfHour = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
-                                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                                    nextHalfHour.setMinutes(30);
-                                } else if (nextHalfHour.getMinutes() > 30) {
-                                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                                const minutes = calculationStartTime.getMinutes();
+                                const roundedTime = set(calculationStartTime, { seconds: 0, milliseconds: 0 });
+
+                                if (minutes > 15 && minutes <= 45) {
+                                    roundedTime.setMinutes(30);
+                                } else if (minutes > 45) {
+                                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
+                                } else { // minutes <= 15
+                                     roundedTime.setMinutes(0);
                                 }
-                                calculationStartTime = nextHalfHour;
+                                calculationStartTime = roundedTime;
                              }
                             
                              const entrataIndex = displayEvents.findIndex(e => e.type === 'entrata');

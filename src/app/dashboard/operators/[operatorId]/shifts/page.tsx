@@ -181,13 +181,17 @@ export default function ShiftApprovalPage() {
                  if (minutesDifference <= 15) {
                     calculationStart = contractualStart;
                 } else {
-                    const nextHalfHour = set(calculationStart, { seconds: 0, milliseconds: 0 });
-                    if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                        nextHalfHour.setMinutes(30);
-                    } else if (nextHalfHour.getMinutes() > 30) {
-                        nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                    const minutes = calculationStart.getMinutes();
+                    const roundedTime = set(calculationStart, { seconds: 0, milliseconds: 0 });
+
+                    if (minutes > 15 && minutes <= 45) {
+                        roundedTime.setMinutes(30);
+                    } else if (minutes > 45) {
+                        roundedTime.setHours(roundedTime.getHours() + 1, 0);
+                    } else { // minutes <= 15
+                         roundedTime.setMinutes(0);
                     }
-                    calculationStart = nextHalfHour;
+                    calculationStart = roundedTime;
                 }
             }
         }

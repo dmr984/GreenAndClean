@@ -176,13 +176,17 @@ export default function EndOfMonthPage() {
             if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
                 calculationStartTime = contractualStartDateTime;
             } else {
-                 const nextHalfHour = set(clockInTime, { seconds: 0, milliseconds: 0 });
-                if (nextHalfHour.getMinutes() > 0 && nextHalfHour.getMinutes() <= 30) {
-                    nextHalfHour.setMinutes(30);
-                } else if (nextHalfHour.getMinutes() > 30) {
-                    nextHalfHour.setHours(nextHalfHour.getHours() + 1, 0);
+                const minutes = clockInTime.getMinutes();
+                const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+
+                if (minutes > 15 && minutes <= 45) {
+                    roundedTime.setMinutes(30);
+                } else if (minutes > 45) {
+                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
+                } else { // minutes <= 15
+                     roundedTime.setMinutes(0);
                 }
-                calculationStartTime = nextHalfHour;
+                calculationStartTime = roundedTime;
             }
         }
 
