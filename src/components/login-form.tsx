@@ -13,6 +13,8 @@ import { Loader2 } from 'lucide-react';
 type User = {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
   role: 'admin' | 'operator';
 };
 
@@ -56,6 +58,8 @@ export default function LoginForm() {
         const userToStore = {
             id: selectedUser.id,
             username: selectedUser.username,
+            firstName: selectedUser.firstName,
+            lastName: selectedUser.lastName,
             role: selectedUser.role,
         };
         

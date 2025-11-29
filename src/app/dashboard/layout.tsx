@@ -50,11 +50,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const getAvatarFallback = () => {
+     if (user?.firstName && user?.lastName) {
+        return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+     }
      if (user?.username) {
-        const parts = user.username.split(' ');
-        if (parts.length > 1 && parts[0] && parts[1]) {
-            return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-        }
         return user.username.substring(0, 2).toUpperCase();
      }
      return "U";
@@ -106,8 +105,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
                       </Avatar>
                      <div>
-                        <p className="text-base font-medium leading-none">{user?.username}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{user?.role}</p>
+                        <p className="text-base font-semibold leading-none">{`${user?.firstName} ${user?.lastName}`}</p>
+                        <p className="text-xs leading-tight text-muted-foreground mt-1">Codice: {user?.username}</p>
                      </div>
                   </SheetTitle>
                  </SheetHeader>

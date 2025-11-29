@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 type User = {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
   role: 'admin' | 'operator';
 };
 
