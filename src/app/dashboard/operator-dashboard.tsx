@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
@@ -919,9 +919,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </div>
                 <div>
                     <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
-                    <p className="text-muted-foreground">
-                        Ogni timbratura (entrata, uscita, pausa) viene inviata all'amministratore per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default">in sospeso</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
-                    </p>
+                    <div className="text-muted-foreground">
+                        <span>Ogni timbratura (entrata, uscita, pausa) viene inviata all'amministratore per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: </span>
+                        <Badge variant="default">in sospeso</Badge>
+                        <span>, </span>
+                        <Badge variant="secondary">confermata</Badge>
+                        <span>, o </span>
+                        <Badge variant="destructive">rifiutata</Badge>
+                        <span>.</span>
+                    </div>
                 </div>
                  <div>
                     <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
