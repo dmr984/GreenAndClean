@@ -758,7 +758,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardContent>
             <CardFooter className="flex flex-col gap-4">
                  {isClockedIn ? (
-                    <Button 
+                     <Button 
                         className="w-full" 
                         size="lg" 
                         variant="destructive"
@@ -883,34 +883,34 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <ResponsiveDialogHeader>
                 <ResponsiveDialogTitle>Guida alla Gestione del Turno</ResponsiveDialogTitle>
                 <ResponsiveDialogDescription>
-                    Come utilizzare il sistema di timbratura.
+                    Come utilizzare il sistema di timbratura in modo corretto.
                 </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
             <div className="py-4 space-y-4 text-sm">
                 <div>
                     <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
                     <p className="text-muted-foreground">
-                        Usa i pulsanti per registrare la tua entrata e uscita.
+                        Usa i pulsanti per registrare la tua entrata e uscita. Questa azione registra anche la tua posizione per confermare la sede di lavoro.
                         <br/><br/>
                         <span className="font-bold">IMPORTANTE:</span> L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
                     </p>
                 </div>
                  <div>
-                    <h4 className="font-semibold mb-1">Pause</h4>
+                    <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
                     <p className="text-muted-foreground">
-                       L'operatore non deve timbrare le pause. La gestione della pausa (sia per turni ordinari che straordinari) è di competenza dell'amministratore in fase di approvazione.
-                    </p>
-                </div>
-                 <div>
-                    <h4 className="font-semibold mb-1">Turno Straordinario</h4>
-                    <p className="text-muted-foreground">
-                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante per avviare un turno straordinario, che ti permette di registrare ore di lavoro extra.
+                       Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita e inserita direttamente dall'amministratore in fase di approvazione del tuo turno.
                     </p>
                 </div>
                  <div>
                     <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
                     <p className="text-muted-foreground">
-                       Le ore ordinarie vengono calcolate a scatti di mezz'ora, mentre le ore straordinarie vengono calcolate a scatti di un'ora intera.
+                       Il sistema arrotonda gli orari per calcolare le ore totali: le ore ordinarie scattano ogni mezz'ora, mentre le ore straordinarie vengono conteggiate ogni ora intera.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-1">Turno Straordinario</h4>
+                    <p className="text-muted-foreground">
+                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante per avviare un turno straordinario, che ti permette di registrare ore di lavoro extra.
                     </p>
                 </div>
                 <div>
