@@ -94,7 +94,7 @@ type StraordinarioEvent = {
 type StraordinarioShift = {
     id?: string;
     events: StraordinarioEvent[];
-    status: 'in_corso' | 'in_attesa_di_approvazione';
+    status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
     date: Timestamp;
 }
 
@@ -118,7 +118,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [unlockRequestSent, setUnlockRequestSent] = useState(false);
   const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
-  const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
 
   const [canClockIn, setCanClockIn] = useState(true);
@@ -203,7 +202,26 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     }, [firestore, authUser, toast]);
 
-    
+    useEffect(() => {
+        if (!firestore || !authUser?.id) return;
+        
+        const overtimeQuery = query(
+            collection(firestore, `app-users/${authUser.id}/straordinari`),
+            where('date', '==', Timestamp.fromDate(startOfDay(new Date()))),
+            where('status', '==', 'in_corso')
+        );
+
+        const unsubscribe = onSnapshot(overtimeQuery, (snapshot) => {
+            if (!snapshot.empty) {
+                const shiftDoc = snapshot.docs[0];
+                setCurrentOvertimeShift({ id: shiftDoc.id, ...shiftDoc.data() } as StraordinarioShift);
+            } else {
+                setCurrentOvertimeShift(null);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [firestore, authUser]);
 
 
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
@@ -432,7 +450,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
     if (!firestore || !operator || isProcessing) return;
     
-    // Prevent starting a break if already on break, etc.
     const lastValidEvent = [...(clockings || [])].filter(e => e.status !== 'rifiutata').pop();
     if (type === 'pausa' && lastValidEvent?.type !== 'entrata' && lastValidEvent?.type !== 'fine_pausa') {
         toast({ title: 'Azione non permessa', description: 'Puoi iniziare una pausa solo dopo essere entrato o aver finito un\'altra pausa.', variant: 'destructive'});
@@ -589,7 +606,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         try {
             if (updatedShift.id) {
                 const docRef = doc(collectionRef, updatedShift.id);
-                await updateDoc(docRef, updatedShift);
+                await updateDoc(docRef, { events: updatedShift.events, status: updatedShift.status });
             } else {
                 const docRef = await addDoc(collectionRef, updatedShift);
                 updatedShift.id = docRef.id;
@@ -599,7 +616,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             
             if (updatedShift.status === 'in_attesa_di_approvazione') {
                 toast({ title: "Turno Straordinario Inviato", description: "Il tuo turno è stato inviato per l'approvazione."});
-                setIsOvertimeModalOpen(false);
                 setCurrentOvertimeShift(null);
             }
 
@@ -645,9 +661,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const renderNonWorkDayCard = () => {
-    const isOvertimeClockedIn = currentOvertimeShift?.events.some(e => e.type === 'entrata') && !currentOvertimeShift?.events.some(e => e.type === 'uscita');
-    const isOvertimeOnBreak = currentOvertimeShift?.events[currentOvertimeShift.events.length - 1]?.type === 'pausa';
-    
     return (
         <Card className="border-blue-500 bg-blue-500/10 text-center">
             <CardHeader className="pb-4">
@@ -662,52 +675,48 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </p>
             </CardContent>
              <CardFooter>
-                <Dialog open={isOvertimeModalOpen} onOpenChange={setIsOvertimeModalOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="w-full" size="lg">
-                            <PlusCircle className="mr-2 h-5 w-5" /> Avvia Turno Straordinario
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Registrazione Turno Straordinario</DialogTitle>
-                             <DialogDescription>
-                                Esegui le timbrature per il tuo turno. Al termine, verrà inviato per l'approvazione.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-col items-center justify-center gap-4 py-8">
-                             <div className="text-5xl font-bold font-mono tracking-tight text-foreground">
-                                {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                            <div className="flex flex-col gap-4 w-full mt-4">
-                                {isOvertimeClockedIn ? (
-                                    <>
-                                        <Button className="w-full" size="lg" variant="destructive" disabled={isOvertimeOnBreak} onClick={() => handleOvertimeClocking('uscita')}>
-                                            <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
-                                        </Button>
-                                        <div className="flex items-center space-x-2 justify-center pt-2">
-                                            <PauseCircle className="h-5 w-5 text-muted-foreground"/>
-                                            <Label htmlFor="overtime-break-toggle" className={isOvertimeOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
-                                            <Switch 
-                                                id="overtime-break-toggle" 
-                                                checked={isOvertimeOnBreak}
-                                                onCheckedChange={(checked) => handleOvertimeClocking(checked ? 'pausa' : 'fine_pausa')}
-                                            />
-                                        </div>
-                                    </>
-                                ) : (
-                                    <Button className="w-full" size="lg" style={{backgroundColor: '#22c55e', color: 'white'}} onClick={() => handleOvertimeClocking('entrata')}>
-                                        <Play className="mr-2 h-5 w-5" /> Inizia Turno Straordinario
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                <Button className="w-full" size="lg" onClick={() => handleOvertimeClocking('entrata')}>
+                    <PlusCircle className="mr-2 h-5 w-5" /> Avvia Turno Straordinario
+                </Button>
             </CardFooter>
         </Card>
     );
   }
+
+    const renderOvertimeClockingInterface = () => {
+        if (!currentOvertimeShift) return null;
+        const isOvertimeOnBreak = currentOvertimeShift.events[currentOvertimeShift.events.length - 1]?.type === 'pausa';
+
+        return (
+            <Card>
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-3">
+                        <Clock className="h-6 w-6 text-primary" />
+                        <CardTitle className="text-2xl">Gestione Turno Straordinario</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center gap-4">
+                    <div className="text-7xl lg:text-8xl font-bold font-mono tracking-tight text-foreground">
+                        {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                </CardContent>
+                <CardFooter className="flex flex-col gap-4">
+                    <Button className="w-full" size="lg" variant="destructive" disabled={isOvertimeOnBreak} onClick={() => handleOvertimeClocking('uscita')}>
+                        <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
+                    </Button>
+                    <div className="flex items-center space-x-2 justify-center pt-2">
+                        <PauseCircle className="h-5 w-5 text-muted-foreground"/>
+                        <Label htmlFor="overtime-break-toggle" className={isOvertimeOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
+                        <Switch 
+                            id="overtime-break-toggle" 
+                            checked={isOvertimeOnBreak}
+                            onCheckedChange={(checked) => handleOvertimeClocking(checked ? 'pausa' : 'fine_pausa')}
+                        />
+                    </div>
+                </CardFooter>
+            </Card>
+        );
+    };
 
   if (isUserLoading || operator === null || isWorkDay === null) {
       return <div className="flex items-center justify-center h-full">
@@ -719,6 +728,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const renderClockingInterface = () => {
+      if (currentOvertimeShift) {
+          return renderOvertimeClockingInterface();
+      }
       if (!isClockedIn && leaveStatus.onLeave) {
           return renderLeaveCard();
       }
