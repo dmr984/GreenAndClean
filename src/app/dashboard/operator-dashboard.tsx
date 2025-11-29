@@ -453,14 +453,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     });
   };
 
-  const handleClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
+  const handleClocking = async (type: 'entrata' | 'uscita') => {
     if (!firestore || !operator || isProcessing) return;
-    
-    const lastValidEvent = [...(clockings || [])].filter(e => e.status !== 'rifiutata').pop();
-    if (type === 'pausa' && lastValidEvent?.type !== 'entrata' && lastValidEvent?.type !== 'fine_pausa') {
-        toast({ title: 'Azione non permessa', description: 'Puoi iniziare una pausa solo dopo essere entrato o aver finito un\'altra pausa.', variant: 'destructive'});
-        return;
-    }
     
     try {
         const currentLoc = await getLocation();
@@ -586,7 +580,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
   }, [isShiftDetailsOpen, firestore, operator, shifts, hasUnreadShifts]);
   
-  const handleOvertimeClocking = async (type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita') => {
+  const handleOvertimeClocking = async (type: 'entrata' | 'uscita') => {
         if (!firestore || !operator) return;
         
         try {
@@ -764,22 +758,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardContent>
             <CardFooter className="flex flex-col gap-4">
                  {isClockedIn ? (
-                    <>
-                         <div className="flex items-center space-x-2">
-                            <Switch id="break-mode" checked={isOnBreak} onCheckedChange={(checked) => handleClocking(checked ? 'pausa': 'fine_pausa')} />
-                            <Label htmlFor="break-mode">Pausa</Label>
-                        </div>
-                        <Button 
-                            className="w-full" 
-                            size="lg" 
-                            variant="destructive"
-                            disabled={isProcessing} 
-                            onClick={() => handleClocking('uscita')}
-                        >
-                             {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
-                             Termina Turno
-                        </Button>
-                    </>
+                    <Button 
+                        className="w-full" 
+                        size="lg" 
+                        variant="destructive"
+                        disabled={isProcessing} 
+                        onClick={() => handleClocking('uscita')}
+                    >
+                         {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
+                         Termina Turno
+                    </Button>
                 ) : (
                     <Button 
                         className="w-full" 
@@ -905,29 +893,29 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         Usa il pulsante <span className="font-bold text-green-500">Inizia Turno</span> per registrare la tua entrata e <span className="font-bold text-red-500">Termina Turno</span> per registrare la tua uscita. Il sistema richiede l'accesso alla tua posizione GPS solo al momento della timbratura per verificarne la correttezza.
                     </p>
                 </div>
-                <div>
+                 <div>
                     <h4 className="font-semibold mb-1">Pause</h4>
                     <p className="text-muted-foreground">
-                        Durante il turno, puoi usare l'interruttore <span className="font-bold">Pausa</span> per registrare l'inizio e la fine di una pausa.
+                       L'operatore non deve timbrare le pause. La gestione della pausa (sia per turni ordinari che straordinari) è di competenza dell'amministratore in fase di approvazione.
                     </p>
                 </div>
                  <div>
                     <h4 className="font-semibold mb-1">Turno Straordinario</h4>
                     <p className="text-muted-foreground">
-                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante <span className="font-bold text-blue-500">Avvia Turno Straordinario</span>. Questo ti permette di registrare ore di lavoro extra. La timbratura della pausa non è disponibile per gli straordinari; verrà gestita dall'amministratore.
+                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante <span className="font-bold text-blue-500">Avvia Turno Straordinario</span>. Questo ti permette di registrare ore di lavoro extra.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
+                    <p className="text-muted-foreground">
+                       Le ore ordinarie vengono calcolate a scatti di mezz'ora, mentre le ore straordinarie vengono calcolate a scatti di un'ora intera.
                     </p>
                 </div>
                 <div>
                     <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
-                    <div className="text-muted-foreground">
-                        <span>Ogni timbratura (entrata, uscita, pausa) viene inviata all'amministratore per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: </span>
-                        <Badge variant="default">in sospeso</Badge>
-                        <span>, </span>
-                        <Badge variant="secondary">confermata</Badge>
-                        <span>, o </span>
-                        <Badge variant="destructive">rifiutata</Badge>
-                        <span>.</span>
-                    </div>
+                     <p className="text-muted-foreground">
+                        Ogni timbratura (entrata o uscita) viene inviata all'amministratore per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <span><Badge variant="default" className="bg-yellow-500 text-white">in sospeso</Badge></span>, <span><Badge variant="secondary">confermata</Badge></span>, o <span><Badge variant="destructive">rifiutata</Badge></span>.
+                    </p>
                 </div>
                  <div>
                     <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
