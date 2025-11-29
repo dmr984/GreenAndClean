@@ -1177,6 +1177,7 @@ export default function ShiftApprovalPage() {
 
     const handleAddOvertimeBreak = () => {
         if (!overtimeShiftForBreak) return;
+        setBreakTimes({ start: '', end: '' });
         setIsOvertimeAddBreakDialogOpen(true);
         setIsOvertimeMissingBreakConfirmOpen(false);
     };
@@ -1217,7 +1218,12 @@ export default function ShiftApprovalPage() {
         const contractualEndStr = operator.workSchedule[dayName]?.endTime;
 
         if (contractualEndStr && !shift.ignoreContractualStart) {
-            return { display: `${originalTime} (${contractualEndStr})`, calculationEnd };
+             const [contractualH, contractualM] = contractualEndStr.split(':').map(Number);
+             const contractualEnd = set(shiftDate, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+
+             if(calculationEnd.getTime() !== contractualEnd.getTime()) {
+                 return { display: `${originalTime} (${contractualEndStr})`, calculationEnd };
+             }
         }
     
         return { display: originalTime, calculationEnd };
@@ -1599,7 +1605,7 @@ export default function ShiftApprovalPage() {
                         </Table>
                     </div>
 
-                    <ResponsiveDialogFooter className="grid grid-cols-2 gap-2 mt-4 sm:flex">
+                    <ResponsiveDialogFooter className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
                         <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
                          {detailShift && detailShift.status !== 'in_sospeso' && (
                             <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
@@ -1610,7 +1616,7 @@ export default function ShiftApprovalPage() {
                            <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
                               <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                            </Button>
-                           <Button className="w-full" onClick={() => handleApprovalProcess(detailShift)}>
+                           <Button className="w-full col-span-2 sm:col-span-1" onClick={() => handleApprovalProcess(detailShift)}>
                               <CheckCircle className="mr-2 h-4 w-4"/> Approva
                            </Button>
                         </>
