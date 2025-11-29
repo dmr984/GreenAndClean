@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
-import { ClipboardList, Loader2, CheckCircle, XCircle, Archive } from 'lucide-react';
+import { ClipboardList, Loader2, CheckCircle, XCircle, Archive, Info } from 'lucide-react';
 import { format } from 'date-fns';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 
 type SupplyRequest = {
     id: string;
@@ -48,6 +49,7 @@ export default function AdminSupplyRequestsPage() {
     
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
 
     useEffect(() => {
         if (!firestore || !user || user.role !== 'admin') {
@@ -223,7 +225,10 @@ export default function AdminSupplyRequestsPage() {
                 <div className="flex items-center gap-4">
                     <ClipboardList className="h-8 w-8 text-primary" />
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Richieste Forniture</h1>
+                         <div className='flex items-center gap-2'>
+                           <h1 className="text-3xl font-bold tracking-tight">Richieste Forniture</h1>
+                            <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}><Info className="h-5 w-5"/></Button>
+                         </div>
                         <p className="text-muted-foreground">Approva o rifiuta le richieste di materiale degli operatori.</p>
                     </div>
                 </div>
@@ -292,6 +297,39 @@ export default function AdminSupplyRequestsPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+        <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Guida alla Gestione Forniture</ResponsiveDialogTitle>
+                </ResponsiveDialogHeader>
+                <div className="py-4 space-y-4 text-sm">
+                    <div>
+                        <h4 className="font-semibold mb-1">Approvazione Richieste</h4>
+                        <p className="text-muted-foreground">
+                            Quando un operatore fa una richiesta, appare nella tabella "Richieste in Attesa". Clicca sul pulsante verde <CheckCircle className="h-4 w-4 inline-block text-green-500"/> per approvare. Si aprirà una finestra dove potrai confermare o modificare la quantità. L'approvazione scalerà automaticamente la quantità dal magazzino.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Giacenza Magazzino</h4>
+                        <p className="text-muted-foreground">
+                           Prima di approvare, controlla sempre la "Giacenza attuale" per assicurarti di avere abbastanza scorte. Non puoi approvare una quantità superiore a quella disponibile.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Rifiuto e Storico</h4>
+                        <p className="text-muted-foreground">
+                           Usa il pulsante rosso <XCircle className="h-4 w-4 inline-block text-red-500"/> per rifiutare una richiesta. Tutte le richieste approvate e rifiutate vengono spostate nello "Storico Richieste".
+                        </p>
+                    </div>
+                     <div>
+                        <h4 className="font-semibold mb-1">Pulizia Storico</h4>
+                        <p className="text-muted-foreground">
+                           Periodicamente, puoi pulire lo storico delle richieste completate usando il pulsante "Pulisci Storico". Questa azione è irreversibile ed elimina solo le richieste approvate o rifiutate.
+                        </p>
+                    </div>
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
         </>
     );
 }

@@ -11,9 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Warehouse, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { Warehouse, Loader2, PlusCircle, Pencil, Trash2, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 
 type Product = {
     id: string;
@@ -34,6 +35,7 @@ export default function WarehousePage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
 
     // State for forms
     const [newProductName, setNewProductName] = useState('');
@@ -189,9 +191,10 @@ export default function WarehousePage() {
         <>
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <div className="flex items-center gap-3">
+                     <div className="flex items-center gap-3">
                         <Warehouse className="h-6 w-6 text-primary" />
                         <CardTitle className="text-2xl">Gestione Magazzino</CardTitle>
+                        <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}><Info className="h-5 w-5"/></Button>
                     </div>
                      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                         <DialogTrigger asChild>
@@ -283,6 +286,39 @@ export default function WarehousePage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Guida alla Gestione Magazzino</ResponsiveDialogTitle>
+                    </ResponsiveDialogHeader>
+                    <div className="py-4 space-y-4 text-sm">
+                        <div>
+                            <h4 className="font-semibold mb-1">Aggiungere un Prodotto</h4>
+                            <p className="text-muted-foreground">
+                                Clicca su "Aggiungi Prodotto" per inserire un nuovo articolo nel magazzino. Devi specificare un nome e una quantità iniziale.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Modificare un Prodotto</h4>
+                            <p className="text-muted-foreground">
+                               Usa il pulsante a forma di matita <Pencil className="h-4 w-4 inline-block"/> per cambiare il nome o aggiornare la quantità di un prodotto esistente. Questo è utile per le ricariche di magazzino.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Stato del Prodotto</h4>
+                            <p className="text-muted-foreground">
+                               Lo stato ti dà un'indicazione visiva rapida della disponibilità: <Badge variant="secondary">Disponibile</Badge>, <Badge className="bg-yellow-500 text-white">In esaurimento</Badge> (quando la quantità è bassa), o <Badge variant="destructive">Esaurito</Badge>.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Eliminare un Prodotto</h4>
+                            <p className="text-muted-foreground">
+                                Clicca sull'icona del cestino <Trash2 className="h-4 w-4 inline-block text-destructive"/> per rimuovere permanentemente un prodotto dal magazzino.
+                            </p>
+                        </div>
+                    </div>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
         </>
     );
 }

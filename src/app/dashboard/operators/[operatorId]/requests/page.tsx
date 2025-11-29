@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Loader2, CheckCircle, XCircle, Trash2, Pencil, PlusCircle, Calendar as CalendarIcon } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Trash2, Pencil, PlusCircle, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -168,6 +168,7 @@ export default function LeaveRequestsPage() {
     const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
     
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -277,11 +278,15 @@ export default function LeaveRequestsPage() {
     )
 
     return (
+        <>
         <div className="space-y-6">
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                        <div className='flex items-center gap-2'>
+                           <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                           <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}><Info className="h-5 w-5"/></Button>
+                        </div>
                         <p className="text-muted-foreground">Gestione Richieste (Codice: {operator.username})</p>
                     </div>
                      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -339,5 +344,36 @@ export default function LeaveRequestsPage() {
                 />
             )}
         </div>
+         <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Guida alla Gestione Richieste</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Come approvare, rifiutare e modificare le richieste degli operatori.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                <div className="py-4 space-y-4 text-sm">
+                    <div>
+                        <h4 className="font-semibold mb-1">Approvazione e Rifiuto</h4>
+                        <p className="text-muted-foreground">
+                            Nella tabella "In Attesa", puoi approvare o rifiutare una richiesta usando i pulsanti <CheckCircle className="h-4 w-4 inline-block text-green-500"/> (approva) e <XCircle className="h-4 w-4 inline-block text-red-500"/> (rifiuta). L'operatore riceverà una notifica sul cambio di stato.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Aggiungere una Richiesta</h4>
+                        <p className="text-muted-foreground">
+                            Se un operatore ti comunica una richiesta a voce, puoi inserirla tu stesso usando il pulsante "Aggiungi Richiesta". Puoi anche inserire richieste di malattia.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1">Modifica ed Eliminazione</h4>
+                        <p className="text-muted-foreground">
+                            Puoi modificare qualsiasi richiesta (in attesa, approvata o rifiutata) usando il pulsante a forma di matita <Pencil className="h-4 w-4 inline-block"/>. Puoi anche eliminare definitivamente una richiesta con il pulsante del cestino <Trash2 className="h-4 w-4 inline-block text-destructive"/>. Usa queste funzioni con cautela.
+                        </p>
+                    </div>
+                </div>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+        </>
     );
 };

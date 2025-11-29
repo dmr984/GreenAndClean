@@ -890,7 +890,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 <div>
                     <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
                     <p className="text-muted-foreground">
-                        Usa il pulsante <span className="font-bold text-green-500">Inizia Turno</span> per registrare la tua entrata e <span className="font-bold text-red-500">Termina Turno</span> per registrare la tua uscita. Il sistema richiede l'accesso alla tua posizione GPS solo al momento della timbratura per verificarne la correttezza.
+                        Usa i pulsanti per registrare la tua entrata e uscita.
+                        <br/><br/>
+                        <span className="font-bold">IMPORTANTE:</span> L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
                     </p>
                 </div>
                  <div>
@@ -902,7 +904,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                  <div>
                     <h4 className="font-semibold mb-1">Turno Straordinario</h4>
                     <p className="text-muted-foreground">
-                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante <span className="font-bold text-blue-500">Avvia Turno Straordinario</span>. Questo ti permette di registrare ore di lavoro extra.
+                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante per avviare un turno straordinario, che ti permette di registrare ore di lavoro extra.
                     </p>
                 </div>
                  <div>
@@ -914,7 +916,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 <div>
                     <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
                      <p className="text-muted-foreground">
-                        Ogni timbratura (entrata o uscita) viene inviata all'amministratore per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <span><Badge variant="default" className="bg-yellow-500 text-white">in sospeso</Badge></span>, <span><Badge variant="secondary">confermata</Badge></span>, o <span><Badge variant="destructive">rifiutata</Badge></span>.
+                        Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
                     </p>
                 </div>
                  <div>

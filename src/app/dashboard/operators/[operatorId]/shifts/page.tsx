@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -144,6 +144,7 @@ export default function ShiftApprovalPage() {
     const [overtimeShiftForBreak, setOvertimeShiftForBreak] = useState<StraordinarioShift | null>(null);
     const [isOvertimeMissingBreakConfirmOpen, setIsOvertimeMissingBreakConfirmOpen] = useState(false);
     const [isOvertimeAddBreakDialogOpen, setIsOvertimeAddBreakDialogOpen] = useState(false);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
 
 
     const contractualStartTime = useMemo(() => {
@@ -1242,13 +1243,13 @@ export default function ShiftApprovalPage() {
         const { ordinary, overtime } = calculateHours(shift);
         const totalCalculatedMinutes = (ordinary + overtime) * 60;
         
-        const breakDurationMinutes = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+        const breakDurationMillis = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
             const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
             if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
             return acc;
-        }, 0) / 60000;
+        }, 0);
 
-        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + (breakDurationMinutes * 60000));
+        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDurationMillis);
 
         // Only show parenthesis if there is a meaningful difference due to rounding
         if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
@@ -1294,7 +1295,10 @@ export default function ShiftApprovalPage() {
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                         <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                        <div className='flex items-center gap-2'>
+                           <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                           <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}><Info className="h-5 w-5"/></Button>
+                        </div>
                         <p className="text-muted-foreground">Gestione Turni (Codice: {operator.username})</p>
                     </div>
                     <Button onClick={() => setIsAddShiftOpen(true)}>
@@ -1929,6 +1933,44 @@ export default function ShiftApprovalPage() {
                     <AlertDialogFooter><AlertDialogCancel onClick={() => setDeletingTimbratura(null)}>Annulla</AlertDialogCancel><AlertDialogAction onClick={handleConfirmDeleteTimbratura}>Elimina</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+                <ResponsiveDialogContent>
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Guida alla Gestione Turni</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>
+                            Come approvare, modificare e calcolare i turni degli operatori.
+                        </ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                    <div className="py-4 space-y-4 text-sm">
+                        <div>
+                            <h4 className="font-semibold mb-1">Approvazione Turni</h4>
+                            <p className="text-muted-foreground">
+                                I turni in stato "sospeso" richiedono la tua attenzione. Puoi approvarli o rifiutarli. L'approvazione converte le timbrature in ore lavorate (ordinarie e straordinarie) e crea richieste di permesso se necessario.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Gestione Pause</h4>
+                            <p className="text-muted-foreground">
+                               Se per un turno è prevista una pausa obbligatoria ma non è stata registrata, il sistema ti chiederà se vuoi aggiungerla manualmente prima di approvare.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Calcolo Ore</h4>
+                            <p className="text-muted-foreground">
+                                Il sistema arrotonda gli orari per calcolare le ore: le ore ordinarie scattano ogni mezz'ora e gli straordinari ogni ora intera. Nel dettaglio del turno, puoi vedere gli orari di riferimento usati per il calcolo tra parentesi.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1">Modifica e Aggiunta Manuale</h4>
+                             <p className="text-muted-foreground">
+                                Puoi modificare qualsiasi timbratura di un turno o aggiungere un intero turno manualmente in caso di dimenticanze o errori da parte dell'operatore.
+                            </p>
+                        </div>
+                    </div>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+
         </div>
     );
 };
