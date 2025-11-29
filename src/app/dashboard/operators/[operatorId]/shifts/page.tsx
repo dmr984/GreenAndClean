@@ -1214,25 +1214,28 @@ export default function ShiftApprovalPage() {
     
     const getAdjustedEndTime = (shift: Shift): { display: string; calculationEnd: Date | null } => {
         if (!operator || !shift?.events?.length) return { display: '--:--', calculationEnd: null };
-        const { calculationEnd } = calculateShiftDurations(shift.events);
+        
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-        if (!calculationEnd || !clockOutEvent) return { display: '--:--', calculationEnd: null };
-    
+        if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
+        
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
-        const shiftDate = clockOutEvent.timestamp.toDate();
-        const dayName = dayIndexToName[getDayFns(shiftDate)];
-        const contractualEndStr = operator.workSchedule[dayName]?.endTime;
+        
+        const { calculationStart } = calculateShiftDurations(shift.events);
+        if (!calculationStart) return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
+        
+        const { ordinary, overtime } = calculateHours(shift);
+        const totalCalculatedMinutes = (ordinary + overtime) * 60;
+        const breakDurationMinutes = shift.breakDuration;
+        const totalMinutesOnSite = totalCalculatedMinutes + breakDurationMinutes;
 
-        if (contractualEndStr && !shift.ignoreContractualStart) {
-             const [contractualH, contractualM] = contractualEndStr.split(':').map(Number);
-             const contractualEnd = set(shiftDate, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+        const calculatedEndTime = new Date(calculationStart.getTime() + totalMinutesOnSite * 60000);
 
-             if(calculationEnd.getTime() !== contractualEnd.getTime()) {
-                 return { display: `${originalTime} (${contractualEndStr})`, calculationEnd };
-             }
+        // Only show parenthesis if there is a meaningful difference due to rounding
+        if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+            return { display: `${originalTime} (${format(calculatedEndTime, 'HH:mm')})`, calculationEnd: calculatedEndTime };
         }
-    
-        return { display: originalTime, calculationEnd };
+
+        return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
     }
 
     return (
