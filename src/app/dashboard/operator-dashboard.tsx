@@ -704,15 +704,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <Button className="w-full" size="lg" variant="destructive" disabled={isOvertimeOnBreak} onClick={() => handleOvertimeClocking('uscita')}>
                         <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
                     </Button>
-                    <div className="flex items-center space-x-2 justify-center pt-2">
-                        <PauseCircle className="h-5 w-5 text-muted-foreground"/>
-                        <Label htmlFor="overtime-break-toggle" className={isOvertimeOnBreak ? 'text-primary font-bold' : 'text-muted-foreground'}>Pausa</Label>
-                        <Switch 
-                            id="overtime-break-toggle" 
-                            checked={isOvertimeOnBreak}
-                            onCheckedChange={(checked) => handleOvertimeClocking(checked ? 'pausa' : 'fine_pausa')}
-                        />
-                    </div>
                 </CardFooter>
             </Card>
         );
