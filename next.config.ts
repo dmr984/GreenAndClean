@@ -2,6 +2,12 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '4.5mb',
+      executionTimeout: 120, // 2 minutes
+    }
+  },
   reactStrictMode: false,
   typescript: {
     ignoreBuildErrors: true,
@@ -36,7 +42,7 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       {
-        protocol: 'https',
+        protocol: 'https' ,
         hostname: 'i.postimg.cc',
         port: '',
         pathname: '/**',
