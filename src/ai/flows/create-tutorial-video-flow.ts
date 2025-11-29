@@ -4,19 +4,19 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import { googleAI } from '@genkit-ai/google-genai';
 
-export const CreateTutorialVideoInputSchema = z.object({
+const CreateTutorialVideoInputSchema = z.object({
   prompt: z.string().describe('A detailed text description of the video to be generated.'),
 });
-export type CreateTutorialVideoInput = z.infer<typeof CreateTutorialVideoInputSchema>;
+type CreateTutorialVideoInput = z.infer<typeof CreateTutorialVideoInputSchema>;
 
-export const CreateTutorialVideoOutputSchema = z.object({
+const CreateTutorialVideoOutputSchema = z.object({
   videoUrl: z.string().describe('The data URI of the generated MP4 video.'),
   revisedPrompt: z.string().optional().describe('The prompt that was revised by the model.'),
 });
-export type CreateTutorialVideoOutput = z.infer<typeof CreateTutorialVideoOutputSchema>;
+type CreateTutorialVideoOutput = z.infer<typeof CreateTutorialVideoOutputSchema>;
 
 // This function will be called from the client-side component.
 export async function createTutorialVideo(input: CreateTutorialVideoInput): Promise<CreateTutorialVideoOutput> {
