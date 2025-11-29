@@ -887,48 +887,46 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     Come utilizzare il sistema di timbratura in modo corretto.
                 </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
-            <ScrollArea>
-                <div className="py-4 pr-6 space-y-4 text-sm">
-                    <div>
-                        <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
-                        <p className="text-muted-foreground">
-                            Usa i pulsanti per registrare la tua entrata e uscita. Questa azione registra anche la tua posizione per confermare la sede di lavoro.
-                            <br/><br/>
-                            <span className="font-bold">IMPORTANTE:</span> L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
-                        </p>
-                    </div>
-                     <div>
-                        <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
-                        <p className="text-muted-foreground">
-                           Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
-                        </p>
-                    </div>
-                     <div>
-                        <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
-                        <p className="text-muted-foreground">
-                           Il sistema arrotonda gli orari per calcolare le ore totali: le ore ordinarie scattano ogni mezz'ora, mentre le ore straordinarie vengono conteggiate ogni ora intera.
-                        </p>
-                    </div>
-                    <div>
-                        <h4 className="font-semibold mb-1">Turno Straordinario</h4>
-                        <p className="text-muted-foreground">
-                            Se oggi non è un tuo giorno lavorativo, vedrai il pulsante per avviare un turno straordinario, che ti permette di registrare ore di lavoro extra.
-                        </p>
-                    </div>
-                    <div>
-                        <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
-                         <p className="text-muted-foreground">
-                            Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
-                        </p>
-                    </div>
-                     <div>
-                        <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
-                        <p className="text-muted-foreground">
-                            Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
-                        </p>
-                    </div>
+            <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
+                <div>
+                    <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
+                    <p className="text-muted-foreground">
+                        Usa i pulsanti per registrare la tua entrata e uscita. Questa azione registra anche la tua posizione per confermare la sede di lavoro.
+                        <br/><br/>
+                        <span className="font-bold">IMPORTANTE:</span> L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
+                    </p>
                 </div>
-            </ScrollArea>
+                 <div>
+                    <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
+                    <p className="text-muted-foreground">
+                        Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
+                    <p className="text-muted-foreground">
+                        Il sistema arrotonda gli orari per calcolare le ore totali: le ore ordinarie scattano ogni mezz'ora, mentre le ore straordinarie vengono conteggiate ogni ora intera.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-1">Turno Straordinario</h4>
+                    <p className="text-muted-foreground">
+                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante per avviare un turno straordinario, che ti permette di registrare ore di lavoro extra.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
+                     <p className="text-muted-foreground">
+                        Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
+                    <p className="text-muted-foreground">
+                        Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
+                    </p>
+                </div>
+            </div>
         </ResponsiveDialogContent>
     </ResponsiveDialog>
     </>
