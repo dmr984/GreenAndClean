@@ -401,7 +401,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     const [hours, minutes] = shiftStartTimeStr.split(':').map(Number);
     const shiftStartTime = set(today, { hours, minutes, seconds: 0, milliseconds: 0 });
-    const activationTime = new Date(shiftStartTime.getTime() - 5 * 60 * 1000); // 5 minutes before
+    const activationTime = new Date(shiftStartTime.getTime() - 90 * 60 * 1000); // 90 minutes before
 
     setCanClockIn(today >= activationTime);
 

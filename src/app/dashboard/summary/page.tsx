@@ -110,28 +110,15 @@ const calculateShiftHours = (shift: Shift | null, operator: Operator | null): { 
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
-    const contractualStartTimeStr = schedule?.startTime || '00:00';
     
-    const [contractualH, contractualM] = contractualStartTimeStr.split(':').map(Number);
-    const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-
     let calculationStartTime = clockInTime;
-    const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-
-    if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
-        calculationStartTime = contractualStartDateTime;
-    } else {
-        const minutes = clockInTime.getMinutes();
-        const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
-
-        if (minutes > 15 && minutes <= 45) {
-            roundedTime.setMinutes(30);
-        } else if (minutes > 45) {
-            roundedTime.setHours(roundedTime.getHours() + 1, 0);
-        } else { // minutes <= 15
-             roundedTime.setMinutes(0);
+    
+    if (schedule?.startTime) {
+        const [contractualH, contractualM] = schedule.startTime.split(':').map(Number);
+        const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
+        if (calculationStartTime < contractualStartDateTime) {
+            calculationStartTime = contractualStartDateTime;
         }
-        calculationStartTime = roundedTime;
     }
     
     let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
@@ -399,7 +386,7 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                         </ResponsiveDialogHeader>
                         
                         {selectedDay.shift ? (() => {
-                            const { ordinary, overtime, leave, workedMinutes } = calculateShiftHours(selectedDay.shift, operator);
+                            const { ordinary, overtime, leave, workedMinutes, calculationStart } = calculateShiftHours(selectedDay.shift, operator);
                             const clockInEvent = selectedDay.shift.events.find(e => e.type === 'entrata');
                             const dayName = clockInEvent ? dayIndexToName[getDay(clockInEvent.timestamp.toDate())] : undefined;
                             const schedule = dayName && operator ? operator.workSchedule[dayName] : undefined;
@@ -437,12 +424,36 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {selectedDay.shift.events.map((t, index) => (
-                                                <TableRow key={t.id || `auto-${index}`}>
-                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm')}</TableCell>
-                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {selectedDay.shift.events.map((t, index) => {
+                                                 const originalTime = format(t.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 
+                                                  if (t.type === 'entrata') {
+                                                        if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                        }
+                                                  } else if (t.type === 'uscita') {
+                                                        const breakDuration = selectedDay.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                            const finePausa = selectedDay.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                        }, 0);
+                                                        if (calculationStart) {
+                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
+                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                        }
+                                                  }
+
+                                                return (
+                                                    <TableRow key={t.id || `auto-${index}`}>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -469,17 +480,27 @@ export default function OperatorSummaryPage() {
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [monthToClean, setMonthToClean] = useState<Date | null>(null);
 
     const searchParams = useSearchParams();
     const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('monthly');
     const [dailyViewDate, setDailyViewDate] = useState(new Date());
-    const [isHelpOpen, setIsHelpOpen] = useState(false);
 
+    const { operatorId: routeOperatorId } = useParams();
 
     useEffect(() => {
-        if (!firestore || !user?.id) return;
+        if (!firestore) return;
+        
+        const idToFetch = user?.role === 'admin' ? routeOperatorId as string : user?.id;
+
+        if (!idToFetch) {
+            if(!isUserLoading) setIsLoading(false);
+            return;
+        };
+
         setIsLoading(true);
-        const operatorDocRef = doc(firestore, 'app-users', user.id);
+        const operatorDocRef = doc(firestore, 'app-users', idToFetch);
         getDoc(operatorDocRef).then(docSnap => {
             if (docSnap.exists()) {
                 setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
@@ -488,8 +509,90 @@ export default function OperatorSummaryPage() {
             }
             setIsLoading(false);
         });
-    }, [firestore, user, toast]);
+    }, [firestore, user, routeOperatorId, isUserLoading, toast]);
+
+    const handleCleanMonth = async () => {
+        if (!firestore || !operator?.id || !monthToClean) return;
+        setIsCleaning(true);
     
+        const monthStart = startOfMonth(monthToClean);
+        const monthEnd = endOfMonth(monthToClean);
+    
+        try {
+            const batch = writeBatch(firestore);
+    
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operator.id}/timbrature`),
+                where('timestamp', '>=', monthStart),
+                where('timestamp', '<=', monthEnd)
+            );
+            const timbratureSnapshot = await getDocs(timbratureQuery);
+            timbratureSnapshot.forEach(doc => batch.delete(doc.ref));
+    
+            const requestsQuery = query(
+                collection(firestore, `app-users/${operator.id}/requests`),
+                 where('endDate', '>=', monthStart)
+            );
+            const requestsSnapshot = await getDocs(requestsQuery);
+    
+            for (const requestDoc of requestsSnapshot.docs) {
+                const request = requestDoc.data() as Request;
+                const reqStart = request.startDate.toDate();
+                const reqEnd = request.endDate.toDate();
+    
+                if (reqStart > monthEnd) continue;
+    
+                const ref = requestDoc.ref;
+    
+                if (reqStart >= monthStart && reqEnd <= monthEnd) {
+                    batch.delete(ref);
+                    continue;
+                }
+    
+                if (reqStart < monthStart && reqEnd > monthEnd) {
+                    batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
+                    
+                    const { id, ...restOfRequest } = request;
+                    const newRequestData = {
+                        ...restOfRequest,
+                        startDate: Timestamp.fromDate(addDays(monthEnd, 1)),
+                        endDate: request.endDate,
+                        createdAt: serverTimestamp(),
+                        viewedByOperator: false,
+                    };
+                    const newDocRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
+                    batch.set(newDocRef, newRequestData);
+                    continue;
+                }
+    
+                if (reqStart >= monthStart && reqStart <= monthEnd && reqEnd > monthEnd) {
+                    batch.update(ref, { startDate: Timestamp.fromDate(addDays(monthEnd, 1)) });
+                    continue;
+                }
+    
+                if (reqStart < monthStart && reqEnd >= monthStart && reqEnd <= monthEnd) {
+                    batch.update(ref, { endDate: Timestamp.fromDate(subDays(monthStart, 1)) });
+                    continue;
+                }
+            }
+    
+            if (timbratureSnapshot.empty && requestsSnapshot.docs.every(d => d.data().startDate.toDate() > monthEnd)) {
+                 toast({ title: 'Nessun dato', description: 'Non ci sono dati da elaborare per questo mese.' });
+            } else {
+                await batch.commit();
+                toast({ title: 'Successo!', description: `I dati di ${format(monthToClean, 'MMMM yyyy', { locale: it })} sono stati elaborati.` });
+            }
+    
+        } catch (error) {
+            console.error("Errore durante la pulizia del mese:", error);
+            toast({ title: 'Errore', description: 'Impossibile completare l\'elaborazione.', variant: 'destructive' });
+        } finally {
+            setIsCleaning(false);
+            setMonthToClean(null);
+        }
+    };
+
+
     if (isUserLoading || isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
@@ -504,25 +607,22 @@ export default function OperatorSummaryPage() {
                                <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
                                <p className="text-muted-foreground">Riepilogo Attività (Codice: {operator.username})</p>
                             </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex gap-2">
                                 <Button variant={currentView === 'monthly' ? 'secondary' : 'outline'} onClick={() => setCurrentView('monthly')}>Mensile</Button>
                                 <Button variant={currentView === 'daily' ? 'secondary' : 'outline'} onClick={() => setCurrentView('daily')}>Giornaliero</Button>
-                                <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}>
-                                    <Info className="h-5 w-5" />
-                                </Button>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent>
                        {currentView === 'monthly' ? (
                             <MonthlySummary 
-                                operatorId={user.id} 
+                                operatorId={operator.id} 
                                 operator={operator} 
-                                onCleanMonth={() => {}} // No-op for operator
+                                onCleanMonth={(date) => setMonthToClean(date)}
                             />
                        ) : (
                            <DailySummaryContent 
-                                operatorId={user.id}
+                                operatorId={operator.id}
                                 operator={operator} 
                                 initialDate={dailyViewDate}
                                 onMonthChange={setDailyViewDate}
@@ -531,36 +631,24 @@ export default function OperatorSummaryPage() {
                     </CardContent>
                 </Card>
             </div>
-             <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
-                <ResponsiveDialogContent>
-                    <ResponsiveDialogHeader>
-                        <ResponsiveDialogTitle>Guida al Riepilogo Attività</ResponsiveDialogTitle>
-                        <ResponsiveDialogDescription>
-                            Come leggere i tuoi riepiloghi mensili e giornalieri.
-                        </ResponsiveDialogDescription>
-                    </ResponsiveDialogHeader>
-                    <div className="py-4 space-y-4 text-sm">
-                        <div>
-                            <h4 className="font-semibold mb-1">Vista Mensile</h4>
-                            <p className="text-muted-foreground">
-                                La vista mensile ti offre una panoramica di tutte le tue attività nel mese selezionato. Puoi vedere il totale dei giorni lavorati, le ore ordinarie e straordinarie, e i giorni di ferie, malattia o ore di permesso. Clicca su una delle card per vedere il dettaglio di quella voce.
-                            </p>
-                        </div>
-                        <div>
-                            <h4 className="font-semibold mb-1">Vista Giornaliera</h4>
-                            <p className="text-muted-foreground">
-                                La vista giornaliera ti mostra un calendario del mese. Ogni giorno ha uno stato (Ordinario, Straordinario, Ferie, etc.) per darti un'idea immediata di cosa è successo. Clicca sull'icona a forma di occhio <Eye className="h-4 w-4 inline-block"/> per vedere il dettaglio delle timbrature di un giorno specifico.
-                            </p>
-                        </div>
-                        <div>
-                            <h4 className="font-semibold mb-1">Calcolo Ore</h4>
-                             <p className="text-muted-foreground">
-                                Le ore ordinarie vengono calcolate a scatti di mezz'ora. Le ore straordinarie vengono calcolate a scatti di un'ora intera.
-                            </p>
-                        </div>
-                    </div>
-                </ResponsiveDialogContent>
-            </ResponsiveDialog>
+            <AlertDialog open={!!monthToClean} onOpenChange={(open) => !open && setMonthToClean(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione è irreversibile. Verranno eliminate tutte le timbrature e le porzioni di richieste che cadono nel mese di{' '}
+                            <span className="font-bold">{monthToClean ? format(monthToClean, 'MMMM yyyy', { locale: it }) : ''}</span>. Le richieste a cavallo dei mesi verranno modificate.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaning}>
+                            {isCleaning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Conferma ed Elabora
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Suspense>
     );
 }
@@ -746,7 +834,151 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         setDetailView({ type, title, items: approvedRequests });
     };
     
-    // Admin only actions removed
+    const handleCancelSingleDayOfLeave = async () => {
+        if (!firestore || !itemToModify) return;
+
+        const { request, day } = itemToModify;
+        const requestRef = doc(firestore, `app-users/${operatorId}/requests`, request.id);
+        const requestsCollectionRef = collection(firestore, `app-users/${operatorId}/requests`);
+
+        const startDate = request.startDate.toDate();
+        const endDate = request.endDate.toDate();
+        const dayToCancel = day;
+
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                const requestDoc = await transaction.get(requestRef);
+                if (!requestDoc.exists()) {
+                    throw "Request does not exist!";
+                }
+
+                if (isSameDay(startDate, endDate)) {
+                    transaction.delete(requestRef);
+                    return;
+                }
+
+                if (isSameDay(dayToCancel, startDate)) {
+                    const newStartDate = addDays(startDate, 1);
+                    transaction.update(requestRef, { startDate: Timestamp.fromDate(newStartDate) });
+                    return;
+                }
+                
+                if (isSameDay(dayToCancel, endDate)) {
+                    const newEndDate = subDays(endDate, 1);
+                    transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate) });
+                    return;
+                }
+
+                // Split the request
+                const newEndDate1 = subDays(dayToCancel, 1);
+                transaction.update(requestRef, { endDate: Timestamp.fromDate(newEndDate1) });
+
+                const newStartDate2 = addDays(dayToCancel, 1);
+                
+                const { id, ...restOfRequest } = request;
+
+                const newRequestData = {
+                    ...restOfRequest, 
+                    startDate: Timestamp.fromDate(newStartDate2),
+                    endDate: request.endDate,
+                    createdAt: serverTimestamp(),
+                    viewedByOperator: false,
+                };
+                
+                const newDocRef = doc(requestsCollectionRef);
+                transaction.set(newDocRef, newRequestData);
+            });
+            toast({ title: 'Successo', description: 'Giorno di assenza annullato.' });
+             setDetailView(prev => {
+                if (!prev) return null;
+                 return {
+                    ...prev,
+                    items: prev.items.filter(item => (item as Request).id !== request.id)
+                };
+            });
+
+        } catch (err: any) {
+             console.error(err);
+             toast({ title: 'Errore', description: 'Impossibile annullare il giorno di assenza.', variant: 'destructive' });
+
+        } finally {
+            setItemToModify(null);
+        }
+    };
+
+    const handleDeleteRequest = async () => {
+        if (!firestore || !requestToDelete) return;
+        const requestRef = doc(firestore, `app-users/${operatorId}/requests`, requestToDelete.id);
+        
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Successo', description: 'Richiesta eliminata.' });
+            // Refresh the detail view
+            setDetailView(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    items: prev.items.filter(item => (item as Request).id !== requestToDelete.id)
+                };
+            });
+        } catch (error) {
+            console.error("Error deleting request:", error);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        } finally {
+            setRequestToDelete(null);
+        }
+    };
+    
+    const findShiftForOvertimeRequest = async (request: Request) => {
+        if (!firestore || !request.associatedShiftId) {
+            toast({ title: "Nessun turno associato a questo straordinario.", variant: "destructive" });
+            return;
+        };
+        
+        const startOfDay_ts = Timestamp.fromDate(startOfDay(request.startDate.toDate()));
+        const endOfDay_ts = Timestamp.fromDate(endOfDay(request.startDate.toDate()));
+
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${operatorId}/timbrature`),
+            where('timestamp', '>=', startOfDay_ts),
+            where('timestamp', '<=', endOfDay_ts)
+        );
+
+        const snapshot = await getDocs(timbratureQuery);
+        const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura)).filter(t => t.status === 'confermata');
+        
+        if (events.length > 0) {
+            events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            let workDuration = 0;
+            const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+            const endTime = events.find(e => e.type === 'uscita')?.timestamp;
+
+            if (startTime && endTime) {
+                let totalMillis = endTime.toMillis() - startTime.toMillis();
+                let breakStart: Timestamp | null = null;
+                events.forEach(e => {
+                    if (e.type === 'pausa') breakStart = e.timestamp;
+                    if (e.type === 'fine_pausa' && breakStart) {
+                        totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                        breakStart = null;
+                    }
+                });
+                workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
+            }
+
+            const shift: Shift = {
+                events,
+                startTime: startTime!,
+                endTime,
+                workDuration,
+                isOvertime: events.some(e => e.isOvertime)
+            };
+            setShiftForDetail(shift);
+        } else {
+            toast({ title: "Nessuna timbratura trovata per questo straordinario.", variant: "destructive" });
+        }
+    };
 
     const renderDetailTable = () => {
         if (!detailView || detailView.items.length === 0) {
@@ -813,12 +1045,20 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Giorno</TableHead>
+                                {user?.role === 'admin' && <TableHead className="text-right">Azione</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {allDays.map(({ day }, index) => (
+                            {allDays.map(({ day, request }, index) => (
                                 <TableRow key={index}>
                                     <TableCell>{format(day, 'PPP', { locale: it })}</TableCell>
+                                    {user?.role === 'admin' &&
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => setItemToModify({ request, day })}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
+                                    }
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -845,6 +1085,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                             <TableHead>Dal</TableHead>
                             <TableHead>Al</TableHead>
                             <TableHead>Ore</TableHead>
+                             {user?.role === 'admin' && <TableHead className="text-right">Azione</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -853,6 +1094,18 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                 <TableCell>{format(item.startDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{format(item.endDate.toDate(), 'PPP', { locale: it })}</TableCell>
                                 <TableCell>{item.hours}</TableCell>
+                                 {user?.role === 'admin' &&
+                                <TableCell className="text-right space-x-2">
+                                     {detailView.type === 'straordinario' && item.associatedShiftId && (
+                                        <Button variant="ghost" size="icon" onClick={() => findShiftForOvertimeRequest(item)}>
+                                            <Eye className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                    <Button variant="ghost" size="icon" onClick={() => setRequestToDelete(item)}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </TableCell>
+                                 }
                             </TableRow>
                         ))}
                     </TableBody>
@@ -959,12 +1212,36 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Orario</TableHead><TableHead>Evento</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => (
-                                                <TableRow key={t.id}>
-                                                    <TableCell className={cn(t.isAuto && "text-red-500")}>{format(t.timestamp.toDate(), 'HH:mm')}</TableCell>
-                                                    <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
+                                                const originalTime = format(t.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 
+                                                  if (t.type === 'entrata') {
+                                                        if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                        }
+                                                  } else if (t.type === 'uscita') {
+                                                        const breakDuration = shiftForDetail!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                            const finePausa = shiftForDetail!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                            return acc;
+                                                        }, 0);
+                                                        if (calculationStart) {
+                                                            const totalCalculatedMinutes = (ordinary + overtime) * 60;
+                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                            if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
+                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                            }
+                                                        }
+                                                  }
+
+                                                return (
+                                                    <TableRow key={t.id}>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -978,7 +1255,36 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             </ResponsiveDialog>
         )}
 
-        {/* Admin-only dialogs removed from operator view */}
+
+         <AlertDialog open={!!itemToModify && user?.role === 'admin'} onOpenChange={(open) => !open && setItemToModify(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Annullare il giorno di assenza?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Questa azione renderà il giorno selezionato nuovamente lavorativo. L'operatore dovrà timbrare normally.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Chiudi</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCancelSingleDayOfLeave}>Annulla Giorno di Assenza</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        
+         <AlertDialog open={!!requestToDelete && user?.role === 'admin'} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Eliminare la richiesta?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Sei sicuro di voler eliminare questa richiesta? L'azione è permanente.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteRequest}>Elimina</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         </>
     );
 };

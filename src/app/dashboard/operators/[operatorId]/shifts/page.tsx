@@ -176,10 +176,9 @@ export default function ShiftApprovalPage() {
         if (schedule?.startTime && !clockInEvent.ignoreContractualStart) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            const activationTime = new Date(contractualStart.getTime() - 120 * 60 * 1000); // 2 hours before
             
             // If operator clocks in earlier than contractual, calculation still starts from contractual time
-            if (calculationStart < contractualStart && calculationStart >= activationTime) {
+            if (calculationStart < contractualStart) {
                 calculationStart = contractualStart;
             } else if (calculationStart >= contractualStart) {
                  const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
@@ -555,7 +554,6 @@ export default function ShiftApprovalPage() {
         const shiftDate = editingShift.events[0].timestamp.toDate();
         const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id; 
 
-        // This determines if we should set status to 'confermata' or 'sospesa'
         const isShiftConcluded = editingShift.events.some(e => e.type === 'uscita') || !!editShiftTimes.uscita;
         const newStatus = isShiftConcluded ? 'confermata' : 'sospesa';
 
@@ -580,7 +578,6 @@ export default function ShiftApprovalPage() {
             }
         }
 
-        // Use a map to handle one event per type, preventing duplicates from original shift events.
         const existingEvents = new Map(editingShift.events.map(e => [e.type, e]));
 
 
@@ -594,6 +591,11 @@ export default function ShiftApprovalPage() {
                 const updatePayload: any = { timestamp: newTimestamp, viewedByOperator: false };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
+                }
+                if (!isShiftConcluded && existingEvent.status === 'confermata') {
+                    updatePayload.status = 'sospesa';
+                } else if(isShiftConcluded && existingEvent.status === 'sospesa') {
+                    updatePayload.status = 'confermata';
                 }
                 batch.update(docRef, updatePayload);
             } else if (newTimestamp && !existingEvent) {
@@ -805,7 +807,7 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        const shiftId = shiftForBreak.events[0]?.shiftId || shiftForBreak.id;
+        const shiftId = shiftForBreak.id;
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
     
         const createTimestamp = (time: string): Timestamp => {
@@ -1804,7 +1806,7 @@ export default function ShiftApprovalPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-uscita">Uscita*</Label>
-                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} required={isEditShiftOpen} />
+                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} required={isEditOvertimeOpen} />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">

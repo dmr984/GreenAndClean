@@ -171,22 +171,8 @@ export default function EndOfMonthPage() {
         if (schedule?.startTime) {
             const [contractualH, contractualM] = schedule.startTime.split(':').map(Number);
             const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-            const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-            
-            if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
+             if (calculationStartTime < contractualStartDateTime) {
                 calculationStartTime = contractualStartDateTime;
-            } else {
-                const minutes = clockInTime.getMinutes();
-                const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
-
-                if (minutes > 15 && minutes <= 45) {
-                    roundedTime.setMinutes(30);
-                } else if (minutes > 45) {
-                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
-                } else { // minutes <= 15
-                     roundedTime.setMinutes(0);
-                }
-                calculationStartTime = roundedTime;
             }
         }
 
