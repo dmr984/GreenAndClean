@@ -554,6 +554,11 @@ export default function ShiftApprovalPage() {
         const shiftDate = editingShift.events[0].timestamp.toDate();
         const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id; 
 
+        // This determines if we should set status to 'confermata' or 'sospesa'
+        const isShiftConcluded = editingShift.events.some(e => e.type === 'uscita') || !!editShiftTimes.uscita;
+        const newStatus = isShiftConcluded ? 'confermata' : 'sospesa';
+
+
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
             const [hours, minutes] = time.split(':').map(Number);
@@ -597,7 +602,7 @@ export default function ShiftApprovalPage() {
                     userId: operator.id,
                     type: type,
                     timestamp: newTimestamp,
-                    status: 'sospesa',
+                    status: newStatus,
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
                     shiftId: shiftId 
@@ -1682,20 +1687,20 @@ export default function ShiftApprovalPage() {
                         </Table>
                     </div>
 
-                    <ResponsiveDialogFooter className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
-                        <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                        <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
+                    <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                        <Button className="w-full sm:col-span-1" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
+                        <Button className="w-full sm:col-span-1" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
                         
-                         {detailShift && detailShift.status === 'confermato' && (
-                            <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
+                         {detailShift && (detailShift.status === 'confermato' || detailShift.status === 'rifiutato') && (
+                            <Button className="w-full sm:col-span-1" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
                         )}
                         
-                     {detailShift && detailShift.status === 'in_sospeso' && (
+                     {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') && (
                         <>
-                           <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
+                           <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
                               <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                            </Button>
-                           <Button className="w-full sm:col-span-1" onClick={() => handleApprovalProcess(detailShift)}>
+                           <Button className="w-full sm:col-span-2" onClick={() => handleApprovalProcess(detailShift)}>
                               <CheckCircle className="mr-2 h-4 w-4"/> Approva
                            </Button>
                         </>
