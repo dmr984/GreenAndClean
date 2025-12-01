@@ -50,7 +50,7 @@ type Request = {
 
 type OperatorDailyData = {
     operator: Operator;
-    status: 'lavorato' | 'assente' | 'ferie' | 'malattia' | 'permesso_giornaliero';
+    status: 'lavorato' | 'assente' | 'ferie' | 'malattia' | 'permesso_giornaliero' | 'riposo';
     timbrature: Timbratura[];
     hours: {
         ordinary: number;
@@ -188,8 +188,10 @@ export default function DailySummaryPage() {
                     } else if (permissionRequest) {
                          status = 'permesso_giornaliero';
                          hours.permission = permissionRequest.hours || op.workSchedule[dayName]?.totalHours || 0;
-                    } else if (!isWorkingDay) {
-                        status = 'assente'; // It's a rest day, so technically absent
+                    } else if (isWorkingDay) {
+                        status = 'assente';
+                    } else {
+                        status = 'riposo'; 
                     }
 
                     return { operator: op, status, timbrature: opTimbrature, hours };
@@ -258,12 +260,11 @@ export default function DailySummaryPage() {
                  content = <div className="flex items-center gap-2 font-semibold text-cyan-600"><User className="h-5 w-5" /> In Permesso ({hours.permission}h)</div>;
                  break;
             case 'assente':
-                if (contractualHours > 0) {
-                     content = <div className="flex items-center gap-2 font-semibold text-yellow-600"><AlertTriangle className="h-5 w-5" /> Assente (Mancata Timbratura)</div>;
-                } else {
-                     content = <div className="flex items-center gap-2 text-muted-foreground"><Bed className="h-5 w-5" /> Giorno di Riposo</div>;
-                }
-                break;
+                 content = <div className="flex items-center gap-2 font-semibold text-yellow-600"><AlertTriangle className="h-5 w-5" /> Assente (Mancata Timbratura)</div>;
+                 break;
+            case 'riposo':
+                 content = <div className="flex items-center gap-2 text-muted-foreground"><Bed className="h-5 w-5" /> Giorno di Riposo</div>;
+                 break;
         }
 
         return (
