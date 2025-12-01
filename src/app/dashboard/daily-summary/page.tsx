@@ -179,12 +179,12 @@ export default function DailySummaryPage() {
                     const leaveRequest = opRequests.find(r => (r.type === 'ferie' || r.type === 'malattia') && isWithinInterval(selectedDate, {start: r.startDate.toDate(), end: r.endDate.toDate()}));
                     const permissionRequest = opRequests.find(r => r.type === 'permesso' && isSameDay(selectedDate, r.startDate.toDate()));
 
-                    if (leaveRequest) {
-                        status = leaveRequest.type;
-                    } else if (opTimbrature.length > 0) {
+                    if (opTimbrature.length > 0) {
                         status = 'lavorato';
                         hours = calculateShiftHours(opTimbrature, op);
                         if (permissionRequest) hours.permission += permissionRequest.hours || 0;
+                    } else if (leaveRequest) {
+                        status = leaveRequest.type;
                     } else if (permissionRequest) {
                          status = 'permesso_giornaliero';
                          hours.permission = permissionRequest.hours || op.workSchedule[dayName]?.totalHours || 0;
