@@ -539,8 +539,8 @@ export default function ShiftApprovalPage() {
     };
 
     const handleEditShift = async () => {
-        if (!firestore || !editingShift || !editShiftTimes.entrata || !editShiftTimes.uscita || !operator) {
-            toast({ title: 'Dati mancanti', description: 'Entrata e Uscita sono obbligatorie.', variant: 'destructive' });
+        if (!firestore || !editingShift || !editShiftTimes.entrata || !operator) {
+            toast({ title: 'Dati mancanti', description: 'L\'orario di entrata è obbligatorio.', variant: 'destructive' });
             return;
         }
         
@@ -1339,7 +1339,10 @@ export default function ShiftApprovalPage() {
                                                         shift.status === 'in_sospeso' ? 'default'
                                                         : shift.status === 'confermato' ? 'secondary'
                                                         : 'outline'
-                                                    } className={cn(shift.status === 'in_sospeso' && 'bg-yellow-500 text-white')}>
+                                                    } className={cn(
+                                                        shift.status === 'in_sospeso' && 'bg-yellow-500 text-white',
+                                                        shift.status === 'in_corso' && 'bg-blue-500 text-white'
+                                                        )}>
                                                     {shift.status.replace('_', ' ')}
                                                     </Badge>
                                                 </TableCell>
@@ -1681,16 +1684,18 @@ export default function ShiftApprovalPage() {
 
                     <ResponsiveDialogFooter className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
                         <Button className="w-full" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                         {detailShift && detailShift.status !== 'in_sospeso' && (
-                            <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina</Button>
-                        )}
                         <Button className="w-full" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
+                        
+                         {detailShift && detailShift.status === 'confermato' && (
+                            <Button className="w-full" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
+                        )}
+                        
                      {detailShift && detailShift.status === 'in_sospeso' && (
                         <>
                            <Button variant="destructive" className="w-full" onClick={() => handleRejectShift(detailShift)}>
                               <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                            </Button>
-                           <Button className="w-full col-span-2 sm:col-span-1" onClick={() => handleApprovalProcess(detailShift)}>
+                           <Button className="w-full sm:col-span-1" onClick={() => handleApprovalProcess(detailShift)}>
                               <CheckCircle className="mr-2 h-4 w-4"/> Approva
                            </Button>
                         </>
@@ -1783,7 +1788,7 @@ export default function ShiftApprovalPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-uscita">Uscita*</Label>
-                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} required />
+                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} required={isEditShiftOpen} />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
