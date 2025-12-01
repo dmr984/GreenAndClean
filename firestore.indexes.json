@@ -79,7 +79,7 @@
     },
     {
       "collectionGroup": "app-users",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "role",
