@@ -1,11 +1,11 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, onSnapshot, query, where, Timestamp, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp, getDocs, collectionGroup } from 'firebase/firestore';
 import { Loader2, User, Printer, Calendar as CalendarIcon, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Stethoscope, Plane, Bed } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, addDays, subDays, getDay, set } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, addDays, subDays, getDay, set, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -30,6 +30,7 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: WorkSchedule;
+    role: 'operator';
 };
 
 type Timbratura = {
