@@ -127,7 +127,11 @@ export default function DailySummaryPage() {
         if (!firestore) return;
         setIsLoading(true);
 
-        const operatorsQuery = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
+        const operatorsQuery = query(
+            collection(firestore, 'app-users'), 
+            where('role', '==', 'operator'), 
+            where('username', '!=', 'test')
+        );
         const unsubscribe = onSnapshot(operatorsQuery, async (snapshot) => {
             const ops = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
             ops.sort((a,b) => a.firstName.localeCompare(b.firstName));
