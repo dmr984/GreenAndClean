@@ -176,11 +176,12 @@ export default function ShiftApprovalPage() {
         if (schedule?.startTime && !clockInEvent.ignoreContractualStart) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+            const activationTime = new Date(contractualStart.getTime() - 120 * 60 * 1000); // 2 hours before
             
             // If operator clocks in earlier than contractual, calculation still starts from contractual time
-            if (calculationStart < contractualStart) {
+            if (calculationStart < contractualStart && calculationStart >= activationTime) {
                 calculationStart = contractualStart;
-            } else {
+            } else if (calculationStart >= contractualStart) {
                  const minutesDifference = (calculationStart.getTime() - contractualStart.getTime()) / 60000;
                  if (minutesDifference <= 15) {
                     calculationStart = contractualStart;
@@ -815,14 +816,14 @@ export default function ShiftApprovalPage() {
         const breakStartRef = doc(timbratureRef);
         const breakStartData: Omit<Timbratura, 'id'> = {
             userId: operator.id, type: 'pausa', timestamp: createTimestamp(breakTimes.start),
-            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+            status: 'sospesa', viewedByOperator: false, shiftId, isAuto: true
         };
         batch.set(breakStartRef, breakStartData);
     
         const breakEndRef = doc(timbratureRef);
         const breakEndData: Omit<Timbratura, 'id'> = {
             userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end),
-            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+            status: 'sospesa', viewedByOperator: false, shiftId, isAuto: true
         };
         batch.set(breakEndRef, breakEndData);
     
@@ -830,6 +831,7 @@ export default function ShiftApprovalPage() {
             await batch.commit();
             toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta. Puoi approvare il turno.' });
             
+            // This is the key part: update the local state to reflect the change immediately.
             const updatedEvents = [
                 ...shiftForBreak.events,
                 { ...breakStartData, id: breakStartRef.id } as Timbratura,
@@ -943,12 +945,12 @@ export default function ShiftApprovalPage() {
             const [entryHours, entryMinutes] = newShiftTimes.entrata.split(':').map(Number);
             const entryTime = set(newShiftDate, { hours: entryHours, minutes: entryMinutes, seconds: 0, milliseconds: 0 });
 
-            const fiveMinutesBefore = new Date(contractualStart.getTime() - 5 * 60000);
+            const twoHoursBefore = new Date(contractualStart.getTime() - 120 * 60000);
 
-            if (entryTime < fiveMinutesBefore) {
+            if (entryTime < twoHoursBefore) {
                  toast({ 
                     title: 'Orario non valido', 
-                    description: `L'orario di entrata è prima delle ${format(fiveMinutesBefore, 'HH:mm')}. Seleziona 'Ignora orario di inizio contrattuale' per forzare.`, 
+                    description: `L'orario di entrata è prima delle ${format(twoHoursBefore, 'HH:mm')}. Seleziona 'Ignora orario di inizio contrattuale' per forzare.`, 
                     variant: 'destructive',
                     duration: 7000
                 });
@@ -1688,14 +1690,19 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                        <Button className="w-full sm:col-span-1" variant="outline" onClick={() => setIsDetailOpen(false)}>Chiudi</Button>
-                        <Button className="w-full sm:col-span-1" variant="outline" onClick={() => handleOpenEditDialog(detailShift!)}><Pencil className="mr-2 h-4 w-4" /> Modifica</Button>
-                        
-                         {detailShift && (detailShift.status === 'confermato' || detailShift.status === 'rifiutato') && (
-                            <Button className="w-full sm:col-span-1" variant="destructive" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}><Trash2 className="mr-2 h-4 w-4"/> Elimina Turno</Button>
+                        {detailShift && (
+                           <>
+                             <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Elimina
+                             </Button>
+                             <Button className="w-full sm:col-span-1" variant="outline" onClick={() => handleOpenEditDialog(detailShift)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Modifica
+                             </Button>
+                           </>
                         )}
                         
-                     {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') && (
+                        
+                     {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') ? (
                         <>
                            <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
                               <XCircle className="mr-2 h-4 w-4"/> Rifiuta
@@ -1704,6 +1711,10 @@ export default function ShiftApprovalPage() {
                               <CheckCircle className="mr-2 h-4 w-4"/> Approva
                            </Button>
                         </>
+                     ) : (
+                        <ResponsiveDialogClose asChild>
+                           <Button className="w-full sm:col-span-3" variant="outline">Chiudi</Button>
+                        </ResponsiveDialogClose>
                      )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
