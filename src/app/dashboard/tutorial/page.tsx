@@ -1,122 +1,201 @@
 'use client';
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Video } from 'lucide-react';
-
-const SceneCard = ({ scene, title, visual, voice }: { scene: number, title: string, visual: string, voice: string }) => (
-    <Card className="mb-4">
-        <CardHeader>
-            <CardTitle>Scena {scene}: {title}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid md:grid-cols-2 gap-6">
-            <div>
-                <h4 className="font-semibold mb-2 text-primary">🎬 Azione Visiva</h4>
-                <p className="text-muted-foreground">{visual}</p>
-            </div>
-            <div>
-                <h4 className="font-semibold mb-2 text-primary">🎙️ Voce Narrante</h4>
-                <p className="text-muted-foreground italic">{voice}</p>
-            </div>
-        </CardContent>
-    </Card>
-);
-
-const TutorialSection = ({ title, videoId, children }: { title: string, videoId: string | null, children: React.ReactNode }) => (
-    <Card className="mb-8">
-        <CardHeader>
-            <CardTitle className="text-xl">{title}</CardTitle>
-        </CardHeader>
-        <CardContent>
-            {videoId ? (
-                 <div className="aspect-video mb-6">
-                    <iframe
-                        className="w-full h-full rounded-lg border"
-                        src={`https://www.youtube.com/embed/${videoId}`}
-                        title={`Video tutorial: ${title}`}
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                    ></iframe>
-                </div>
-            ) : (
-                <div className="aspect-video mb-6 flex items-center justify-center bg-muted rounded-lg">
-                    <p className="text-muted-foreground">Video non ancora disponibile.</p>
-                </div>
-            )}
-            <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="sceneggiatura">
-                    <AccordionTrigger>Mostra/Nascondi Sceneggiatura</AccordionTrigger>
-                    <AccordionContent className="pt-4">
-                        {children}
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
-        </CardContent>
-    </Card>
-);
+import React, { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Warehouse, PackageSearch, ClipboardList, Circle, Calculator, Video, CalendarDays } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import Image from 'next/image';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { useUser } from '@/hooks/use-user';
+import { AdminDashboard } from './admin-dashboard';
+import { OperatorDashboard } from './operator-dashboard';
+import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { useFirestore } from '@/firebase';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 
 
-export default function TutorialPage() {
+export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
+  const { user, isLoading } = useUser();
+  const firestore = useFirestore();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [pendingSupplyRequests, setPendingSupplyRequests] = useState(0);
 
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center gap-3">
-                <Video className="h-8 w-8 text-primary" />
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Video Tutorial</h1>
-                    <p className="text-muted-foreground">
-                        Guarda i video per imparare a usare l'applicazione.
-                    </p>
-                </div>
-            </div>
+  // Listener for supply request notifications, only for admins
+  useEffect(() => {
+    if (!firestore || user?.role !== 'admin') {
+      setPendingSupplyRequests(0);
+      return;
+    }
 
-            <TutorialSection title="1. Guida alla Gestione del Turno" videoId="dQw4w9WgXcQ">
-                <SceneCard
-                    scene={1}
-                    title="Accesso all'App"
-                    visual="Inquadratura della pagina di login dell'applicazione. Un dito tocca il campo 'Codice Operatore', inserisce un codice e poi preme il pulsante 'Accedi'."
-                    voice="Per iniziare, apri l'applicazione e inserisci il tuo codice operatore personale. Poi, premi 'Accedi' per entrare nella tua dashboard."
-                />
-                <SceneCard
-                    scene={2}
-                    title="Inizio del Turno"
-                    visual="Schermata della dashboard operatore. In primo piano, il grande pulsante verde 'Inizia Turno'. Un dito tocca il pulsante. Compare brevemente un'icona di caricamento, poi il pulsante scompare per lasciare posto a quello rosso 'Termina Turno'."
-                    voice="Una volta dentro, per iniziare la tua giornata lavorativa, premi il pulsante verde 'Inizia Turno'. Il sistema registrerà la tua posizione e l'orario di inizio."
-                />
-                <SceneCard
-                    scene={3}
-                    title="Fine del Turno"
-                    visual="La dashboard ora mostra il pulsante rosso 'Termina Turno'. Un dito tocca il pulsante. Anche qui, breve icona di caricamento, poi il pulsante scompare e riappare quello verde 'Inizia Turno'."
-                    voice="Quando hai finito, apri di nuovo l'app e premi il pulsante rosso 'Termina Turno'. Questo registrerà la tua uscita e completerà il turno di oggi."
-                />
-                <SceneCard
-                    scene={4}
-                    title="Verifica Riepilogo Giornaliero"
-                    visual="Scorrimento verso il basso della dashboard fino alla sezione 'Riepilogo Turni di Oggi'. Si vede una nuova riga nella tabella con l'orario di inizio e fine appena registrati."
-                    voice="Subito dopo aver terminato, puoi vedere il riepilogo del tuo turno nella tabella qui sotto. Mostra l'orario di inizio, fine e la durata totale del lavoro."
-                />
-                <SceneCard
-                    scene={5}
-                    title="Consultare la Guida"
-                    visual="Il dito tocca l'icona con la 'i' di informazioni in alto a destra nella card 'Gestione Turno'. Si apre la finestra di dialogo con la guida testuale. Il dito scorre lentamente il testo dall'inizio alla fine."
-                    voice="Se hai dubbi su come funzionano le timbrature, le pause o il calcolo delle ore, puoi sempre consultare la guida rapida cliccando sull'icona delle informazioni."
-                />
-                 <SceneCard
-                    scene={6}
-                    title="Conclusione"
-                    visual="Dissolvenza che torna alla dashboard principale pulita, con il logo dell'azienda che appare al centro per un istante."
-                    voice="Gestire i tuoi turni è semplice e veloce. Ricorda di timbrare sempre all'inizio e alla fine della tua giornata. Per qualsiasi problema, contatta l'amministrazione."
-                />
-            </TutorialSection>
+    const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
+    const unsubscribe = onSnapshot(supplyRequestsQuery, (snapshot) => {
+        setPendingSupplyRequests(snapshot.size);
+    }, (error) => {
+        console.error("Error fetching supply request notifications:", error);
+    });
 
-            <TutorialSection title="2. Guida alla Richiesta di Ferie e Permessi" videoId={null}>
-                 <p className="text-muted-foreground p-4 text-center">La sceneggiatura per questo video tutorial sarà disponibile a breve.</p>
-            </TutorialSection>
+    return () => unsubscribe();
+  }, [firestore, user]);
 
-            <TutorialSection title="3. Guida alla Richiesta Forniture" videoId={null}>
-                <p className="text-muted-foreground p-4 text-center">La sceneggiatura per questo video tutorial sarà disponibile a breve.</p>
-            </TutorialSection>
+  const handleLogout = async () => {
+    localStorage.removeItem('user');
+    // Force a full page reload to clear all state and go to the login page.
+    // This is more robust than router.replace for ensuring a clean state.
+    window.location.href = '/';
+  }
+
+  const getAvatarFallback = () => {
+     if (user?.firstName && user?.lastName) {
+        return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+     }
+     if (user?.username) {
+        return user.username.substring(0, 2).toUpperCase();
+     }
+     return "U";
+  }
+  
+  const showBackButton = pathname !== '/dashboard';
+
+  const renderDashboardContent = () => {
+     if (isLoading || !user) { // Show loader while loading or if user is null (before redirect)
+      return (
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p className="text-muted-foreground">Caricamento...</p>
+          </div>
         </div>
-    );
+      );
+    }
+    
+    if (pathname === '/dashboard') {
+        if (user.role === 'admin') {
+          return <AdminDashboard />;
+        }
+        if (user.role === 'operator') {
+          return <OperatorDashboard user={user} />;
+        }
+        return <div>Ruolo utente non riconosciuto.</div>;
+    }
+    
+    return children;
+  };
+  
+  return (
+    <>
+    <div className="flex flex-col min-h-screen w-full">
+        <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+           <div className="flex items-center gap-2">
+            <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon" className="shrink-0 relative">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Apri menu di navigazione</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="flex flex-col">
+                 <SheetHeader className="text-left">
+                  <SheetTitle className="flex items-center gap-3">
+                     <Avatar>
+                        <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
+                      </Avatar>
+                     <div>
+                        <p className="text-base font-semibold leading-none">{`${user?.firstName} ${user?.lastName}`}</p>
+                        <p className="text-xs leading-tight text-muted-foreground mt-1">Codice: {user?.username}</p>
+                     </div>
+                  </SheetTitle>
+                 </SheetHeader>
+                 <Separator className="my-2"/>
+                 <nav className="grid gap-2 text-lg font-medium">
+                    <Link href="/dashboard" passHref>
+                        <Button variant={pathname === '/dashboard' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                            <Home className="h-5 w-5" /> Dashboard
+                        </Button>
+                    </Link>
+                     {user?.role === 'operator' && (
+                        <>
+                        <Link href="/dashboard/summary" passHref>
+                            <Button variant={pathname === '/dashboard/summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Calendar className="h-5 w-5" /> Riepilogo Attività
+                            </Button>
+                        </Link>
+                        <Link href="/dashboard/requests" passHref>
+                            <Button variant={pathname === '/dashboard/requests' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Plane className="h-5 w-5" /> Ferie e Permessi
+                            </Button>
+                        </Link>
+                         <Link href="/dashboard/supply-request" passHref>
+                            <Button variant={pathname === '/dashboard/supply-request' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <PackageSearch className="h-5 w-5" /> Richiesta Forniture
+                            </Button>
+                        </Link>
+                        </>
+                    )}
+                    {user?.role === 'admin' && (
+                        <>
+                           <Link href="/dashboard/operators" passHref>
+                            <Button variant={pathname.startsWith('/dashboard/operators') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Users className="h-5 w-5" /> Gestione Operatori
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/supply-requests" passHref>
+                            <Button variant={pathname === '/dashboard/supply-requests' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full relative" onClick={() => setIsSidebarOpen(false)}>
+                                <ClipboardList className="h-5 w-5" /> 
+                                Richieste Forniture
+                                {pendingSupplyRequests > 0 && (
+                                   <Circle fill="red" className="h-2.5 w-2.5 text-red-500 absolute right-3 top-1/2 -translate-y-1/2" />
+                                )}
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/warehouse" passHref>
+                            <Button variant={pathname === '/dashboard/warehouse' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Warehouse className="h-5 w-5" /> Gestione Magazzino
+                            </Button>
+                          </Link>
+                        </>
+                    )}
+                 </nav>
+                 <div className="mt-auto">
+                    <Separator className="my-2"/>
+                     <Button variant="ghost" className="justify-start gap-2 w-full" onClick={() => { setIsSettingsOpen(true); setIsSidebarOpen(false); } }>
+                      <Settings className="h-5 w-5" /> Impostazioni
+                   </Button>
+                    <Button variant="ghost" className="justify-start gap-2 w-full" onClick={handleLogout}>
+                      <LogOut className="h-5 w-5" /> Esci
+                   </Button>
+                 </div>
+              </SheetContent>
+            </Sheet>
+
+             {showBackButton && (
+               <Button variant="outline" size="icon" className="shrink-0" onClick={() => router.back()}>
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="sr-only">Torna indietro</span>
+               </Button>
+              )}
+           </div>
+
+          <div className="flex-1 flex justify-center">
+            <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-lg">
+                <span className="uppercase tracking-wider whitespace-nowrap">SERVECO SRL</span>
+                <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
+            </Link>
+          </div>
+
+          <div className="flex justify-end items-center gap-4 w-10">
+             {/* Notification Bell removed */}
+          </div>
+        </header>
+        <main className="flex flex-1 flex-col gap-4 lg:gap-6">
+            {renderDashboardContent()}
+        </main>
+    </div>
+    <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
+    </>
+  );
 }
