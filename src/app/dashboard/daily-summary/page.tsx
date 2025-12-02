@@ -1,11 +1,11 @@
 'use client';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { collection, onSnapshot, query, where, Timestamp, getDocs, collectionGroup } from 'firebase/firestore';
-import { Loader2, User, Printer, Calendar as CalendarIcon, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Stethoscope, Plane, Bed } from 'lucide-react';
+import { Loader2, User, Printer, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Stethoscope, Plane, Bed, Plus } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, addDays, subDays, getDay, set, isSameDay } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, addDays, getDay, set, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -38,79 +38,123 @@ type Timbratura = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata' | 'rifiutata';
+    isOvertime?: boolean;
 };
 
 type Request = {
-    type: 'ferie' | 'permesso' | 'malattia';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
 };
 
+const InfoBox = ({ label, value }: { label: string, value: string }) => (
+    <div>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="font-semibold">{value}</p>
+    </div>
+);
+
+const formatMinutes = (minutes: number) => {
+    if (isNaN(minutes) || minutes < 0) return '00:00';
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes % 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
 type OperatorDailyData = {
     operator: Operator;
-    status: 'lavorato' | 'assente' | 'ferie' | 'malattia' | 'permesso_giornaliero' | 'riposo';
+    status: 'lavorato' | 'assente' | 'ferie' | 'malattia' | 'permesso_giornaliero' | 'riposo' | 'straordinario';
     timbrature: Timbratura[];
-    hours: {
-        ordinary: number;
-        overtime: number;
-        permission: number;
+    shiftDetails: {
+        contractualHours: number;
+        workedMinutes: number;
+        ordinaryHours: number;
+        overtimeHours: number;
+        permissionHours: number;
+        isPureOvertime: boolean;
     };
 };
 
-const calculateShiftHours = (timbrature: Timbratura[], operator: Operator): { ordinary: number, overtime: number, permission: number } => {
-    if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, permission: 0 };
+const calculateShiftDetails = (
+    timbrature: Timbratura[], 
+    operator: Operator, 
+    day: Date,
+    requests: Request[]
+): OperatorDailyData['shiftDetails'] => {
     
     const clockInEvent = timbrature.find(t => t.type === 'entrata' && t.status === 'confermata');
     const clockOutEvent = timbrature.find(t => t.type === 'uscita' && t.status === 'confermata');
     
-    if (!clockInEvent || !clockOutEvent) return { ordinary: 0, overtime: 0, permission: 0 };
-    
-    const clockInTime = clockInEvent.timestamp.toDate();
-    const clockOutTime = clockOutEvent.timestamp.toDate();
-    const dayName = dayIndexToName[getDay(clockInTime)];
+    const dayName = dayIndexToName[getDay(day)];
     const schedule = operator.workSchedule[dayName];
-    
     const contractualHours = schedule?.totalHours || 0;
-    const contractualMinutes = contractualHours * 60;
+
+    let workedMinutes = 0;
     
-    let calculationStartTime = clockInTime;
-    if (schedule?.startTime) {
-        const [h, m] = schedule.startTime.split(':').map(Number);
-        const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-        if (calculationStartTime < contractualStart) {
-            calculationStartTime = contractualStart;
+    if (clockInEvent && clockOutEvent) {
+        const clockInTime = clockInEvent.timestamp.toDate();
+        const clockOutTime = clockOutEvent.timestamp.toDate();
+        
+        let calculationStartTime = clockInTime;
+        if (schedule?.startTime) {
+            const [h, m] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+            if (calculationStartTime < contractualStart) {
+                calculationStartTime = contractualStart;
+            }
         }
+        
+        let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+        
+        let breakDurationMillis = 0;
+        let breakStart: Timestamp | null = null;
+        timbrature.forEach(t => {
+            if (t.type === 'pausa' && t.status === 'confermata') breakStart = t.timestamp;
+            if (t.type === 'fine_pausa' && t.status === 'confermata' && breakStart) {
+                breakDurationMillis += t.timestamp.toMillis() - breakStart.toMillis();
+                breakStart = null;
+            }
+        });
+        totalMillis -= breakDurationMillis;
+        
+        workedMinutes = totalMillis > 0 ? Math.round(totalMillis / 60000) : 0;
     }
     
-    let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
-    
-    let breakDurationMillis = 0;
-    let breakStart: Timestamp | null = null;
-    timbrature.forEach(t => {
-        if (t.type === 'pausa') breakStart = t.timestamp;
-        if (t.type === 'fine_pausa' && breakStart) {
-            breakDurationMillis += t.timestamp.toMillis() - breakStart.toMillis();
-            breakStart = null;
-        }
-    });
-    totalMillis -= breakDurationMillis;
-    
-    const totalMinutesWorked = totalMillis > 0 ? Math.round(totalMillis / 60000) : 0;
-    
+    const isOvertimeShift = clockInEvent?.isOvertime ?? false;
+
     const roundOrdinary = (minutes: number) => Math.floor(minutes / 30) * 0.5 + (minutes % 30 >= 25 ? 0.5 : 0);
     const roundOvertime = (minutes: number) => Math.floor(minutes / 60) + (minutes % 60 >= 50 ? 1 : 0);
+
+    let ordinaryHours = 0;
+    let overtimeHours = 0;
+
+    if (isOvertimeShift) {
+        overtimeHours = roundOvertime(workedMinutes);
+    } else {
+        const contractualMinutes = contractualHours * 60;
+        const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+        ordinaryHours = roundOrdinary(ordinaryMinutes);
+
+        const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
+        overtimeHours = roundOvertime(overtimeMinutes);
+    }
     
-    const ordinaryMinutes = Math.min(totalMinutesWorked, contractualMinutes);
-    const ordinaryHours = roundOrdinary(ordinaryMinutes);
-    
-    const overtimeMinutes = totalMinutesWorked > contractualMinutes ? totalMinutesWorked - contractualMinutes : 0;
-    const overtimeHours = roundOvertime(overtimeMinutes);
-    
-    const permissionHours = contractualHours > ordinaryHours ? contractualHours - ordinaryHours : 0;
-    
-    return { ordinary: ordinaryHours, overtime: overtimeHours, permission: permissionHours };
+    const permissionHoursFromLeave = contractualHours > ordinaryHours ? contractualHours - ordinaryHours : 0;
+
+    const permissionRequestHours = requests
+        .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
+        .reduce((sum, r) => sum + (r.hours || 0), 0);
+
+    return { 
+        contractualHours,
+        workedMinutes,
+        ordinaryHours, 
+        overtimeHours, 
+        permissionHours: permissionHoursFromLeave + permissionRequestHours, 
+        isPureOvertime: isOvertimeShift 
+    };
 };
 
 
@@ -120,8 +164,6 @@ export default function DailySummaryPage() {
     const [allData, setAllData] = useState<OperatorDailyData[]>([]);
     const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
     const [isLoading, setIsLoading] = useState(true);
-
-    const contentRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!firestore) return;
@@ -163,7 +205,7 @@ export default function DailySummaryPage() {
                     
                     const opTimbrature = timbratureSnap.docs
                         .filter(doc => doc.ref.path.startsWith(`app-users/${op.id}/`))
-                        .map(doc => doc.data() as Timbratura)
+                        .map(doc => ({id: doc.id, ...doc.data()} as Timbratura))
                         .sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
                     const opRequests = requestsSnap.docs
@@ -171,7 +213,6 @@ export default function DailySummaryPage() {
                         .map(doc => doc.data() as Request);
                         
                     let status: OperatorDailyData['status'] = 'assente';
-                    let hours = { ordinary: 0, overtime: 0, permission: 0 };
                     
                     const dayName = dayIndexToName[getDay(selectedDate)];
                     const isWorkingDay = (op.workSchedule[dayName]?.totalHours || 0) > 0;
@@ -179,22 +220,23 @@ export default function DailySummaryPage() {
                     const leaveRequest = opRequests.find(r => (r.type === 'ferie' || r.type === 'malattia') && isWithinInterval(selectedDate, {start: r.startDate.toDate(), end: r.endDate.toDate()}));
                     const permissionRequest = opRequests.find(r => r.type === 'permesso' && isSameDay(selectedDate, r.startDate.toDate()));
 
-                    if (opTimbrature.length > 0) {
-                        status = 'lavorato';
-                        hours = calculateShiftHours(opTimbrature, op);
-                        if (permissionRequest) hours.permission += permissionRequest.hours || 0;
+                    const confirmedTimbrature = opTimbrature.filter(t => t.status === 'confermata');
+                    const shiftDetails = calculateShiftDetails(confirmedTimbrature, op, selectedDate, opRequests);
+
+                    if (confirmedTimbrature.length > 0) {
+                        const isOvertimeShift = confirmedTimbrature[0].isOvertime;
+                        status = isOvertimeShift ? 'straordinario' : 'lavorato';
                     } else if (leaveRequest) {
                         status = leaveRequest.type;
                     } else if (permissionRequest) {
                          status = 'permesso_giornaliero';
-                         hours.permission = permissionRequest.hours || op.workSchedule[dayName]?.totalHours || 0;
                     } else if (isWorkingDay) {
                         status = 'assente';
                     } else {
                         status = 'riposo'; 
                     }
 
-                    return { operator: op, status, timbrature: opTimbrature, hours };
+                    return { operator: op, status, timbrature: confirmedTimbrature, shiftDetails };
                 });
 
                 setAllData(dailyData);
@@ -215,37 +257,35 @@ export default function DailySummaryPage() {
     };
     
     const getAvatarFallback = (op: Operator) => `${op.firstName[0] || ''}${op.lastName[0] || ''}`.toUpperCase();
-    const formatTime = (ts: Timestamp | undefined) => ts ? format(ts.toDate(), 'HH:mm') : '--';
 
     const renderOperatorCard = (data: OperatorDailyData) => {
-        const { operator, status, timbrature, hours } = data;
-        const dayName = dayIndexToName[getDay(selectedDate)];
-        const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
+        const { operator, status, timbrature, shiftDetails } = data;
 
         let content;
         switch (status) {
             case 'lavorato':
+            case 'straordinario':
                 const entrata = timbrature.find(t => t.type === 'entrata');
                 const uscita = timbrature.find(t => t.type === 'uscita');
-                const pause = timbrature.filter(t => t.type === 'pausa' || t.type === 'fine_pausa');
                 content = (
-                    <div className='space-y-3'>
-                        <div className="flex items-center gap-2">
-                             <Briefcase className="h-5 w-5 text-blue-500" />
-                            <p className="font-semibold text-blue-600">Ha lavorato</p>
+                     <div className='space-y-3'>
+                         <div className="flex items-center gap-2">
+                             {status === 'lavorato' ? <Briefcase className="h-5 w-5 text-blue-500" /> : <Plus className="h-5 w-5 text-amber-500" />}
+                            <p className={cn("font-semibold", status === 'lavorato' ? "text-blue-600" : "text-amber-600")}>
+                                {status === 'lavorato' ? 'Ha lavorato' : 'Straordinario'}
+                            </p>
                         </div>
                         <div className="text-sm space-y-1">
-                            <p><strong>Entrata:</strong> {formatTime(entrata?.timestamp)}</p>
-                            {pause.map((p, i) => (
-                               <p key={i}><strong>{p.type === 'pausa' ? 'Inizio Pausa' : 'Fine Pausa'}:</strong> {formatTime(p.timestamp)}</p>
+                             {timbrature.map((p, i) => (
+                               <p key={p.id || i}><strong>{p.type.replace('_', ' ')}:</strong> {format(p.timestamp.toDate(), 'HH:mm')}</p>
                             ))}
-                            <p><strong>Uscita:</strong> {formatTime(uscita?.timestamp)}</p>
                         </div>
                          <Separator />
-                        <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                            <div><p className="font-semibold">{hours.ordinary}h</p><p className="text-xs text-muted-foreground">Ordinarie</p></div>
-                            <div><p className="font-semibold">{hours.overtime}h</p><p className="text-xs text-muted-foreground">Straordinario</p></div>
-                            <div><p className="font-semibold">{hours.permission}h</p><p className="text-xs text-muted-foreground">Permesso</p></div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <InfoBox label="Ore Previste" value={`${shiftDetails.contractualHours}h`} />
+                            <InfoBox label="Ore Lavorate" value={formatMinutes(shiftDetails.workedMinutes)} />
+                            <InfoBox label="Ore Ordinarie" value={`${shiftDetails.ordinaryHours}h`} />
+                            <InfoBox label="Straordinario" value={`${shiftDetails.overtimeHours}h`} />
                         </div>
                     </div>
                 );
@@ -257,7 +297,7 @@ export default function DailySummaryPage() {
                  content = <div className="flex items-center gap-2 font-semibold text-red-600"><Stethoscope className="h-5 w-5" /> In Malattia</div>;
                  break;
             case 'permesso_giornaliero':
-                 content = <div className="flex items-center gap-2 font-semibold text-cyan-600"><User className="h-5 w-5" /> In Permesso ({hours.permission}h)</div>;
+                 content = <div className="flex items-center gap-2 font-semibold text-cyan-600"><User className="h-5 w-5" /> In Permesso ({shiftDetails.permissionHours}h)</div>;
                  break;
             case 'assente':
                  content = <div className="flex items-center gap-2 font-semibold text-yellow-600"><AlertTriangle className="h-5 w-5" /> Assente (Mancata Timbratura)</div>;
