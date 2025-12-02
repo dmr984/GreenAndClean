@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { collection, query, where, Timestamp, getDocs, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, Timestamp, getDocs, collectionGroup, onSnapshot } from 'firebase/firestore';
 import { Loader2, Printer, Calendar as CalendarIcon, Eye } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
