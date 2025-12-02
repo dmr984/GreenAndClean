@@ -593,7 +593,7 @@ export default function ShiftApprovalPage() {
     
             } else if (newEventDetails && !existingEvent) { // Event is new, create it
                 const newDocRef = doc(timbratureCollectionRef);
-                const newEventPayload: Omit<Timbratura, 'id'> = {
+                 const newEventPayload: Omit<Timbratura, 'id'> = {
                     userId: operator.id,
                     type: type,
                     timestamp: newEventDetails.timestamp,
