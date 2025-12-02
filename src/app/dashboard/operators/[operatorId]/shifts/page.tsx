@@ -818,14 +818,14 @@ export default function ShiftApprovalPage() {
         const breakStartRef = doc(timbratureRef);
         const breakStartData: Omit<Timbratura, 'id'> = {
             userId: operator.id, type: 'pausa', timestamp: createTimestamp(breakTimes.start),
-            status: 'sospesa', viewedByOperator: false, shiftId, isAuto: true
+            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
         };
         batch.set(breakStartRef, breakStartData);
     
         const breakEndRef = doc(timbratureRef);
         const breakEndData: Omit<Timbratura, 'id'> = {
             userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(breakTimes.end),
-            status: 'sospesa', viewedByOperator: false, shiftId, isAuto: true
+            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
         };
         batch.set(breakEndRef, breakEndData);
     
