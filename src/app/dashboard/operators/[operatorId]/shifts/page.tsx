@@ -593,11 +593,12 @@ export default function ShiftApprovalPage() {
     
             } else if (newEventDetails && !existingEvent) { // Event is new, create it
                 const newDocRef = doc(timbratureCollectionRef);
+                const finalStatus = isApprovedShift ? 'confermata' : 'sospesa';
                  const newEventPayload: Omit<Timbratura, 'id'> = {
                     userId: operator.id,
                     type: type,
                     timestamp: newEventDetails.timestamp,
-                    status: isApprovedShift ? 'confermata' : 'sospesa',
+                    status: finalStatus,
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
                     shiftId: shiftId,
