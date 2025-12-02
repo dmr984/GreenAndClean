@@ -92,9 +92,11 @@ export default function DailyReportPage() {
     useEffect(() => {
         if (!firestore) return;
         
-        const operatorsQuery = query(collection(firestore, 'app-users'), where('role', '==', 'operator'), where('username', '!=', 'test'));
+        const operatorsQuery = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
         const unsubscribe = onSnapshot(operatorsQuery, (snapshot) => {
-            setOperators(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator)));
+            const allOperators = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
+            const filteredOperators = allOperators.filter(op => op.username !== 'test');
+            setOperators(filteredOperators);
         });
 
         return () => unsubscribe();
