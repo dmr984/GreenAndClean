@@ -554,10 +554,6 @@ export default function ShiftApprovalPage() {
         const shiftDate = editingShift.events[0].timestamp.toDate();
         const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id; 
 
-        const isShiftConcluded = editingShift.events.some(e => e.type === 'uscita') || !!editShiftTimes.uscita;
-        const newStatus = isShiftConcluded ? 'confermata' : 'sospesa';
-
-
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
             const [hours, minutes] = time.split(':').map(Number);
@@ -580,10 +576,10 @@ export default function ShiftApprovalPage() {
 
         const existingEvents = new Map(editingShift.events.map(e => [e.type, e]));
 
-
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
             const existingEvent = existingEvents.get(type);
             const newTimestamp = newEventData[type];
+            const isApprovedShift = editingShift.status === 'confermato';
 
             if (newTimestamp && existingEvent) {
                 // Event exists, update its timestamp
@@ -591,11 +587,6 @@ export default function ShiftApprovalPage() {
                 const updatePayload: any = { timestamp: newTimestamp, viewedByOperator: false };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
-                }
-                if (!isShiftConcluded && existingEvent.status === 'confermata') {
-                    updatePayload.status = 'sospesa';
-                } else if(isShiftConcluded && existingEvent.status === 'sospesa') {
-                    updatePayload.status = 'confermata';
                 }
                 batch.update(docRef, updatePayload);
             } else if (newTimestamp && !existingEvent) {
@@ -605,7 +596,7 @@ export default function ShiftApprovalPage() {
                     userId: operator.id,
                     type: type,
                     timestamp: newTimestamp,
-                    status: newStatus,
+                    status: isApprovedShift ? 'confermata' : 'sospesa',
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
                     shiftId: shiftId 
@@ -1307,7 +1298,7 @@ export default function ShiftApprovalPage() {
                         <div className='flex items-center gap-2'>
                            <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
                            <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}><Info className="h-5 w-5"/></Button>
-                        </div>
+                         </div>
                         <p className="text-muted-foreground">Gestione Turni (Codice: {operator.username})</p>
                     </div>
                     <Button onClick={() => setIsAddShiftOpen(true)}>
