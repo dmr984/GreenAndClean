@@ -9,6 +9,7 @@ import { format, startOfDay, endOfDay, addDays, getDay, isWithinInterval, eachDa
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useToast } from '@/hooks/use-toast';
 
 // --- Types ---
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -134,6 +135,7 @@ const roundOvertimeHours = (minutes: number): number => {
 
 export default function DailyClockingReportPage() {
     const firestore = useFirestore();
+    const { toast } = useToast();
     const [operators, setOperators] = useState<Operator[]>([]);
     const [dailyData, setDailyData] = useState<DailyDetail[]>([]);
     const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
@@ -408,4 +410,3 @@ export default function DailyClockingReportPage() {
         </div>
     );
 }
-    
