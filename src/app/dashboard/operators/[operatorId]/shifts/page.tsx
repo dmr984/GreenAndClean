@@ -1692,8 +1692,18 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                        {detailShift?.status !== 'in_sospeso' && detailShift?.status !== 'in_corso' && (
+                        {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') && (
                             <>
+                               <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
+                                  <XCircle className="mr-2 h-4 w-4"/> Rifiuta
+                               </Button>
+                               <Button className="w-full sm:col-span-2" onClick={() => handleApprovalProcess(detailShift)}>
+                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva
+                               </Button>
+                            </>
+                        )}
+                        {detailShift && (detailShift.status === 'confermato' || detailShift.status === 'rifiutato') && (
+                             <>
                                 <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}>
                                     <Trash2 className="mr-2 h-4 w-4" /> Elimina
                                 </Button>
@@ -1703,17 +1713,6 @@ export default function ShiftApprovalPage() {
                                 <ResponsiveDialogClose asChild>
                                     <Button className="w-full sm:col-span-1" variant="outline">Chiudi</Button>
                                 </ResponsiveDialogClose>
-                            </>
-                        )}
-                        
-                        {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') && (
-                            <>
-                               <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
-                                  <XCircle className="mr-2 h-4 w-4"/> Rifiuta
-                               </Button>
-                               <Button className="w-full sm:col-span-2" onClick={() => handleApprovalProcess(detailShift)}>
-                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva
-                               </Button>
                             </>
                         )}
                     </ResponsiveDialogFooter>
