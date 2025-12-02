@@ -561,7 +561,7 @@ export default function ShiftApprovalPage() {
             return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
         
-        const newEventData: Partial<Record<Timbratura['type'], Timestamp>> = {};
+        const newEventData: Partial<Record<Timbratura['type'], { timestamp: Timestamp, id?: string }>> = {};
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
             const time = editShiftTimes[type];
             if (time) {
@@ -570,45 +570,46 @@ export default function ShiftApprovalPage() {
                     toast({ title: 'Orario non valido', description: `L'orario per '${type}' non è valido.`, variant: 'destructive' });
                     return;
                 }
-                newEventData[type] = timestamp;
+                const existingEvent = editingShift.events.find(e => e.type === type);
+                newEventData[type] = { timestamp, id: existingEvent?.id };
             }
         }
-
-        const existingEvents = new Map(editingShift.events.map(e => [e.type, e]));
+        
+        let newEventsForState: Timbratura[] = [...editingShift.events];
 
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
-            const existingEvent = existingEvents.get(type);
-            const newTimestamp = newEventData[type];
-            const isApprovedShift = editingShift.status === 'confermato';
+            const existingEvent = editingShift.events.find(e => e.type === type);
+            const newEventDetails = newEventData[type];
 
-            if (newTimestamp && existingEvent) {
-                // Event exists, update its timestamp
+            if (newEventDetails && existingEvent) { // Event exists, update it
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
-                const updatePayload: any = { timestamp: newTimestamp, viewedByOperator: false };
+                const updatePayload: any = { timestamp: newEventDetails.timestamp, viewedByOperator: false };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
                 }
                 batch.update(docRef, updatePayload);
-            } else if (newTimestamp && !existingEvent) {
-                // Event is new, create it
+                newEventsForState = newEventsForState.map(e => e.id === existingEvent.id ? { ...e, ...updatePayload } : e);
+
+            } else if (newEventDetails && !existingEvent) { // Event is new, create it
                 const newDocRef = doc(timbratureCollectionRef);
-                const newEventPayload: any = {
+                const isApprovedShift = editingShift.status === 'confermato';
+                const newEventPayload: Omit<Timbratura, 'id'> = {
                     userId: operator.id,
                     type: type,
-                    timestamp: newTimestamp,
+                    timestamp: newEventDetails.timestamp,
                     status: isApprovedShift ? 'confermata' : 'sospesa',
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
-                    shiftId: shiftId 
+                    shiftId: shiftId,
+                    ...(type === 'entrata' && { ignoreContractualStart: editIgnoreContractual })
                 };
-                 if (type === 'entrata') {
-                    newEventPayload.ignoreContractualStart = editIgnoreContractual;
-                }
                 batch.set(newDocRef, newEventPayload);
-            } else if (!newTimestamp && existingEvent) {
-                // Event was removed, delete it
+                newEventsForState.push({ ...newEventPayload, id: newDocRef.id });
+
+            } else if (!newEventDetails && existingEvent) { // Event was removed, delete it
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.delete(docRef);
+                newEventsForState = newEventsForState.filter(e => e.id !== existingEvent.id);
             }
         }
         
@@ -616,7 +617,12 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Successo', description: 'Turno aggiornato con successo.' });
             setIsEditShiftOpen(false);
             setEditingShift(null);
-            setIsDetailOpen(false);
+            
+            // Force-update the detail view with the new state
+            if (detailShift) {
+                setDetailShift(prev => prev ? ({ ...prev, events: newEventsForState }) : null);
+            }
+            
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
