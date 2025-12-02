@@ -22,6 +22,7 @@ const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday',
 type DailySchedule = {
     totalHours?: number;
     startTime?: string; // "HH:mm"
+    endTime?: string;
     breakMinutes?: number;
 };
 
@@ -157,11 +158,11 @@ export default function EndOfMonthPage() {
         };
     }, [firestore, operatorId, currentMonth]);
     
-    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null } => {
+     const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date| null } => {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
-        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null };
+        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
 
         const clockInTime = clockInEvent.timestamp.toDate();
         const clockOutTime = clockOutEvent.timestamp.toDate();
@@ -175,9 +176,18 @@ export default function EndOfMonthPage() {
                 calculationStartTime = contractualStartDateTime;
             }
         }
+        
+        let calculationEndTime = clockOutTime;
+        if(schedule?.endTime) {
+            const [h, m] = schedule.endTime.split(':').map(Number);
+            const contractualEnd = set(clockInTime, {hours: h, minutes: m, seconds: 0});
+            if(calculationEndTime > contractualEnd) {
+                calculationEndTime = contractualEnd;
+            }
+        }
 
 
-        let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+        let totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
         
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
@@ -190,7 +200,11 @@ export default function EndOfMonthPage() {
         }
         totalMillis -= breakDurationMillis;
         
-        return { workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, calculationStart: calculationStartTime };
+        return { 
+            workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, 
+            calculationStart: calculationStartTime,
+            calculationEnd: calculationEndTime
+        };
     };
 
     const { monthlySummary, dailyDetails } = useMemo(() => {
@@ -413,18 +427,9 @@ export default function EndOfMonthPage() {
                                     referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                 }
                             } else if (e.type === 'uscita') {
-                                const { calculationStart } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
-                                const breakDuration = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
-                                    const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
-                                    if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
-                                    return acc;
-                                }, 0);
-                                if (calculationStart) {
-                                    const totalCalculatedMinutes = (shift.ordinaryHours + shift.overtimeHours) * 60;
-                                    const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
-                                    if (Math.abs(calculatedEndTime.getTime() - e.timestamp.toDate().getTime()) > 60000) {
-                                        referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
-                                    }
+                                const { calculationStart, calculationEnd } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
+                                 if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                 }
                             }
                         }
@@ -673,19 +678,10 @@ export default function EndOfMonthPage() {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
                                                     } else if (e.type === 'uscita' && operator) {
-                                                         const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
-                                                         const breakDuration = detail.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current, idx, arr) => {
-                                                            const finePausa = detail.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
-                                                            if(finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
-                                                            return acc;
-                                                         }, 0);
-                                                         if (calculationStart) {
-                                                            const totalCalculatedMinutes = (detail.shift.ordinaryHours + detail.shift.overtimeHours) * 60;
-                                                            const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
-                                                             if (Math.abs(calculatedEndTime.getTime() - e.timestamp.toDate().getTime()) > 60000) {
-                                                                referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
-                                                            }
-                                                         }
+                                                         const { calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                         if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                        }
                                                     }
 
 

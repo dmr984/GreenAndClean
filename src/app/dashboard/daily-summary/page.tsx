@@ -3,20 +3,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDocs, collection, query, where, Timestamp, onSnapshot, orderBy, collectionGroup } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Calendar as CalendarIcon, Eye } from 'lucide-react';
+import { collection, query, where, Timestamp, getDocs, collectionGroup } from 'firebase/firestore';
+import { Loader2, Printer, Calendar as CalendarIcon, Eye } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, getDay, startOfDay, endOfDay, isWithinInterval, addDays, isSameDay, set, parse } from 'date-fns';
+import { format, getDay, startOfDay, endOfDay, isWithinInterval, addDays, isSameDay, set, parse, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { useRouter } from 'next/navigation';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -24,6 +18,7 @@ const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday',
 type DailySchedule = {
     totalHours?: number;
     startTime?: string;
+    endTime?: string;
     breakMinutes?: number;
 };
 
@@ -67,27 +62,30 @@ type OperatorDailyData = {
         overtime: number;
         permission: number;
         worked: number;
+    };
+    calculationTimes: {
+        start: Date | null;
+        end: Date | null;
     }
 }
 
-const InfoBox = ({ label, value }: { label: string, value: string | number }) => (
-    <div>
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="font-semibold">{value}</p>
-    </div>
-);
-
+const formatMinutes = (minutes: number) => {
+    if (isNaN(minutes) || minutes < 0) return '00:00';
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes % 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
 
 export default function DailyReportPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
+    const router = useRouter();
     const [operators, setOperators] = useState<Operator[]>([]);
     const [dailyData, setDailyData] = useState<OperatorDailyData[]>([]);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isPrinting, setIsPrinting] = useState(false);
-    const [detailedTimbrature, setDetailedTimbrature] = useState<{operatorName: string, timbrature: Timbratura[]}|null>(null);
 
     useEffect(() => {
         if (!firestore) return;
@@ -96,18 +94,19 @@ export default function DailyReportPage() {
         const unsubscribe = onSnapshot(operatorsQuery, (snapshot) => {
             const allOperators = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
             const filteredOperators = allOperators.filter(op => op.username !== 'test');
+            filteredOperators.sort((a,b) => a.firstName.localeCompare(b.firstName));
             setOperators(filteredOperators);
         });
 
         return () => unsubscribe();
     }, [firestore]);
     
-    const calculateHours = (timbrature: Timbratura[], schedule: DailySchedule | undefined, operator: Operator | null): { workedMinutes: number, calculationStart: Date | null } => {
-        if (!operator) return { workedMinutes: 0, calculationStart: null };
+    const calculateHours = (timbrature: Timbratura[], schedule: DailySchedule | undefined, operator: Operator | null): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null } => {
+        if (!operator) return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
         const clockInEvent = timbrature.find(e => e.type === 'entrata');
         const clockOutEvent = timbrature.find(e => e.type === 'uscita');
 
-        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null };
+        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
 
         const clockInTime = clockInEvent.timestamp.toDate();
         const clockOutTime = clockOutEvent.timestamp.toDate();
@@ -121,8 +120,17 @@ export default function DailyReportPage() {
                 calculationStartTime = contractualStartDateTime;
             }
         }
+        
+        let calculationEndTime = clockOutTime;
+        if(schedule?.endTime) {
+            const [h, m] = schedule.endTime.split(':').map(Number);
+            const contractualEnd = set(clockInTime, {hours: h, minutes: m, seconds: 0});
+            if(calculationEndTime > contractualEnd) {
+                calculationEndTime = contractualEnd;
+            }
+        }
 
-        let totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+        let totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
         
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
@@ -135,7 +143,11 @@ export default function DailyReportPage() {
         }
         totalMillis -= breakDurationMillis;
         
-        return { workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, calculationStart: calculationStartTime };
+        return { 
+            workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, 
+            calculationStart: calculationStartTime,
+            calculationEnd: calculationEndTime
+        };
     };
 
     useEffect(() => {
@@ -150,13 +162,11 @@ export default function DailyReportPage() {
 
         const fetchData = async () => {
             try {
-                // Fetch all requests that could possibly affect the selected day for all operators
                 const requestsCollectionGroup = collectionGroup(firestore, 'requests');
                 const requestsQuery = query(requestsCollectionGroup, where('status', '==', 'approvato'));
                 const requestsSnapshot = await getDocs(requestsQuery);
                 const allRequests = requestsSnapshot.docs.map(doc => ({ id: doc.id, userId: doc.ref.parent.parent?.id, ...doc.data() } as Request & { userId: string }));
 
-                // Fetch all clockings for the selected day
                 const timbratureCollectionGroup = collectionGroup(firestore, 'timbrature');
                 const timbratureQuery = query(timbratureCollectionGroup, 
                     where('timestamp', '>=', dayStart), 
@@ -199,10 +209,13 @@ export default function DailyReportPage() {
                     
                     let status: OperatorDailyData['status'] = 'riposo';
                     let calculatedHours = { ordinary: 0, overtime: 0, permission: permissionRequest?.hours || 0, worked: 0 };
+                    let calculationTimes = { start: null, end: null };
 
                     if (operatorTimbrature.length > 0) {
                         status = 'lavorato';
-                        const { workedMinutes } = calculateHours(operatorTimbrature, schedule, op);
+                        const { workedMinutes, calculationStart, calculationEnd } = calculateHours(operatorTimbrature, schedule, op);
+                        calculationTimes.start = calculationStart;
+                        calculationTimes.end = calculationEnd;
                         calculatedHours.worked = workedMinutes;
                         const contractualMinutes = contractualHours * 60;
                         
@@ -224,9 +237,10 @@ export default function DailyReportPage() {
                         status: status,
                         timbrature: operatorTimbrature,
                         request: leaveRequest || permissionRequest || null,
-                        calculatedHours
+                        calculatedHours,
+                        calculationTimes
                     };
-                }).filter(data => data.status !== 'riposo'); // Filter out operators who are on rest day
+                });
                 
                 setDailyData(processedData);
             } catch (error) {
@@ -251,20 +265,17 @@ export default function DailyReportPage() {
     
     const handlePrint = () => {
         setIsPrinting(true);
-        // Timeout to allow state update and re-render for print-specific styles
         setTimeout(() => {
             window.print();
             setIsPrinting(false);
         }, 100);
     };
-    
-    const formatMinutes = (minutes: number) => {
-        if (isNaN(minutes) || minutes < 0) return '00:00';
-        const h = Math.floor(minutes / 60);
-        const m = Math.round(minutes % 60);
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    };
 
+    const handlePrintMonth = () => {
+        const month = format(selectedDate, 'yyyy-MM');
+        router.push(`/dashboard/end-of-month?month=${month}`);
+    };
+    
     if (isUserLoading) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
@@ -272,84 +283,92 @@ export default function DailyReportPage() {
         return <div className="text-center text-muted-foreground p-8">Accesso negato.</div>;
     }
 
-    const renderOperatorCard = (data: OperatorDailyData) => {
-        const { operator, status, timbrature, request, calculatedHours } = data;
-        const dayName = dayIndexToName[getDay(selectedDate)];
-        const schedule = operator.workSchedule[dayName];
+    const renderOperatorRow = (data: OperatorDailyData) => {
+        const { operator, status, timbrature, calculatedHours, calculationTimes } = data;
 
-        let statusIcon, statusText, statusColor;
-        switch (status) {
-            case 'lavorato': statusIcon = <Briefcase className="h-5 w-5"/>; statusText = "Ha Lavorato"; statusColor = "text-blue-500"; break;
-            case 'ferie': statusIcon = <Plane className="h-5 w-5"/>; statusText = "In Ferie"; statusColor = "text-green-500"; break;
-            case 'malattia': statusIcon = <Stethoscope className="h-5 w-5"/>; statusText = "In Malattia"; statusColor = "text-red-500"; break;
-            case 'permesso': statusIcon = <UserCheck className="h-5 w-5"/>; statusText = "In Permesso"; statusColor = "text-cyan-500"; break;
-            case 'mancata_timbratura': statusIcon = <AlertTriangle className="h-5 w-5"/>; statusText = "Mancata Timbratura"; statusColor = "text-yellow-500"; break;
-            default: statusIcon = <Bed className="h-5 w-5"/>; statusText = "Riposo"; statusColor = "text-muted-foreground";
+        const formatTimbraturaTime = (type: Timbratura['type'], calcTime: Date | null) => {
+            const event = timbrature.find(t => t.type === type);
+            if (!event) return '-';
+            const originalTime = format(event.timestamp.toDate(), 'HH:mm');
+            if (calcTime && Math.abs(calcTime.getTime() - event.timestamp.toDate().getTime()) > 60000) {
+                return `${originalTime} (${format(calcTime, 'HH:mm')})`;
+            }
+            return originalTime;
         }
-        
-        const timbratureText = timbrature.map(t => `${t.type.replace('_', ' ')}: ${format(t.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+
+        let statusText;
+        let resultText = '';
+
+        switch (status) {
+            case 'lavorato':
+                const entrata = formatTimbraturaTime('entrata', calculationTimes.start);
+                const pausa = formatTimbraturaTime('pausa', null);
+                const fine_pausa = formatTimbraturaTime('fine_pausa', null);
+                const uscita = formatTimbraturaTime('uscita', calculationTimes.end);
+                statusText = `${entrata} | ${pausa} - ${fine_pausa} | ${uscita}`;
+                
+                if (calculatedHours.overtime > 0) {
+                    resultText = `Ordinarie: ${calculatedHours.ordinary}h | Straordinario: ${calculatedHours.overtime}h`;
+                } else if (calculatedHours.permission > 0) {
+                     resultText = `Ordinarie: ${calculatedHours.ordinary}h | Permesso: ${calculatedHours.permission}h`;
+                } else {
+                     const oreMancanti = (operator.workSchedule[dayIndexToName[getDay(selectedDate)]]?.totalHours || 0) - calculatedHours.ordinary;
+                     if (oreMancanti > 0) {
+                         resultText = `Ordinarie: ${calculatedHours.ordinary}h | Permesso: ${oreMancanti}h`;
+                     } else {
+                        resultText = `Ordinarie: ${calculatedHours.ordinary}h`;
+                     }
+                }
+                break;
+            case 'ferie':
+                statusText = <span className="font-semibold text-green-600">IN FERIE</span>;
+                break;
+            case 'malattia':
+                statusText = <span className="font-semibold text-red-600">IN MALATTIA</span>;
+                break;
+            case 'permesso':
+                statusText = <span className="font-semibold text-cyan-600">PERMESSO</span>;
+                resultText = `${calculatedHours.permission} ore`;
+                break;
+            case 'mancata_timbratura':
+                statusText = <span className="font-semibold text-yellow-600">MANCATA TIMBRATURA</span>;
+                break;
+            case 'riposo':
+                return null; // Don't render anything for rest days
+        }
 
         return (
-             <div key={operator.id} className="border rounded-lg p-4 break-inside-avoid">
-                <h4 className="font-bold text-lg">{operator.firstName} {operator.lastName}</h4>
-                <p className="text-sm text-muted-foreground">Codice: {operator.username}</p>
-                
-                <div className={cn("flex items-center gap-2 font-semibold my-3", statusColor)}>
-                    {statusIcon}
-                    <span>{statusText}</span>
-                </div>
-
-                <div className="border-b my-2"></div>
-                
-                {status === 'lavorato' && (
-                    <>
-                        <div className="text-sm text-muted-foreground mt-1 mb-3 flex items-center gap-2">
-                             <span className="flex-grow">{timbratureText}</span>
-                             <DialogTrigger asChild>
-                                 <Button variant="ghost" size="icon" onClick={() => setDetailedTimbrature({operatorName: `${operator.firstName} ${operator.lastName}`, timbrature})}>
-                                     <Eye className="h-4 w-4"/>
-                                 </Button>
-                             </DialogTrigger>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <InfoBox label="Ore Previste" value={`${schedule?.totalHours || 0}h`} />
-                            <InfoBox label="Ore Lavorate" value={formatMinutes(calculatedHours.worked)} />
-                            <InfoBox label="Ore Ordinarie" value={`${calculatedHours.ordinary}h`} />
-                            <InfoBox label="Straordinario" value={`${calculatedHours.overtime}h`} />
-                        </div>
-                    </>
-                )}
-                {status === 'permesso' && (
-                    <p className="text-muted-foreground mt-1">Permesso di {calculatedHours.permission} ore approvato.</p>
-                )}
-                {(status === 'ferie' || status === 'malattia') && (
-                     <p className="text-muted-foreground mt-1">Giorno di assenza approvato.</p>
-                )}
-                {status === 'mancata_timbratura' && (
-                    <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>
-                )}
+             <div key={operator.id} className="grid grid-cols-1 md:grid-cols-3 items-center border-b p-3 gap-2 break-inside-avoid">
+                <div className="font-bold text-base">{operator.firstName} {operator.lastName}</div>
+                <div className="text-sm md:text-center text-muted-foreground font-mono">{statusText}</div>
+                <div className="text-sm md:text-right font-semibold">{resultText}</div>
              </div>
         )
     }
 
     return (
-        <Dialog onOpenChange={(open) => !open && setDetailedTimbrature(null)}>
         <Card className="p-4 sm:p-6 print:shadow-none print:border-none">
             <CardHeader className="print:hidden">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-2">
                             <CalendarIcon className="h-6 w-6" />
-                            <CardTitle className="text-2xl">Report Giornaliero</CardTitle>
+                            <CardTitle className="text-2xl">Report del Giorno</CardTitle>
                         </div>
                         <CardDescription>
-                           Riepilogo delle attività di tutti gli operatori per il giorno selezionato.
+                           Riepilogo delle attività giornaliere di tutti gli operatori.
                         </CardDescription>
                     </div>
-                     <Button onClick={handlePrint} disabled={isPrinting}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        {isPrinting ? 'Stampa in corso...' : 'Stampa Report'}
-                    </Button>
+                     <div className="flex gap-2">
+                        <Button onClick={handlePrint} variant="outline" disabled={isPrinting}>
+                            <Printer className="mr-2 h-4 w-4" />
+                            Stampa Giorno
+                        </Button>
+                        <Button onClick={handlePrintMonth} disabled={isPrinting}>
+                            <Printer className="mr-2 h-4 w-4" />
+                            Stampa Mese
+                        </Button>
+                     </div>
                 </div>
             </CardHeader>
              <CardContent>
@@ -369,39 +388,14 @@ export default function DailyReportPage() {
                      {isLoadingData ? (
                         <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                      ) : dailyData.length > 0 ? (
-                        <div className="space-y-4 md:column-count-2 md:column-gap-4">
-                           {dailyData.map(renderOperatorCard)}
+                        <div className="border rounded-lg">
+                           {dailyData.map(renderOperatorRow)}
                         </div>
                      ) : (
                         <div className="text-center py-16 text-muted-foreground">Nessuna attività registrata per questo giorno.</div>
                      )}
                 </div>
             </CardContent>
-        </Card>
-        
-         <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Dettaglio Timbrature - {detailedTimbrature?.operatorName}</DialogTitle>
-            </DialogHeader>
-            <div className="overflow-x-auto mt-2 max-h-80 overflow-y-auto">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="text-left border-b">
-                        <th className="p-2">Evento</th>
-                        <th className="p-2">Orario</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {detailedTimbrature?.timbrature.map(t => (
-                        <tr key={t.id} className={cn("border-b", t.isAuto && "text-red-500")}>
-                            <td className="p-2 capitalize">{t.type.replace('_', ' ')}</td>
-                            <td className="p-2">{format(t.timestamp.toDate(), 'HH:mm:ss')}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-            </div>
-        </DialogContent>
         
         <style jsx global>{`
             @media print {
@@ -426,6 +420,6 @@ export default function DailyReportPage() {
                 margin: 20mm;
             }
         `}</style>
-      </Dialog>
+      </Card>
     );
 }
