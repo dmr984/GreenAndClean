@@ -68,16 +68,6 @@
       ]
     },
     {
-      "collectionGroup": "requests",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "app-users",
       "queryScope": "COLLECTION",
       "fields": [
@@ -87,6 +77,16 @@
         },
         {
           "fieldPath": "username",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "requests",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
           "order": "ASCENDING"
         }
       ]
