@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Warehouse, PackageSearch, ClipboardList, Circle, Calculator, Video, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Warehouse, PackageSearch, ClipboardList, Circle, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -119,9 +119,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </Link>
                      {user?.role === 'operator' && (
                         <>
-                        <Link href="/dashboard/summary" passHref>
-                            <Button variant={pathname === '/dashboard/summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <Calendar className="h-5 w-5" /> Riepilogo Attività
+                        <Link href="/dashboard/monthly-summary" passHref>
+                            <Button variant={pathname === '/dashboard/monthly-summary' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Calendar className="h-5 w-5" /> Riepilogo Mensile
                             </Button>
                         </Link>
                         <Link href="/dashboard/requests" passHref>
@@ -155,6 +155,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                            <Link href="/dashboard/warehouse" passHref>
                             <Button variant={pathname === '/dashboard/warehouse' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Warehouse className="h-5 w-5" /> Gestione Magazzino
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/end-of-month" passHref>
+                            <Button variant={pathname === '/dashboard/end-of-month' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Calculator className="h-5 w-5" /> Report Mensile
                             </Button>
                           </Link>
                         </>

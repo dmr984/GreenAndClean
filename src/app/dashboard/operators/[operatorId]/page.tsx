@@ -172,13 +172,7 @@ export default function OperatorDetailPage() {
                     badgeCount={pendingLeaveCount}
                 />
                 <NavCard 
-                    title="Riepilogo Attività" 
-                    description="Visualizza lo storico completo." 
-                    icon={CalendarIcon} 
-                    link={`/dashboard/operators/${operatorId}/summary`}
-                />
-                <NavCard 
-                    title="Calcolo Fine Mese" 
+                    title="Riepilogo Mensile" 
                     description="Riepilogo mensile per la stampa." 
                     icon={Calculator} 
                     link={`/dashboard/operators/${operatorId}/end-of-month`}
