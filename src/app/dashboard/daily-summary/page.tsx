@@ -141,7 +141,7 @@ export default function DailyClockingReportPage() {
     const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
     const [isLoading, setIsLoading] = useState(true);
 
-    // 1. Fetch all operators
+    // 1. Fetch all operators (excluding 'test')
     useEffect(() => {
         if (!firestore) return;
         const operatorsQuery = query(
@@ -163,6 +163,7 @@ export default function DailyClockingReportPage() {
     useEffect(() => {
         if (!firestore || operators.length === 0) {
             if (operators.length > 0) setIsLoading(false);
+            setDailyData([]);
             return;
         }
         setIsLoading(true);
@@ -364,7 +365,7 @@ export default function DailyClockingReportPage() {
                                <div className={cn("border rounded-lg p-3")}>
                                     <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3")}>
                                         {getStatusIcon(detail.status)}
-                                        {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                        {detail.status === 'lavorato' ? `Turno del ${format(detail.date, 'dd MMMM', { locale: it })}` : format(detail.date, 'eeee dd MMMM', { locale: it })}
                                     </h4>
                                     
                                     <div className="border-b my-2"></div>
