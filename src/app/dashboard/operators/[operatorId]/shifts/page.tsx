@@ -1692,17 +1692,19 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                        {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') && (
-                            <>
+                        {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') ? (
+                             <>
                                <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                                </Button>
-                               <Button className="w-full sm:col-span-2" onClick={() => handleApprovalProcess(detailShift)}>
+                                <Button variant="outline" className="w-full sm:col-span-1" onClick={() => handleOpenEditDialog(detailShift!)}>
+                                    <Pencil className="mr-2 h-4 w-4" /> Modifica
+                                </Button>
+                               <Button className="w-full sm:col-span-1" onClick={() => handleApprovalProcess(detailShift)}>
                                   <CheckCircle className="mr-2 h-4 w-4"/> Approva
                                </Button>
                             </>
-                        )}
-                        {detailShift && (detailShift.status === 'confermato' || detailShift.status === 'rifiutato') && (
+                        ) : (
                              <>
                                 <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}>
                                     <Trash2 className="mr-2 h-4 w-4" /> Elimina
