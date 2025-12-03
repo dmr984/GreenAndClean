@@ -234,6 +234,7 @@ export default function ShiftApprovalPage() {
         const hasPending = events.some(e => e.status === 'sospesa');
         const hasRejected = events.some(e => e.status === 'rifiutata');
         const isComplete = events.some(e => e.type === 'uscita');
+        const allConfirmed = events.every(e => e.status === 'confermata');
         
         let status: Shift['status'];
         if (hasRejected) {
@@ -242,8 +243,10 @@ export default function ShiftApprovalPage() {
             status = 'in_corso';
         } else if (hasPending) {
             status = 'in_sospeso';
-        } else {
+        } else if (allConfirmed) {
             status = 'confermato';
+        } else {
+            status = 'in_sospeso'; // Fallback for mixed or unusual states
         }
 
         const { workDuration, breakDuration } = calculateShiftDurations(events);
