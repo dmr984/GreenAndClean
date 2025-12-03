@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2 } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Bed, Printer, Share2, Archive } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -14,6 +14,8 @@ import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import jspdf from 'jspdf';
 import html2canvas from 'html2canvas';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -96,12 +98,15 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
+    const { toast } = useToast();
     const operatorId = params.operatorId as string;
     const [isProcessing, setIsProcessing] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -604,6 +609,62 @@ export default function EndOfMonthPage() {
         setIsProcessing(false);
     };
 
+    const handleCleanMonth = async () => {
+        if (!firestore || !operatorId || !currentMonth) return;
+        setIsCleaning(true);
+
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+
+        const batch = writeBatch(firestore);
+
+        // Delete timbrature for the month
+        const timbratureQuery = query(
+            collection(firestore, `app-users/${operatorId}/timbrature`),
+            where('timestamp', '>=', monthStart),
+            where('timestamp', '<=', monthEnd)
+        );
+        const timbratureSnap = await getDocs(timbratureQuery);
+        timbratureSnap.forEach(doc => batch.delete(doc.ref));
+
+        // Delete straordinari for the month
+        const straordinariQuery = query(
+            collection(firestore, `app-users/${operatorId}/straordinari`),
+            where('date', '>=', monthStart),
+            where('date', '<=', monthEnd)
+        );
+        const straordinariSnap = await getDocs(straordinariQuery);
+        straordinariSnap.forEach(doc => batch.delete(doc.ref));
+
+        // Delete requests for the month
+        const requestsQuery = query(
+            collection(firestore, `app-users/${operatorId}/requests`),
+            where('startDate', '>=', monthStart),
+            where('startDate', '<=', monthEnd)
+        );
+        const requestsSnap = await getDocs(requestsQuery);
+        requestsSnap.forEach(doc => batch.delete(doc.ref));
+
+        try {
+            await batch.commit();
+            toast({
+                title: "Successo!",
+                description: `I dati di ${format(currentMonth, 'MMMM yyyy', { locale: it })} sono stati eliminati.`
+            });
+        } catch (error) {
+            console.error("Errore pulizia mese:", error);
+            toast({
+                title: "Errore",
+                description: "Impossibile completare la pulizia del mese.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsCleaning(false);
+            setIsCleanConfirmOpen(false);
+        }
+    };
+
+
     if (isLoading || !operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
@@ -621,6 +682,10 @@ export default function EndOfMonthPage() {
                          <Button onClick={handlePrintAndShare} disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
                             Stampa/Condividi Riepilogo
+                        </Button>
+                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning}>
+                            {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+                            Pulisci Mese
                         </Button>
                      </div>
                 </div>
@@ -718,6 +783,24 @@ export default function EndOfMonthPage() {
                 </div>
             </CardContent>
         </Card>
+        <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione è irreversibile. Verranno eliminate tutte le timbrature, richieste e straordinari dell'operatore per il mese di{' '}
+                        <span className="font-bold">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaning}>
+                        {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Conferma e Pulisci
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         </>
     );
 }
