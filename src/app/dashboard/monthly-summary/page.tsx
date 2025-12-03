@@ -1,10 +1,10 @@
 'use client';
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle } from 'lucide-react';
+import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'firebase/firestore';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set } from 'date-fns';
@@ -101,27 +101,29 @@ const MonthlySummaryContent = () => {
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
+    const fetchOperatorData = useCallback(async () => {
         if (!firestore || !user?.id) {
             if(!isUserLoading) setIsLoadingOperator(false);
             return;
-        };
-
+        }
+        setIsLoadingOperator(true);
         const operatorDocRef = doc(firestore, 'app-users', user.id);
-        const unsubscribe = onSnapshot(operatorDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
-            } else {
-                toast({ title: 'Errore', description: 'Operatore non trovato', variant: 'destructive'});
-            }
-            setIsLoadingOperator(false);
-        });
-
-        return () => unsubscribe();
+        const docSnap = await getDoc(operatorDocRef);
+        if (docSnap.exists()) {
+            setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
+        } else {
+            toast({ title: 'Errore', description: 'Operatore non trovato', variant: 'destructive'});
+        }
+        setIsLoadingOperator(false);
     }, [firestore, user, isUserLoading, toast]);
 
 
-     useEffect(() => {
+    useEffect(() => {
+        fetchOperatorData();
+    }, [fetchOperatorData]);
+
+
+    const fetchDataForMonth = useCallback(async () => {
         if (!firestore || !user?.id) {
             setIsLoading(false);
             return;
@@ -131,37 +133,37 @@ const MonthlySummaryContent = () => {
         const monthStart = startOfMonth(currentMonth);
         const monthEnd = endOfMonth(currentMonth);
 
-        const timbratureQuery = query(
-            collection(firestore, `app-users/${user.id}/timbrature`),
-            where('timestamp', '>=', monthStart),
-            where('timestamp', '<=', monthEnd)
-        );
-        const requestsQuery = query(
-            collection(firestore, `app-users/${user.id}/requests`),
-            where('status', '==', 'approvato')
-        );
+        try {
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${user.id}/timbrature`),
+                where('timestamp', '>=', monthStart),
+                where('timestamp', '<=', monthEnd)
+            );
+            const requestsQuery = query(
+                collection(firestore, `app-users/${user.id}/requests`),
+                where('status', '==', 'approvato')
+            );
+    
+            const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
+                getDocs(timbratureQuery),
+                getDocs(requestsQuery)
+            ]);
 
-        const unsubTimbrature = onSnapshot(timbratureQuery, snapshot => {
-            const timbratureData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
-            setMonthlyData(prev => ({ ...prev, timbrature: timbratureData }));
-             if(!unsubRequests) setIsLoading(false);
-        }, () => setIsLoading(false));
+            const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
+            const requestsData = requestsSnapshot.docs.map(d => d.data() as Request);
 
-        const unsubRequests = onSnapshot(requestsQuery, snapshot => {
-            const requestsData = snapshot.docs.map(d => d.data() as Request);
-            setMonthlyData(prev => ({ ...prev, requests: requestsData }));
-            if(!unsubTimbrature) setIsLoading(false);
-        }, () => setIsLoading(false));
-        
-        Promise.all([getDocs(timbratureQuery), getDocs(requestsQuery)]).then(() => {
-            setIsLoading(false)
-        })
-
-        return () => {
-            unsubTimbrature();
-            unsubRequests();
-        };
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData });
+        } catch (error) {
+            console.error("Error fetching monthly data:", error);
+            toast({ title: 'Errore', description: "Impossibile caricare i dati del mese.", variant: 'destructive' });
+        } finally {
+            setIsLoading(false);
+        }
     }, [firestore, user, currentMonth, toast]);
+
+    useEffect(() => {
+        fetchDataForMonth();
+    }, [fetchDataForMonth]);
 
     const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date| null } => {
         const clockInEvent = events.find(e => e.type === 'entrata');
@@ -382,7 +384,7 @@ const MonthlySummaryContent = () => {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
-    if (isUserLoading || isLoadingOperator || isLoading) {
+    if (isUserLoading || isLoadingOperator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
@@ -402,12 +404,21 @@ const MonthlySummaryContent = () => {
                 </div>
             </CardHeader>
             <CardContent className="space-y-8">
-                <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                 <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
                     <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                    <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
+                        <Button variant="ghost" size="icon" onClick={fetchDataForMonth} disabled={isLoading}>
+                            {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
+                        </Button>
+                    </div>
                     <Button variant="outline" size="sm" onClick={() => handleMonthChange(1)}>Succ.</Button>
                 </div>
-
+                
+                 {isLoading ? (
+                    <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
+                ) : (
+                <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
                     <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
@@ -492,6 +503,8 @@ const MonthlySummaryContent = () => {
                         <p className="text-center text-muted-foreground py-8">Nessun dato da mostrare per questo mese.</p>
                     )}
                 </div>
+                </>
+                )}
             </CardContent>
         </Card>
     );
