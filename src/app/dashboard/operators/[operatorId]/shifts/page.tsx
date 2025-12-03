@@ -231,20 +231,20 @@ export default function ShiftApprovalPage() {
     };
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
+        const isComplete = events.some(e => e.type === 'uscita');
         const hasPending = events.some(e => e.status === 'sospesa');
         const hasRejected = events.some(e => e.status === 'rifiutata');
-        const isComplete = events.some(e => e.type === 'uscita');
         const allConfirmed = events.every(e => e.status === 'confermata');
-        
+    
         let status: Shift['status'];
         if (hasRejected) {
             status = 'rifiutato';
+        } else if (allConfirmed) {
+            status = 'confermato';
         } else if (!isComplete) {
             status = 'in_corso';
         } else if (hasPending) {
             status = 'in_sospeso';
-        } else if (allConfirmed) {
-            status = 'confermato';
         } else {
             status = 'in_sospeso'; // Fallback for mixed or unusual states
         }
@@ -1143,7 +1143,7 @@ export default function ShiftApprovalPage() {
         
         await deleteDoc(docRef).then(() => {
             toast({ title: 'Successo', description: 'Turno straordinario eliminato.' });
-        }).catch((FirestoreError: any) => {
+        }).catch((error) => {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         });
         
@@ -1362,6 +1362,9 @@ export default function ShiftApprovalPage() {
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'regular' })}>
                                                         <Eye className="h-5 w-5" />
                                                     </Button>
+                                                     <Button variant="ghost" size="icon" onClick={() => { setShiftToDelete(shift); setIsConfirmingDelete(true); }}>
+                                                        <Trash2 className="h-5 w-5 text-destructive" />
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         )
@@ -1401,6 +1404,9 @@ export default function ShiftApprovalPage() {
                                             <TableCell className="text-right whitespace-nowrap">
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'overtime' })}>
                                                     <Eye className="h-5 w-5" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" onClick={() => { setOvertimeShiftToDelete(shift); setIsConfirmingOvertimeDelete(true); }}>
+                                                    <Trash2 className="h-5 w-5 text-destructive" />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -1695,7 +1701,7 @@ export default function ShiftApprovalPage() {
                     </div>
 
                     <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                        {detailShift && (detailShift.status === 'in_sospeso' || detailShift.status === 'in_corso') ? (
+                        {(detailShift?.status === 'in_sospeso' || detailShift?.status === 'in_corso') ? (
                              <>
                                <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
