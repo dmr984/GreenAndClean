@@ -233,20 +233,18 @@ export default function ShiftApprovalPage() {
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
         const isComplete = events.some(e => e.type === 'uscita');
         const hasPending = events.some(e => e.status === 'sospesa');
-        const hasRejected = events.some(e => e.status === 'rifiutata');
         const allConfirmed = events.every(e => e.status === 'confermata');
     
         let status: Shift['status'];
-        if (hasRejected) {
-            status = 'rifiutato';
-        } else if (allConfirmed) {
+        if (allConfirmed) {
             status = 'confermato';
+        } else if (hasPending && isComplete) {
+            status = 'in_sospeso';
         } else if (!isComplete) {
             status = 'in_corso';
-        } else if (hasPending) {
-            status = 'in_sospeso';
         } else {
-            status = 'in_sospeso'; // Fallback for mixed or unusual states
+            // Default for any other mixed/rejected states
+            status = 'in_sospeso'; 
         }
 
         const { workDuration, breakDuration } = calculateShiftDurations(events);
@@ -555,7 +553,9 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         const shiftDate = editingShift.events[0].timestamp.toDate();
-        const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id; 
+        
+        // This is the critical part: determine the correct shiftId to group events.
+        const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id;
     
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
@@ -587,7 +587,11 @@ export default function ShiftApprovalPage() {
     
             if (newEventDetails && existingEvent) { // Event exists, update it
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
-                const updatePayload: any = { timestamp: newEventDetails.timestamp, viewedByOperator: false };
+                const updatePayload: any = { 
+                    timestamp: newEventDetails.timestamp, 
+                    viewedByOperator: false, 
+                    shiftId: shiftId // Ensure shiftId is preserved/updated
+                };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
                 }
@@ -604,7 +608,7 @@ export default function ShiftApprovalPage() {
                     status: finalStatus,
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
-                    shiftId: shiftId,
+                    shiftId: shiftId, // CRITICAL: Assign the group ID
                     isAuto: true,
                     ...(type === 'entrata' && { ignoreContractualStart: editIgnoreContractual })
                 };
@@ -810,7 +814,6 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        // Determine the shiftId. If it's a manual shift, it has one. If automatic, create one from event IDs.
         const shiftId = shiftForBreak.events.find(e => e.shiftId)?.shiftId || shiftForBreak.id;
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
     
@@ -837,7 +840,6 @@ export default function ShiftApprovalPage() {
             await batch.commit();
             toast({ title: 'Pausa Aggiunta', description: 'La pausa è stata aggiunta. Puoi approvare il turno.' });
             
-            // This is the key part: update the local state to reflect the change immediately.
             const updatedEvents = [
                 ...shiftForBreak.events,
                 { ...breakStartData, id: breakStartRef.id } as Timbratura,
@@ -1144,7 +1146,7 @@ export default function ShiftApprovalPage() {
         
         await deleteDoc(docRef).then(() => {
             toast({ title: 'Successo', description: 'Turno straordinario eliminato.' });
-        }).catch((error) => {
+        }).catch((error: any) => {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         });
         
