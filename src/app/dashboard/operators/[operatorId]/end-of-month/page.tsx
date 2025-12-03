@@ -678,12 +678,12 @@ export default function EndOfMonthPage() {
                          <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
-                    <div className="flex gap-2">
-                         <Button onClick={handlePrintAndShare} disabled={isProcessing}>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                         <Button onClick={handlePrintAndShare} disabled={isProcessing} className="w-full sm:w-auto">
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
                             Stampa/Condividi Riepilogo
                         </Button>
-                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning}>
+                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
                             Pulisci Mese
                         </Button>
