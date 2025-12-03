@@ -810,7 +810,8 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        const shiftId = shiftForBreak.id;
+        // Determine the shiftId. If it's a manual shift, it has one. If automatic, create one from event IDs.
+        const shiftId = shiftForBreak.events.find(e => e.shiftId)?.shiftId || shiftForBreak.id;
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
     
         const createTimestamp = (time: string): Timestamp => {
@@ -2005,3 +2006,5 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
+
+    
