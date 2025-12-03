@@ -1140,7 +1140,7 @@ export default function ShiftApprovalPage() {
         
         await deleteDoc(docRef).then(() => {
             toast({ title: 'Successo', description: 'Turno straordinario eliminato.' });
-        }).catch(err => {
+        }).catch((FirestoreError: any) => {
             toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
         });
         
