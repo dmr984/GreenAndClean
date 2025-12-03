@@ -29,7 +29,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format } from 'date-fns';
+import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -109,7 +110,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const authUser = propUser || hookUser;
 
   const [operator, setOperator] = useState<Operator | null>(null);
-  const [time, setTime] = useState(new Date());
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -355,11 +355,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     return groupedShifts.reverse();
   }, [clockings]);
 
-
-  useEffect(() => {
-    const timerId = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timerId);
-  }, []);
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
@@ -708,8 +703,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     </div>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center gap-4">
-                    <div className="text-7xl lg:text-8xl font-bold font-mono tracking-tight text-foreground">
-                        {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                    <div className="text-xl font-medium text-muted-foreground capitalize">
+                        {format(new Date(), 'eeee, dd MMMM yyyy', { locale: it })}
                     </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
@@ -752,9 +747,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               </div>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center gap-4">
-              <div className="text-7xl lg:text-8xl font-bold font-mono tracking-tight text-foreground">
-                {time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-              </div>
+               <div className="text-xl font-medium text-muted-foreground capitalize">
+                  {format(new Date(), 'eeee, dd MMMM yyyy', { locale: it })}
+               </div>
               {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
             </CardContent>
             <CardFooter className="flex flex-col gap-4">
