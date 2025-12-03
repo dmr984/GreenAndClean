@@ -187,70 +187,6 @@
         }
       },
       "required": ["userId", "type", "status", "startDate", "endDate", "createdAt"]
-    },
-    "Product": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Product",
-      "type": "object",
-      "description": "Represents a product in the warehouse.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "The name of the product."
-        },
-        "quantity": {
-          "type": "number",
-          "description": "The available quantity in stock."
-        }
-      },
-      "required": ["name", "quantity"]
-    },
-    "SupplyRequest": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "SupplyRequest",
-      "type": "object",
-      "description": "Represents a supply request from an operator.",
-      "properties": {
-        "userId": {
-          "type": "string",
-          "description": "The ID of the operator making the request."
-        },
-        "username": {
-          "type": "string",
-          "description": "The username of the operator (denormalized)."
-        },
-        "productId": {
-          "type": "string",
-          "description": "The ID of the requested product."
-        },
-        "productName": {
-          "type": "string",
-          "description": "The name of the requested product (denormalized)."
-        },
-        "requestedQuantity": {
-          "type": "number",
-          "description": "The quantity requested by the operator."
-        },
-        "approvedQuantity": {
-          "type": "number",
-          "description": "The quantity approved by the admin."
-        },
-        "status": {
-          "type": "string",
-          "enum": ["in_attesa", "approvata", "rifiutata"],
-          "description": "The status of the supply request."
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "The timestamp when the request was created."
-        },
-        "viewedByOperator": {
-          "type": "boolean",
-          "description": "Indicates if the operator has seen the status change made by an admin."
-        }
-      },
-      "required": ["userId", "username", "productId", "productName", "requestedQuantity", "status", "createdAt"]
     }
   },
   "auth": {
@@ -323,28 +259,6 @@
           "params": [
             { "name": "userId", "description": "The user's unique ID." },
             { "name": "requestId", "description": "The request's unique ID." }
-          ]
-        }
-      },
-      {
-        "path": "/products/{productId}",
-        "definition": {
-          "entityName": "Product",
-          "schema": { "$ref": "#/backend/entities/Product" },
-          "description": "Stores all available products for the warehouse.",
-          "params": [
-            { "name": "productId", "description": "The product's unique ID." }
-          ]
-        }
-      },
-      {
-        "path": "/supply-requests/{supplyRequestId}",
-        "definition": {
-          "entityName": "SupplyRequest",
-          "schema": { "$ref": "#/backend/entities/SupplyRequest" },
-          "description": "Stores all supply requests from all operators.",
-          "params": [
-            { "name": "supplyRequestId", "description": "The supply request's unique ID." }
           ]
         }
       }

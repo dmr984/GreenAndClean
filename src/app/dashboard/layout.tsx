@@ -23,24 +23,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [pendingSupplyRequests, setPendingSupplyRequests] = useState(0);
-
-  // Listener for supply request notifications, only for admins
-  useEffect(() => {
-    if (!firestore || user?.role !== 'admin') {
-      setPendingSupplyRequests(0);
-      return;
-    }
-
-    const supplyRequestsQuery = query(collection(firestore, 'supply-requests'), where('status', '==', 'in_attesa'));
-    const unsubscribe = onSnapshot(supplyRequestsQuery, (snapshot) => {
-        setPendingSupplyRequests(snapshot.size);
-    }, (error) => {
-        console.error("Error fetching supply request notifications:", error);
-    });
-
-    return () => unsubscribe();
-  }, [firestore, user]);
+  
 
   const handleLogout = async () => {
     localStorage.removeItem('user');
@@ -129,11 +112,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <Plane className="h-5 w-5" /> Ferie e Permessi
                             </Button>
                         </Link>
-                         <Link href="/dashboard/supply-request" passHref>
-                            <Button variant={pathname === '/dashboard/supply-request' ? 'secondary' : 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <PackageSearch className="h-5 w-5" /> Richiesta Forniture
-                            </Button>
-                        </Link>
                         </>
                     )}
                     {user?.role === 'admin' && (
@@ -141,20 +119,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                            <Link href="/dashboard/operators" passHref>
                             <Button variant={pathname.startsWith('/dashboard/operators') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Users className="h-5 w-5" /> Gestione Operatori
-                            </Button>
-                          </Link>
-                           <Link href="/dashboard/supply-requests" passHref>
-                            <Button variant={pathname === '/dashboard/supply-requests' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full relative" onClick={() => setIsSidebarOpen(false)}>
-                                <ClipboardList className="h-5 w-5" /> 
-                                Richieste Forniture
-                                {pendingSupplyRequests > 0 && (
-                                   <Circle fill="red" className="h-2.5 w-2.5 text-red-500 absolute right-3 top-1/2 -translate-y-1/2" />
-                                )}
-                            </Button>
-                          </Link>
-                           <Link href="/dashboard/warehouse" passHref>
-                            <Button variant={pathname === '/dashboard/warehouse' ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <Warehouse className="h-5 w-5" /> Gestione Magazzino
                             </Button>
                           </Link>
                            <Link href="/dashboard/end-of-month" passHref>
