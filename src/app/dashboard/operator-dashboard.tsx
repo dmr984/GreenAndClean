@@ -1,8 +1,8 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
@@ -111,7 +111,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const [operator, setOperator] = useState<Operator | null>(null);
   const [isClockedIn, setIsClockedIn] = useState(false);
-  const [isOnBreak, setIsOnBreak] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   
@@ -128,6 +127,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const [canClockIn, setCanClockIn] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isLocationHelpOpen, setIsLocationHelpOpen] = useState(false);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -293,90 +293,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
-  const shifts = useMemo((): Shift[] => {
-    if (!clockings) return [];
-
-    let unread = false;
-    const groupedShifts: Shift[] = [];
-    let currentShift: Partial<Shift> & { hasUnread?: boolean } = {};
-    const validEvents = clockings.filter(e => e.status !== 'rifiutata');
-
-    for (const event of validEvents) {
-        if (event.type === 'entrata') {
-            if (currentShift.startTime) {
-                groupedShifts.push({
-                    startTime: currentShift.startTime,
-                    endTime: null,
-                    events: currentShift.events || [],
-                    hasUnread: currentShift.hasUnread || false,
-                });
-            }
-            currentShift = { startTime: event.timestamp, events: [event], hasUnread: event.viewedByOperator === false };
-        } else if (currentShift.startTime) {
-            currentShift.events?.push(event);
-            if (event.viewedByOperator === false) {
-                currentShift.hasUnread = true;
-            }
-            if (event.type === 'uscita') {
-                currentShift.endTime = event.timestamp;
-                
-                let totalWorkMillis = currentShift.endTime.toMillis() - currentShift.startTime.toMillis();
-                let currentBreakStart: Timestamp | null = null;
-                
-                for(const ev of currentShift.events) {
-                    if (ev.type === 'pausa') {
-                        currentBreakStart = ev.timestamp;
-                    } else if (ev.type === 'fine_pausa' && currentBreakStart) {
-                        totalWorkMillis -= (ev.timestamp.toMillis() - currentBreakStart.toMillis());
-                        currentBreakStart = null;
-                    }
-                }
-                
-                const hours = Math.floor(totalWorkMillis / (1000 * 60 * 60));
-                const minutes = Math.floor((totalWorkMillis % (1000 * 60 * 60)) / (1000 * 60));
-                currentShift.workDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                
-                groupedShifts.push(currentShift as Shift);
-                currentShift = {};
-            }
-        }
-    }
-    
-    if (currentShift.startTime) {
-        groupedShifts.push({
-            startTime: currentShift.startTime,
-            endTime: null,
-            events: currentShift.events || [],
-            hasUnread: currentShift.hasUnread || false,
-        });
-    }
-
-    setHasUnreadShifts(groupedShifts.some(s => s.hasUnread));
-    return groupedShifts.reverse();
-  }, [clockings]);
-
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
       const lastValidEvent = [...clockings].filter(e => e.status !== 'rifiutata').pop();
       if (!lastValidEvent) {
           setIsClockedIn(false);
-          setIsOnBreak(false);
           return;
       }
       if (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa') {
         setIsClockedIn(true);
-        setIsOnBreak(false);
-      } else if (lastValidEvent.type === 'pausa') {
-        setIsClockedIn(true);
-        setIsOnBreak(true);
       } else if (lastValidEvent.type === 'uscita') {
         setIsClockedIn(false);
-        setIsOnBreak(false);
       }
     } else {
        setIsClockedIn(false);
-       setIsOnBreak(false);
     }
   }, [clockings]);
 
@@ -430,9 +361,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         (error) => {
           setIsProcessing(false);
           let message = "Impossibile ottenere la posizione.";
+          const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+
           switch(error.code) {
               case error.PERMISSION_DENIED:
                   message = "Permesso di geolocalizzazione negato. Abilitalo nelle impostazioni del browser.";
+                  if(isIOS) {
+                    setIsLocationHelpOpen(true);
+                  }
                   break;
               case error.POSITION_UNAVAILABLE:
                   message = "Informazioni sulla posizione non disponibili.";
@@ -500,12 +436,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         setIsProcessing(false);
     }
   }
-  
-  const formatTime = (date: Date | Timestamp | null) => {
-    if (!date) return "--:--";
-    const d = date instanceof Timestamp ? date.toDate() : date;
-    return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  }
 
   const handleUnlockRequest = async () => {
     if (!firestore || !operator) return;
@@ -550,31 +480,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         setIsSubmittingUnlock(false);
     }
   };
-
-  const markShiftsAsRead = async () => {
-    if (!firestore || !operator?.id || !hasUnreadShifts) return;
-
-    const unreadEvents = shifts.flatMap(s => s.events).filter(e => e.viewedByOperator === false);
-    if (unreadEvents.length === 0) return;
-
-    const batch = writeBatch(firestore);
-    unreadEvents.forEach(event => {
-      const eventRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-      batch.update(eventRef, { viewedByOperator: true });
-    });
-
-    try {
-      await batch.commit();
-    } catch (error) {
-      console.error("Error marking shifts as read:", error);
-    }
-  };
-
-  useEffect(() => {
-    if (isShiftDetailsOpen) {
-      markShiftsAsRead();
-    }
-  }, [isShiftDetailsOpen, firestore, operator, shifts, hasUnreadShifts]);
   
   const handleOvertimeClocking = async (type: 'entrata' | 'uscita') => {
         if (!firestore || !operator) return;
@@ -837,6 +742,36 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
                     <p className="text-muted-foreground">
                         Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
+                    </p>
+                </div>
+            </div>
+        </ResponsiveDialogContent>
+    </ResponsiveDialog>
+    <ResponsiveDialog open={isLocationHelpOpen} onOpenChange={setIsLocationHelpOpen}>
+        <ResponsiveDialogContent>
+            <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-primary"/> Abilita Geolocalizzazione su iPhone</ResponsiveDialogTitle>
+                <ResponsiveDialogDescription>
+                    Per timbrare, l'app ha bisogno di accedere alla tua posizione. Segui questi passaggi per abilitarla.
+                </ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
+            <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
+                 <div>
+                    <h4 className="font-semibold mb-1">Passaggio 1: Impostazioni Generali</h4>
+                    <p className="text-muted-foreground">
+                        Vai su <span className='font-bold'>Impostazioni</span> &gt; <span className='font-bold'>Privacy e Sicurezza</span> &gt; <span className='font-bold'>Localizzazione</span> e assicurati che la levetta <span className='font-bold'>"Localizzazione"</span> sia attiva.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Passaggio 2: Impostazioni per Safari</h4>
+                    <p className="text-muted-foreground">
+                        Scorri in basso fino a trovare <span className='font-bold'>Safari</span> (o il browser che usi), toccalo, poi vai su <span className='font-bold'>Posizione</span> e seleziona <span className='font-bold'>"Mentre usi l'app"</span>.
+                    </p>
+                </div>
+                 <div>
+                    <h4 className="font-semibold mb-1">Passaggio 3: Ricarica l'App</h4>
+                    <p className="text-muted-foreground">
+                       Chiudi e riapri l'app dalla tua schermata Home. Ora dovresti essere in grado di timbrare.
                     </p>
                 </div>
             </div>
