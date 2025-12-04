@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase';
 import { UserProvider } from '@/providers/user-provider';
+import { InstallPWA } from '@/components/install-pwa';
 
 export const metadata: Metadata = {
   title: 'SERVECO GREEN & CLEAN',
@@ -32,6 +33,7 @@ export default function RootLayout({
         <FirebaseClientProvider>
           <UserProvider>
             {children}
+            <InstallPWA />
           </UserProvider>
         </FirebaseClientProvider>
         <Toaster />
