@@ -465,7 +465,7 @@ export default function EndOfMonthPage() {
                             }
                         }
                         
-                        return `<span style="${e.isAuto ? 'color: red;' : ''}">${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}</span>`;
+                        return `<span>${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}</span>`;
                     }).join(' | ');
                     
                     const hoursText = `
@@ -786,7 +786,7 @@ export default function EndOfMonthPage() {
 
 
                                                     return (
-                                                        <span key={e.id} className={cn('mr-2', e.isAuto && "text-red-500")}>
+                                                        <span key={e.id} className={'mr-2'}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>
