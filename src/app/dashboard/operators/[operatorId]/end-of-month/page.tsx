@@ -7,7 +7,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, parse, set } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, addDays, subDays, parse, set, startOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -38,6 +38,8 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: WorkSchedule;
+    contractType?: 'weekly' | 'monthly';
+    totalMonthlyHours?: number;
 };
 
 type Request = {
@@ -225,6 +227,7 @@ export default function EndOfMonthPage() {
 
         const allDaysOfMonth = eachDayOfInterval(monthInterval);
         const details: DailyDetail[] = [];
+        const today = startOfDay(new Date());
         
         const roundOrdinaryHours = (minutes: number): number => {
             if (minutes <= 0) return 0;
@@ -241,6 +244,8 @@ export default function EndOfMonthPage() {
         };
 
         for (const day of allDaysOfMonth) {
+            if (day > today) continue;
+
             const dayName = dayIndexToName[getDay(day)];
             const dailySchedule = operator.workSchedule[dayName];
             const contractualHours = dailySchedule?.totalHours || 0;
@@ -280,6 +285,9 @@ export default function EndOfMonthPage() {
 
                 if (isOvertimeShift) {
                     overtimeHours = roundOvertimeHours(workedMinutes);
+                } else if (operator.contractType === 'monthly') {
+                    // For monthly contracts, all hours are initially ordinary. Overtime is calculated at the end.
+                    ordinaryHours = roundOrdinaryHours(workedMinutes);
                 } else {
                     const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
                     ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
@@ -334,6 +342,7 @@ export default function EndOfMonthPage() {
         monthlyData.requests.forEach(req => {
             if (req.type === 'ferie' || req.type === 'malattia') {
                 for (let day = req.startDate.toDate(); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+                    if (day > today) continue;
                     const dayString = day.toDateString();
                     if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                         const dayName = dayIndexToName[getDay(day)];
@@ -348,13 +357,31 @@ export default function EndOfMonthPage() {
         });
 
 
-        const totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-        const totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
+        let totalOrdinary = 0;
+        let totalOvertime = 0;
 
         const totalPermesso = monthlyData.requests
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
+        
+        if (operator.contractType === 'monthly') {
+            const monthlyThreshold = operator.totalMonthlyHours || 0;
+            const totalWorkedMinutesInMonth = shifts.reduce((sum, s) => sum + s.workedMinutes, 0);
+            const totalWorkedHours = roundOrdinaryHours(totalWorkedMinutesInMonth); // Using ordinary rounding for total
+            const totalHoursWithPermission = totalWorkedHours + totalPermesso;
 
+            if (totalHoursWithPermission > monthlyThreshold) {
+                totalOrdinary = monthlyThreshold - totalPermesso;
+                totalOvertime = totalHoursWithPermission - monthlyThreshold;
+            } else {
+                totalOrdinary = totalWorkedHours;
+                totalOvertime = 0;
+            }
+
+        } else {
+            totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
+            totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
+        }
 
         return {
             monthlySummary: {
