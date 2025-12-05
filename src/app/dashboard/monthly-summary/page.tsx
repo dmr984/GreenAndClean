@@ -500,7 +500,7 @@ const MonthlySummaryContent = () => {
 
 
                                                     return (
-                                                        <span key={e.id} className={cn('mr-2', e.isAuto && "text-red-500")}>
+                                                        <span key={e.id} className={'mr-2'}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>
