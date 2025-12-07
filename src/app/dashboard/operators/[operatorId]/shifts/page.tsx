@@ -93,13 +93,15 @@ type UnlockRequest = {
 type ManualBreak = { start: string; end: string; };
 
 type ApprovalContext = {
-    shift: Shift;
+    shift: Shift | StraordinarioShift;
     ordinaryHours: string;
     overtimeHours: string;
-    leaveHours: string;
-    createLeaveRequest: boolean;
+    leaveHours?: string;
+    createLeaveRequest?: boolean;
     manualBreak?: ManualBreak;
+    isOvertimeShift: boolean;
 } | null;
+
 
 const ITEMS_PER_PAGE = 5;
 
@@ -401,15 +403,28 @@ export default function ShiftApprovalPage() {
 
     const handleConfirmApprove = async () => {
         if (!firestore || !approvalContext || !operator) return;
+
+        const { shift, isOvertimeShift } = approvalContext;
+
+        if (isOvertimeShift) {
+            handleOvertimeShiftAction(shift as StraordinarioShift, 'approve', approvalContext.manualBreak);
+        } else {
+            handleRegularShiftApproval();
+        }
+    };
+    
+    const handleRegularShiftApproval = async () => {
+        if (!approvalContext || approvalContext.isOvertimeShift || !firestore || !operator) return;
     
         const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak } = approvalContext;
+        const regularShift = shift as Shift;
         const approvedOvertime = parseFloat(overtimeHours) || 0;
-        const approvedLeave = createLeaveRequest ? (parseFloat(leaveHours) || 0) : 0;
+        const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
     
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        shift.events.forEach(event => {
+        regularShift.events.forEach(event => {
             if (event.status === 'sospesa') {
                 const docRef = doc(timbratureRef, event.id);
                 batch.update(docRef, { status: 'confermata', viewedByOperator: false });
@@ -417,8 +432,8 @@ export default function ShiftApprovalPage() {
         });
         
         if (manualBreak && manualBreak.start && manualBreak.end) {
-            const shiftId = shift.events[0]?.shiftId || shift.id;
-            const shiftDate = shift.events[0].timestamp.toDate();
+            const shiftId = regularShift.events[0]?.shiftId || regularShift.id;
+            const shiftDate = regularShift.events[0].timestamp.toDate();
 
             const createTimestamp = (time: string): Timestamp => {
                 const [hours, minutes] = time.split(':').map(Number);
@@ -437,7 +452,7 @@ export default function ShiftApprovalPage() {
             });
         }
     
-        const shiftDate = shift.events[0].timestamp.toDate();
+        const shiftDate = regularShift.events[0].timestamp.toDate();
     
         if (approvedOvertime > 0) {
             const overtimeRequest = {
@@ -450,7 +465,7 @@ export default function ShiftApprovalPage() {
                 reason: 'Straordinario approvato da turno',
                 createdAt: serverTimestamp(),
                 viewedByOperator: false,
-                associatedShiftId: shift.id, // Link to the shift
+                associatedShiftId: regularShift.id,
             };
             const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
             batch.set(newRequestRef, overtimeRequest);
@@ -858,8 +873,21 @@ export default function ShiftApprovalPage() {
     };
 
 
-    const handleOpenApproveDialog = (shift: Shift, manualBreak?: ManualBreak) => {
-        const { ordinary, overtime, leave } = calculateHours(shift, manualBreak);
+    const handleOpenApproveDialog = (shift: Shift | StraordinarioShift, isOvertimeShift: boolean, manualBreak?: ManualBreak) => {
+        let ordinary = 0, overtime = 0, leave = 0;
+
+        if (isOvertimeShift) {
+            const overtimeShift = shift as StraordinarioShift;
+            const workedMinutes = calculateOvertimeShiftMinutes(overtimeShift, manualBreak);
+            overtime = roundOvertimeHours(workedMinutes);
+        } else {
+            const regularShift = shift as Shift;
+            const hours = calculateHours(regularShift, manualBreak);
+            ordinary = hours.ordinary;
+            overtime = hours.overtime;
+            leave = hours.leave;
+        }
+
         setApprovalContext({
             shift: shift,
             ordinaryHours: String(ordinary),
@@ -867,9 +895,10 @@ export default function ShiftApprovalPage() {
             leaveHours: String(leave),
             manualBreak: manualBreak,
             createLeaveRequest: leave > 0,
+            isOvertimeShift: isOvertimeShift
         });
         setIsApproveDialogOpen(true);
-    }
+    };
     
     const handleApproveUnlock = async (unlockRequest: UnlockRequest) => {
         if (!firestore || !operatorId) return;
@@ -1040,12 +1069,12 @@ export default function ShiftApprovalPage() {
             setOvertimeShiftForBreak(shift);
             setIsOvertimeMissingBreakConfirmOpen(true);
         } else {
-            handleOvertimeShiftAction(shift, 'approve');
+            handleOpenApproveDialog(shift, true);
         }
     };
     
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', manualBreak?: ManualBreak) => {
-        if (!firestore || !operatorId || !operator) return;
+        if (!firestore || !operatorId || !operator || !approvalContext) return;
     
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
     
@@ -1056,6 +1085,12 @@ export default function ShiftApprovalPage() {
             return;
         }
     
+        const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
+    
+        const batch = writeBatch(firestore);
+    
+        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        
         let eventsToProcess = [...shift.events];
         if (manualBreak && manualBreak.start && manualBreak.end) {
              const createTimestamp = (time: string): Timestamp => {
@@ -1065,14 +1100,7 @@ export default function ShiftApprovalPage() {
             eventsToProcess.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start), latitude: 0, longitude: 0 });
             eventsToProcess.push({ type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end), latitude: 0, longitude: 0 });
         }
-
-
-        const workMinutes = calculateOvertimeShiftMinutes({ ...shift, events: eventsToProcess });
-        const overtimeHours = roundOvertimeHours(workMinutes);
-    
-        const batch = writeBatch(firestore);
-    
-        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        
         eventsToProcess.forEach(event => {
             const newTimbraturaRef = doc(timbratureCollectionRef);
             batch.set(newTimbraturaRef, {
@@ -1087,14 +1115,14 @@ export default function ShiftApprovalPage() {
             });
         });
     
-        if (overtimeHours > 0) {
+        if (approvedOvertime > 0) {
              const overtimeRequest = {
                 userId: operator.id,
                 type: 'straordinario' as const,
                 status: 'approvato' as const,
                 startDate: shift.date,
                 endDate: shift.date,
-                hours: overtimeHours,
+                hours: approvedOvertime,
                 reason: 'Straordinario da giorno non lavorativo approvato',
                 createdAt: serverTimestamp(),
                 viewedByOperator: false,
@@ -1111,32 +1139,41 @@ export default function ShiftApprovalPage() {
         } catch (error) {
              toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         } finally {
+            setIsApproveDialogOpen(false);
+            setApprovalContext(null);
             setIsDetailOvertimeOpen(false);
         }
     };
     
-    const calculateOvertimeShiftMinutes = (shift: StraordinarioShift) => {
+    const calculateOvertimeShiftMinutes = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
         let workDuration = 0;
         const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
         const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
 
         if (startTime && endTime) {
             let totalMillis = endTime.toMillis() - startTime.toMillis();
-            let breakStart: Timestamp | null = null;
-            shift.events.forEach(e => {
-                if (e.type === 'pausa') breakStart = e.timestamp;
-                if (e.type === 'fine_pausa' && breakStart) {
-                    totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                    breakStart = null;
-                }
-            });
+            
+            if (manualBreak && manualBreak.start && manualBreak.end) {
+                const start = parse(manualBreak.start, 'HH:mm', new Date());
+                const end = parse(manualBreak.end, 'HH:mm', new Date());
+                totalMillis -= (end.getTime() - start.getTime());
+            } else {
+                let breakStart: Timestamp | null = null;
+                shift.events.forEach(e => {
+                    if (e.type === 'pausa') breakStart = e.timestamp;
+                    if (e.type === 'fine_pausa' && breakStart) {
+                        totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
+                        breakStart = null;
+                    }
+                });
+            }
             workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
         }
         return workDuration;
     };
     
-    const calculateOvertimeShiftHours = (shift: StraordinarioShift) => {
-        const workMinutes = calculateOvertimeShiftMinutes(shift);
+    const calculateOvertimeShiftHours = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
+        const workMinutes = calculateOvertimeShiftMinutes(shift, manualBreak);
         return roundOvertimeHours(workMinutes);
     }
     
@@ -1207,7 +1244,7 @@ export default function ShiftApprovalPage() {
     
     const handleApproveOvertimeWithoutBreak = () => {
         if (overtimeShiftForBreak) {
-            handleOvertimeShiftAction(overtimeShiftForBreak, 'approve');
+            handleOpenApproveDialog(overtimeShiftForBreak, true);
         }
         setIsOvertimeMissingBreakConfirmOpen(false);
         setOvertimeShiftForBreak(null);
@@ -1222,7 +1259,7 @@ export default function ShiftApprovalPage() {
     
     const handleConfirmAddOvertimeBreak = () => {
         if (!overtimeShiftForBreak || !breakTimes.start || !breakTimes.end) return;
-        handleOvertimeShiftAction(overtimeShiftForBreak, 'approve', breakTimes);
+        handleOpenApproveDialog(overtimeShiftForBreak, true, breakTimes);
         setIsOvertimeAddBreakDialogOpen(false);
         setOvertimeShiftForBreak(null);
         setBreakTimes({ start: '', end: '' });
@@ -1854,19 +1891,21 @@ export default function ShiftApprovalPage() {
                     </AlertDialogHeader>
                     {approvalContext && (
                         <div className="py-4 space-y-4">
-                            <div>
-                                <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
-                                <Input id="ordinary-hours" type="number" value={approvalContext.ordinaryHours} onChange={(e) => setApprovalContext(p => p ? {...p, ordinaryHours: e.target.value} : null)} step="0.5" min="0" />
-                                <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
-                            </div>
-                            {parseFloat(approvalContext.overtimeHours) > 0 && (
+                            {!approvalContext.isOvertimeShift && (
+                                <div>
+                                    <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
+                                    <Input id="ordinary-hours" type="number" value={approvalContext.ordinaryHours} onChange={(e) => setApprovalContext(p => p ? {...p, ordinaryHours: e.target.value} : null)} step="0.5" min="0" />
+                                    <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
+                                </div>
+                            )}
+                            {(parseFloat(approvalContext.overtimeHours) > 0 || approvalContext.isOvertimeShift) && (
                                 <div>
                                     <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
                                     <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
                                     <p className="text-xs text-muted-foreground mt-1">Le ore che superano il monte ore giornaliero.</p>
                                 </div>
                             )}
-                            {parseFloat(approvalContext.leaveHours) > 0 && (
+                            {approvalContext.leaveHours && parseFloat(approvalContext.leaveHours) > 0 && !approvalContext.isOvertimeShift && (
                                 <div>
                                     <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
                                     <Input id="leave-hours" type="number" value={approvalContext.leaveHours} onChange={(e) => setApprovalContext(p => p ? {...p, leaveHours: e.target.value} : null)} step="0.5" min="0" />
