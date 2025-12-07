@@ -11,6 +11,7 @@ import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfIn
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { isPublicHoliday } from '@/lib/holidays';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -318,7 +319,7 @@ const MonthlySummaryContent = () => {
                     request: leaveRequest,
                     shift: null,
                 });
-            } else if (contractualHours > 0) {
+            } else if (contractualHours > 0 && !isPublicHoliday(day)) {
                  details.push({
                     date: day,
                     status: 'mancata_timbratura',
@@ -349,7 +350,7 @@ const MonthlySummaryContent = () => {
                     const dayString = day.toDateString();
                     if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                         const dayName = dayIndexToName[getDay(day)];
-                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0) {
+                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0 && !isPublicHoliday(day)) {
                             if (req.type === 'ferie') ferieDays++;
                             if (req.type === 'malattia') malattiaDays++;
                             processedLeaveDays.add(dayString);
@@ -500,7 +501,7 @@ const MonthlySummaryContent = () => {
 
 
                                                     return (
-                                                        <span key={e.id} className={'mr-2'}>
+                                                        <span key={e.id} className={cn('mr-2', e.isAuto)}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>

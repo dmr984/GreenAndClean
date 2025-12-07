@@ -16,6 +16,7 @@ import jspdf from 'jspdf';
 import html2canvas from 'html2canvas';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { isPublicHoliday } from '@/lib/holidays';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -315,7 +316,7 @@ export default function EndOfMonthPage() {
                     request: leaveRequest,
                     shift: null,
                 });
-            } else if (contractualHours > 0) {
+            } else if (contractualHours > 0 && !isPublicHoliday(day)) {
                  details.push({
                     date: day,
                     status: 'mancata_timbratura',
@@ -346,7 +347,7 @@ export default function EndOfMonthPage() {
                     const dayString = day.toDateString();
                     if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                         const dayName = dayIndexToName[getDay(day)];
-                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0) {
+                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0 && !isPublicHoliday(day)) {
                             if (req.type === 'ferie') ferieDays++;
                             if (req.type === 'malattia') malattiaDays++;
                             processedLeaveDays.add(dayString);
@@ -786,7 +787,7 @@ export default function EndOfMonthPage() {
 
 
                                                     return (
-                                                        <span key={e.id} className={'mr-2'}>
+                                                        <span key={e.id} className={cn('mr-2', e.isAuto)}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>
