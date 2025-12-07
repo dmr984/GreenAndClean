@@ -155,7 +155,7 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName]?.startTime || null;
     }, [newShiftDate, operator]);
     
-    const calculateShiftDurations = (events: Timbratura[]): { workDuration: number, breakDuration: number, calculationStart: Date | null, calculationEnd: Date | null } => {
+    const calculateShiftDurations = (events: (Timbratura | StraordinarioEvent)[]): { workDuration: number, breakDuration: number, calculationStart: Date | null, calculationEnd: Date | null } => {
         if (!events || events.length === 0 || !operator) {
             return { workDuration: 0, breakDuration: 0, calculationStart: null, calculationEnd: null };
         }
@@ -175,11 +175,12 @@ export default function ShiftApprovalPage() {
         let calculationStart = clockInTime;
         let calculationEnd = clockOutEvent ? clockOutEvent.timestamp.toDate() : null;
         
-        if (schedule?.startTime && !clockInEvent.ignoreContractualStart) {
+        const ignoreContractual = (clockInEvent as Timbratura).ignoreContractualStart || false;
+
+        if (schedule?.startTime && !ignoreContractual) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             
-            // If operator clocks in earlier than contractual, calculation still starts from contractual time
             if (calculationStart < contractualStart) {
                 calculationStart = contractualStart;
             } else if (calculationStart >= contractualStart) {
@@ -194,7 +195,7 @@ export default function ShiftApprovalPage() {
                         roundedTime.setMinutes(30);
                     } else if (minutes > 45) {
                         roundedTime.setHours(roundedTime.getHours() + 1, 0);
-                    } else { // minutes <= 15
+                    } else { 
                          roundedTime.setMinutes(0);
                     }
                     calculationStart = roundedTime;
@@ -202,7 +203,7 @@ export default function ShiftApprovalPage() {
             }
         }
         
-         if (schedule?.endTime && clockOutEvent && !clockInEvent.ignoreContractualStart) {
+         if (schedule?.endTime && clockOutEvent && !ignoreContractual) {
             const [contractualH, contractualM] = schedule.endTime.split(':').map(Number);
             const contractualEnd = set(shiftDate, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
             
@@ -245,7 +246,6 @@ export default function ShiftApprovalPage() {
         } else if (!isComplete) {
             status = 'in_corso';
         } else {
-            // Default for any other mixed/rejected states
             status = 'in_sospeso'; 
         }
 
@@ -300,10 +300,10 @@ export default function ShiftApprovalPage() {
             const shiftsByManualId: { [key: string]: Timbratura[] } = {};
 
             for (const event of allClockings) {
-                if (event.shiftId) { // Group by manual shiftId first
+                if (event.shiftId) { 
                     if (!shiftsByManualId[event.shiftId]) shiftsByManualId[event.shiftId] = [];
                     shiftsByManualId[event.shiftId].push(event);
-                } else { // Then group by day for automatic shifts
+                } else { 
                     const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
                     if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
                     shiftsByDay[dayString].push(event);
@@ -312,14 +312,12 @@ export default function ShiftApprovalPage() {
 
             const groupedShifts: Shift[] = [];
             
-            // Process manual shifts
             for (const shiftId in shiftsByManualId) {
                 const events = shiftsByManualId[shiftId];
                 const processed = processShift(events, leaveDays);
                 groupedShifts.push({ id: shiftId, ...processed });
             }
 
-            // Process automatic shifts day by day
             for (const day in shiftsByDay) {
                 const dayEvents = shiftsByDay[day];
                 let currentShiftEvents: Timbratura[] = [];
@@ -332,7 +330,6 @@ export default function ShiftApprovalPage() {
                         currentShiftEvents = [];
                     }
                 }
-                // Handle incomplete shifts for the day
                 if (currentShiftEvents.length > 0) {
                     const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
                     const processed = processShift(currentShiftEvents, leaveDays);
@@ -545,7 +542,7 @@ export default function ShiftApprovalPage() {
         setEditingShift(shift);
         const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
         shift.events.forEach(e => {
-            if (times[e.type] === '') { // Only take the first one if there are duplicates
+            if (times[e.type] === '') { 
                times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
             }
         });
@@ -569,7 +566,6 @@ export default function ShiftApprovalPage() {
         const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         const shiftDate = editingShift.events[0].timestamp.toDate();
         
-        // This is the critical part: determine the correct shiftId to group events.
         const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id;
     
         const createTimestamp = (time: string): Timestamp | null => {
@@ -600,12 +596,12 @@ export default function ShiftApprovalPage() {
             const existingEvent = editingShift.events.find(e => e.type === type);
             const newEventDetails = newEventData[type];
     
-            if (newEventDetails && existingEvent) { // Event exists, update it
+            if (newEventDetails && existingEvent) { 
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 const updatePayload: any = { 
                     timestamp: newEventDetails.timestamp, 
                     viewedByOperator: false, 
-                    shiftId: shiftId // Ensure shiftId is preserved/updated
+                    shiftId: shiftId 
                 };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -613,7 +609,7 @@ export default function ShiftApprovalPage() {
                 batch.update(docRef, updatePayload);
                 newEventsForState = newEventsForState.map(e => e.id === existingEvent.id ? { ...e, ...updatePayload, timestamp: newEventDetails.timestamp } : e);
     
-            } else if (newEventDetails && !existingEvent) { // Event is new, create it
+            } else if (newEventDetails && !existingEvent) { 
                 const newDocRef = doc(timbratureCollectionRef);
                 const finalStatus = isApprovedShift ? 'confermata' : 'sospesa';
                  const newEventPayload: Omit<Timbratura, 'id'> = {
@@ -623,14 +619,14 @@ export default function ShiftApprovalPage() {
                     status: finalStatus,
                     viewedByOperator: false,
                     isOvertime: editingShift.isOvertime,
-                    shiftId: shiftId, // CRITICAL: Assign the group ID
+                    shiftId: shiftId, 
                     isAuto: true,
                     ...(type === 'entrata' && { ignoreContractualStart: editIgnoreContractual })
                 };
                 batch.set(newDocRef, newEventPayload);
                 newEventsForState.push({ ...newEventPayload, id: newDocRef.id });
     
-            } else if (!newEventDetails && existingEvent) { // Event was removed, delete it
+            } else if (!newEventDetails && existingEvent) { 
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.delete(docRef);
                 newEventsForState = newEventsForState.filter(e => e.id !== existingEvent.id);
@@ -642,7 +638,6 @@ export default function ShiftApprovalPage() {
             setIsEditShiftOpen(false);
             setEditingShift(null);
             
-            // Force-update the detail view with the new state
             if (detailShift) {
                 const newProcessedShift = processShift(newEventsForState, new Set());
                 setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState }) : null);
@@ -784,13 +779,13 @@ export default function ShiftApprovalPage() {
             setShiftForBreak(shift);
             setIsMissingBreakConfirmOpen(true);
         } else {
-            handleOpenApproveDialog(shift);
+            handleOpenApproveDialog(shift, false);
         }
     };
     
     const handleApproveWithoutBreak = () => {
         if (shiftForBreak) {
-            handleOpenApproveDialog(shiftForBreak);
+            handleOpenApproveDialog(shiftForBreak, false);
         }
         setIsMissingBreakConfirmOpen(false);
         setShiftForBreak(null);
@@ -806,7 +801,7 @@ export default function ShiftApprovalPage() {
         const existingBreakStart = shiftForBreak.events.find(e => e.type === 'pausa');
         
         let prefilledStart = '12:30';
-        let prefilledEnd = '13:30'; // Default if 60 mins
+        let prefilledEnd = '13:30'; 
 
         if (existingBreakStart) {
             prefilledStart = format(existingBreakStart.timestamp.toDate(), 'HH:mm');
@@ -1006,7 +1001,7 @@ export default function ShiftApprovalPage() {
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        const manualShiftId = doc(timbratureCollectionRef).id; // Use a single ID for the whole manual shift
+        const manualShiftId = doc(timbratureCollectionRef).id; 
     
         const events: { type: Timbratura['type'], time: string }[] = [
             { type: 'entrata', time: newShiftTimes.entrata },
@@ -1064,13 +1059,8 @@ export default function ShiftApprovalPage() {
              toast({ title: 'Turno in corso', description: 'Non puoi approvare un turno non ancora terminato.', variant: 'destructive'});
              return;
         }
-
-        if (!hasBreak) {
-            setOvertimeShiftForBreak(shift);
-            setIsOvertimeMissingBreakConfirmOpen(true);
-        } else {
-            handleOpenApproveDialog(shift, true);
-        }
+        
+        handleOpenApproveDialog(shift, true);
     };
     
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', manualBreak?: ManualBreak) => {
@@ -1146,28 +1136,19 @@ export default function ShiftApprovalPage() {
     };
     
     const calculateOvertimeShiftMinutes = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
-        let workDuration = 0;
-        const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
-        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+        let { workDuration } = calculateShiftDurations(shift.events);
 
-        if (startTime && endTime) {
-            let totalMillis = endTime.toMillis() - startTime.toMillis();
-            
-            if (manualBreak && manualBreak.start && manualBreak.end) {
-                const start = parse(manualBreak.start, 'HH:mm', new Date());
-                const end = parse(manualBreak.end, 'HH:mm', new Date());
-                totalMillis -= (end.getTime() - start.getTime());
-            } else {
-                let breakStart: Timestamp | null = null;
-                shift.events.forEach(e => {
-                    if (e.type === 'pausa') breakStart = e.timestamp;
-                    if (e.type === 'fine_pausa' && breakStart) {
-                        totalMillis -= (e.timestamp.toMillis() - breakStart.toMillis());
-                        breakStart = null;
-                    }
-                });
+        if (manualBreak && manualBreak.start && manualBreak.end) {
+             const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
+             const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+
+             if (startTime && endTime) {
+                let totalMillis = endTime.toMillis() - startTime.toMillis();
+                const breakStart = parse(manualBreak.start, 'HH:mm', new Date());
+                const breakEnd = parse(manualBreak.end, 'HH:mm', new Date());
+                totalMillis -= (breakEnd.getTime() - breakStart.getTime());
+                workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
             }
-            workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
         }
         return workDuration;
     };
@@ -1225,7 +1206,7 @@ export default function ShiftApprovalPage() {
                     toast({ title: 'Orario non valido', description: `L'orario per '${type}' non è valido.`, variant: 'destructive' });
                     return;
                 }
-                newEvents.push({ type, timestamp, latitude: 0, longitude: 0 }); // Lat/Lon can be dummy for manual edits
+                newEvents.push({ type, timestamp, latitude: 0, longitude: 0 }); 
             }
         }
         
@@ -1236,7 +1217,9 @@ export default function ShiftApprovalPage() {
             toast({ title: 'Successo', description: 'Turno straordinario aggiornato.' });
             setIsEditOvertimeOpen(false);
             setEditingOvertimeShift(null);
-            setIsDetailOvertimeOpen(false);
+            
+            setDetailOvertimeShift(prev => prev ? ({ ...prev, events: newEvents }) : null);
+
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
         });
@@ -1303,7 +1286,6 @@ export default function ShiftApprovalPage() {
 
         const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDurationMillis);
 
-        // Only show parenthesis if there is a meaningful difference due to rounding
         if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
             return { display: `${originalTime} (${format(calculatedEndTime, 'HH:mm')})`, calculationEnd: calculatedEndTime };
         }
@@ -1312,31 +1294,26 @@ export default function ShiftApprovalPage() {
     }
     
     const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
+        const { calculationStart, calculationEnd } = calculateShiftDurations(shift.events);
         const startTimeEvent = shift.events.find(e => e.type === 'entrata');
         const endTimeEvent = shift.events.find(e => e.type === 'uscita');
-        if (!startTimeEvent || !endTimeEvent) return { start: '--:--', end: '--:--' };
     
+        if (!startTimeEvent) return { start: '--:--', end: '--:--' };
+
         const originalStartTime = format(startTimeEvent.timestamp.toDate(), 'HH:mm:ss');
+        const startDisplay = calculationStart && Math.abs(calculationStart.getTime() - startTimeEvent.timestamp.toDate().getTime()) > 1000
+            ? `${originalStartTime} (${format(calculationStart, 'HH:mm')})`
+            : originalStartTime;
+
+        if (!endTimeEvent) return { start: startDisplay, end: '--:--'};
+        
         const originalEndTime = format(endTimeEvent.timestamp.toDate(), 'HH:mm:ss');
-    
-        const workedMinutes = calculateOvertimeShiftMinutes(shift);
-        const calculatedHours = roundOvertimeHours(workedMinutes);
-        
-        // Calculate the end time based on the calculated hours
-        const breakDuration = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
-            const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
-            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
-            return acc;
-        }, 0);
-        
-        const calculatedEndTime = new Date(startTimeEvent.timestamp.toDate().getTime() + (calculatedHours * 60 * 60000) + breakDuration);
-    
-        const endDisplay = Math.abs(calculatedEndTime.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000
-            ? `${originalEndTime} (${format(calculatedEndTime, 'HH:mm')})`
+        const endDisplay = calculationEnd && Math.abs(calculationEnd.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000
+            ? `${originalEndTime} (${format(calculationEnd, 'HH:mm')})`
             : originalEndTime;
-    
+
         return {
-            start: originalStartTime,
+            start: startDisplay,
             end: endDisplay
         };
     };
@@ -1483,7 +1460,7 @@ export default function ShiftApprovalPage() {
                                 <TableBody>
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const isRegular = shift.type === 'regular';
-                                        const displayShift = shift as Shift; // Treat as Shift for common properties
+                                        const displayShift = shift as Shift; 
                                         const displayOvertime = shift as StraordinarioShift;
 
                                         const startTime = isRegular ? displayShift.events[0]?.timestamp : displayOvertime.events.find(e => e.type === 'entrata')?.timestamp;
@@ -1712,14 +1689,14 @@ export default function ShiftApprovalPage() {
                                         
                                         return (
                                         <TableRow key={t.id}>
-                                            <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-red-500")}>
+                                            <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>
                                                <div className='flex flex-col'>
-                                                  <span className='italic'>
+                                                  <span>
                                                      {isEntrata ? displayStart : (isUscita ? displayEnd : format(t.timestamp.toDate(), 'HH:mm:ss'))}
                                                   </span>
                                                </div>
                                             </TableCell>
-                                            <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
+                                            <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>{t.type.replace('_', ' ')}</TableCell>
                                             <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
                                             <TableCell className="whitespace-nowrap">
                                                {t.latitude && t.longitude ? (
@@ -2047,5 +2024,7 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
+
+    
 
     
