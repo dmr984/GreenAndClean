@@ -68,7 +68,7 @@ type Shift = {
 
 type DailyDetail = {
     date: Date;
-    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo';
+    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa';
     shift: Shift | null;
     request: Request | null;
 };
@@ -262,7 +262,14 @@ const MonthlySummaryContent = () => {
 
             const workedEventsRaw = dailyTimbrature[dayString];
 
-            if (workedEventsRaw) {
+            if (isPublicHoliday(day)) {
+                 details.push({
+                    date: day,
+                    status: 'festa',
+                    request: null,
+                    shift: null,
+                });
+            } else if (workedEventsRaw) {
                 let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 let workedMinutes = 0;
@@ -319,7 +326,7 @@ const MonthlySummaryContent = () => {
                     request: leaveRequest,
                     shift: null,
                 });
-            } else if (contractualHours > 0 && !isPublicHoliday(day)) {
+            } else if (contractualHours > 0) {
                  details.push({
                     date: day,
                     status: 'mancata_timbratura',
@@ -501,7 +508,7 @@ const MonthlySummaryContent = () => {
 
 
                                                     return (
-                                                        <span key={e.id} className={cn('mr-2', e.isAuto)}>
+                                                        <span key={e.id} className={cn('mr-2')}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>
@@ -520,6 +527,8 @@ const MonthlySummaryContent = () => {
                                         <p className="text-muted-foreground mt-1">Giorno di ferie approvato.</p>
                                     ) : detail.status === 'malattia' ? (
                                         <p className="text-muted-foreground mt-1">Giorno di malattia approvato.</p>
+                                    ) : detail.status === 'festa' ? (
+                                        <p className="text-muted-foreground mt-1">Giorno festivo.</p>
                                     ) : detail.status === 'mancata_timbratura' ? (
                                         <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>
                                     ) : null}
