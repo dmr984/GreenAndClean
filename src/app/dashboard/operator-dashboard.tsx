@@ -33,6 +33,7 @@ import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { isPublicHoliday } from '@/lib/holidays';
 
 type ClockingEvent = {
     id: string;
@@ -148,7 +149,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 const today = new Date();
                 const dayName = dayIndexToName[getDay(today)];
                 const contractualHours = operatorData.workSchedule?.[dayName]?.totalHours || 0;
-                setIsWorkDay(contractualHours > 0);
+                // A day is a workday if it has contractual hours AND it's not a public holiday
+                setIsWorkDay(contractualHours > 0 && !isPublicHoliday(today));
 
             } else {
                 setOperator(null);
