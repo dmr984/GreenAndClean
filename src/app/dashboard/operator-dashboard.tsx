@@ -573,12 +573,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const renderNonWorkDayCard = () => {
+    const isHoliday = isPublicHoliday(new Date());
     return (
         <Card className="border-blue-500 bg-blue-500/10 text-center">
             <CardHeader className="pb-4">
                 <div className="flex items-center justify-center gap-3">
                     <Briefcase className="h-7 w-7 text-blue-600" />
-                    <CardTitle className="text-2xl text-blue-700">Oggi non è un giorno lavorativo</CardTitle>
+                    <CardTitle className="text-2xl text-blue-700">{isHoliday ? 'Oggi è un giorno festivo' : 'Oggi non è un giorno lavorativo'}</CardTitle>
                 </div>
             </CardHeader>
             <CardContent>

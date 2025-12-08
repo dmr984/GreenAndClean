@@ -47,13 +47,14 @@ const generateHolidaysForYear = (year: number): Date[] => {
 };
 
 // Generate holidays for a few years to be safe
+const holidays2025 = generateHolidaysForYear(2025);
 const holidays2026 = generateHolidaysForYear(2026);
 const holidays2027 = generateHolidaysForYear(2027);
 
 
 // Combine and export a set of date strings for efficient lookup
 const holidaySet = new Set(
-    [...holidays2026, ...holidays2027].map(d => startOfDay(d).toISOString())
+    [...holidays2025, ...holidays2026, ...holidays2027].map(d => startOfDay(d).toISOString())
 );
 
 export const isPublicHoliday = (date: Date): boolean => {
