@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { isPublicHoliday } from '@/lib/holidays';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -995,7 +996,7 @@ export default function ShiftApprovalPage() {
             return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
         };
         
-        const isWorkDay = (schedule?.totalHours || 0) > 0;
+        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(newShiftDate);
         const isOvertime = !isWorkDay;
         
         const batch = writeBatch(firestore);
@@ -1875,14 +1876,12 @@ export default function ShiftApprovalPage() {
                                     <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
                                 </div>
                             )}
-                            {(parseFloat(approvalContext.overtimeHours) > 0 || approvalContext.isOvertimeShift) && (
-                                <div>
-                                    <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
-                                    <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
-                                    <p className="text-xs text-muted-foreground mt-1">Le ore che superano il monte ore giornaliero.</p>
-                                </div>
-                            )}
-                            {approvalContext.leaveHours && parseFloat(approvalContext.leaveHours) > 0 && !approvalContext.isOvertimeShift && (
+                            <div>
+                                <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
+                                <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
+                                <p className="text-xs text-muted-foreground mt-1">Le ore che superano il monte ore giornaliero.</p>
+                            </div>
+                            {!approvalContext.isOvertimeShift && (
                                 <div>
                                     <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
                                     <Input id="leave-hours" type="number" value={approvalContext.leaveHours} onChange={(e) => setApprovalContext(p => p ? {...p, leaveHours: e.target.value} : null)} step="0.5" min="0" />
