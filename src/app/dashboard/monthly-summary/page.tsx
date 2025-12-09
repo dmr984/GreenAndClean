@@ -261,8 +261,9 @@ const MonthlySummaryContent = () => {
             );
 
             const workedEventsRaw = dailyTimbrature[dayString];
+            const isHoliday = isPublicHoliday(day);
 
-            if (isPublicHoliday(day)) {
+            if (isHoliday) {
                  details.push({
                     date: day,
                     status: 'festa',
@@ -288,17 +289,19 @@ const MonthlySummaryContent = () => {
                     }
                 }
                 
-                const isOvertimeShift = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
+                let isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
+                 if (contractualHours === 0 && !isHoliday) {
+                    isPureOvertime = true;
+                }
+
                 
                 const contractualMinutes = contractualHours * 60;
                 let ordinaryHours = 0;
                 let overtimeHours = 0;
 
-                if (isOvertimeShift) {
+                if (isPureOvertime) {
+                    ordinaryHours = 0;
                     overtimeHours = roundOvertimeHours(workedMinutes);
-                } else if (operator.contractType === 'monthly') {
-                    // For monthly contracts, all hours are initially ordinary. Overtime is calculated at the end.
-                    ordinaryHours = roundOrdinaryHours(workedMinutes);
                 } else {
                     const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
                     ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
@@ -311,12 +314,19 @@ const MonthlySummaryContent = () => {
                     .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                     .reduce((sum, r) => sum + (r.hours || 0), 0);
 
+                const manualOvertimeForDay = monthlyData.requests
+                    .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
+                    .reduce((sum, r) => sum + (r.hours || 0), 0);
+                
+                overtimeHours += manualOvertimeForDay;
+
+
                 details.push({
                     date: day,
                     status: 'lavorato',
                     request: null,
                     shift: {
-                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime: isOvertimeShift
+                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime
                     },
                 });
             } else if (leaveRequest && contractualHours > 0) {
@@ -386,20 +396,18 @@ const MonthlySummaryContent = () => {
                 totalOvertime = totalHoursWithPermission - monthlyThreshold;
             } else {
                 totalOrdinary = totalWorkedHours;
-                totalOvertime = 0;
+                totalOvertime = 0; // Overtime is only calculated if threshold is met
             }
 
-        } else {
+            // Still need to add pure overtime shifts on top
+            const pureOvertimeMinutes = shifts.filter(s => s.isPureOvertime).reduce((sum, s) => sum + s.workedMinutes, 0);
+            totalOvertime += roundOvertimeHours(pureOvertimeMinutes);
+
+
+        } else { // weekly contract
             totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
             totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
         }
-
-        // Add manually approved overtime hours from requests
-        const manualOvertime = monthlyData.requests
-            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
-            .reduce((sum, r) => sum + (r.hours || 0), 0);
-        
-        totalOvertime += manualOvertime;
 
         return {
             monthlySummary: {
@@ -410,7 +418,7 @@ const MonthlySummaryContent = () => {
                 permessoHours: totalPermesso,
                 malattiaDays,
             },
-            dailyDetails: details,
+            dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),
         };
 
     }, [operator, currentMonth, monthlyData]);
@@ -488,6 +496,7 @@ const MonthlySummaryContent = () => {
                                         {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
                                         {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
                                         {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
+                                        {detail.status === 'festa' && <Briefcase className="h-5 w-5 text-purple-500" />}
 
                                         {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                     </h4>
