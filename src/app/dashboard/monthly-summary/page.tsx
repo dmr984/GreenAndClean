@@ -254,6 +254,9 @@ const MonthlySummaryContent = () => {
             const dailySchedule = operator.workSchedule[dayName];
             const contractualHours = dailySchedule?.totalHours || 0;
             const dayString = day.toDateString();
+            const isHoliday = isPublicHoliday(day);
+            const isWorkDay = contractualHours > 0 && !isHoliday;
+
 
             const leaveRequest = monthlyData.requests.find(r =>
                 (r.type === 'ferie' || r.type === 'malattia') &&
@@ -261,7 +264,6 @@ const MonthlySummaryContent = () => {
             );
 
             const workedEventsRaw = dailyTimbrature[dayString];
-            const isHoliday = isPublicHoliday(day);
 
             if (isHoliday) {
                  details.push({
@@ -273,29 +275,10 @@ const MonthlySummaryContent = () => {
             } else if (workedEventsRaw) {
                 let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
-                let workedMinutes = 0;
-                let calculationStart: Date | null = null;
-                const clockInEvent = events.find(e => e.type === 'entrata');
-                
-                if (clockInEvent) {
-                    const shiftDetails = calculateShiftDetails(events, dailySchedule);
-                    workedMinutes = shiftDetails.workedMinutes;
-                    calculationStart = shiftDetails.calculationStart;
+                const { workedMinutes, calculationStart } = calculateShiftDetails(events, dailySchedule);
+               
+                let isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime || !isWorkDay;
 
-                    const entrataIndex = events.findIndex(e => e.type === 'entrata');
-                    if (entrataIndex !== -1 && calculationStart) {
-                         const virtualEntrata = { ...events[entrataIndex], timestamp: Timestamp.fromDate(calculationStart), id: `virtual-${events[entrataIndex].id}` };
-                         events[entrataIndex] = virtualEntrata;
-                    }
-                }
-                
-                let isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
-                 if (contractualHours === 0 && !isHoliday) {
-                    isPureOvertime = true;
-                }
-
-                
-                const contractualMinutes = contractualHours * 60;
                 let ordinaryHours = 0;
                 let overtimeHours = 0;
 
@@ -303,6 +286,7 @@ const MonthlySummaryContent = () => {
                     ordinaryHours = 0;
                     overtimeHours = roundOvertimeHours(workedMinutes);
                 } else {
+                    const contractualMinutes = contractualHours * 60;
                     const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
                     ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
                     
@@ -329,14 +313,14 @@ const MonthlySummaryContent = () => {
                         date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime
                     },
                 });
-            } else if (leaveRequest && contractualHours > 0) {
+            } else if (leaveRequest && isWorkDay) {
                 details.push({
                     date: day,
                     status: leaveRequest.type,
                     request: leaveRequest,
                     shift: null,
                 });
-            } else if (contractualHours > 0) {
+            } else if (isWorkDay) {
                  details.push({
                     date: day,
                     status: 'mancata_timbratura',
