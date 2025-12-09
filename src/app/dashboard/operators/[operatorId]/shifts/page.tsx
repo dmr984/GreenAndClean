@@ -118,6 +118,7 @@ export default function ShiftApprovalPage() {
     const [bookedShiftDays, setBookedShiftDays] = useState<Date[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
+    const [associatedOvertime, setAssociatedOvertime] = useState(0);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -156,7 +157,7 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName]?.startTime || null;
     }, [newShiftDate, operator]);
     
-    const calculateShiftDurations = (events: (Timbratura | StraordinarioEvent)[]): { workDuration: number, breakDuration: number, calculationStart: Date | null, calculationEnd: Date | null } => {
+    const calculateShiftDurations = (events: (Timbratura | StraordinarioEvent)[], ignoreIsOvertimeFlag = false): { workDuration: number, breakDuration: number, calculationStart: Date | null, calculationEnd: Date | null } => {
         if (!events || events.length === 0 || !operator) {
             return { workDuration: 0, breakDuration: 0, calculationStart: null, calculationEnd: null };
         }
@@ -177,8 +178,10 @@ export default function ShiftApprovalPage() {
         let calculationEnd = clockOutEvent ? clockOutEvent.timestamp.toDate() : null;
         
         const ignoreContractual = (clockInEvent as Timbratura).ignoreContractualStart || false;
+        const isActuallyOvertime = (clockInEvent as Timbratura).isOvertime || (!schedule?.totalHours && !ignoreIsOvertimeFlag);
 
-        if (schedule?.startTime && !ignoreContractual) {
+
+        if (schedule?.startTime && !ignoreContractual && !isActuallyOvertime) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             
@@ -204,7 +207,7 @@ export default function ShiftApprovalPage() {
             }
         }
         
-         if (schedule?.endTime && clockOutEvent && !ignoreContractual) {
+         if (schedule?.endTime && clockOutEvent && !ignoreContractual && !isActuallyOvertime) {
             const [contractualH, contractualM] = schedule.endTime.split(':').map(Number);
             const contractualEnd = set(shiftDate, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
             
@@ -366,6 +369,32 @@ export default function ShiftApprovalPage() {
             unsubOvertime();
         }
     }, [firestore, operatorId, toast, operator]);
+
+    useEffect(() => {
+        if (!isDetailOpen || !detailShift || !firestore || !operatorId) {
+            setAssociatedOvertime(0);
+            return;
+        }
+
+        const fetchAssociatedOvertime = async () => {
+            const requestsRef = collection(firestore, `app-users/${operatorId}/requests`);
+            const q = query(requestsRef, 
+                where('associatedShiftId', '==', detailShift.id), 
+                where('type', '==', 'straordinario'),
+                where('status', '==', 'approvato')
+            );
+            
+            const querySnapshot = await getDocs(q);
+            let totalOvertime = 0;
+            querySnapshot.forEach((doc) => {
+                totalOvertime += doc.data().hours || 0;
+            });
+            setAssociatedOvertime(totalOvertime);
+        };
+
+        fetchAssociatedOvertime();
+    }, [isDetailOpen, detailShift, firestore, operatorId]);
+
 
     const { pendingShifts } = useMemo(() => {
         const pending = allShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
@@ -1137,7 +1166,7 @@ export default function ShiftApprovalPage() {
     };
     
     const calculateOvertimeShiftMinutes = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
-        let { workDuration } = calculateShiftDurations(shift.events);
+        let { workDuration } = calculateShiftDurations(shift.events, true);
 
         if (manualBreak && manualBreak.start && manualBreak.end) {
              const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
@@ -1295,7 +1324,7 @@ export default function ShiftApprovalPage() {
     }
     
     const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
-        const { calculationStart, calculationEnd } = calculateShiftDurations(shift.events);
+        const { calculationStart, calculationEnd } = calculateShiftDurations(shift.events, true);
         const startTimeEvent = shift.events.find(e => e.type === 'entrata');
         const endTimeEvent = shift.events.find(e => e.type === 'uscita');
     
@@ -1628,20 +1657,20 @@ export default function ShiftApprovalPage() {
                         </div>
                     </ResponsiveDialogHeader>
 
-                     {detailShift && detailShift.status !== 'in_corso' && operator && (() => {
-                        const { ordinary, overtime, leave } = calculateHours(detailShift);
+                     {detailShift && operator && (() => {
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const totalOvertime = overtime + associatedOvertime;
                         
-                        let mainResult;
-                        if (overtime > 0) {
-                            mainResult = { label: 'Straordinari', value: `${overtime}h` };
-                        } else if (leave > 0) {
-                            mainResult = { label: 'Permessi', value: `${leave}h` };
-                        } else {
-                            mainResult = { label: 'Straordinari', value: '0h' };
+                        let mainResultLabel = 'Straordinari';
+                        let mainResultValue = `${totalOvertime}h`;
+
+                        if (totalOvertime === 0 && leave > 0) {
+                            mainResultLabel = 'Permessi';
+                            mainResultValue = `${leave}h`;
+                        } else if (totalOvertime > 0 && leave > 0) {
+                             mainResultValue = `${totalOvertime}h (Perm: ${leave}h)`;
                         }
 
-                        const { worked, break: breakDuration } = calculateHours(detailShift);
-                        
                         return (
                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center my-2">
                                 <div className="space-y-1 rounded-md border p-1.5">
@@ -1653,8 +1682,8 @@ export default function ShiftApprovalPage() {
                                     <p className="text-lg font-bold">{ordinary}h</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-1.5">
-                                     <p className="text-xs font-medium text-muted-foreground">{mainResult.label}</p>
-                                    <p className="text-lg font-bold">{mainResult.value}</p>
+                                     <p className="text-xs font-medium text-muted-foreground">{mainResultLabel}</p>
+                                    <p className="text-lg font-bold">{mainResultValue}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
@@ -1878,7 +1907,7 @@ export default function ShiftApprovalPage() {
                             )}
                             <div>
                                 <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
-                                <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="1" min="0" />
+                                <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => setApprovalContext(p => p ? {...p, overtimeHours: e.target.value} : null)} step="0.5" min="0" />
                                 <p className="text-xs text-muted-foreground mt-1">Le ore che superano il monte ore giornaliero.</p>
                             </div>
                             {!approvalContext.isOvertimeShift && (
@@ -2001,7 +2030,7 @@ export default function ShiftApprovalPage() {
                         <div>
                             <h4 className="font-semibold mb-1">Gestione Pause</h4>
                             <p className="text-muted-foreground">
-                               Se per un turno è prevista una pausa obbligatoria ma non è stata registrata, il sistema ti chiederà se vuoi aggiungerla manualmente prima di approvare.
+                               Se per un turno è prevista una pausa obbligatoria ma non è stata registrata, il sistema ti chiederà se vuoi aggiungerla manually prima di approvare.
                             </p>
                         </div>
                         <div>
