@@ -394,6 +394,13 @@ const MonthlySummaryContent = () => {
             totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
         }
 
+        // Add manually approved overtime hours from requests
+        const manualOvertime = monthlyData.requests
+            .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
+            .reduce((sum, r) => sum + (r.hours || 0), 0);
+        
+        totalOvertime += manualOvertime;
+
         return {
             monthlySummary: {
                 workedDays: shifts.length,
