@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
@@ -42,6 +43,7 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: WorkSchedule;
+    overtimeCalculation?: 'hourly' | 'half_hourly';
 };
 
 type Timbratura = {
@@ -182,19 +184,7 @@ export default function ShiftApprovalPage() {
         if (schedule?.startTime && !ignoreContractual) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            
-            if (calculationStart < contractualStart) {
-                calculationStart = contractualStart;
-            }
-        }
-        
-         if (schedule?.endTime && clockOutEvent && !ignoreContractual) {
-            const [contractualH, contractualM] = schedule.endTime.split(':').map(Number);
-            const contractualEnd = set(shiftDate, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-            
-            if (calculationEnd && calculationEnd > contractualEnd) {
-                calculationEnd = contractualEnd;
-            }
+            calculationStart = contractualStart;
         }
         
         
@@ -698,16 +688,36 @@ export default function ShiftApprovalPage() {
     
     const roundOrdinaryHours = (minutes: number): number => {
         if (minutes <= 0) return 0;
-        const totalHalfHours = Math.floor(minutes / 30);
-        const remainingMinutes = minutes % 30;
-        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        
+        if (remainingMinutes >= 15 && remainingMinutes < 45) {
+            return hours + 0.5;
+        }
+        if (remainingMinutes >= 45) {
+            return hours + 1;
+        }
+        
+        return hours;
     };
 
     const roundOvertimeHours = (minutes: number): number => {
+        if (!operator) return 0;
         if (minutes <= 0) return 0;
-        const totalHours = Math.floor(minutes / 60);
+        
+        if (operator.overtimeCalculation === 'half_hourly') {
+            const halfHours = Math.floor(minutes / 30);
+            const remaining = minutes % 30;
+            if (remaining >= 25) {
+                return (halfHours + 1) * 0.5;
+            }
+            return halfHours * 0.5;
+        }
+        
+        // Default hourly logic
+        const hours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
-        return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+        return hours + (remainingMinutes >= 50 ? 1 : 0);
     };
 
     const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
@@ -722,7 +732,7 @@ export default function ShiftApprovalPage() {
         const isWorkDay = contractualHours > 0 && !isPublicHoliday(clockInEvent.timestamp.toDate());
         const isPureOvertime = shift.isOvertime || !isWorkDay;
     
-        const { workDuration: workedMinutes, breakDuration } = calculateShiftDurations(shift.events, isPureOvertime);
+        const { workedMinutes, breakDuration } = calculateShiftDurations(shift.events, isPureOvertime);
 
         if (isPureOvertime) {
             return {
@@ -1261,7 +1271,7 @@ export default function ShiftApprovalPage() {
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
     
-        const { calculationStart } = calculateShiftDurations(shift.events);
+        const { calculationStart, breakMinutes } = calculateShiftDurations(shift.events);
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
         if (!calculationStart) {
@@ -1269,26 +1279,13 @@ export default function ShiftApprovalPage() {
         }
     
         const { ordinary, overtime } = calculateHours(shift);
-        
-        // Find all break segments and sum their duration in milliseconds
-        let breakDurationMillis = 0;
-        let breakStartEvent: Timbratura | undefined = undefined;
-        for (const event of shift.events.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis())) {
-            if (event.type === 'pausa') {
-                breakStartEvent = event;
-            }
-            if (event.type === 'fine_pausa' && breakStartEvent) {
-                breakDurationMillis += event.timestamp.toMillis() - breakStartEvent.timestamp.toMillis();
-                breakStartEvent = undefined; // Reset for next possible break
-            }
-        }
     
         const totalCalculatedMinutes = (ordinary + overtime) * 60;
         const totalCalculatedMillis = totalCalculatedMinutes * 60000;
+        const breakMillis = breakMinutes * 60000;
+
+        const calculatedEndTime = new Date(calculationStart.getTime() + totalCalculatedMillis + breakMillis);
     
-        const calculatedEndTime = new Date(calculationStart.getTime() + totalCalculatedMillis + breakDurationMillis);
-    
-        // Compare calculated end time with actual clock-out time, allowing for a small tolerance (e.g., 60 seconds)
         if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
              return { display: `${originalTime} (${format(calculatedEndTime, 'HH:mm')})`, calculationEnd: calculatedEndTime };
         }
@@ -2032,6 +2029,8 @@ export default function ShiftApprovalPage() {
 
 
 
+
+    
 
     
 
