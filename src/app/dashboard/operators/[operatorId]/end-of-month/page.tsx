@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive } from 'lucide-react';
@@ -16,6 +16,8 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // Type definitions are now in calculations.ts
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -87,7 +89,9 @@ export default function EndOfMonthPage() {
     const params = useParams();
     const { toast } = useToast();
     const operatorId = params.operatorId as string;
-    const [isProcessing, setIsProcessing] = useState(false);
+    const printRef = useRef<HTMLDivElement>(null);
+
+    const [isPrinting, setIsPrinting] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
@@ -160,10 +164,47 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const handlePrintAndShare = () => {
-        // This function would contain the complex logic for generating PDF/sharing.
-        // It's kept simple here for brevity.
-        toast({ title: "Funzione non implementata", description: "La stampa e condivisione non sono ancora attive." });
+    const handlePrintAndShare = async () => {
+        if (!printRef.current || !operator) return;
+        setIsPrinting(true);
+
+        try {
+            const canvas = await html2canvas(printRef.current, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'pt',
+                format: 'a4'
+            });
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const ratio = imgWidth / imgHeight;
+            
+            let finalImgWidth = pdfWidth - 40; // with some margin
+            let finalImgHeight = finalImgWidth / ratio;
+            
+            if (finalImgHeight > pdfHeight - 40) {
+              finalImgHeight = pdfHeight - 40;
+              finalImgWidth = finalImgHeight * ratio;
+            }
+
+            const xPos = (pdfWidth - finalImgWidth) / 2;
+            const yPos = (pdfHeight - finalImgHeight) / 2;
+            
+            pdf.addImage(imgData, 'PNG', xPos, yPos, finalImgWidth, finalImgHeight);
+            
+            const fileName = `Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', {locale: it})}.pdf`;
+            pdf.save(fileName);
+        } catch (error) {
+            console.error("Failed to generate PDF", error);
+            toast({ title: "Errore Stampa", description: "Impossibile generare il file PDF.", variant: "destructive" });
+        } finally {
+            setIsPrinting(false);
+        }
     };
 
     const handleCleanMonth = async () => {
@@ -237,9 +278,9 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                         <Button onClick={handlePrintAndShare} disabled={isProcessing} className="w-full sm:w-auto">
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                            Stampa/Condividi Riepilogo
+                         <Button onClick={handlePrintAndShare} disabled={isPrinting} className="w-full sm:w-auto">
+                            {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                            {isPrinting ? "Stampa in corso..." : "Stampa/Condividi Riepilogo"}
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full smw-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
@@ -248,7 +289,7 @@ export default function EndOfMonthPage() {
                      </div>
                 </div>
             </CardHeader>
-            <CardContent className="space-y-8">
+            <CardContent ref={printRef} className="space-y-8">
                  <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
                     <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
                     <div className="flex items-center gap-2">
@@ -278,7 +319,7 @@ export default function EndOfMonthPage() {
                 <div>
                     <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
                     {dailyDetails.length > 0 ? (
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
                                  if (detail.status === 'riposo') return null;
 
