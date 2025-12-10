@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
@@ -108,9 +107,6 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
-    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-    const pdfDocRef = useRef<jsPDF | null>(null);
-    const pdfFileRef = useRef<File | null>(null);
 
 
     useEffect(() => {
@@ -178,12 +174,17 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = useCallback(async (): Promise<jsPDF | null> => {
-        if (!operator) return null;
+    const handleGenerateSummary = async () => {
+        if (!operator) return;
+        setIsProcessing(true);
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
         let y = 20;
+
+        // Force light mode styles for PDF generation
+        doc.setTextColor(40, 40, 40); // Dark grey
+        doc.setFillColor(255, 255, 255); // White
 
         try {
             const loadLogo = new Promise<string>((resolve, reject) => {
@@ -208,12 +209,9 @@ export default function EndOfMonthPage() {
             console.warn("Could not load logo for PDF, proceeding without it.");
         }
 
-
         doc.setFontSize(16);
-        doc.setTextColor(40);
         doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
         doc.setFontSize(10);
-        doc.setTextColor(100);
         doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
 
         y = 40;
@@ -241,10 +239,9 @@ export default function EndOfMonthPage() {
             },
         });
 
-        y = doc.autoTable.previous.finalY + 10;
+        y = (doc as any).autoTable.previous.finalY + 10;
 
         doc.setFontSize(14);
-        doc.setTextColor(40);
         doc.text("Dettaglio Giornaliero", 15, y);
         y += 8;
 
@@ -295,77 +292,17 @@ export default function EndOfMonthPage() {
                 theme: 'striped',
                 headStyles: { fillColor: [244, 244, 245], textColor: 20 },
                 styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
-                didDrawPage: (data) => y = data.cursor?.y || y
+                didDrawPage: (data) => y = (data.cursor as any)?.y || y
             });
-            y = doc.autoTable.previous.finalY + 5;
+            y = (doc as any).autoTable.previous.finalY + 5;
         });
 
-        return doc;
-    }, [operator, currentMonth, monthlySummary, dailyDetails]);
+        const pdfBlob = doc.output('blob');
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        window.open(pdfUrl, '_blank');
 
-    const handleGenerateSummary = async () => {
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
-            if (!doc) throw new Error("Failed to generate PDF document.");
-            
-            pdfDocRef.current = doc;
-
-            const pdfBlob = doc.output('blob');
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            
-            const pdfFile = new File([pdfBlob], `Riepilogo_${operator?.firstName}-${operator?.lastName}_${format(currentMonth, 'MMMM-yyyy')}.pdf`, { type: 'application/pdf' });
-            pdfFileRef.current = pdfFile;
-
-            setPdfPreviewUrl(pdfUrl);
-
-        } catch (error) {
-            console.error("Failed to generate PDF for preview", error);
-            toast({ title: "Errore Anteprima", description: "Impossibile generare il file PDF.", variant: "destructive" });
-        } finally {
-            setIsProcessing(false);
-        }
+        setIsProcessing(false);
     };
-    
-    const handleClosePreview = () => {
-        if (pdfPreviewUrl) {
-            URL.revokeObjectURL(pdfPreviewUrl);
-        }
-        setPdfPreviewUrl(null);
-        pdfDocRef.current = null;
-        pdfFileRef.current = null;
-    }
-
-    const handlePrintFromPreview = () => {
-        if (pdfDocRef.current) {
-            pdfDocRef.current.autoPrint();
-            pdfDocRef.current.output('dataurlnewwindow');
-        }
-    };
-
-    const handleShareFromPreview = async () => {
-         if (!pdfFileRef.current) {
-             toast({ title: "Errore", description: "File PDF non trovato per la condivisione.", variant: "destructive" });
-             return;
-         }
-         if (!navigator.share || !navigator.canShare({ files: [pdfFileRef.current] })) {
-            toast({ title: "Non supportato", description: "La condivisione di file non è supportata su questo browser.", variant: "destructive" });
-            return;
-        }
-        
-        try {
-             await navigator.share({
-                title: `Riepilogo Lavoro di ${operator?.firstName}`,
-                text: `Ecco il riepilogo per ${format(currentMonth, 'MMMM yyyy')}.`,
-                files: [pdfFileRef.current],
-            });
-        } catch(error) {
-            if ((error as DOMException).name !== 'AbortError') {
-                 toast({ title: "Errore Condivisione", description: "Impossibile condividere il file PDF.", variant: "destructive" });
-            }
-        }
-    };
-
 
     const handleCleanMonth = async () => {
         if (!firestore || !operatorId || !currentMonth) return;
@@ -530,29 +467,6 @@ export default function EndOfMonthPage() {
             </CardContent>
         </Card>
         
-        <ResponsiveDialog open={!!pdfPreviewUrl} onOpenChange={handleClosePreview}>
-            <ResponsiveDialogContent className="max-w-4xl h-[90vh] flex flex-col">
-                <ResponsiveDialogHeader>
-                    <ResponsiveDialogTitle>Anteprima Riepilogo</ResponsiveDialogTitle>
-                    <ResponsiveDialogDescription>
-                        Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })} per {operator.firstName} {operator.lastName}.
-                    </ResponsiveDialogDescription>
-                </ResponsiveDialogHeader>
-                <div className="flex-grow border rounded-md overflow-hidden">
-                    {pdfPreviewUrl && <object data={pdfPreviewUrl} type="application/pdf" width="100%" height="100%" />}
-                </div>
-                <ResponsiveDialogFooter className='pt-4 flex-col sm:flex-row gap-2'>
-                    <Button variant="outline" onClick={handleClosePreview}>Chiudi</Button>
-                    <Button onClick={handlePrintFromPreview}>
-                        <Printer className="mr-2 h-4 w-4" /> Stampa
-                    </Button>
-                    <Button onClick={handleShareFromPreview}>
-                        <Share2 className="mr-2 h-4 w-4" /> Condividi
-                    </Button>
-                </ResponsiveDialogFooter>
-            </ResponsiveDialogContent>
-        </ResponsiveDialog>
-
         <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
