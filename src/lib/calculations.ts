@@ -84,7 +84,7 @@ const roundOvertimeHours = (minutes: number): number => {
 };
 
 
-export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null } => {
+export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date| null } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -100,7 +100,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
             calculationStartTime = contractualStart;
         }
     }
-
+    
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
     const sortedEvents = [...events].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -117,25 +117,26 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const workedMillis = totalMillis - breakDurationMillis;
     const workedMinutes = workedMillis > 0 ? Math.round(workedMillis / (1000 * 60)) : 0;
     
-    // Calculate the theoretical end time based on rounded hours
+    // Calculate theoretical end time based on actual worked minutes and break
     const contractualMinutes = (schedule?.totalHours || 0) * 60;
     const isPureOvertime = !schedule?.totalHours || isPublicHoliday(clockInTime);
     
-    let ordinaryMinutesCalc = 0;
-    let overtimeMinutesCalc = 0;
-
+    let ordinaryMinutesCalc, overtimeMinutesCalc;
+    
     if (isPureOvertime) {
+        ordinaryMinutesCalc = 0;
         overtimeMinutesCalc = workedMinutes;
     } else {
         ordinaryMinutesCalc = Math.min(workedMinutes, contractualMinutes);
         overtimeMinutesCalc = Math.max(0, workedMinutes - contractualMinutes);
     }
-    
+
     const finalOrdinaryHours = roundOrdinaryHours(ordinaryMinutesCalc);
     const finalOvertimeHours = roundOvertimeHours(overtimeMinutesCalc);
 
     const totalCalculatedMinutes = (finalOrdinaryHours + finalOvertimeHours) * 60;
-    const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDurationMillis);
+
+    const calculatedEndTime = new Date(calculationStartTime.getTime() + totalCalculatedMinutes * 1000 * 60 + breakDurationMillis);
 
     return { 
         workedMinutes: workedMinutes,
@@ -199,22 +200,25 @@ export const processMonthlyData = (
             }
             
             const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-            const overtimeHours = roundOvertimeHours(overtimeMinutes);
+            let overtimeHours = roundOvertimeHours(overtimeMinutes);
 
-             const permissionHours = monthlyData.requests
+            const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
 
+            // Add manually approved overtime requests for the same day
             const manualOvertimeForDay = monthlyData.requests
                 .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
+            
+            overtimeHours += manualOvertimeForDay;
 
             details.push({
                 date: day,
                 status: 'lavorato',
                 request: null,
                 shift: {
-                    date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours: overtimeHours + manualOvertimeForDay, permissionHours, isPureOvertime: !isWorkDay
+                    date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime: !isWorkDay
                 },
             });
         } else if (leaveRequest && isWorkDay) {
@@ -229,15 +233,18 @@ export const processMonthlyData = (
     // Calculate final summary totals from the processed daily details
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
-    const totalPermesso = details.reduce((sum, d) => sum + (d.shift?.permissionHours || 0), 0);
-
+    const totalPermesso = details.reduce((sum, d) => sum + (d.shift?.permissionHours || 0), 0)
+        + monthlyData.requests
+            .filter(r => r.type === 'permesso' && !details.some(d => d.shift && isSameDay(d.date, r.startDate.toDate())))
+            .reduce((sum, r) => sum + (r.hours || 0), 0);
+            
     let ferieDays = 0;
     let malattiaDays = 0;
 
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
         if (req.type === 'ferie' || req.type === 'malattia') {
-            for (let day = req.startDate.toDate(); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+            for (let day = startOfDay(req.startDate.toDate()); day <= startOfDay(req.endDate.toDate()); day.setDate(day.getDate() + 1)) {
                 if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
@@ -253,7 +260,7 @@ export const processMonthlyData = (
     });
 
     const monthlySummary: MonthlySummary = {
-        workedDays: details.filter(d => d.shift).length,
+        workedDays: details.filter(d => d.status === 'lavorato').length,
         ordinaryHours: totalOrdinary,
         overtimeHours: totalOvertime,
         ferieDays,
