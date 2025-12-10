@@ -176,7 +176,6 @@ export default function EndOfMonthPage() {
 
         let calculationStartTime = clockInTime;
         
-        // This rule must apply always, for both regular and overtime shifts
         if (schedule?.startTime) {
             const [contractualH, contractualM] = schedule.startTime.split(':').map(Number);
             const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
@@ -273,10 +272,10 @@ export default function EndOfMonthPage() {
             } else if (workedEventsRaw) {
                 let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
+                const isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime || !isWorkDay;
+                
                 const { workedMinutes } = calculateShiftDetails(events, dailySchedule);
                
-                const isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime || !isWorkDay;
-
                 let ordinaryHours = 0;
                 let overtimeHours = 0;
 
@@ -457,17 +456,15 @@ export default function EndOfMonthPage() {
                     const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                         let referenceTime = '';
-                        if (operator) {
-                             if (e.type === 'entrata') {
-                                const { calculationStart } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
-                                if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
-                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                }
-                            } else if (e.type === 'uscita') {
-                                const { calculationStart, calculationEnd } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
-                                 if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
-                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                }
+                        if (operator && e.type === 'entrata' && Array.isArray(shift.events)) {
+                            const { calculationStart } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
+                            if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                            }
+                        } else if (operator && e.type === 'uscita' && Array.isArray(shift.events)) {
+                            const { calculationEnd } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
+                             if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                             }
                         }
                         
@@ -781,12 +778,12 @@ export default function EndOfMonthPage() {
                                                     let referenceTime = '';
 
                                                     if (e.type === 'entrata' && operator) {
-                                                        const { calculationStart } = calculateShiftDetails(detail.shift!, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                        const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                         if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
                                                     } else if (e.type === 'uscita' && operator) {
-                                                         const { calculationEnd } = calculateShiftDetails(detail.shift!, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                         const { calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                          if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                                         }
@@ -794,7 +791,7 @@ export default function EndOfMonthPage() {
 
 
                                                     return (
-                                                        <span key={e.id} className={cn('mr-2')}>
+                                                        <span key={e.id} className={cn('mr-2', e.isAuto && "text-red-500")}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>
