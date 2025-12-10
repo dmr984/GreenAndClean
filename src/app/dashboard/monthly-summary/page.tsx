@@ -169,7 +169,7 @@ const MonthlySummaryContent = () => {
     }, [fetchDataForMonth]);
 
     const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null } => {
-        if (!events || !Array.isArray(events) || events.length === 0) {
+        if (!Array.isArray(events) || events.length === 0) {
             return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
         }
 
@@ -292,6 +292,7 @@ const MonthlySummaryContent = () => {
                 let overtimeMinutes = 0;
 
                  if (isPureOvertime) {
+                    ordinaryMinutes = 0;
                     overtimeMinutes = workedMinutes;
                 } else {
                     const contractualMinutes = contractualHours * 60;
@@ -343,8 +344,6 @@ const MonthlySummaryContent = () => {
             }
         }
         
-        const shifts = details.filter(d => d.shift).map(d => d.shift!);
-        
         let ferieDays = 0;
         let malattiaDays = 0;
 
@@ -368,8 +367,8 @@ const MonthlySummaryContent = () => {
         });
 
 
-        const totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-        const totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
+        const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
+        const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
         
         const totalPermesso = monthlyData.requests
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -388,7 +387,7 @@ const MonthlySummaryContent = () => {
 
         return {
             monthlySummary: {
-                workedDays: shifts.length,
+                workedDays: details.filter(d => d.shift).length,
                 ordinaryHours: totalOrdinary,
                 overtimeHours: totalOvertime,
                 ferieDays,

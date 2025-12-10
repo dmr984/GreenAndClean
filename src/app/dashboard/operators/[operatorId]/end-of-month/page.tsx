@@ -166,9 +166,10 @@ export default function EndOfMonthPage() {
     }, [fetchDataForMonth]);
     
      const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date| null } => {
-        if (!events || !Array.isArray(events) || events.length === 0) {
+        if (!Array.isArray(events) || events.length === 0) {
             return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
         }
+
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -288,6 +289,7 @@ export default function EndOfMonthPage() {
                 let overtimeMinutes = 0;
 
                  if (isPureOvertime) {
+                    ordinaryMinutes = 0;
                     overtimeMinutes = workedMinutes;
                 } else {
                     const contractualMinutes = contractualHours * 60;
@@ -363,8 +365,8 @@ export default function EndOfMonthPage() {
         });
 
 
-        const totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-        const totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
+        const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
+        const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
         
         const totalPermesso = monthlyData.requests
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
