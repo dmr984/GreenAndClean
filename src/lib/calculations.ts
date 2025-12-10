@@ -30,6 +30,7 @@ type Timbratura = {
     status: 'sospesa' | 'confermata' | 'rifiutata';
     isOvertime?: boolean;
     isAuto?: boolean;
+    ignoreContractualStart?: boolean;
 };
 
 type Request = {
@@ -68,32 +69,14 @@ export type MonthlySummary = {
     malattiaDays: number;
 };
 
-const roundOrdinaryHours = (minutes: number): number => {
+const roundToNearestHalfHour = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    
-    // Scatta alla mezz'ora se i minuti rimanenti sono 25 o più
-    if (remainingMinutes >= 25) {
-        return hours + 0.5;
-    }
-    return hours;
-};
-
-const roundOvertimeHours = (minutes: number): number => {
-    if (minutes <= 0) return 0;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    
-    // Scatta all'ora successiva se i minuti rimanenti sono 50 o più
-    if (remainingMinutes >= 50) {
-        return hours + 1;
-    }
-    return hours;
+    const hours = Math.floor(minutes / 30);
+    return hours * 0.5;
 };
 
 
-export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number } => {
+export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -102,7 +85,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const clockInTime = clockInEvent.timestamp.toDate();
     let calculationStartTime = clockInTime;
 
-    if (schedule?.startTime) {
+    if (schedule?.startTime && !ignoreContractualStart) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (clockInTime < contractualStart) {
@@ -153,6 +136,7 @@ export const processMonthlyData = (
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
     const details: DailyDetail[] = [];
 
+    // Process each day of the month
     for (const day of allDaysOfMonth) {
         if (day > today) continue;
 
@@ -174,29 +158,22 @@ export const processMonthlyData = (
              details.push({ date: day, status: 'festa', request: null, shift: null });
         } else if (workedEventsRaw) {
             const events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
             
-            const { workedMinutes } = calculateShiftDetails(events, dailySchedule);
+            const { workedMinutes } = calculateShiftDetails(events, dailySchedule, ignoreContractualStart);
            
-            let ordinaryMinutes = 0;
-            let overtimeMinutes = 0;
+            const contractualMinutes = contractualHours * 60;
+            const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+            const ordinaryHours = roundToNearestHalfHour(ordinaryMinutes);
+
+            // Straordinario calcolato da approvazione turno + straordinario manuale
+            const autoOvertimeRequest = monthlyData.requests.find(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day) && (r as any).associatedShiftId);
+            const manualOvertimeRequest = monthlyData.requests.find(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day) && !(r as any).associatedShiftId);
             
-            if (!isWorkDay) { // Pure overtime day (e.g. Saturday)
-                overtimeMinutes = workedMinutes;
-            } else { // Regular work day
-                const contractualMinutes = contractualHours * 60;
-                ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
-            }
-            
-            const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-            const overtimeHours = roundOvertimeHours(overtimeMinutes);
+            const overtimeHours = (autoOvertimeRequest?.hours || 0) + (manualOvertimeRequest?.hours || 0);
 
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
-                .reduce((sum, r) => sum + (r.hours || 0), 0);
-            
-            const manualOvertimeForDay = monthlyData.requests
-                .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
             details.push({
@@ -209,7 +186,7 @@ export const processMonthlyData = (
                     contractualHours,
                     workedMinutes,
                     ordinaryHours,
-                    overtimeHours: overtimeHours + manualOvertimeForDay,
+                    overtimeHours,
                     permissionHours,
                     isPureOvertime: !isWorkDay
                 },
@@ -225,7 +202,10 @@ export const processMonthlyData = (
     
     // SUMMARIZE
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
-    const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
+    
+    const totalOvertime = monthlyData.requests
+        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .reduce((sum, r) => sum + (r.hours || 0), 0);
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -237,7 +217,6 @@ export const processMonthlyData = (
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
         if (req.type === 'ferie' || req.type === 'malattia') {
-             // Create a new date object for the loop to avoid modifying the original
             for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
                 if (day > today) continue;
                 const dayString = day.toDateString();

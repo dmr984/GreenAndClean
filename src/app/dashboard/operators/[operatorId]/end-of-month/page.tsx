@@ -58,6 +58,7 @@ type Timbratura = {
     status: 'sospesa' | 'confermata' | 'rifiutata';
     isOvertime?: boolean;
     isAuto?: boolean;
+    ignoreContractualStart?: boolean;
 };
 
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
@@ -304,7 +305,7 @@ export default function EndOfMonthPage() {
                                                      let referenceTime = '';
 
                                                     if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
                                                         if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
