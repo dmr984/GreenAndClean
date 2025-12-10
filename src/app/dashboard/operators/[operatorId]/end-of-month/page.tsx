@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams } from 'next/navigation';
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
 
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
@@ -107,6 +108,7 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
 
     useEffect(() => {
@@ -174,17 +176,15 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const handleGenerateSummary = async () => {
-        if (!operator) return;
-        setIsProcessing(true);
+    const generatePdfDoc = async (): Promise<jsPDF> => {
+        if (!operator) throw new Error("Operator not loaded");
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
         let y = 20;
 
-        // Force light mode styles for PDF generation
-        doc.setTextColor(40, 40, 40); // Dark grey
-        doc.setFillColor(255, 255, 255); // White
+        doc.setTextColor(40, 40, 40);
+        doc.setFillColor(255, 255, 255);
 
         try {
             const loadLogo = new Promise<string>((resolve, reject) => {
@@ -247,10 +247,7 @@ export default function EndOfMonthPage() {
 
         dailyDetails.forEach(detail => {
             if (detail.status === 'riposo') return;
-            if (y > 270) {
-                doc.addPage();
-                y = 20;
-            }
+            if (y > 270) { doc.addPage(); y = 20; }
 
             const title = format(detail.date, 'eeee dd MMMM', { locale: it });
             let statusText = '';
@@ -296,10 +293,43 @@ export default function EndOfMonthPage() {
             });
             y = (doc as any).autoTable.previous.finalY + 5;
         });
-        
-        doc.save(`Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`);
 
-        setIsProcessing(false);
+        return doc;
+    };
+
+    const handleGenerateSummary = async () => {
+        setIsProcessing(true);
+        try {
+            const doc = await generatePdfDoc();
+            const pdfBlob = doc.output('blob');
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            setPdfPreviewUrl(pdfUrl);
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const handlePrint = () => {
+        if (!pdfPreviewUrl) return;
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = pdfPreviewUrl;
+        document.body.appendChild(iframe);
+        iframe.onload = () => {
+            setTimeout(() => {
+                iframe.contentWindow?.print();
+                document.body.removeChild(iframe);
+            }, 100);
+        };
+    };
+
+    const handleDownload = async () => {
+        if (!operator) return;
+        const doc = await generatePdfDoc();
+        doc.save(`Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`);
     };
 
     const handleCleanMonth = async () => {
@@ -464,6 +494,25 @@ export default function EndOfMonthPage() {
                 )}
             </CardContent>
         </Card>
+
+        <ResponsiveDialog open={!!pdfPreviewUrl} onOpenChange={(open) => { if (!open) setPdfPreviewUrl(null); }}>
+            <ResponsiveDialogContent className="max-w-4xl h-[90vh] flex flex-col">
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Anteprima Riepilogo</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Controlla il documento prima di stamparlo o salvarlo.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                <div className="flex-grow">
+                    {pdfPreviewUrl && <embed src={pdfPreviewUrl} type="application/pdf" className="w-full h-full" />}
+                </div>
+                <ResponsiveDialogFooter className="pt-4 flex-col sm:flex-row gap-2">
+                    <Button variant="outline" onClick={() => setPdfPreviewUrl(null)}>Chiudi</Button>
+                    <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
+                    <Button onClick={handleDownload}><Download className="mr-2 h-4 w-4" />Salva PDF</Button>
+                </ResponsiveDialogFooter>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
         
         <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
             <AlertDialogContent>
