@@ -21,6 +21,7 @@ type WorkSchedule = {
 
 type Operator = {
     workSchedule: WorkSchedule;
+    overtimeCalculation?: 'hourly' | 'half_hourly';
 };
 
 type Timbratura = {
@@ -73,30 +74,41 @@ export type MonthlySummary = {
 // Arrotondamento per ore ordinarie: scatta alla mezz'ora se si superano i 25 minuti.
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
+    const hours = minutes / 60;
+    const decimalPart = hours - Math.floor(hours);
 
-    let roundedHours = hours;
-    if (remainingMinutes >= 25 && remainingMinutes < 55) {
-        roundedHours += 0.5;
-    } else if (remainingMinutes >= 55) {
-        roundedHours += 1;
+    if (decimalPart > 0.916) { // ~55 minuti
+        return Math.ceil(hours);
     }
-    return roundedHours;
+    if (decimalPart > 0.416) { // ~25 minuti
+        return Math.floor(hours) + 0.5;
+    }
+    return Math.floor(hours);
 };
 
-
-// Arrotondamento per ore straordinarie: scatta all'ora intera se si superano i 50 minuti.
-const roundOvertimeHours = (minutes: number): number => {
+// Arrotondamento per ore straordinarie in base alla preferenza dell'operatore.
+const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
     if (minutes <= 0) return 0;
+
+    if (calculationType === 'half_hourly') {
+        // Logica a mezz'ora: scatta a 25/55 minuti
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        let extra = 0;
+        if (remainingMinutes >= 55) {
+            extra = 1;
+        } else if (remainingMinutes >= 25) {
+            extra = 0.5;
+        }
+        return hours + extra;
+    }
+    
+    // Logica oraria di default: scatta a 50 minuti
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    
-    if (remainingMinutes >= 50) {
-        return hours + 1;
-    }
-    return hours;
+    return hours + (remainingMinutes >= 50 ? 1 : 0);
 };
+
 
 
 export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number } => {
@@ -213,7 +225,7 @@ export const processMonthlyData = (
                     contractualHours,
                     workedMinutes,
                     ordinaryHours: roundOrdinaryHours(ordinaryMinutes),
-                    overtimeHours: roundOvertimeHours(overtimeMinutes), 
+                    overtimeHours: roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation), 
                     permissionHours,
                     isPureOvertime: !isWorkDay
                 },
@@ -232,10 +244,10 @@ export const processMonthlyData = (
     // =================================================================
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     
-    // SOURCE OF TRUTH: Sum the daily calculated (and rounded) overtime hours.
+    // SOURCE OF TRUTH: Sum the daily calculated (and rounded) overtime hours from shifts.
     const totalOvertimeFromShifts = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    // Add manually approved overtime requests that might not be associated with a regular shift
+    // Add manually approved overtime requests that are NOT associated with a shift
     const manualOvertimeHours = monthlyData.requests
         .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval) && !r.associatedShiftId)
         .reduce((sum, r) => sum + (r.hours || 0), 0);

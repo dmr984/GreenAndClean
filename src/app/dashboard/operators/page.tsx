@@ -32,6 +32,7 @@ import { useUser } from '@/hooks/use-user';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
@@ -66,6 +67,7 @@ type Operator = {
     lastName: string;
     role: 'operator';
     workSchedule: WorkSchedule;
+    overtimeCalculation?: 'hourly' | 'half_hourly';
 };
 
 export default function ManageOperatorsPage() {
@@ -87,11 +89,14 @@ export default function ManageOperatorsPage() {
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
     const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
+    const [newOvertimeCalculation, setNewOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
     const [editingFirstName, setEditingFirstName] = useState("");
     const [editingLastName, setEditingLastName] = useState("");
     const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
+    const [editingOvertimeCalculation, setEditingOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -198,6 +203,7 @@ export default function ManageOperatorsPage() {
         const firstName = action === 'add' ? newFirstName : editingFirstName;
         const lastName = action === 'add' ? newLastName : editingLastName;
         const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
+        const overtimeCalculation = action === 'add' ? newOvertimeCalculation : editingOvertimeCalculation;
 
         if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
@@ -242,6 +248,7 @@ export default function ManageOperatorsPage() {
             firstName,
             lastName,
             workSchedule: finalWorkSchedule,
+            overtimeCalculation: overtimeCalculation,
         };
 
         if (action === 'add') {
@@ -253,6 +260,7 @@ export default function ManageOperatorsPage() {
                 setNewFirstName("");
                 setNewLastName("");
                 setNewWorkSchedule({});
+                setNewOvertimeCalculation('hourly');
               }).catch((error: any) => {
                 if (error.code === 'permission-denied') {
                      errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'create', path: 'app-users', requestResourceData: operatorData }));
@@ -413,10 +421,22 @@ export default function ManageOperatorsPage() {
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <Label htmlFor="new-code">Codice Operatore</Label>
                                                 <Input id="new-code" value={newOperatorCode} onChange={(e) => setNewOperatorCode(e.target.value)} required />
+                                            </div>
+                                             <div>
+                                                <Label htmlFor="new-overtime">Calcolo Straordinario</Label>
+                                                <Select value={newOvertimeCalculation} onValueChange={(v) => setNewOvertimeCalculation(v as any)}>
+                                                    <SelectTrigger id="new-overtime">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="hourly">Orario (scatto al 50° min)</SelectItem>
+                                                        <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
@@ -479,7 +499,7 @@ export default function ManageOperatorsPage() {
                                                 <TableCell>{`${operator.firstName} ${operator.lastName}`}</TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -506,10 +526,22 @@ export default function ManageOperatorsPage() {
                             </DialogDescription>
                         </DialogHeader>
                          <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                  <div>
                                     <Label htmlFor="editing-code">Codice Operatore</Label>
                                     <Input id="editing-code" value={editingOperatorCode} onChange={(e) => setEditingOperatorCode(e.target.value)} required />
+                                </div>
+                                <div>
+                                    <Label htmlFor="editing-overtime">Calcolo Straordinario</Label>
+                                    <Select value={editingOvertimeCalculation} onValueChange={(v) => setEditingOvertimeCalculation(v as any)}>
+                                        <SelectTrigger id="editing-overtime">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="hourly">Orario (scatto al 50° min)</SelectItem>
+                                            <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">

@@ -40,6 +40,7 @@ type Operator = {
     workSchedule: WorkSchedule;
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
+    overtimeCalculation?: 'hourly' | 'half_hourly';
 };
 
 type Request = {

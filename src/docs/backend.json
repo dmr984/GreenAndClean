@@ -36,6 +36,11 @@
                     }
                 }
             }
+        },
+        "overtimeCalculation": {
+            "type": "string",
+            "enum": ["hourly", "half_hourly"],
+            "description": "Determines how overtime is calculated. 'hourly' triggers at 50 minutes, 'half_hourly' triggers at 25/55 minutes."
         }
       },
       "required": [
