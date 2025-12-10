@@ -17,9 +17,8 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable'; // Make sure this is installed or handle it appropriately
+import 'jspdf-autotable';
 
-// Extend jsPDF with autoTable - this is a bit of a hack for TS
 declare module 'jspdf' {
   interface jsPDF {
     autoTable: (options: any) => jsPDF;
@@ -97,8 +96,7 @@ export default function EndOfMonthPage() {
     const params = useParams();
     const { toast } = useToast();
     const operatorId = params.operatorId as string;
-    const printRef = useRef<HTMLDivElement>(null);
-
+    
     const [isPrinting, setIsPrinting] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -181,8 +179,7 @@ export default function EndOfMonthPage() {
             const pageWidth = doc.internal.pageSize.getWidth();
             let y = 20;
     
-            const logoUrl = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
-            // Use a promise to handle the async logo loading
+            // Define a promise to handle the async logo loading
             const loadLogo = new Promise<string>((resolve, reject) => {
                 const img = new Image();
                 img.crossOrigin = "Anonymous";
@@ -191,11 +188,15 @@ export default function EndOfMonthPage() {
                     canvas.width = img.width;
                     canvas.height = img.height;
                     const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0);
+                    if (!ctx) {
+                        reject(new Error('Failed to get canvas context'));
+                        return;
+                    }
+                    ctx.drawImage(img, 0, 0);
                     resolve(canvas.toDataURL('image/png'));
                 };
-                img.onerror = reject;
-                img.src = logoUrl;
+                img.onerror = (err) => reject(err);
+                img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
             });
     
             const base64data = await loadLogo;
@@ -304,9 +305,16 @@ export default function EndOfMonthPage() {
             doc.autoPrint();
             const pdfBlob = doc.output('blob');
             const pdfUrl = URL.createObjectURL(pdfBlob);
-            window.open(pdfUrl, '_blank');
-            // Do not revoke the URL immediately, let the browser handle it
-            // URL.revokeObjectURL(pdfUrl);
+
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = pdfUrl;
+            document.body.appendChild(iframe);
+            iframe.onload = () => {
+                setTimeout(() => {
+                    iframe.contentWindow?.print();
+                }, 1);
+            };
 
         } catch (error) {
             console.error("Failed to generate PDF", error);
@@ -392,14 +400,14 @@ export default function EndOfMonthPage() {
                             {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
                             {isPrinting ? "Stampa in corso..." : "Stampa/Condividi Riepilogo"}
                         </Button>
-                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full smw-auto">
+                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
                             Pulisci Mese
                         </Button>
                      </div>
                 </div>
             </CardHeader>
-            <CardContent ref={printRef} className="space-y-8">
+            <CardContent className="space-y-8">
                  <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
                     <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
                     <div className="flex items-center gap-2">
