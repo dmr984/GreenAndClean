@@ -208,7 +208,7 @@ export default function EndOfMonthPage() {
         totalMillis -= breakDurationMillis;
         
         return { 
-            workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, 
+            workedMinutes: totalMillis > 0 ? Math.round(totalMillis / (1000 * 60)) : 0, 
             calculationStart: calculationStartTime,
             calculationEnd: calculationEndTime
         };
@@ -279,7 +279,7 @@ export default function EndOfMonthPage() {
                 let ordinaryHours = 0;
                 let overtimeHours = 0;
 
-                if (isPureOvertime) {
+                 if (isPureOvertime) {
                     ordinaryHours = 0;
                     overtimeHours = roundOvertimeHours(workedMinutes);
                 } else {
@@ -368,8 +368,14 @@ export default function EndOfMonthPage() {
         
         if (operator.contractType === 'monthly') {
             const monthlyThreshold = operator.totalMonthlyHours || 0;
-            const totalWorkedMinutesInMonth = shifts.reduce((sum, s) => sum + s.workedMinutes, 0);
-            const totalWorkedHours = roundOrdinaryHours(totalWorkedMinutesInMonth); // Using ordinary rounding for total
+            let totalWorkedMinutesInMonth = 0;
+            shifts.forEach(s => {
+                if (!s.isPureOvertime) {
+                    totalWorkedMinutesInMonth += s.workedMinutes;
+                }
+            });
+
+            const totalWorkedHours = roundOrdinaryHours(totalWorkedMinutesInMonth);
             const totalHoursWithPermission = totalWorkedHours + totalPermesso;
 
             if (totalHoursWithPermission > monthlyThreshold) {
@@ -377,11 +383,14 @@ export default function EndOfMonthPage() {
                 totalOvertime = totalHoursWithPermission - monthlyThreshold;
             } else {
                 totalOrdinary = totalWorkedHours;
-                totalOvertime = 0; // Overtime is only calculated if threshold is met
+                totalOvertime = 0;
             }
-             // Still need to add pure overtime shifts on top
-            const pureOvertimeMinutes = shifts.filter(s => s.isPureOvertime).reduce((sum, s) => sum + s.workedMinutes, 0);
-            totalOvertime += roundOvertimeHours(pureOvertimeMinutes);
+            
+            const pureOvertimeHours = shifts
+                .filter(s => s.isPureOvertime)
+                .reduce((sum, s) => sum + s.overtimeHours, 0);
+
+            totalOvertime += pureOvertimeHours;
 
         } else { // weekly contract
             totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
@@ -791,7 +800,7 @@ export default function EndOfMonthPage() {
 
 
                                                     return (
-                                                        <span key={e.id} className={cn('mr-2', e.isAuto && "text-red-500")}>
+                                                        <span key={e.id} className={cn('mr-2')}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
                                                             {` | `}
                                                         </span>

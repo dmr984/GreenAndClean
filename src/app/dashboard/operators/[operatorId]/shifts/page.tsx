@@ -212,10 +212,10 @@ export default function ShiftApprovalPage() {
         
         totalMillis -= breakDurationMillis;
 
-        const workDuration = totalMillis > 0 ? (totalMillis / (1000 * 60)) : 0;
+        const workDuration = totalMillis > 0 ? Math.round(totalMillis / (1000 * 60)) : 0;
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
-        return { workDuration: Math.max(0, workDuration), breakDuration, calculationStart, calculationEnd };
+        return { workDuration, breakDuration, calculationStart, calculationEnd };
     };
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
@@ -722,7 +722,7 @@ export default function ShiftApprovalPage() {
         const isWorkDay = contractualHours > 0 && !isPublicHoliday(clockInEvent.timestamp.toDate());
         const isPureOvertime = shift.isOvertime || !isWorkDay;
     
-        const { workedMinutes, breakDuration } = calculateShiftDurations(shift.events);
+        const { workDuration: workedMinutes, breakDuration } = calculateShiftDurations(shift.events, isPureOvertime);
 
         if (isPureOvertime) {
             return {
@@ -742,7 +742,7 @@ export default function ShiftApprovalPage() {
         const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
         const overtimeHours = roundOvertimeHours(overtimeMinutes);
     
-        const leaveMinutes = contractualHours > 0 ? (contractualHours * 60) - ordinaryHours * 60 : 0;
+        const leaveMinutes = contractualHours > 0 && ordinaryHours * 60 < contractualMinutes ? contractualMinutes - ordinaryHours * 60 : 0;
         const leaveHours = leaveMinutes > 0 ? roundOrdinaryHours(leaveMinutes) : 0;
     
         return { 
@@ -1245,17 +1245,10 @@ export default function ShiftApprovalPage() {
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
 
-        const dayName = dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
-        const schedule = operator.workSchedule[dayName];
         const { calculationStart } = calculateShiftDurations(shift.events);
-
         const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
         
-        if (!calculationStart || (schedule?.startTime && Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) < 1000)) {
-            return { display: originalTime, calculationStart };
-        }
-    
-        if (Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) > 1000) {
+        if (calculationStart && Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) > 1000) {
            return { display: `${originalTime} (${format(calculationStart, 'HH:mm')})`, calculationStart };
         }
 
@@ -1634,11 +1627,11 @@ export default function ShiftApprovalPage() {
                                 </div>
                                 <div className="space-y-1 rounded-md border p-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Ordinarie</p>
-                                    <p className="text-lg font-bold">{ordinary}h</p>
+                                    <p className="text-lg font-bold">{isNaN(ordinary) ? '0h' : `${ordinary}h`}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-1.5">
                                      <p className="text-xs font-medium text-muted-foreground">{mainResultLabel}</p>
-                                    <p className="text-lg font-bold">{mainResultValue}</p>
+                                    <p className="text-lg font-bold">{isNaN(overtime) ? '0h' : mainResultValue}</p>
                                 </div>
                                 <div className="space-y-1 rounded-md border p-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">Ore Effettive</p>
@@ -2011,4 +2004,5 @@ export default function ShiftApprovalPage() {
     
 
     
+
 

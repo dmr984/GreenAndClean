@@ -211,7 +211,7 @@ const MonthlySummaryContent = () => {
         totalMillis -= breakDurationMillis;
         
         return { 
-            workedMinutes: totalMillis > 0 ? totalMillis / (1000 * 60) : 0, 
+            workedMinutes: totalMillis > 0 ? Math.round(totalMillis / (1000 * 60)) : 0, 
             calculationStart: calculationStartTime,
             calculationEnd: calculationEndTime
         };
@@ -371,8 +371,14 @@ const MonthlySummaryContent = () => {
 
         if (operator.contractType === 'monthly') {
             const monthlyThreshold = operator.totalMonthlyHours || 0;
-            const totalWorkedMinutesInMonth = shifts.reduce((sum, s) => sum + s.workedMinutes, 0);
-            const totalWorkedHours = roundOrdinaryHours(totalWorkedMinutesInMonth); // Using ordinary rounding for total
+            let totalWorkedMinutesInMonth = 0;
+            shifts.forEach(s => {
+                if (!s.isPureOvertime) {
+                    totalWorkedMinutesInMonth += s.workedMinutes;
+                }
+            });
+
+            const totalWorkedHours = roundOrdinaryHours(totalWorkedMinutesInMonth);
             const totalHoursWithPermission = totalWorkedHours + totalPermesso;
 
             if (totalHoursWithPermission > monthlyThreshold) {
@@ -380,13 +386,14 @@ const MonthlySummaryContent = () => {
                 totalOvertime = totalHoursWithPermission - monthlyThreshold;
             } else {
                 totalOrdinary = totalWorkedHours;
-                totalOvertime = 0; // Overtime is only calculated if threshold is met
+                totalOvertime = 0;
             }
+            
+            const pureOvertimeHours = shifts
+                .filter(s => s.isPureOvertime)
+                .reduce((sum, s) => sum + s.overtimeHours, 0);
 
-            // Still need to add pure overtime shifts on top
-            const pureOvertimeMinutes = shifts.filter(s => s.isPureOvertime).reduce((sum, s) => sum + s.workedMinutes, 0);
-            totalOvertime += roundOvertimeHours(pureOvertimeMinutes);
-
+            totalOvertime += pureOvertimeHours;
 
         } else { // weekly contract
             totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
