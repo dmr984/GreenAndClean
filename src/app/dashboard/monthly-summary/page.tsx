@@ -212,26 +212,27 @@ const MonthlySummaryContent = () => {
         if (totalMillis < 0) totalMillis = 0;
 
         const totalWorkedMinutes = Math.round(totalMillis / (1000 * 60));
-
+        
+        let finalCalculationEnd = clockOutTime;
         if(schedule?.endTime) {
             const [h, m] = schedule.endTime.split(':').map(Number);
             const contractualEnd = set(clockInTime, {hours: h, minutes: m, seconds: 0});
             if(calculationEndTime > contractualEnd) {
-                calculationEndTime = contractualEnd;
+                finalCalculationEnd = contractualEnd;
             }
         } else if (schedule?.totalHours) {
-             const breakMinutes = schedule.breakMinutes || 0;
+             const breakMinutes = schedule.breakMinutes || (breakDurationMillis / 60000);
              const effectiveWorkMs = (schedule.totalHours * 60 + breakMinutes) * 60 * 1000;
              const calculatedEnd = new Date(calculationStartTime.getTime() + effectiveWorkMs);
              if (clockOutTime > calculatedEnd) {
-                 calculationEndTime = calculatedEnd;
+                 finalCalculationEnd = calculatedEnd;
              }
         }
         
         return { 
             workedMinutes: totalWorkedMinutes,
             calculationStart: calculationStartTime,
-            calculationEnd: calculationEndTime
+            calculationEnd: finalCalculationEnd
         };
     };
 
@@ -291,26 +292,28 @@ const MonthlySummaryContent = () => {
                     shift: null,
                 });
             } else if (workedEventsRaw) {
-                let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                const events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
                 const isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime || !isWorkDay;
                 
                 const { workedMinutes } = calculateShiftDetails(events, dailySchedule);
                
-                let ordinaryHours = 0;
-                let overtimeHours = 0;
+                let ordinaryMinutes = 0;
+                let overtimeMinutes = 0;
 
                  if (isPureOvertime) {
-                    ordinaryHours = 0;
-                    overtimeHours = roundOvertimeHours(workedMinutes);
+                    overtimeMinutes = workedMinutes;
                 } else {
                     const contractualMinutes = contractualHours * 60;
-                    const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                    ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-                    
-                    const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
-                    overtimeHours = roundOvertimeHours(overtimeMinutes);
+                    ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+                    if (workedMinutes > contractualMinutes) {
+                       overtimeMinutes = workedMinutes - contractualMinutes;
+                    }
                 }
+                
+                const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
+                const overtimeHours = roundOvertimeHours(overtimeMinutes);
+
 
                  const permissionHours = monthlyData.requests
                     .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
@@ -320,15 +323,12 @@ const MonthlySummaryContent = () => {
                     .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                     .reduce((sum, r) => sum + (r.hours || 0), 0);
                 
-                overtimeHours += manualOvertimeForDay;
-
-
                 details.push({
                     date: day,
                     status: 'lavorato',
                     request: null,
                     shift: {
-                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime
+                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours: overtimeHours + manualOvertimeForDay, permissionHours, isPureOvertime
                     },
                 });
             } else if (leaveRequest && isWorkDay) {
@@ -380,15 +380,12 @@ const MonthlySummaryContent = () => {
         });
 
 
-        let totalOrdinary = 0;
-        let totalOvertime = 0;
+        let totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
+        let totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
         
         const totalPermesso = monthlyData.requests
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
-
-        totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-        totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
 
         if (operator.contractType === 'monthly') {
             const monthlyThreshold = operator.totalMonthlyHours || 0;
@@ -562,3 +559,4 @@ export default function MonthlySummaryPage() {
 
 
     
+
