@@ -182,126 +182,136 @@ export default function EndOfMonthPage() {
             let y = 20;
     
             const logoUrl = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
-            const response = await fetch(logoUrl);
-            const blob = await response.blob();
-            const reader = new FileReader();
+            // Use a promise to handle the async logo loading
+            const loadLogo = new Promise<string>((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = reject;
+                img.src = logoUrl;
+            });
+    
+            const base64data = await loadLogo;
+    
+            doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
+    
+            doc.setFontSize(16);
+            doc.setTextColor(40, 40, 40);
+            doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
             
-            reader.onloadend = () => {
-                const base64data = reader.result as string;
-                doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
+            y = 40;
     
-                doc.setFontSize(16);
-                doc.setTextColor(40, 40, 40);
-                doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
-                doc.setFontSize(10);
-                doc.setTextColor(100, 100, 100);
-                doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
+            const summaryData = [
+                { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
+                { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
+                { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
+                { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
+                { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
+                { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
+            ];
+    
+            doc.autoTable({
+                startY: y,
+                body: [
+                    summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
+                    summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
+                ],
+                theme: 'grid',
+                styles: {
+                    halign: 'center',
+                    valign: 'middle',
+                    fontSize: 9,
+                    cellPadding: 3,
+                    fillColor: [255, 255, 255],
+                    textColor: [40, 40, 40],
+                    lineColor: [200, 200, 200],
+                    lineWidth: 0.1,
+                },
+            });
+    
+            y = doc.autoTable.previous.finalY + 10;
+    
+            doc.setFontSize(14);
+            doc.setTextColor(40, 40, 40);
+            doc.text("Dettaglio Giornaliero", 15, y);
+            y += 8;
+    
+            dailyDetails.forEach(detail => {
+                if (detail.status === 'riposo') return;
+
+                const title = format(detail.date, 'eeee dd MMMM', { locale: it });
+                let statusText = '';
+                const body = [];
                 
-                y = 40;
-    
-                const summaryData = [
-                    { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
-                    { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
-                    { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
-                    { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
-                    { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
-                    { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
-                ];
-    
+                switch(detail.status) {
+                    case 'lavorato':
+                        statusText = `Lavorato`;
+                        if (detail.shift) {
+                            let timbratureText = 'Timbrature: ';
+                            detail.shift.events.forEach(e => {
+                                const time = format(e.timestamp.toDate(), 'HH:mm');
+                                timbratureText += `${e.type.replace('_', ' ')}: ${time} | `;
+                            });
+                            body.push([timbratureText.slice(0, -3)]);
+                            body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
+                        }
+                        break;
+                    case 'ferie':
+                        statusText = 'Ferie';
+                        body.push(['Giorno di ferie approvato.']);
+                        break;
+                    case 'malattia':
+                         statusText = 'Malattia';
+                         body.push(['Giorno di malattia approvato.']);
+                        break;
+                    case 'mancata_timbratura':
+                        statusText = 'Mancata Timbratura';
+                        body.push(['Nessuna timbratura registrata in un giorno lavorativo.']);
+                        break;
+                    case 'festa':
+                        statusText = 'Festivo';
+                        body.push(['Giorno festivo.']);
+                        break;
+                }
+                
                 doc.autoTable({
                     startY: y,
-                    body: [
-                        summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
-                        summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
-                    ],
-                    theme: 'grid',
+                    head: [[`${title} - ${statusText}`]],
+                    body: body,
+                    theme: 'striped',
+                    headStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20] },
                     styles: {
-                        halign: 'center',
-                        valign: 'middle',
-                        fontSize: 9,
-                        cellPadding: 3,
-                        fillColor: [255, 255, 255],
-                        textColor: [40, 40, 40],
-                        lineColor: [200, 200, 200],
-                        lineWidth: 0.1,
+                         fillColor: [255, 255, 255],
+                         textColor: [40, 40, 40],
                     },
-                });
-    
-                y = doc.autoTable.previous.finalY + 10;
-    
-                doc.setFontSize(14);
-                doc.setTextColor(40, 40, 40);
-                doc.text("Dettaglio Giornaliero", 15, y);
-                y += 8;
-    
-                dailyDetails.forEach(detail => {
-                    if (detail.status === 'riposo') return;
-    
-                    const title = format(detail.date, 'eeee dd MMMM', { locale: it });
-                    let statusText = '';
-                    const body = [];
-                    
-                    switch(detail.status) {
-                        case 'lavorato':
-                            statusText = `Lavorato`;
-                            if (detail.shift) {
-                                let timbratureText = 'Timbrature: ';
-                                detail.shift.events.forEach(e => {
-                                    const time = format(e.timestamp.toDate(), 'HH:mm');
-                                    timbratureText += `${e.type.replace('_', ' ')}: ${time} | `;
-                                });
-                                body.push([timbratureText.slice(0, -3)]);
-                                body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
-                            }
-                            break;
-                        case 'ferie':
-                            statusText = 'Ferie';
-                            body.push(['Giorno di ferie approvato.']);
-                            break;
-                        case 'malattia':
-                             statusText = 'Malattia';
-                             body.push(['Giorno di malattia approvato.']);
-                            break;
-                        case 'mancata_timbratura':
-                            statusText = 'Mancata Timbratura';
-                            body.push(['Nessuna timbratura registrata in un giorno lavorativo.']);
-                            break;
-                        case 'festa':
-                            statusText = 'Festivo';
-                            body.push(['Giorno festivo.']);
-                            break;
+                    didDrawPage: (data) => {
+                        y = data.cursor?.y || y;
                     }
-                    
-                    doc.autoTable({
-                        startY: y,
-                        head: [[`${title} - ${statusText}`]],
-                        body: body,
-                        theme: 'striped',
-                        headStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20] },
-                        styles: {
-                             fillColor: [255, 255, 255],
-                             textColor: [40, 40, 40],
-                        },
-                        didDrawPage: (data) => {
-                            y = data.cursor?.y || y;
-                        }
-                    });
-                     y = doc.autoTable.previous.finalY + 5;
                 });
-                
-                doc.autoPrint();
-                const pdfBlob = doc.output('blob');
-                const pdfUrl = URL.createObjectURL(pdfBlob);
-                window.open(pdfUrl, '_blank');
-                URL.revokeObjectURL(pdfUrl);
-    
-                setIsPrinting(false);
-            };
-            reader.readAsDataURL(blob);
-    
+                 y = doc.autoTable.previous.finalY + 5;
+            });
+            
+            doc.autoPrint();
+            const pdfBlob = doc.output('blob');
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            window.open(pdfUrl, '_blank');
+            // Do not revoke the URL immediately, let the browser handle it
+            // URL.revokeObjectURL(pdfUrl);
+
         } catch (error) {
             console.error("Failed to generate PDF", error);
             toast({ title: "Errore Stampa", description: "Impossibile generare il file PDF.", variant: "destructive" });
+        } finally {
             setIsPrinting(false);
         }
     };
