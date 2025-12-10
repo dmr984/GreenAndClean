@@ -96,6 +96,7 @@ export const roundOrdinaryHours = (minutes: number): number => {
 export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
     if (minutes <= 0) return 0;
 
+    // This was the user's specific request for half-hourly
     if (calculationType === 'half_hourly') {
         const totalHalfHours = Math.floor(minutes / 30);
         const remainingMinutes = minutes % 30;
@@ -103,7 +104,7 @@ export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 
         return totalHalfHours * 0.5 + additionalHalfHours;
     }
     
-    // Default hourly logic
+    // Default hourly logic (triggers at 50 mins)
     const totalHours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     const additionalHours = remainingMinutes >= 50 ? 1 : 0;
@@ -111,22 +112,37 @@ export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 
 };
 
 
-export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number } => {
+export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
 
-    if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null, breakMinutes: 0 };
+    if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null, breakMinutes: 0, contractualEndTime: null };
 
     const clockInTime = clockInEvent.timestamp.toDate();
     let calculationStartTime = clockInTime;
-
+    
+    // 1. Determine Calculation Start Time
     if (schedule?.startTime && !ignoreContractualStart) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         calculationStartTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
     }
     
-    let calculationEndTime = clockOutEvent.timestamp.toDate();
-    
+    const clockOutTime = clockOutEvent.timestamp.toDate();
+
+    // 2. Determine Contractual End Time
+    let contractualEndTime: Date | null = null;
+    if (schedule) {
+        if (schedule.endTime) {
+            const [h, m] = schedule.endTime.split(':').map(Number);
+            contractualEndTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+        } else if (schedule.totalHours) {
+            const breakDuration = schedule.breakMinutes || 0;
+            contractualEndTime = new Date(calculationStartTime.getTime() + (schedule.totalHours * 60 + breakDuration) * 60 * 1000);
+        }
+    }
+
+
+    // 3. Calculate Break Duration
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
     const sortedEvents = [...events].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -138,15 +154,17 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
 
-    const totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
+    // 4. Calculate Total Worked Milliseconds
+    const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
 
     return { 
         workedMinutes,
         calculationStart: calculationStartTime,
-        calculationEnd: calculationEndTime,
-        breakMinutes: Math.floor(breakDurationMillis / 60000)
+        calculationEnd: clockOutTime,
+        breakMinutes: Math.floor(breakDurationMillis / 60000),
+        contractualEndTime: contractualEndTime
     };
 };
 
@@ -203,15 +221,35 @@ export const processMonthlyData = (
             
             const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
             
-            const { workedMinutes, calculationStart, breakMinutes } = calculateShiftDetails(events, dailySchedule, ignoreContractualStart);
+            const { workedMinutes, contractualEndTime } = calculateShiftDetails(events, dailySchedule, ignoreContractualStart);
 
             let ordinaryMinutes = 0;
             let overtimeMinutes = 0;
             
-            if (isWorkDay && calculationStart) {
-                 const contractualMinutes = contractualHours * 60;
-                 ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                 overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
+            if (isWorkDay && contractualEndTime) {
+                const contractualEndMillis = contractualEndTime.getTime();
+                const clockInEvent = events.find(e => e.type === 'entrata')!;
+                const clockOutEvent = events.find(e => e.type === 'uscita')!;
+                const calculationStartMillis = calculateShiftDetails(events, dailySchedule, ignoreContractualStart).calculationStart!.getTime();
+
+                const ordinaryMillis = Math.min(clockOutEvent.timestamp.toMillis(), contractualEndMillis) - calculationStartMillis;
+                
+                let breakDuringOrdinaryMillis = 0;
+                let breakStart: Timestamp | null = null;
+                 events.forEach(e => {
+                    if (e.type === 'pausa' && e.timestamp.toMillis() < contractualEndMillis) breakStart = e.timestamp;
+                    if (e.type === 'fine_pausa' && breakStart) {
+                        const breakEndMillis = Math.min(e.timestamp.toMillis(), contractualEndMillis);
+                        breakDuringOrdinaryMillis += breakEndMillis - breakStart.toMillis();
+                        if (e.timestamp.toMillis() > contractualEndMillis) {
+                            breakStart = null;
+                        }
+                    }
+                });
+
+                ordinaryMinutes = Math.max(0, (ordinaryMillis - breakDuringOrdinaryMillis) / 60000);
+                overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
+
             } else {
                 ordinaryMinutes = 0;
                 overtimeMinutes = workedMinutes;
@@ -288,8 +326,3 @@ export const processMonthlyData = (
         dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
-
-
-    
-
-    
