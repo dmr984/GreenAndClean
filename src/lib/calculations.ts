@@ -60,6 +60,7 @@ export type DailyDetail = {
     status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa';
     shift: {
         events: Timbratura[];
+        contractualHours: number;
         ordinaryHours: number;
         overtimeHours: number;
         permissionHours: number;
@@ -76,17 +77,22 @@ export type MonthlySummary = {
     malattiaDays: number;
 };
 
-// Arrotondamento per ore ordinarie: scatta alla mezz'ora se si superano i 25 minuti.
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    // Se i minuti rimanenti sono 25 o più, aggiungi 0.5 ore (30 minuti)
-    return hours + (remainingMinutes >= 25 ? 0.5 : 0);
+    
+    // Convert hours back to minutes, add remaining, then divide to get float
+    const totalHalfHours = Math.floor(minutes / 30);
+    const finalMinutesInHalfHours = totalHalfHours * 30;
+    
+    if (minutes - finalMinutesInHalfHours >= 25) {
+        return (finalMinutesInHalfHours + 30) / 60;
+    }
+    
+    return finalMinutesInHalfHours / 60;
 };
 
-
-// Arrotondamento per ore straordinarie in base alla preferenza dell'operatore.
 const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
      if (minutes <= 0) return 0;
 
@@ -102,7 +108,7 @@ const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_h
         return hours + extra;
     }
     
-    // Logica oraria di default: scatta a 50 minuti
+    // Default hourly logic
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     return hours + (remainingMinutes >= 50 ? 1 : 0);
@@ -200,8 +206,6 @@ export const processMonthlyData = (
            
             let ordinaryMinutes = 0;
             let overtimeMinutes = 0;
-            
-            const isPureOvertime = !isWorkDay;
 
             if (isWorkDay) {
                  const contractualMinutes = contractualHours * 60;
@@ -215,6 +219,8 @@ export const processMonthlyData = (
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
+            
+            const isPureOvertime = !isWorkDay;
 
             const shiftForDay: Shift = {
                 date: day,
@@ -228,14 +234,18 @@ export const processMonthlyData = (
 
             dailyShifts.push(shiftForDay);
             
+            const roundedOrdinary = roundOrdinaryHours(ordinaryMinutes);
+            const roundedOvertime = roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation);
+            
             details.push({
                 date: day,
                 status: 'lavorato',
                 request: null,
                 shift: {
                     events,
-                    ordinaryHours: roundOrdinaryHours(ordinaryMinutes),
-                    overtimeHours: roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation), 
+                    contractualHours,
+                    ordinaryHours: roundedOrdinary,
+                    overtimeHours: roundedOvertime, 
                     permissionHours: permissionHours,
                 },
             });
@@ -253,8 +263,9 @@ export const processMonthlyData = (
     // =================================================================
     const totalOrdinaryMinutes = dailyShifts.reduce((sum, s) => sum + s.ordinaryMinutes, 0);
     const totalOvertimeMinutes = dailyShifts.reduce((sum, s) => sum + s.overtimeMinutes, 0);
+    
     const manualOvertimeHours = monthlyData.requests
-        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval) && !r.associatedShiftId)
+        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
 
     const totalPermesso = monthlyData.requests
