@@ -153,7 +153,7 @@ const MonthlySummaryContent = () => {
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
-            const requestsData = requestsSnapshot.docs.map(d => d.data() as Request);
+            const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
 
             setMonthlyData({ timbrature: timbratureData, requests: requestsData });
         } catch (error) {
@@ -192,19 +192,15 @@ const MonthlySummaryContent = () => {
         }
         
         let calculationEndTime = clockOutTime;
-        if(schedule?.endTime) {
-            const [h, m] = schedule.endTime.split(':').map(Number);
-            const contractualEnd = set(clockInTime, {hours: h, minutes: m, seconds: 0});
-            if(calculationEndTime > contractualEnd) {
-                calculationEndTime = contractualEnd;
-            }
-        }
 
         let totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
         
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
-        for (const e of events) {
+
+        const sortedEvents = [...events].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+        for (const e of sortedEvents) {
             if (e.type === 'pausa') breakStartTs = e.timestamp;
             if (e.type === 'fine_pausa' && breakStartTs) {
                 breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
@@ -212,9 +208,28 @@ const MonthlySummaryContent = () => {
             }
         }
         totalMillis -= breakDurationMillis;
+
+        if (totalMillis < 0) totalMillis = 0;
+
+        const totalWorkedMinutes = Math.round(totalMillis / (1000 * 60));
+
+        if(schedule?.endTime) {
+            const [h, m] = schedule.endTime.split(':').map(Number);
+            const contractualEnd = set(clockInTime, {hours: h, minutes: m, seconds: 0});
+            if(calculationEndTime > contractualEnd) {
+                calculationEndTime = contractualEnd;
+            }
+        } else if (schedule?.totalHours) {
+             const breakMinutes = schedule.breakMinutes || 0;
+             const effectiveWorkMs = (schedule.totalHours * 60 + breakMinutes) * 60 * 1000;
+             const calculatedEnd = new Date(calculationStartTime.getTime() + effectiveWorkMs);
+             if (clockOutTime > calculatedEnd) {
+                 calculationEndTime = calculatedEnd;
+             }
+        }
         
         return { 
-            workedMinutes: totalMillis > 0 ? Math.round(totalMillis / (1000 * 60)) : 0, 
+            workedMinutes: totalWorkedMinutes,
             calculationStart: calculationStartTime,
             calculationEnd: calculationEndTime
         };
@@ -483,12 +498,12 @@ const MonthlySummaryContent = () => {
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
                                                  {detail.shift.events.map(e => {
-                                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
                                                     let referenceTime = '';
 
                                                     if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
                                                         const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
-                                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
