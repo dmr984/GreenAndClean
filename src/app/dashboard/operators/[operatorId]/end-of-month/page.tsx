@@ -277,7 +277,7 @@ export default function EndOfMonthPage() {
                         head: [[`${title} - ${statusText}`]],
                         body: body,
                         theme: 'striped',
-                        headStyles: { fillColor: [240, 240, 240], textColor: 20 },
+                        headStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20] },
                         styles: {
                              fillColor: [255, 255, 255],
                              textColor: [40, 40, 40],
@@ -289,7 +289,7 @@ export default function EndOfMonthPage() {
                      y = doc.autoTable.previous.finalY + 5;
                 });
                 
-                const pdfBlob = doc.blob();
+                const pdfBlob = doc.output('blob');
                 const pdfUrl = URL.createObjectURL(pdfBlob);
                 window.open(pdfUrl, '_blank');
                 URL.revokeObjectURL(pdfUrl);
