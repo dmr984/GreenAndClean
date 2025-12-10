@@ -179,29 +179,26 @@ export default function EndOfMonthPage() {
         try {
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
-            let y = 20; // Initial y position
+            let y = 20;
 
-            // 1. Header
-            // Logo (assuming you have it as a base64 string or URL)
             const logoUrl = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
             const response = await fetch(logoUrl);
             const blob = await response.blob();
             const reader = new FileReader();
-            reader.readAsDataURL(blob);
+            
             reader.onloadend = () => {
                 const base64data = reader.result as string;
                 doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
 
-                // Operator Name
                 doc.setFontSize(16);
-                doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 15, { align: 'right' });
+                doc.setTextColor(40, 40, 40); // Dark grey text
+                doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
                 doc.setFontSize(10);
-                doc.setTextColor(100);
-                doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 22, { align: 'right' });
+                doc.setTextColor(100, 100, 100);
+                doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
                 
                 y = 40;
 
-                // 2. Summary Boxes
                 const summaryData = [
                     { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
                     { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
@@ -210,7 +207,7 @@ export default function EndOfMonthPage() {
                     { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
                     { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
                 ];
-                
+
                 doc.autoTable({
                     startY: y,
                     body: [
@@ -223,15 +220,19 @@ export default function EndOfMonthPage() {
                         valign: 'middle',
                         fontSize: 9,
                         cellPadding: 3,
+                        fillColor: [255, 255, 255], // White background
+                        textColor: [40, 40, 40], // Dark grey text
+                        lineColor: [200, 200, 200], // Light grey borders
+                        lineWidth: 0.1,
                     },
                 });
 
                 y = doc.autoTable.previous.finalY + 10;
-                
-                // 3. Daily Details
-                 doc.setFontSize(14);
-                 doc.text("Dettaglio Giornaliero", 15, y);
-                 y += 8;
+
+                doc.setFontSize(14);
+                doc.setTextColor(40, 40, 40);
+                doc.text("Dettaglio Giornaliero", 15, y);
+                y += 8;
 
                 dailyDetails.forEach(detail => {
                     if (detail.status === 'riposo') return;
@@ -250,7 +251,7 @@ export default function EndOfMonthPage() {
                                     timbratureText += `${e.type.replace('_', ' ')}: ${time} | `;
                                 });
                                 body.push([timbratureText.slice(0, -3)]);
-                                body.push([`Ore Previste: ${detail.shift.contractualHours}h, Ore Ordinarie: ${detail.shift.ordinaryHours}h, Straordinario: ${detail.shift.overtimeHours}h, Permesso: ${detail.shift.permissionHours}h`]);
+                                body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
                             }
                             break;
                         case 'ferie':
@@ -276,7 +277,11 @@ export default function EndOfMonthPage() {
                         head: [[`${title} - ${statusText}`]],
                         body: body,
                         theme: 'striped',
-                        headStyles: { fillColor: [230, 230, 230], textColor: 20 },
+                        headStyles: { fillColor: [240, 240, 240], textColor: 20 },
+                        styles: {
+                             fillColor: [255, 255, 255],
+                             textColor: [40, 40, 40],
+                        },
                         didDrawPage: (data) => {
                             y = data.cursor?.y || y;
                         }
@@ -288,6 +293,7 @@ export default function EndOfMonthPage() {
                 doc.save(fileName);
                 setIsPrinting(false);
             };
+            reader.readAsDataURL(blob);
 
         } catch (error) {
             console.error("Failed to generate PDF", error);
