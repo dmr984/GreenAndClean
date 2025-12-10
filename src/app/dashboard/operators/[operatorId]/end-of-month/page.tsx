@@ -272,9 +272,9 @@ export default function EndOfMonthPage() {
             } else if (workedEventsRaw) {
                 let events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                 
-                const { workedMinutes, calculationStart } = calculateShiftDetails(events, dailySchedule);
+                const { workedMinutes } = calculateShiftDetails(events, dailySchedule);
                
-                let isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime || !isWorkDay;
+                const isPureOvertime = events.find(e => e.type === 'entrata')?.isOvertime || !isWorkDay;
 
                 let ordinaryHours = 0;
                 let overtimeHours = 0;
@@ -780,12 +780,12 @@ export default function EndOfMonthPage() {
                                                     let referenceTime = '';
 
                                                     if (e.type === 'entrata' && operator) {
-                                                        const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                        const { calculationStart } = calculateShiftDetails(detail.shift!, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                         if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                                         }
                                                     } else if (e.type === 'uscita' && operator) {
-                                                         const { calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                         const { calculationEnd } = calculateShiftDetails(detail.shift!, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                          if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                                         }
