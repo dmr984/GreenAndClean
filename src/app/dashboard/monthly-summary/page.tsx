@@ -17,8 +17,7 @@ import { isPublicHoliday } from '@/lib/holidays';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 
 
-// Type definitions moved to calculations.ts
-
+// Type definitions are now in calculations.ts
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -167,13 +166,6 @@ const MonthlySummaryContent = () => {
 
     const handleMonthChange = (offset: number) => {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
-    };
-
-    const formatMinutes = (minutes: number) => {
-        if (isNaN(minutes) || minutes < 0) return '00:00';
-        const h = Math.floor(minutes / 60);
-        const m = Math.round(minutes % 60);
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
     };
 
     if (isUserLoading || isLoadingOperator) {

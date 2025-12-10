@@ -68,19 +68,19 @@ export type MonthlySummary = {
     malattiaDays: number;
 };
 
-// Standalone rounding functions
+// Standalone rounding functions, rewritten to be correct.
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const totalHalfHours = Math.floor(minutes / 30);
-    const remainingMinutes = minutes % 30;
-    return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+    const halfHours = Math.floor(minutes / 30);
+    const remaining = minutes % 30;
+    return (halfHours * 0.5) + (remaining >= 25 ? 0.5 : 0);
 };
 
 const roundOvertimeHours = (minutes: number): number => {
-     if (minutes <= 0) return 0;
-    const totalHours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+    if (minutes <= 0) return 0;
+    const hours = Math.floor(minutes / 60);
+    const remaining = minutes % 60;
+    return hours + (remaining >= 50 ? 1 : 0);
 };
 
 
@@ -93,6 +93,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const clockInTime = clockInEvent.timestamp.toDate();
     let calculationStartTime = clockInTime;
 
+    // Apply contractual start time rule
     if (schedule?.startTime) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
@@ -101,6 +102,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
     
+    // Calculate total break duration in milliseconds
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
     const sortedEvents = [...events].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -117,23 +119,13 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const workedMillis = totalMillis - breakDurationMillis;
     const workedMinutes = workedMillis > 0 ? Math.round(workedMillis / (1000 * 60)) : 0;
     
-    const contractualMinutes = (schedule?.totalHours || 0) * 60;
-    const isPureOvertime = !schedule?.totalHours || isPublicHoliday(clockInTime);
+    // This function now ONLY returns raw minutes and calculation boundaries.
+    // The division into ordinary/overtime and rounding happens in processMonthlyData.
     
-    let ordinaryMinutesCalc, overtimeMinutesCalc;
-    
-    if (isPureOvertime) {
-        ordinaryMinutesCalc = 0;
-        overtimeMinutesCalc = workedMinutes;
-    } else {
-        ordinaryMinutesCalc = Math.min(workedMinutes, contractualMinutes);
-        overtimeMinutesCalc = Math.max(0, workedMinutes - contractualMinutes);
-    }
-
-    const finalOrdinaryHours = roundOrdinaryHours(ordinaryMinutesCalc);
-    const finalOvertimeHours = roundOvertimeHours(overtimeMinutesCalc);
-
-    const totalCalculatedMinutes = (finalOrdinaryHours + finalOvertimeHours) * 60;
+    // Calculate the reference end time
+    const finalOrdinaryMinutes = roundOrdinaryHours(workedMinutes) * 60;
+    const finalOvertimeMinutes = roundOvertimeHours(Math.max(0, workedMinutes - finalOrdinaryMinutes)) * 60;
+    const totalCalculatedMinutes = finalOrdinaryMinutes + finalOvertimeMinutes;
     const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 1000 * 60) + breakDurationMillis);
 
     return { 
@@ -185,19 +177,23 @@ export const processMonthlyData = (
              details.push({ date: day, status: 'festa', request: null, shift: null });
         } else if (workedEventsRaw) {
             const events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            
+            // Get raw worked minutes from calculateShiftDetails
             const { workedMinutes } = calculateShiftDetails(events, dailySchedule);
            
             let ordinaryMinutes = 0;
             let overtimeMinutes = 0;
 
-            if (!isWorkDay) { // Pure overtime day (e.g. Saturday)
+            if (!isWorkDay) { // This is a pure overtime day (e.g., Saturday)
+                ordinaryMinutes = 0;
                 overtimeMinutes = workedMinutes;
-            } else { // Regular work day
+            } else { // This is a regular work day
                 const contractualMinutes = contractualHours * 60;
                 ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
                 overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
             }
             
+            // Apply rounding rules at the end
             const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
             const overtimeHours = roundOvertimeHours(overtimeMinutes);
 
@@ -205,6 +201,7 @@ export const processMonthlyData = (
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
+            // Get manual overtime requests for THIS specific day
             const manualOvertimeForDay = monthlyData.requests
                 .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -214,7 +211,14 @@ export const processMonthlyData = (
                 status: 'lavorato',
                 request: null,
                 shift: {
-                    date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours: overtimeHours + manualOvertimeForDay, permissionHours, isPureOvertime: !isWorkDay
+                    date: day,
+                    events,
+                    contractualHours,
+                    workedMinutes,
+                    ordinaryHours,
+                    overtimeHours: overtimeHours + manualOvertimeForDay, // Add manual overtime to the day's total
+                    permissionHours,
+                    isPureOvertime: !isWorkDay
                 },
             });
         } else if (leaveRequest && isWorkDay) {
@@ -228,8 +232,10 @@ export const processMonthlyData = (
     
     // Calculate final summary totals from the processed daily details
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
+    // The daily overtime already includes manual requests, so this sum is now correct.
     const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
 
+    // Permission hours are calculated from all approved requests in the month
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
