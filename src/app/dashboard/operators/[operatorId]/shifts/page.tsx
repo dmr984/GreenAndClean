@@ -22,7 +22,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isPublicHoliday } from '@/lib/holidays';
-import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails } from '@/lib/calculations';
+import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours } from '@/lib/calculations';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -63,6 +63,7 @@ type Timbratura = {
 
 type Shift = {
     id: string; // Composite ID based on events
+    date: Date;
     events: Timbratura[];
     status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     workDuration: number; // total work minutes
@@ -217,7 +218,7 @@ export default function ShiftApprovalPage() {
         const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
         const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart ?? false;
 
-        return { events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
+        return { date: startTime!.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
     };
 
      useEffect(() => {
@@ -671,83 +672,14 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName]?.totalHours || 0;
     };
     
-    const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
-        if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-    
-        const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        if (!clockInEvent) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
-
-        const dayName = dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
-        const schedule = operator.workSchedule[dayName];
-        const contractualHours = schedule?.totalHours || 0;
-        const isWorkDay = contractualHours > 0 && !isPublicHoliday(clockInEvent.timestamp.toDate());
-        const isPureOvertime = shift.isOvertime || !isWorkDay;
-        
-        const ignoreContractualStart = shift.ignoreContractualStart || false;
-    
-        const { workedMinutes, contractualEndTime } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
-
-        if (isPureOvertime) {
-            return {
-                ordinary: 0,
-                overtime: roundOvertimeHours(workedMinutes, operator.overtimeCalculation),
-                leave: 0,
-                worked: workedMinutes,
-                break: shift.breakDuration
-            };
-        }
-        
-        let ordinaryMinutes = 0;
-        let overtimeMinutes = 0;
-
-        if (isWorkDay && contractualEndTime) {
-             const { workedMinutes: totalMinutes, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
-
-            const ordinaryTimeLimit = contractualEndTime.getTime();
-            const actualStartMillis = calculateShiftDetails(shift.events, schedule, ignoreContractualStart).calculationStart!.getTime();
-            const actualEndMillis = shift.events.find(e => e.type === 'uscita')!.timestamp.toMillis();
-            
-            const ordinaryMillis = Math.min(actualEndMillis, ordinaryTimeLimit) - actualStartMillis;
-            
-             let breakDuringOrdinaryMillis = 0;
-             let breakStart: Timestamp | null = null;
-             shift.events.forEach(e => {
-                if (e.type === 'pausa' && e.timestamp.toMillis() < ordinaryTimeLimit) breakStart = e.timestamp;
-                if (e.type === 'fine_pausa' && breakStart) {
-                    const breakEndMillis = Math.min(e.timestamp.toMillis(), ordinaryTimeLimit);
-                    breakDuringOrdinaryMillis += breakEndMillis - breakStart.toMillis();
-                    if (e.timestamp.toMillis() > ordinaryTimeLimit) {
-                         breakStart = null; // Reset if break spans across ordinary/overtime boundary
-                    }
-                }
-            });
-
-            ordinaryMinutes = Math.max(0, (ordinaryMillis - breakDuringOrdinaryMillis) / 60000);
-            overtimeMinutes = Math.max(0, totalMinutes - ordinaryMinutes);
-        } else {
-             overtimeMinutes = workedMinutes;
-        }
-
-        const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-        const overtimeHours = roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation);
-        
-        const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
-    
-        return { 
-            ordinary: ordinaryHours, 
-            overtime: overtimeHours, 
-            leave: leaveHours,
-            worked: workedMinutes,
-            break: shift.breakDuration
-        };
-    };
     
     const handleApprovalProcess = (shift: Shift) => {
         if (!operator || !shift.events[0]) return;
 
         const hasBreak = shift.events.some(e => e.type === 'pausa');
         const dayName = dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())];
-        const mandatoryBreakMinutes = operator.workSchedule[dayName]?.breakMinutes || 0;
+        const dailySchedule = operator.workSchedule[dayName];
+        const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
 
         if (isSameDay(shift.events[0].timestamp.toDate(), new Date()) && !shift.events.some(e=> e.type === 'uscita')){
              toast({ title: 'Turno in corso', description: 'Non puoi approvare un turno non ancora terminato.', variant: 'destructive'});
@@ -848,20 +780,26 @@ export default function ShiftApprovalPage() {
 
 
     const handleOpenApproveDialog = (shift: Shift | StraordinarioShift, isOvertimeShift: boolean, manualBreak?: ManualBreak) => {
+        if (!operator) return;
+    
         let ordinary = 0, overtime = 0, leave = 0;
-
+    
         if (isOvertimeShift) {
             const overtimeShift = shift as StraordinarioShift;
             const workedMinutes = calculateOvertimeShiftMinutes(overtimeShift, manualBreak);
             overtime = roundOvertimeHours(workedMinutes, operator?.overtimeCalculation);
         } else {
             const regularShift = shift as Shift;
-            const hours = calculateHours(regularShift, manualBreak);
-            ordinary = hours.ordinary;
-            overtime = hours.overtime;
-            leave = hours.leave;
+            const dayName = dayIndexToName[getDayFns(regularShift.date)];
+            const schedule = operator.workSchedule[dayName];
+            const ignoreContractualStart = regularShift.ignoreContractualStart || false;
+            
+            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart);
+            ordinary = hoursResult.ordinary;
+            overtime = hoursResult.overtime;
+            leave = hoursResult.leave;
         }
-
+    
         setApprovalContext({
             shift: shift,
             ordinaryHours: String(ordinary),
@@ -1021,7 +959,7 @@ export default function ShiftApprovalPage() {
     
     
     const formatTime = (date: Timestamp | undefined | null) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
-    const formatDate = (date: Timestamp | undefined) => date ? format(date.toDate(), 'PPP', { locale: it }) : 'N/D';
+    const formatDate = (date: Timestamp | undefined | Date) => date ? format(date instanceof Date ? date : date.toDate(), 'PPP', { locale: it }) : 'N/D';
     
     const totalPages = Math.ceil(historicalShifts.length / ITEMS_PER_PAGE);
     const paginatedApprovedShifts = historicalShifts.slice(
@@ -1249,23 +1187,27 @@ export default function ShiftApprovalPage() {
     
     const getAdjustedEndTime = (shift: Shift): { display: string; calculationEnd: Date | null } => {
         if (!operator || !shift?.events?.length) return { display: '--:--', calculationEnd: null };
-        
+    
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
     
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
-        const { ordinary, overtime } = calculateHours(shift);
-        const { calculationStart, breakMinutes } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())]], shift.ignoreContractualStart);
-
+        const dayName = dayIndexToName[getDayFns(shift.date)];
+        const schedule = operator.workSchedule[dayName];
+        const ignoreContractualStart = shift.ignoreContractualStart || false;
+        
+        const { ordinary, overtime } = calculateHours(shift, schedule, ignoreContractualStart);
+        const { calculationStart, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    
         if (!calculationStart) {
             return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
         }
     
         const totalCalculatedMinutes = (ordinary + overtime) * 60;
         const totalCalculatedMillis = totalCalculatedMinutes * 60000;
-        const breakMillis = shift.breakDuration * 60000;
-
+        const breakMillis = breakMinutes * 60000;
+    
         const calculatedEndTime = new Date(calculationStart.getTime() + totalCalculatedMillis + breakMillis);
     
         if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
@@ -1613,7 +1555,12 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && operator && (() => {
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift);
+                        const dayName = dayIndexToName[getDayFns(detailShift.date)];
+                        const schedule = operator.workSchedule[dayName];
+                        const ignoreContractualStart = detailShift.ignoreContractualStart || false;
+
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift, schedule, ignoreContractualStart);
+
                         const totalOvertime = overtime + associatedOvertime;
                         
                         let mainResultLabel = 'Straordinari';

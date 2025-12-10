@@ -1,4 +1,3 @@
-
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -73,6 +72,7 @@ export type MonthlySummary = {
     workedDays: number;
     ordinaryHours: number;
     overtimeHours: number;
+
     ferieDays: number;
     permessoHours: number;
     malattiaDays: number;
@@ -95,14 +95,6 @@ export const roundOrdinaryHours = (minutes: number): number => {
 
 export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
     if (minutes <= 0) return 0;
-
-    // This was the user's specific request for half-hourly
-    if (calculationType === 'half_hourly') {
-        const totalHalfHours = Math.floor(minutes / 30);
-        const remainingMinutes = minutes % 30;
-        const additionalHalfHours = remainingMinutes >= 25 ? 0.5 : 0;
-        return totalHalfHours * 0.5 + additionalHalfHours;
-    }
     
     // Default hourly logic (triggers at 50 mins)
     const totalHours = Math.floor(minutes / 60);
@@ -132,11 +124,11 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     // 2. Determine Contractual End Time
     let contractualEndTime: Date | null = null;
     if (schedule) {
-        if (schedule.endTime) {
+       const breakDuration = schedule.breakMinutes || 0;
+       if (schedule.endTime) {
             const [h, m] = schedule.endTime.split(':').map(Number);
             contractualEndTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         } else if (schedule.totalHours) {
-            const breakDuration = schedule.breakMinutes || 0;
             contractualEndTime = new Date(calculationStartTime.getTime() + (schedule.totalHours * 60 + breakDuration) * 60 * 1000);
         }
     }
@@ -167,6 +159,44 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         contractualEndTime: contractualEndTime
     };
 };
+
+export const calculateHours = (shift: Shift, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
+    
+    const { workedMinutes, breakMinutes, contractualEndTime } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+
+    const contractualHours = schedule?.totalHours || 0;
+    const contractualMinutes = contractualHours * 60;
+    
+    const isWorkDay = contractualHours > 0 && !isPublicHoliday(shift.date);
+    
+    if (!isWorkDay) {
+        return {
+            ordinary: 0,
+            overtime: roundOvertimeHours(workedMinutes),
+            leave: 0,
+            worked: workedMinutes,
+            break: breakMinutes
+        };
+    }
+
+    // Strict separation between ordinary and overtime minutes
+    const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+    const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
+
+    const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
+    const overtimeHours = roundOvertimeHours(overtimeMinutes);
+
+    const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
+
+    return { 
+        ordinary: ordinaryHours, 
+        overtime: overtimeHours, 
+        leave: leaveHours,
+        worked: workedMinutes,
+        break: breakMinutes
+    };
+};
+
 
 export const processMonthlyData = (
     currentMonth: Date,
@@ -221,39 +251,15 @@ export const processMonthlyData = (
             
             const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
             
-            const { workedMinutes, contractualEndTime } = calculateShiftDetails(events, dailySchedule, ignoreContractualStart);
+            const shiftForCalc: Shift = {
+                date: day,
+                events: events,
+                contractualHours: contractualHours,
+                workedMinutes: 0, ordinaryMinutes: 0, overtimeMinutes: 0, // temp values
+                isPureOvertime: !isWorkDay
+            };
 
-            let ordinaryMinutes = 0;
-            let overtimeMinutes = 0;
-            
-            if (isWorkDay && contractualEndTime) {
-                const contractualEndMillis = contractualEndTime.getTime();
-                const clockInEvent = events.find(e => e.type === 'entrata')!;
-                const clockOutEvent = events.find(e => e.type === 'uscita')!;
-                const calculationStartMillis = calculateShiftDetails(events, dailySchedule, ignoreContractualStart).calculationStart!.getTime();
-
-                const ordinaryMillis = Math.min(clockOutEvent.timestamp.toMillis(), contractualEndMillis) - calculationStartMillis;
-                
-                let breakDuringOrdinaryMillis = 0;
-                let breakStart: Timestamp | null = null;
-                 events.forEach(e => {
-                    if (e.type === 'pausa' && e.timestamp.toMillis() < contractualEndMillis) breakStart = e.timestamp;
-                    if (e.type === 'fine_pausa' && breakStart) {
-                        const breakEndMillis = Math.min(e.timestamp.toMillis(), contractualEndMillis);
-                        breakDuringOrdinaryMillis += breakEndMillis - breakStart.toMillis();
-                        if (e.timestamp.toMillis() > contractualEndMillis) {
-                            breakStart = null;
-                        }
-                    }
-                });
-
-                ordinaryMinutes = Math.max(0, (ordinaryMillis - breakDuringOrdinaryMillis) / 60000);
-                overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
-
-            } else {
-                ordinaryMinutes = 0;
-                overtimeMinutes = workedMinutes;
-            }
+            const { ordinary, overtime } = calculateHours(shiftForCalc, dailySchedule, ignoreContractualStart);
 
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
@@ -266,8 +272,8 @@ export const processMonthlyData = (
                 shift: {
                     events,
                     contractualHours,
-                    ordinaryHours: roundOrdinaryHours(ordinaryMinutes),
-                    overtimeHours: roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation), 
+                    ordinaryHours: ordinary,
+                    overtimeHours: overtime, 
                     permissionHours: permissionHours,
                 },
             });
