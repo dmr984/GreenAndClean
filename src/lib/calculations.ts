@@ -68,37 +68,31 @@ export type MonthlySummary = {
     malattiaDays: number;
 };
 
-// ====================================================================
-// NEW, SIMPLIFIED AND CORRECT ROUNDING LOGIC
-// ====================================================================
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    if (remainingMinutes >= 25 && remainingMinutes <= 59) {
-        return hours + 0.5 + (remainingMinutes > 30 ? 0.5 : 0);
+    
+    // Scatta alla mezz'ora se i minuti rimanenti sono 25 o più
+    if (remainingMinutes >= 25) {
+        return hours + 0.5;
     }
-    if (remainingMinutes > 0 && remainingMinutes < 25) {
-        return hours;
-    }
-    // Correctly handle the transition between 55-59 minutes
-    const totalHalfHours = Math.floor(minutes / 30);
-    const finalRemaining = minutes % 30;
-
-    return (totalHalfHours * 0.5) + (finalRemaining >= 25 ? 0.5 : 0);
+    return hours;
 };
 
 const roundOvertimeHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    return hours + (remainingMinutes >= 50 ? 1 : 0);
+    
+    // Scatta all'ora successiva se i minuti rimanenti sono 50 o più
+    if (remainingMinutes >= 50) {
+        return hours + 1;
+    }
+    return hours;
 };
 
 
-// ====================================================================
-// NEW, SIMPLIFIED AND CORRECT SHIFT DETAILS CALCULATION
-// ====================================================================
 export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
@@ -130,19 +124,16 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const clockOutTime = clockOutEvent.timestamp.toDate();
     const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
-    const workedMinutes = workedMillis > 0 ? Math.round(workedMillis / (1000 * 60)) : 0;
+    const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
 
     return { 
         workedMinutes,
         calculationStart: calculationStartTime,
-        calculationEnd: new Date(calculationStartTime.getTime() + workedMillis),
-        breakMinutes: Math.round(breakDurationMillis / 60000)
+        calculationEnd: new Date(calculationStartTime.getTime() + workedMillis + breakDurationMillis),
+        breakMinutes: Math.floor(breakDurationMillis / 60000)
     };
 };
 
-// ====================================================================
-// REBUILT PROCESSING LOGIC
-// ====================================================================
 export const processMonthlyData = (
     currentMonth: Date,
     operator: Operator,
@@ -188,8 +179,8 @@ export const processMonthlyData = (
            
             let ordinaryMinutes = 0;
             let overtimeMinutes = 0;
-
-            if (!isWorkDay) { // Pure overtime day
+            
+            if (!isWorkDay) { // Pure overtime day (e.g. Saturday)
                 overtimeMinutes = workedMinutes;
             } else { // Regular work day
                 const contractualMinutes = contractualHours * 60;
@@ -235,6 +226,7 @@ export const processMonthlyData = (
     // SUMMARIZE
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
+    
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -245,7 +237,8 @@ export const processMonthlyData = (
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
         if (req.type === 'ferie' || req.type === 'malattia') {
-            for (let day = startOfDay(req.startDate.toDate()); day <= startOfDay(req.endDate.toDate()); day.setDate(day.getDate() + 1)) {
+             // Create a new date object for the loop to avoid modifying the original
+            for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
                 if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
