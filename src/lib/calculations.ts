@@ -74,16 +74,9 @@ export type MonthlySummary = {
 // Arrotondamento per ore ordinarie: scatta alla mezz'ora se si superano i 25 minuti.
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const hours = minutes / 60;
-    const decimalPart = hours - Math.floor(hours);
-
-    if (decimalPart > 0.916) { // ~55 minuti
-        return Math.ceil(hours);
-    }
-    if (decimalPart > 0.416) { // ~25 minuti
-        return Math.floor(hours) + 0.5;
-    }
-    return Math.floor(hours);
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return hours + (remainingMinutes >= 25 ? 0.5 : 0);
 };
 
 // Arrotondamento per ore straordinarie in base alla preferenza dell'operatore.
@@ -268,7 +261,7 @@ export const processMonthlyData = (
             const endDate = startOfDay(req.endDate.toDate());
 
             for (let day = new Date(startDate); day <= endDate; day = addDays(day, 1)) {
-                 if (day > today) continue;
+                if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                     const dayName = dayIndexToName[getDay(day)];
