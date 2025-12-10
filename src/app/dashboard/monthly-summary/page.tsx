@@ -1,3 +1,5 @@
+// src/app/dashboard/monthly-summary/page.tsx
+
 'use client';
 import React, { useState, useMemo, useEffect, Suspense, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
@@ -12,6 +14,10 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { isPublicHoliday } from '@/lib/holidays';
+import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
+
+
+// Type definitions moved to calculations.ts
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -55,24 +61,6 @@ type Timbratura = {
     isAuto?: boolean;
 };
 
-type Shift = {
-    date: Date;
-    events: Timbratura[];
-    contractualHours: number;
-    workedMinutes: number;
-    ordinaryHours: number;
-    overtimeHours: number;
-    permissionHours: number;
-    isPureOvertime: boolean;
-};
-
-type DailyDetail = {
-    date: Date;
-    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa';
-    shift: Shift | null;
-    request: Request | null;
-};
-
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
     <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -91,21 +79,6 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
         <p className="font-semibold">{value}</p>
     </div>
 );
-
-// Standalone rounding functions as per rules
-const roundOrdinaryHours = (minutes: number): number => {
-    if (minutes <= 0) return 0;
-    const totalHalfHours = Math.floor(minutes / 30);
-    const remainingMinutes = minutes % 30;
-    return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
-};
-
-const roundOvertimeHours = (minutes: number): number => {
-    if (minutes <= 0) return 0;
-    const totalHours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return totalHours + (remainingMinutes >= 50 ? 1 : 0);
-};
 
 
 const MonthlySummaryContent = () => {
@@ -183,170 +156,14 @@ const MonthlySummaryContent = () => {
         fetchDataForMonth();
     }, [fetchDataForMonth]);
 
-    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null } => {
-        const clockInEvent = events.find(e => e.type === 'entrata');
-        const clockOutEvent = events.find(e => e.type === 'uscita');
-
-        if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
-
-        const clockInTime = clockInEvent.timestamp.toDate();
-        let calculationStartTime = clockInTime;
-
-        // Apply start time reference even for overtime if schedule.startTime exists
-        if (schedule?.startTime) {
-            const [h, m] = schedule.startTime.split(':').map(Number);
-            const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-            // If clock in is earlier, calculation starts from contractual time
-            if (clockInTime < contractualStart) {
-                calculationStartTime = contractualStart;
-            }
-        }
-
-        let breakDurationMillis = 0;
-        let breakStartTs: Timestamp | null = null;
-        const sortedEvents = [...events].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-        for (const e of sortedEvents) {
-            if (e.type === 'pausa') breakStartTs = e.timestamp;
-            if (e.type === 'fine_pausa' && breakStartTs) {
-                breakDurationMillis += e.timestamp.toMillis() - breakStartTs.toMillis();
-                breakStartTs = null;
-            }
-        }
-
-        const clockOutTime = clockOutEvent.timestamp.toDate();
-        const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
-        const workedMillis = totalMillis - breakDurationMillis;
-        const workedMinutes = workedMillis > 0 ? Math.round(workedMillis / (1000 * 60)) : 0;
-        
-        const totalCalculatedMinutes = workedMinutes;
-        const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 60000) + breakDurationMillis);
-
-        return { 
-            workedMinutes: workedMinutes,
-            calculationStart: calculationStartTime,
-            calculationEnd: calculatedEndTime
-        };
-    };
-
+    
     const { monthlySummary, dailyDetails } = useMemo(() => {
-        if (!operator) return { monthlySummary: {} as any, dailyDetails: [] };
-
-        const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
-
-        const dailyTimbrature = monthlyData.timbrature.reduce((acc, t) => {
-            const dayString = t.timestamp.toDate().toDateString();
-            if (!acc[dayString]) acc[dayString] = [];
-            acc[dayString].push(t);
-            return acc;
-        }, {} as Record<string, Timbratura[]>);
-
-        const allDaysOfMonth = eachDayOfInterval(monthInterval);
-        const details: DailyDetail[] = [];
-        const today = startOfDay(new Date());
-
-        for (const day of allDaysOfMonth) {
-            if (day > today) continue;
-
-            const dayName = dayIndexToName[getDay(day)];
-            const dailySchedule = operator.workSchedule[dayName];
-            const contractualHours = dailySchedule?.totalHours || 0;
-            const dayString = day.toDateString();
-            const isHoliday = isPublicHoliday(day);
-            const isWorkDay = contractualHours > 0 && !isHoliday;
-
-
-            const leaveRequest = monthlyData.requests.find(r =>
-                (r.type === 'ferie' || r.type === 'malattia') &&
-                isWithinInterval(day, { start: r.startDate.toDate(), end: r.endDate.toDate() })
-            );
-
-            const workedEventsRaw = dailyTimbrature[dayString];
-            
-            if (isHoliday) {
-                 details.push({ date: day, status: 'festa', request: null, shift: null });
-            } else if (workedEventsRaw) {
-                const events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                const { workedMinutes } = calculateShiftDetails(events, dailySchedule);
-               
-                let ordinaryMinutes = 0;
-                let overtimeMinutes = 0;
-
-                if (!isWorkDay) { // Pure overtime day
-                    overtimeMinutes = workedMinutes;
-                } else { // Regular work day
-                    const contractualMinutes = contractualHours * 60;
-                    ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                    overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
-                }
-                
-                const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-                const overtimeHours = roundOvertimeHours(overtimeMinutes);
-
-                 const permissionHours = monthlyData.requests
-                    .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
-                    .reduce((sum, r) => sum + (r.hours || 0), 0);
-
-                const manualOvertimeForDay = monthlyData.requests
-                    .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
-                    .reduce((sum, r) => sum + (r.hours || 0), 0);
-
-                details.push({
-                    date: day,
-                    status: 'lavorato',
-                    request: null,
-                    shift: {
-                        date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours: overtimeHours + manualOvertimeForDay, permissionHours, isPureOvertime: !isWorkDay
-                    },
-                });
-            } else if (leaveRequest && isWorkDay) {
-                details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null });
-            } else if (isWorkDay) {
-                 details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null });
-            } else {
-                 details.push({ date: day, status: 'riposo', request: null, shift: null });
-            }
+        if (!operator || isLoading) {
+            return { monthlySummary: {} as MonthlySummary, dailyDetails: [] as DailyDetail[] };
         }
-        
-        let ferieDays = 0;
-        let malattiaDays = 0;
+        return processMonthlyData(currentMonth, operator, monthlyData);
+    }, [operator, currentMonth, monthlyData, isLoading]);
 
-        const processedLeaveDays = new Set<string>();
-
-        monthlyData.requests.forEach(req => {
-            if (req.type === 'ferie' || req.type === 'malattia') {
-                for (let day = req.startDate.toDate(); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                     if (day > today) continue;
-                    const dayString = day.toDateString();
-                    if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
-                        const dayName = dayIndexToName[getDay(day)];
-                        if ((operator.workSchedule[dayName]?.totalHours || 0) > 0 && !isPublicHoliday(day)) {
-                            if (req.type === 'ferie') ferieDays++;
-                            if (req.type === 'malattia') malattiaDays++;
-                            processedLeaveDays.add(dayString);
-                        }
-                    }
-                }
-            }
-        });
-
-
-        const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
-        const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
-        const totalPermesso = details.reduce((sum, d) => sum + (d.shift?.permissionHours || 0), 0);
-
-        return {
-            monthlySummary: {
-                workedDays: details.filter(d => d.shift).length,
-                ordinaryHours: totalOrdinary,
-                overtimeHours: totalOvertime,
-                ferieDays,
-                permessoHours: totalPermesso,
-                malattiaDays,
-            },
-            dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),
-        };
-
-    }, [operator, currentMonth, monthlyData]);
 
     const handleMonthChange = (offset: number) => {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
@@ -395,12 +212,12 @@ const MonthlySummaryContent = () => {
                 ) : (
                 <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays} icon={Briefcase} />
-                    <SummaryCard title="Ore Ordinarie" value={monthlySummary.ordinaryHours.toLocaleString('it-IT')} icon={Clock} />
-                    <SummaryCard title="Ore Straordinarie" value={monthlySummary.overtimeHours.toLocaleString('it-IT')} icon={Plus} />
-                    <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays} icon={Plane} />
-                    <SummaryCard title="Permessi (ore)" value={monthlySummary.permessoHours.toLocaleString('it-IT')} icon={UserCheck} />
-                    <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays} icon={Stethoscope} />
+                    <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
+                    <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
+                    <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
+                    <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
+                    <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
+                    <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
                 </div>
 
                 <Separator />
@@ -439,11 +256,10 @@ const MonthlySummaryContent = () => {
                                                         const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                         if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
                                                              referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                                         }
                                                     }
-
 
                                                     return (
                                                         <span key={e.id} className={cn('mr-2')}>
