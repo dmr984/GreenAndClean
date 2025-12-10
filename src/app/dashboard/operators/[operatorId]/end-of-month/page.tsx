@@ -176,6 +176,7 @@ export default function EndOfMonthPage() {
 
         let calculationStartTime = clockInTime;
         
+        // This rule must apply always, for both regular and overtime shifts
         if (schedule?.startTime) {
             const [contractualH, contractualM] = schedule.startTime.split(':').map(Number);
             const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
