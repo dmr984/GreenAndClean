@@ -191,7 +191,7 @@ export default function EndOfMonthPage() {
                 doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
 
                 doc.setFontSize(16);
-                doc.setTextColor(40, 40, 40); // Dark grey text
+                doc.setTextColor(40, 40, 40);
                 doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
                 doc.setFontSize(10);
                 doc.setTextColor(100, 100, 100);
@@ -289,7 +289,11 @@ export default function EndOfMonthPage() {
                      y = doc.autoTable.previous.finalY + 5;
                 });
                 
-                doc.output('dataurlnewwindow');
+                const pdfBlob = doc.blob();
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+                window.open(pdfUrl, '_blank');
+                URL.revokeObjectURL(pdfUrl);
+
                 setIsPrinting(false);
             };
             reader.readAsDataURL(blob);
