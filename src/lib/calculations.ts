@@ -1,3 +1,4 @@
+
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -79,18 +80,15 @@ export type MonthlySummary = {
 
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
+    
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     
-    // Convert hours back to minutes, add remaining, then divide to get float
-    const totalHalfHours = Math.floor(minutes / 30);
-    const finalMinutesInHalfHours = totalHalfHours * 30;
-    
-    if (minutes - finalMinutesInHalfHours >= 25) {
-        return (finalMinutesInHalfHours + 30) / 60;
+    if (remainingMinutes >= 25) {
+        return hours + 0.5;
     }
     
-    return finalMinutesInHalfHours / 60;
+    return hours;
 };
 
 const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
@@ -176,9 +174,8 @@ export const processMonthlyData = (
 
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
     const details: DailyDetail[] = [];
-    const dailyShifts: Shift[] = [];
     
-    // Process each day of the month
+    // Process each day of the month to create daily details
     for (const day of allDaysOfMonth) {
         if (day > today) continue;
 
@@ -220,23 +217,6 @@ export const processMonthlyData = (
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
-            const isPureOvertime = !isWorkDay;
-
-            const shiftForDay: Shift = {
-                date: day,
-                events,
-                contractualHours,
-                workedMinutes,
-                ordinaryMinutes,
-                overtimeMinutes,
-                isPureOvertime
-            };
-
-            dailyShifts.push(shiftForDay);
-            
-            const roundedOrdinary = roundOrdinaryHours(ordinaryMinutes);
-            const roundedOvertime = roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation);
-            
             details.push({
                 date: day,
                 status: 'lavorato',
@@ -244,8 +224,8 @@ export const processMonthlyData = (
                 shift: {
                     events,
                     contractualHours,
-                    ordinaryHours: roundedOrdinary,
-                    overtimeHours: roundedOvertime, 
+                    ordinaryHours: roundOrdinaryHours(ordinaryMinutes),
+                    overtimeHours: roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation), 
                     permissionHours: permissionHours,
                 },
             });
@@ -259,15 +239,12 @@ export const processMonthlyData = (
     }
     
     // =================================================================
-    // SUMMARIZE
+    // SUMMARIZE (Based on the daily details we just calculated)
     // =================================================================
-    const totalOrdinaryMinutes = dailyShifts.reduce((sum, s) => sum + s.ordinaryMinutes, 0);
-    const totalOvertimeMinutes = dailyShifts.reduce((sum, s) => sum + s.overtimeMinutes, 0);
+    const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
+    const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
+    const workedDays = details.filter(d => d.status === 'lavorato').length;
     
-    const manualOvertimeHours = monthlyData.requests
-        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
-        .reduce((sum, r) => sum + (r.hours || 0), 0);
-
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -278,10 +255,7 @@ export const processMonthlyData = (
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
         if (req.type === 'ferie' || req.type === 'malattia') {
-            const startDate = startOfDay(req.startDate.toDate());
-            const endDate = startOfDay(req.endDate.toDate());
-
-            for (let day = new Date(startDate); day <= endDate; day.setDate(day.getDate() + 1)) {
+            for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
                  if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
@@ -297,9 +271,9 @@ export const processMonthlyData = (
     });
 
     const monthlySummary: MonthlySummary = {
-        workedDays: dailyShifts.length,
-        ordinaryHours: roundOrdinaryHours(totalOrdinaryMinutes),
-        overtimeHours: roundOvertimeHours(totalOvertimeMinutes, operator.overtimeCalculation) + manualOvertimeHours,
+        workedDays: workedDays,
+        ordinaryHours: totalOrdinaryHours,
+        overtimeHours: totalOvertimeHours,
         ferieDays,
         permessoHours: totalPermesso,
         malattiaDays,
