@@ -282,7 +282,7 @@ const MonthlySummaryContent = () => {
                 let ordinaryHours = 0;
                 let overtimeHours = 0;
 
-                if (isPureOvertime) {
+                 if (isPureOvertime) {
                     ordinaryHours = 0;
                     overtimeHours = roundOvertimeHours(workedMinutes);
                 } else {
