@@ -1,4 +1,5 @@
 
+
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
@@ -21,6 +22,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isPublicHoliday } from '@/lib/holidays';
+import { roundOrdinaryHours, roundOvertimeHours } from '@/lib/calculations';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -167,7 +169,7 @@ export default function ShiftApprovalPage() {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
-        if (!clockInEvent) {
+        if (!clockInEvent || !clockOutEvent) {
              return { workDuration: 0, breakDuration: 0, calculationStart: null, calculationEnd: null };
         }
 
@@ -177,18 +179,16 @@ export default function ShiftApprovalPage() {
         const schedule = operator.workSchedule[dayName];
         
         let calculationStart = clockInTime;
-        let calculationEnd = clockOutEvent ? clockOutEvent.timestamp.toDate() : null;
         
         const ignoreContractual = (clockInEvent as Timbratura).ignoreContractualStart || false;
         
         if (schedule?.startTime && !ignoreContractual) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
-            const contractualStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            calculationStart = contractualStart;
+            calculationStart = set(shiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
         }
         
         
-        let totalMillis = calculationEnd ? calculationEnd.getTime() - calculationStart.getTime() : 0;
+        let totalMillis = clockOutEvent.timestamp.toDate().getTime() - calculationStart.getTime();
         
         let breakDurationMillis = 0;
         let breakStartTs: Timestamp | null = null;
@@ -205,7 +205,7 @@ export default function ShiftApprovalPage() {
         const workDuration = totalMillis > 0 ? Math.round(totalMillis / (1000 * 60)) : 0;
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
 
-        return { workDuration, breakDuration, calculationStart, calculationEnd };
+        return { workDuration, breakDuration, calculationStart, calculationEnd: clockOutEvent.timestamp.toDate() };
     };
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
@@ -686,40 +686,6 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName]?.totalHours || 0;
     };
     
-    const roundOrdinaryHours = (minutes: number): number => {
-        if (minutes <= 0) return 0;
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        
-        if (remainingMinutes >= 15 && remainingMinutes < 45) {
-            return hours + 0.5;
-        }
-        if (remainingMinutes >= 45) {
-            return hours + 1;
-        }
-        
-        return hours;
-    };
-
-    const roundOvertimeHours = (minutes: number): number => {
-        if (!operator) return 0;
-        if (minutes <= 0) return 0;
-        
-        if (operator.overtimeCalculation === 'half_hourly') {
-            const halfHours = Math.floor(minutes / 30);
-            const remaining = minutes % 30;
-            if (remaining >= 25) {
-                return (halfHours + 1) * 0.5;
-            }
-            return halfHours * 0.5;
-        }
-        
-        // Default hourly logic
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        return hours + (remainingMinutes >= 50 ? 1 : 0);
-    };
-
     const calculateHours = (shift: Shift, manualBreak?: ManualBreak): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
         if (!operator?.workSchedule) return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0 };
     
@@ -731,13 +697,15 @@ export default function ShiftApprovalPage() {
         const contractualHours = schedule?.totalHours || 0;
         const isWorkDay = contractualHours > 0 && !isPublicHoliday(clockInEvent.timestamp.toDate());
         const isPureOvertime = shift.isOvertime || !isWorkDay;
+        
+        const ignoreContractualStart = shift.ignoreContractualStart || false;
     
-        const { workedMinutes, breakDuration } = calculateShiftDurations(shift.events, isPureOvertime);
+        const { workedMinutes, breakDuration } = calculateShiftDurations(shift.events, ignoreContractualStart);
 
         if (isPureOvertime) {
             return {
                 ordinary: 0,
-                overtime: roundOvertimeHours(workedMinutes),
+                overtime: roundOvertimeHours(workedMinutes, operator.overtimeCalculation),
                 leave: 0,
                 worked: workedMinutes,
                 break: breakDuration
@@ -750,7 +718,7 @@ export default function ShiftApprovalPage() {
         const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
     
         const overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
-        const overtimeHours = roundOvertimeHours(overtimeMinutes);
+        const overtimeHours = roundOvertimeHours(overtimeMinutes, operator.overtimeCalculation);
     
         const leaveMinutes = contractualHours > 0 && ordinaryHours * 60 < contractualMinutes ? contractualMinutes - ordinaryHours * 60 : 0;
         const leaveHours = leaveMinutes > 0 ? roundOrdinaryHours(leaveMinutes) : 0;
@@ -875,7 +843,7 @@ export default function ShiftApprovalPage() {
         if (isOvertimeShift) {
             const overtimeShift = shift as StraordinarioShift;
             const workedMinutes = calculateOvertimeShiftMinutes(overtimeShift, manualBreak);
-            overtime = roundOvertimeHours(workedMinutes);
+            overtime = roundOvertimeHours(workedMinutes, operator?.overtimeCalculation);
         } else {
             const regularShift = shift as Shift;
             const hours = calculateHours(regularShift, manualBreak);
@@ -1156,7 +1124,7 @@ export default function ShiftApprovalPage() {
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
         const workMinutes = calculateOvertimeShiftMinutes(shift, manualBreak);
-        return roundOvertimeHours(workMinutes);
+        return roundOvertimeHours(workMinutes, operator?.overtimeCalculation);
     }
     
     const handleDeleteOvertimeShift = async () => {
@@ -1254,8 +1222,9 @@ export default function ShiftApprovalPage() {
         if (!operator || !shift?.events?.length) return { display: '--:--', calculationStart: null };
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
-
-        const { calculationStart } = calculateShiftDurations(shift.events);
+        
+        const ignoreContractualStart = shift.ignoreContractualStart || false;
+        const { calculationStart } = calculateShiftDurations(shift.events, ignoreContractualStart);
         const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
         
         if (calculationStart && Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) > 1000) {
@@ -1271,7 +1240,8 @@ export default function ShiftApprovalPage() {
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
     
-        const { calculationStart, breakMinutes } = calculateShiftDurations(shift.events);
+        const ignoreContractualStart = shift.ignoreContractualStart || false;
+        const { calculationStart, breakMinutes } = calculateShiftDurations(shift.events, ignoreContractualStart);
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
         if (!calculationStart) {
@@ -1282,7 +1252,7 @@ export default function ShiftApprovalPage() {
     
         const totalCalculatedMinutes = (ordinary + overtime) * 60;
         const totalCalculatedMillis = totalCalculatedMinutes * 60000;
-        const breakMillis = breakMinutes * 60000;
+        const breakMillis = shift.breakDuration * 60000;
 
         const calculatedEndTime = new Date(calculationStart.getTime() + totalCalculatedMillis + breakMillis);
     
@@ -2029,6 +1999,8 @@ export default function ShiftApprovalPage() {
 
 
 
+
+    
 
     
 
