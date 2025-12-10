@@ -220,9 +220,9 @@ export default function EndOfMonthPage() {
                         valign: 'middle',
                         fontSize: 9,
                         cellPadding: 3,
-                        fillColor: [255, 255, 255], // White background
-                        textColor: [40, 40, 40], // Dark grey text
-                        lineColor: [200, 200, 200], // Light grey borders
+                        fillColor: [255, 255, 255],
+                        textColor: [40, 40, 40],
+                        lineColor: [200, 200, 200],
                         lineWidth: 0.1,
                     },
                 });
@@ -289,8 +289,7 @@ export default function EndOfMonthPage() {
                      y = doc.autoTable.previous.finalY + 5;
                 });
                 
-                const fileName = `Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`;
-                doc.save(fileName);
+                doc.output('dataurlnewwindow');
                 setIsPrinting(false);
             };
             reader.readAsDataURL(blob);
