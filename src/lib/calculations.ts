@@ -195,7 +195,7 @@ export const processMonthlyData = (
             } else { // Regular work day
                 const contractualMinutes = contractualHours * 60;
                 ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                overtimeMinutes = workedMinutes > contractualMinutes ? workedMinutes - contractualMinutes : 0;
+                overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
             }
             
             const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
@@ -204,7 +204,7 @@ export const processMonthlyData = (
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
-
+            
             const manualOvertimeForDay = monthlyData.requests
                 .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
