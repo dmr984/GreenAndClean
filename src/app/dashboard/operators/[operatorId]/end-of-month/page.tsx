@@ -110,6 +110,7 @@ export default function EndOfMonthPage() {
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
     const printRef = useRef<HTMLDivElement>(null);
 
 
@@ -305,7 +306,13 @@ export default function EndOfMonthPage() {
             if (printRef.current) {
                 const canvas = await html2canvas(printRef.current, { scale: 2 });
                 const imgData = canvas.toDataURL('image/png');
-                setPreviewUrl(imgData);
+                
+                const doc = await generatePdfDoc();
+                const blob = doc.output('blob');
+                const url = URL.createObjectURL(blob);
+                
+                setPdfBlobUrl(url); // Save blob URL for printing
+                setPreviewUrl(imgData); // Set image for preview
             }
         } catch (error) {
             console.error("Error generating preview:", error);
@@ -315,25 +322,12 @@ export default function EndOfMonthPage() {
         }
     };
     
-    const handlePrint = async () => {
-        try {
-            const doc = await generatePdfDoc();
-            const blob = doc.output('blob');
-            const blobUrl = URL.createObjectURL(blob);
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = blobUrl;
-            document.body.appendChild(iframe);
-            iframe.onload = () => {
-                setTimeout(() => {
-                    iframe.contentWindow?.print();
-                    document.body.removeChild(iframe);
-                    URL.revokeObjectURL(blobUrl);
-                }, 100);
-            };
-        } catch (e) {
-            toast({ title: 'Errore di Stampa', description: 'Impossibile aprire il dialogo di stampa.', variant: 'destructive'});
-        }
+    const handlePrint = () => {
+        if (!pdfBlobUrl) return;
+        const printWindow = window.open(pdfBlobUrl);
+        printWindow?.addEventListener('load', () => {
+            printWindow.print();
+        });
     };
 
     const handleDownload = async () => {
