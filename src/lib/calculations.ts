@@ -77,7 +77,10 @@ const roundOrdinaryHours = (minutes: number): number => {
 };
 
 const roundOvertimeHours = (minutes: number): number => {
-    return 0; // AZZERATO COME RICHIESTO
+     if (minutes <= 0) return 0;
+    const totalHours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return totalHours + (remainingMinutes >= 50 ? 1 : 0);
 };
 
 
@@ -187,7 +190,7 @@ export const processMonthlyData = (
             let ordinaryMinutes = 0;
             let overtimeMinutes = 0;
 
-            if (!isWorkDay) { // Pure overtime day
+            if (!isWorkDay) { // Pure overtime day (e.g. Saturday)
                 overtimeMinutes = workedMinutes;
             } else { // Regular work day
                 const contractualMinutes = contractualHours * 60;
@@ -196,7 +199,7 @@ export const processMonthlyData = (
             }
             
             const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-            const overtimeHours = roundOvertimeHours(overtimeMinutes); // Sarà sempre 0
+            const overtimeHours = roundOvertimeHours(overtimeMinutes);
 
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
@@ -206,14 +209,12 @@ export const processMonthlyData = (
                 .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
-            // overtimeHours += manualOvertimeForDay; // NON sommare qui, si fa nel totale
-
             details.push({
                 date: day,
                 status: 'lavorato',
                 request: null,
                 shift: {
-                    date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours, permissionHours, isPureOvertime: !isWorkDay
+                    date: day, events, contractualHours, workedMinutes, ordinaryHours, overtimeHours: overtimeHours + manualOvertimeForDay, permissionHours, isPureOvertime: !isWorkDay
                 },
             });
         } else if (leaveRequest && isWorkDay) {
@@ -227,10 +228,8 @@ export const processMonthlyData = (
     
     // Calculate final summary totals from the processed daily details
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
-    // const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
-    const totalOvertime = 0; // AZZERATO COME RICHIESTO
+    const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
 
-    
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
