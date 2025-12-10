@@ -327,11 +327,10 @@ export default function EndOfMonthPage() {
                                                     )
                                                 })}
                                             </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
                                                 <InfoBox label="Ore Lavorate" value={formatMinutes(detail.shift.workedMinutes)} />
                                                 <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
-                                                <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
                                                 <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
                                             </div>
                                         </>

@@ -63,8 +63,7 @@ export type MonthlySummary = {
     workedDays: number;
     ordinaryHours: number;
     overtimeHours: number;
-f
-erieDays: number;
+    ferieDays: number;
     permessoHours: number;
     malattiaDays: number;
 };
@@ -78,10 +77,7 @@ const roundOrdinaryHours = (minutes: number): number => {
 };
 
 const roundOvertimeHours = (minutes: number): number => {
-    if (minutes <= 0) return 0;
-    const totalHours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+    return 0; // AZZERATO COME RICHIESTO
 };
 
 
@@ -135,8 +131,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const finalOvertimeHours = roundOvertimeHours(overtimeMinutesCalc);
 
     const totalCalculatedMinutes = (finalOrdinaryHours + finalOvertimeHours) * 60;
-
-    const calculatedEndTime = new Date(calculationStartTime.getTime() + totalCalculatedMinutes * 1000 * 60 + breakDurationMillis);
+    const calculatedEndTime = new Date(calculationStartTime.getTime() + (totalCalculatedMinutes * 1000 * 60) + breakDurationMillis);
 
     return { 
         workedMinutes: workedMinutes,
@@ -201,7 +196,7 @@ export const processMonthlyData = (
             }
             
             const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-            let overtimeHours = roundOvertimeHours(overtimeMinutes);
+            const overtimeHours = roundOvertimeHours(overtimeMinutes); // Sarà sempre 0
 
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
@@ -211,7 +206,7 @@ export const processMonthlyData = (
                 .filter(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
-            overtimeHours += manualOvertimeForDay;
+            // overtimeHours += manualOvertimeForDay; // NON sommare qui, si fa nel totale
 
             details.push({
                 date: day,
@@ -232,7 +227,9 @@ export const processMonthlyData = (
     
     // Calculate final summary totals from the processed daily details
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
-    const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
+    // const totalOvertime = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
+    const totalOvertime = 0; // AZZERATO COME RICHIESTO
+
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
