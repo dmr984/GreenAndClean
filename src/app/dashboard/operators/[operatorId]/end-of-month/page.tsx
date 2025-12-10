@@ -17,7 +17,15 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import 'jspdf-autotable'; // Make sure this is installed or handle it appropriately
+
+// Extend jsPDF with autoTable - this is a bit of a hack for TS
+declare module 'jspdf' {
+  interface jsPDF {
+    autoTable: (options: any) => jsPDF;
+  }
+}
+
 
 // Type definitions are now in calculations.ts
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -165,47 +173,129 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrintAndShare = async () => {
-        if (!printRef.current || !operator) return;
+        if (!operator) return;
         setIsPrinting(true);
 
         try {
-            const canvas = await html2canvas(printRef.current, { scale: 2 });
-            const imgData = canvas.toDataURL('image/png');
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            let y = 20; // Initial y position
 
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'pt',
-                format: 'a4'
-            });
+            // 1. Header
+            // Logo (assuming you have it as a base64 string or URL)
+            const logoUrl = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
+            const response = await fetch(logoUrl);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                const base64data = reader.result as string;
+                doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
 
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            const ratio = imgWidth / imgHeight;
-            
-            let finalImgWidth = pdfWidth - 40; // with some margin
-            let finalImgHeight = finalImgWidth / ratio;
-            
-            if (finalImgHeight > pdfHeight - 40) {
-              finalImgHeight = pdfHeight - 40;
-              finalImgWidth = finalImgHeight * ratio;
-            }
+                // Operator Name
+                doc.setFontSize(16);
+                doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 15, { align: 'right' });
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 22, { align: 'right' });
+                
+                y = 40;
 
-            const xPos = (pdfWidth - finalImgWidth) / 2;
-            const yPos = (pdfHeight - finalImgHeight) / 2;
-            
-            pdf.addImage(imgData, 'PNG', xPos, yPos, finalImgWidth, finalImgHeight);
-            
-            const fileName = `Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', {locale: it})}.pdf`;
-            pdf.save(fileName);
+                // 2. Summary Boxes
+                const summaryData = [
+                    { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
+                    { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
+                    { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
+                    { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
+                    { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
+                    { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
+                ];
+                
+                doc.autoTable({
+                    startY: y,
+                    body: [
+                        summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
+                        summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
+                    ],
+                    theme: 'grid',
+                    styles: {
+                        halign: 'center',
+                        valign: 'middle',
+                        fontSize: 9,
+                        cellPadding: 3,
+                    },
+                });
+
+                y = doc.autoTable.previous.finalY + 10;
+                
+                // 3. Daily Details
+                 doc.setFontSize(14);
+                 doc.text("Dettaglio Giornaliero", 15, y);
+                 y += 8;
+
+                dailyDetails.forEach(detail => {
+                    if (detail.status === 'riposo') return;
+
+                    const title = format(detail.date, 'eeee dd MMMM', { locale: it });
+                    let statusText = '';
+                    const body = [];
+                    
+                    switch(detail.status) {
+                        case 'lavorato':
+                            statusText = `Lavorato`;
+                            if (detail.shift) {
+                                let timbratureText = 'Timbrature: ';
+                                detail.shift.events.forEach(e => {
+                                    const time = format(e.timestamp.toDate(), 'HH:mm');
+                                    timbratureText += `${e.type.replace('_', ' ')}: ${time} | `;
+                                });
+                                body.push([timbratureText.slice(0, -3)]);
+                                body.push([`Ore Previste: ${detail.shift.contractualHours}h, Ore Ordinarie: ${detail.shift.ordinaryHours}h, Straordinario: ${detail.shift.overtimeHours}h, Permesso: ${detail.shift.permissionHours}h`]);
+                            }
+                            break;
+                        case 'ferie':
+                            statusText = 'Ferie';
+                            body.push(['Giorno di ferie approvato.']);
+                            break;
+                        case 'malattia':
+                             statusText = 'Malattia';
+                             body.push(['Giorno di malattia approvato.']);
+                            break;
+                        case 'mancata_timbratura':
+                            statusText = 'Mancata Timbratura';
+                            body.push(['Nessuna timbratura registrata in un giorno lavorativo.']);
+                            break;
+                        case 'festa':
+                            statusText = 'Festivo';
+                            body.push(['Giorno festivo.']);
+                            break;
+                    }
+                    
+                    doc.autoTable({
+                        startY: y,
+                        head: [[`${title} - ${statusText}`]],
+                        body: body,
+                        theme: 'striped',
+                        headStyles: { fillColor: [230, 230, 230], textColor: 20 },
+                        didDrawPage: (data) => {
+                            y = data.cursor?.y || y;
+                        }
+                    });
+                     y = doc.autoTable.previous.finalY + 5;
+                });
+                
+                const fileName = `Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`;
+                doc.save(fileName);
+                setIsPrinting(false);
+            };
+
         } catch (error) {
             console.error("Failed to generate PDF", error);
             toast({ title: "Errore Stampa", description: "Impossibile generare il file PDF.", variant: "destructive" });
-        } finally {
             setIsPrinting(false);
         }
     };
+
 
     const handleCleanMonth = async () => {
         if (!firestore || !operatorId || !currentMonth) return;
