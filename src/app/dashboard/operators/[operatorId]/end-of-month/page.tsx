@@ -175,12 +175,12 @@ export default function EndOfMonthPage() {
     const handlePrintAndShare = async () => {
         if (!operator) return;
         setIsPrinting(true);
-
+    
         try {
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
             let y = 20;
-
+    
             const logoUrl = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
             const response = await fetch(logoUrl);
             const blob = await response.blob();
@@ -189,7 +189,7 @@ export default function EndOfMonthPage() {
             reader.onloadend = () => {
                 const base64data = reader.result as string;
                 doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
-
+    
                 doc.setFontSize(16);
                 doc.setTextColor(40, 40, 40);
                 doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
@@ -198,7 +198,7 @@ export default function EndOfMonthPage() {
                 doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
                 
                 y = 40;
-
+    
                 const summaryData = [
                     { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
                     { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
@@ -207,7 +207,7 @@ export default function EndOfMonthPage() {
                     { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
                     { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
                 ];
-
+    
                 doc.autoTable({
                     startY: y,
                     body: [
@@ -226,17 +226,17 @@ export default function EndOfMonthPage() {
                         lineWidth: 0.1,
                     },
                 });
-
+    
                 y = doc.autoTable.previous.finalY + 10;
-
+    
                 doc.setFontSize(14);
                 doc.setTextColor(40, 40, 40);
                 doc.text("Dettaglio Giornaliero", 15, y);
                 y += 8;
-
+    
                 dailyDetails.forEach(detail => {
                     if (detail.status === 'riposo') return;
-
+    
                     const title = format(detail.date, 'eeee dd MMMM', { locale: it });
                     let statusText = '';
                     const body = [];
@@ -289,15 +289,16 @@ export default function EndOfMonthPage() {
                      y = doc.autoTable.previous.finalY + 5;
                 });
                 
+                doc.autoPrint();
                 const pdfBlob = doc.output('blob');
                 const pdfUrl = URL.createObjectURL(pdfBlob);
                 window.open(pdfUrl, '_blank');
                 URL.revokeObjectURL(pdfUrl);
-
+    
                 setIsPrinting(false);
             };
             reader.readAsDataURL(blob);
-
+    
         } catch (error) {
             console.error("Failed to generate PDF", error);
             toast({ title: "Errore Stampa", description: "Impossibile generare il file PDF.", variant: "destructive" });
