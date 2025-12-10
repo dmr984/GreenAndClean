@@ -296,10 +296,8 @@ export default function EndOfMonthPage() {
             });
             y = (doc as any).autoTable.previous.finalY + 5;
         });
-
-        const pdfBlob = doc.output('blob');
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-        window.open(pdfUrl, '_blank');
+        
+        doc.save(`Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`);
 
         setIsProcessing(false);
     };
