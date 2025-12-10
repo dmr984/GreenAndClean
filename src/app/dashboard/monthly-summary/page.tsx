@@ -18,7 +18,7 @@ const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday',
 
 type DailySchedule = {
     totalHours?: number;
-    startTime?: string;
+    startTime?: string; // "HH:mm"
     endTime?: string;
     breakMinutes?: number;
 };
@@ -186,8 +186,12 @@ const MonthlySummaryContent = () => {
         if (schedule?.startTime) {
             const [contractualH, contractualM] = schedule.startTime.split(':').map(Number);
             const contractualStartDateTime = set(clockInTime, { hours: contractualH, minutes: contractualM, seconds: 0, milliseconds: 0 });
-             if (calculationStartTime < contractualStartDateTime) {
+            // Apply tolerance: if clock-in is within 90 minutes before, start calculation from contractual time.
+            const toleranceStart = new Date(contractualStartDateTime.getTime() - 90 * 60 * 1000);
+            if (clockInTime >= toleranceStart && clockInTime < contractualStartDateTime) {
                 calculationStartTime = contractualStartDateTime;
+            } else if (clockInTime < toleranceStart) {
+                calculationStartTime = clockInTime; // Or handle as error, for now calculate from actual time if too early
             }
         }
         
@@ -214,20 +218,6 @@ const MonthlySummaryContent = () => {
         const totalWorkedMinutes = Math.round(totalMillis / (1000 * 60));
         
         let finalCalculationEnd = clockOutTime;
-        if(schedule?.endTime) {
-            const [h, m] = schedule.endTime.split(':').map(Number);
-            const contractualEnd = set(clockInTime, {hours: h, minutes: m, seconds: 0});
-            if(calculationEndTime > contractualEnd) {
-                finalCalculationEnd = contractualEnd;
-            }
-        } else if (schedule?.totalHours) {
-             const breakMinutes = schedule.breakMinutes || (breakDurationMillis / 60000);
-             const effectiveWorkMs = (schedule.totalHours * 60 + breakMinutes) * 60 * 1000;
-             const calculatedEnd = new Date(calculationStartTime.getTime() + effectiveWorkMs);
-             if (clockOutTime > calculatedEnd) {
-                 finalCalculationEnd = calculatedEnd;
-             }
-        }
         
         return { 
             workedMinutes: totalWorkedMinutes,
@@ -306,9 +296,7 @@ const MonthlySummaryContent = () => {
                 } else {
                     const contractualMinutes = contractualHours * 60;
                     ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                    if (workedMinutes > contractualMinutes) {
-                       overtimeMinutes = workedMinutes - contractualMinutes;
-                    }
+                    overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
                 }
                 
                 const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
@@ -355,7 +343,7 @@ const MonthlySummaryContent = () => {
             }
         }
         
-        const shifts = details.filter(d => d.status === 'lavorato').map(d => d.shift!);
+        const shifts = details.filter(d => d.shift).map(d => d.shift!);
         
         let ferieDays = 0;
         let malattiaDays = 0;
@@ -502,8 +490,19 @@ const MonthlySummaryContent = () => {
                                                         const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
                                                         if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
-                                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                        } else if (e.type === 'uscita' && calculationEnd && calculationEnd instanceof Date && !isNaN(calculationEnd.getTime())) {
+                                                            const breakDuration = detail.shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+                                                                const finePausa = detail.shift!.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+                                                                if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+                                                                return acc;
+                                                            }, 0);
+                                                            if(calculationStart) {
+                                                                const totalCalculatedMinutes = (detail.shift.ordinaryHours + detail.shift.overtimeHours) * 60;
+                                                                const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+                                                                if (Math.abs(calculatedEndTime.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                                    referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                                }
+                                                            }
                                                         }
                                                     }
 
@@ -559,4 +558,5 @@ export default function MonthlySummaryPage() {
 
 
     
+
 
