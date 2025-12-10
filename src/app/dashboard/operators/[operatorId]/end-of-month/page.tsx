@@ -22,6 +22,7 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, Resp
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -108,6 +109,9 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const printRef = useRef<HTMLDivElement>(null);
+
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -294,19 +298,50 @@ export default function EndOfMonthPage() {
 
         return doc;
     };
-
+    
     const handleGenerateSummary = async () => {
         setIsProcessing(true);
         try {
-            const doc = await generatePdfDoc();
-            const pdfBlob = doc.output('blob');
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            window.open(pdfUrl, '_blank');
+            if (printRef.current) {
+                const canvas = await html2canvas(printRef.current, { scale: 2 });
+                const imgData = canvas.toDataURL('image/png');
+                setPreviewUrl(imgData);
+            }
         } catch (error) {
-            console.error("Error generating PDF:", error);
-            toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+            console.error("Error generating preview:", error);
+            toast({ title: "Errore", description: "Impossibile generare l'anteprima.", variant: "destructive" });
         } finally {
             setIsProcessing(false);
+        }
+    };
+    
+    const handlePrint = async () => {
+        try {
+            const doc = await generatePdfDoc();
+            const blob = doc.output('blob');
+            const blobUrl = URL.createObjectURL(blob);
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = blobUrl;
+            document.body.appendChild(iframe);
+            iframe.onload = () => {
+                setTimeout(() => {
+                    iframe.contentWindow?.print();
+                    document.body.removeChild(iframe);
+                    URL.revokeObjectURL(blobUrl);
+                }, 100);
+            };
+        } catch (e) {
+            toast({ title: 'Errore di Stampa', description: 'Impossibile aprire il dialogo di stampa.', variant: 'destructive'});
+        }
+    };
+
+    const handleDownload = async () => {
+        try {
+            const doc = await generatePdfDoc();
+            doc.save(`Riepilogo_${operator?.firstName}-${operator?.lastName}_${format(currentMonth, 'MMMM-yyyy')}.pdf`);
+        } catch (e) {
+             toast({ title: 'Errore Download', description: 'Impossibile scaricare il PDF.', variant: 'destructive'});
         }
     };
     
@@ -351,6 +386,81 @@ export default function EndOfMonthPage() {
 
     return (
         <>
+        {/* This div is for html2canvas to capture */}
+        <div ref={printRef} className="bg-background p-4 absolute -z-10 -top-[9999px] -left-[9999px] w-[210mm]">
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
+                            <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-8">
+                    <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
+                        <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
+                        <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
+                        <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
+                        <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
+                        <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
+                    </div>
+                    <Separator />
+                    <div>
+                        <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
+                        {dailyDetails.length > 0 ? (
+                            <div className="space-y-2">
+                                {dailyDetails.map(detail => {
+                                    if (detail.status === 'riposo') return null;
+                                    const isSunday = getDay(detail.date) === 0;
+                                    return (
+                                        <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
+                                            <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
+                                                {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
+                                                {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
+                                                {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                                                {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
+                                                {detail.status === 'festa' && <Briefcase className="h-5 w-5 text-purple-500" />}
+                                                {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                            </h4>
+                                            <div className="border-b my-2"></div>
+                                            {detail.status === 'lavorato' && detail.shift ? (
+                                                <>
+                                                    <div className="text-sm text-muted-foreground mt-1 mb-3">
+                                                        {detail.shift.events.map(e => (
+                                                            <span key={e.id} className="mr-2">
+                                                                {`${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm:ss')} | `}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                        <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
+                                                        <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                                        <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
+                                                        <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                                    </div>
+                                                </>
+                                            ) : detail.status === 'ferie' ? (
+                                                <p className="text-muted-foreground mt-1">Giorno di ferie approvato.</p>
+                                            ) : detail.status === 'malattia' ? (
+                                                <p className="text-muted-foreground mt-1">Giorno di malattia approvato.</p>
+                                            ) : detail.status === 'festa' ? (
+                                                <p className="text-muted-foreground mt-1">Giorno festivo.</p>
+                                            ) : detail.status === 'mancata_timbratura' ? (
+                                                <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className="text-center text-muted-foreground py-8">Nessun dato da mostrare per questo mese.</p>
+                        )}
+                    </div>
+                </CardContent>
+            </div>
+        
         <Card className="p-4 sm:p-6">
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -491,6 +601,27 @@ export default function EndOfMonthPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        <ResponsiveDialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+            <ResponsiveDialogContent className="max-w-4xl h-[90vh]">
+                 <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Anteprima Riepilogo</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Controlla il documento prima di stamparlo o condividerlo.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+
+                <div className="h-[calc(90vh-150px)] overflow-y-auto my-4 border rounded-md">
+                    {previewUrl && <img src={previewUrl} alt="Anteprima del riepilogo mensile" className="w-full h-auto" />}
+                </div>
+
+                <ResponsiveDialogFooter className="flex-col sm:flex-row gap-2">
+                    <Button variant="outline" onClick={() => setPreviewUrl(null)}>Chiudi</Button>
+                    <Button onClick={handleDownload}><Download className="mr-2 h-4 w-4" />Salva PDF</Button>
+                    <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
+                </ResponsiveDialogFooter>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
         </>
     );
 }
