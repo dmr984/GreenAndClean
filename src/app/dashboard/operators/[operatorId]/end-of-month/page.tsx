@@ -165,7 +165,10 @@ export default function EndOfMonthPage() {
         fetchDataForMonth();
     }, [fetchDataForMonth]);
     
-     const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date| null } => {
+    const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null } => {
+        if (!Array.isArray(events) || events.length === 0) {
+            return { workedMinutes: 0, calculationStart: null, calculationEnd: null };
+        }
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -192,7 +195,6 @@ export default function EndOfMonthPage() {
                 calculationEndTime = contractualEnd;
             }
         }
-
 
         let totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
         
@@ -465,14 +467,11 @@ export default function EndOfMonthPage() {
                     const timbratureText = shift.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                         let referenceTime = '';
-                        if (operator && e.type === 'entrata' && Array.isArray(shift.events)) {
-                            const { calculationStart } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
-                            if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                        if (operator && (e.type === 'entrata' || e.type === 'uscita') && Array.isArray(shift.events)) {
+                            const { calculationStart, calculationEnd } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
+                            if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                 referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                            }
-                        } else if (operator && e.type === 'uscita' && Array.isArray(shift.events)) {
-                            const { calculationEnd } = calculateShiftDetails(shift.events, operator.workSchedule[dayIndexToName[getDay(shift.date)]]);
-                             if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                            } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                 referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                             }
                         }
@@ -786,14 +785,11 @@ export default function EndOfMonthPage() {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
 
-                                                    if (e.type === 'entrata' && operator) {
-                                                        const { calculationStart } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
-                                                        if (calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                    if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
+                                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
+                                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        }
-                                                    } else if (e.type === 'uscita' && operator) {
-                                                         const { calculationEnd } = calculateShiftDetails(detail.shift!.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]]);
-                                                         if (calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                                         }
                                                     }
@@ -857,3 +853,5 @@ export default function EndOfMonthPage() {
         </>
     );
 }
+
+    

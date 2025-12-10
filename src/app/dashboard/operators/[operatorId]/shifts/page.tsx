@@ -158,7 +158,7 @@ export default function ShiftApprovalPage() {
     }, [newShiftDate, operator]);
     
     const calculateShiftDurations = (events: (Timbratura | StraordinarioEvent)[], ignoreIsOvertimeFlag = false): { workDuration: number, breakDuration: number, calculationStart: Date | null, calculationEnd: Date | null } => {
-        if (!events || events.length === 0 || !operator) {
+        if (!Array.isArray(events) || events.length === 0 || !operator) {
             return { workDuration: 0, breakDuration: 0, calculationStart: null, calculationEnd: null };
         }
 
@@ -1261,15 +1261,29 @@ export default function ShiftApprovalPage() {
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
 
-        const { calculationEnd } = calculateShiftDurations(shift.events);
+        const { calculationStart } = calculateShiftDurations(shift.events);
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
-
-        if(calculationEnd && Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
-            return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
+        
+        if (!calculationStart) {
+            return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
         }
 
+        const { ordinary, overtime } = calculateHours(shift);
+        const breakDuration = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
+            const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
+            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
+            return acc;
+        }, 0);
+
+        const totalCalculatedMinutes = (ordinary + overtime) * 60;
+        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
+
+        if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+             return { display: `${originalTime} (${format(calculatedEndTime, 'HH:mm')})`, calculationEnd: calculatedEndTime };
+        }
+        
         return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
-    }
+    };
     
     const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
         const { calculationStart, calculationEnd } = calculateShiftDurations(shift.events, true);
@@ -2006,3 +2020,6 @@ export default function ShiftApprovalPage() {
     
 
 
+
+
+    
