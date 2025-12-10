@@ -194,7 +194,14 @@ export default function ShiftApprovalPage() {
         return { workDuration, breakDuration };
     };
 
-    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> => {
+    const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> | null => {
+        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
+        
+        // Safety check: if there's no clock-in event, we can't process this as a shift.
+        if (!startTime) {
+            return null;
+        }
+
         const isComplete = events.some(e => e.type === 'uscita');
         const hasPending = events.some(e => e.status === 'sospesa');
         const allConfirmed = events.every(e => e.status === 'confermata');
@@ -212,13 +219,12 @@ export default function ShiftApprovalPage() {
 
         const { workDuration, breakDuration } = getShiftDurations(events);
         
-        const startTime = events.find(e => e.type === 'entrata')?.timestamp;
-        const shiftDateStr = startTime ? format(startTime.toDate(), 'yyyy-MM-dd') : '';
+        const shiftDateStr = format(startTime.toDate(), 'yyyy-MM-dd');
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
         const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
         const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart ?? false;
 
-        return { date: startTime!.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
+        return { date: startTime.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
     };
 
      useEffect(() => {
@@ -276,7 +282,9 @@ export default function ShiftApprovalPage() {
             for (const shiftId in shiftsByManualId) {
                 const events = shiftsByManualId[shiftId];
                 const processed = processShift(events, leaveDays);
-                groupedShifts.push({ id: shiftId, ...processed });
+                if (processed) {
+                    groupedShifts.push({ id: shiftId, ...processed });
+                }
             }
 
             for (const day in shiftsByDay) {
@@ -287,14 +295,18 @@ export default function ShiftApprovalPage() {
                     if (event.type === 'uscita') {
                         const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
                         const processed = processShift(currentShiftEvents, leaveDays);
-                        groupedShifts.push({ id: shiftId, ...processed });
+                        if (processed) {
+                            groupedShifts.push({ id: shiftId, ...processed });
+                        }
                         currentShiftEvents = [];
                     }
                 }
                 if (currentShiftEvents.length > 0) {
                     const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
                     const processed = processShift(currentShiftEvents, leaveDays);
-                    groupedShifts.push({ id: shiftId, ...processed });
+                    if (processed) {
+                        groupedShifts.push({ id: shiftId, ...processed });
+                    }
                 }
             }
             
@@ -627,7 +639,11 @@ export default function ShiftApprovalPage() {
             
             if (detailShift) {
                 const newProcessedShift = processShift(newEventsForState, new Set());
-                setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState }) : null);
+                if (newProcessedShift) {
+                  setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState }) : null);
+                } else {
+                  setIsDetailOpen(false);
+                }
             }
             
         }).catch(err => {
@@ -794,7 +810,7 @@ export default function ShiftApprovalPage() {
             const schedule = operator.workSchedule[dayName];
             const ignoreContractualStart = regularShift.ignoreContractualStart || false;
             
-            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart);
+            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
             ordinary = hoursResult.ordinary;
             overtime = hoursResult.overtime;
             leave = hoursResult.leave;
@@ -1197,7 +1213,7 @@ export default function ShiftApprovalPage() {
         const schedule = operator.workSchedule[dayName];
         const ignoreContractualStart = shift.ignoreContractualStart || false;
         
-        const { ordinary, overtime } = calculateHours(shift, schedule, ignoreContractualStart);
+        const { ordinary, overtime } = calculateHours(shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
         const { calculationStart, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
     
         if (!calculationStart) {
@@ -1559,7 +1575,7 @@ export default function ShiftApprovalPage() {
                         const schedule = operator.workSchedule[dayName];
                         const ignoreContractualStart = detailShift.ignoreContractualStart || false;
 
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift, schedule, ignoreContractualStart);
+                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
 
                         const totalOvertime = overtime + associatedOvertime;
                         
