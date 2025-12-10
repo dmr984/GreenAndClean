@@ -372,35 +372,17 @@ const MonthlySummaryContent = () => {
             .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
             .reduce((sum, r) => sum + (r.hours || 0), 0);
 
+        totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
+        totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
+
         if (operator.contractType === 'monthly') {
             const monthlyThreshold = operator.totalMonthlyHours || 0;
-            let totalWorkedMinutesInMonth = 0;
-            shifts.forEach(s => {
-                if (!s.isPureOvertime) {
-                    totalWorkedMinutesInMonth += s.workedMinutes;
-                }
-            });
-
-            const totalWorkedHours = roundOrdinaryHours(totalWorkedMinutesInMonth);
-            const totalHoursWithPermission = totalWorkedHours + totalPermesso;
+            const totalHoursWithPermission = totalOrdinary + totalPermesso;
 
             if (totalHoursWithPermission > monthlyThreshold) {
+                totalOvertime += totalHoursWithPermission - monthlyThreshold;
                 totalOrdinary = monthlyThreshold - totalPermesso;
-                totalOvertime = totalHoursWithPermission - monthlyThreshold;
-            } else {
-                totalOrdinary = totalWorkedHours;
-                totalOvertime = 0;
             }
-            
-            const pureOvertimeHours = shifts
-                .filter(s => s.isPureOvertime)
-                .reduce((sum, s) => sum + s.overtimeHours, 0);
-
-            totalOvertime += pureOvertimeHours;
-
-        } else { // weekly contract
-            totalOrdinary = shifts.reduce((sum, s) => sum + s.ordinaryHours, 0);
-            totalOvertime = shifts.reduce((sum, s) => sum + s.overtimeHours, 0);
         }
 
         return {
