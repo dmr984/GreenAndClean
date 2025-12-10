@@ -1,4 +1,3 @@
-
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -80,7 +79,6 @@ export type MonthlySummary = {
 
 const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     
@@ -91,19 +89,17 @@ const roundOrdinaryHours = (minutes: number): number => {
     return hours;
 };
 
+
 const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
-     if (minutes <= 0) return 0;
+    if (minutes <= 0) return 0;
 
     if (calculationType === 'half_hourly') {
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        let extra = 0;
-        if (remainingMinutes >= 55) {
-            extra = 1;
-        } else if (remainingMinutes >= 25) {
-            extra = 0.5;
+        const halfHours = Math.floor(minutes / 30);
+        const remaining = minutes % 30;
+        if (remaining >= 25) {
+            return (halfHours + 1) * 0.5;
         }
-        return hours + extra;
+        return halfHours * 0.5;
     }
     
     // Default hourly logic
@@ -129,6 +125,26 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
             calculationStartTime = contractualStart;
         }
     }
+    
+    let calculationEndTime = clockOutEvent.timestamp.toDate();
+    
+    // Determine contractual end time
+    if (schedule && !ignoreContractualStart) {
+        let contractualEnd;
+        if (schedule.endTime) {
+            const [h, m] = schedule.endTime.split(':').map(Number);
+            contractualEnd = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+        } else if (schedule.totalHours) {
+            const breakDuration = schedule.breakMinutes || 0;
+            const startTime = schedule.startTime ? set(clockInTime, { hours: parseInt(schedule.startTime.split(':')[0]), minutes: parseInt(schedule.startTime.split(':')[1]) }) : calculationStartTime;
+            contractualEnd = new Date(startTime.getTime() + (schedule.totalHours * 60 + breakDuration) * 60 * 1000);
+        }
+        
+        if (contractualEnd && calculationEndTime > contractualEnd) {
+            calculationEndTime = contractualEnd;
+        }
+    }
+
 
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
@@ -141,17 +157,14 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
 
-    const clockOutTime = clockOutEvent.timestamp.toDate();
-    const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+    const totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
-    
-    const finalCalculationEnd = new Date(calculationStartTime.getTime() + workedMillis + breakDurationMillis);
 
     return { 
         workedMinutes,
         calculationStart: calculationStartTime,
-        calculationEnd: finalCalculationEnd,
+        calculationEnd: calculationEndTime,
         breakMinutes: Math.floor(breakDurationMillis / 60000)
     };
 };
@@ -199,18 +212,28 @@ export const processMonthlyData = (
             const events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
             
-            const { workedMinutes } = calculateShiftDetails(events, dailySchedule, ignoreContractualStart);
-           
+            const clockInTime = events.find(e => e.type === 'entrata')?.timestamp.toDate();
+            const clockOutTime = events.find(e => e.type === 'uscita')?.timestamp.toDate();
+
+            if (!clockInTime || !clockOutTime) {
+                 if (isWorkDay) details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null });
+                 else details.push({ date: day, status: 'riposo', request: null, shift: null });
+                 continue;
+            }
+
+            // This calculates total worked minutes based on actual punches
+            const totalWorkedMinutes = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60) - (calculateShiftDetails(events, dailySchedule).breakMinutes);
+
             let ordinaryMinutes = 0;
             let overtimeMinutes = 0;
+            const contractualMinutes = contractualHours * 60;
 
             if (isWorkDay) {
-                 const contractualMinutes = contractualHours * 60;
-                 ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-                 overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
+                 ordinaryMinutes = Math.min(totalWorkedMinutes, contractualMinutes);
+                 overtimeMinutes = Math.max(0, totalWorkedMinutes - contractualMinutes);
             } else {
                 ordinaryMinutes = 0;
-                overtimeMinutes = workedMinutes;
+                overtimeMinutes = totalWorkedMinutes;
             }
 
             const permissionHours = monthlyData.requests
