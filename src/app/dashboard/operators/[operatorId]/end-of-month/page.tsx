@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams } from 'next/navigation';
@@ -98,7 +98,7 @@ export default function EndOfMonthPage() {
     const { toast } = useToast();
     const operatorId = params.operatorId as string;
     
-    const [isPrinting, setIsPrinting] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
@@ -171,152 +171,155 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const handlePrintAndShare = async () => {
-        if (!operator) return;
-        setIsPrinting(true);
-    
-        try {
-            const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.getWidth();
-            let y = 20;
-    
-            // Define a promise to handle the async logo loading
-            const loadLogo = new Promise<string>((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = "Anonymous";
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) {
-                        reject(new Error('Failed to get canvas context'));
-                        return;
+    const generatePdfDoc = async (): Promise<jsPDF> => {
+        if (!operator) throw new Error("Operator not found");
+
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        let y = 20;
+
+        const loadLogo = new Promise<string>((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return reject(new Error('Failed to get canvas context'));
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = (err) => reject(err);
+            img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
+        });
+
+        const base64data = await loadLogo;
+        doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
+
+        doc.setFontSize(16);
+        doc.setTextColor(40);
+        doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
+
+        y = 40;
+
+        const summaryData = [
+            { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
+            { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
+            { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
+            { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
+            { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
+            { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
+        ];
+
+        doc.autoTable({
+            startY: y,
+            body: [
+                summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
+                summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
+            ],
+            theme: 'grid',
+            styles: {
+                halign: 'center', valign: 'middle', fontSize: 9,
+                fillColor: [255, 255, 255], textColor: [40, 40, 40],
+                lineColor: [200, 200, 200], lineWidth: 0.1,
+            },
+        });
+
+        y = doc.autoTable.previous.finalY + 10;
+
+        doc.setFontSize(14);
+        doc.setTextColor(40);
+        doc.text("Dettaglio Giornaliero", 15, y);
+        y += 8;
+
+        dailyDetails.forEach(detail => {
+            if (detail.status === 'riposo') return;
+            if (y > 270) {
+                doc.addPage();
+                y = 20;
+            }
+
+            const title = format(detail.date, 'eeee dd MMMM', { locale: it });
+            let statusText = '';
+            const body = [];
+
+            switch(detail.status) {
+                case 'lavorato':
+                    statusText = `Lavorato`;
+                    if (detail.shift) {
+                        let timbratureText = 'Timbrature: ';
+                        detail.shift.events.forEach(e => {
+                            timbratureText += `${e.type.replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')} | `;
+                        });
+                        body.push([timbratureText.slice(0, -3)]);
+                        body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
                     }
-                    ctx.drawImage(img, 0, 0);
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                img.onerror = (err) => reject(err);
-                img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png';
-            });
-    
-            const base64data = await loadLogo;
-    
-            doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
-    
-            doc.setFontSize(16);
-            doc.setTextColor(40, 40, 40);
-            doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
-            doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
-            doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
-            
-            y = 40;
-    
-            const summaryData = [
-                { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
-                { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
-                { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
-                { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
-                { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
-                { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
-            ];
-    
+                    break;
+                case 'ferie': statusText = 'Ferie'; body.push(['Giorno di ferie approvato.']); break;
+                case 'malattia': statusText = 'Malattia'; body.push(['Giorno di malattia approvato.']); break;
+                case 'mancata_timbratura': statusText = 'Mancata Timbratura'; body.push(['Nessuna timbratura registrata in un giorno lavorativo.']); break;
+                case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
+            }
+
             doc.autoTable({
                 startY: y,
-                body: [
-                    summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
-                    summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
-                ],
-                theme: 'grid',
-                styles: {
-                    halign: 'center',
-                    valign: 'middle',
-                    fontSize: 9,
-                    cellPadding: 3,
-                    fillColor: [255, 255, 255],
-                    textColor: [40, 40, 40],
-                    lineColor: [200, 200, 200],
-                    lineWidth: 0.1,
-                },
+                head: [[`${title} - ${statusText}`]],
+                body: body,
+                theme: 'striped',
+                headStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20] },
+                styles: { fillColor: [255, 255, 255], textColor: [40, 40, 40] },
+                didDrawPage: (data) => y = data.cursor?.y || y
             });
-    
-            y = doc.autoTable.previous.finalY + 10;
-    
-            doc.setFontSize(14);
-            doc.setTextColor(40, 40, 40);
-            doc.text("Dettaglio Giornaliero", 15, y);
-            y += 8;
-    
-            dailyDetails.forEach(detail => {
-                if (detail.status === 'riposo') return;
+            y = doc.autoTable.previous.finalY + 5;
+        });
 
-                const title = format(detail.date, 'eeee dd MMMM', { locale: it });
-                let statusText = '';
-                const body = [];
-                
-                switch(detail.status) {
-                    case 'lavorato':
-                        statusText = `Lavorato`;
-                        if (detail.shift) {
-                            let timbratureText = 'Timbrature: ';
-                            detail.shift.events.forEach(e => {
-                                const time = format(e.timestamp.toDate(), 'HH:mm');
-                                timbratureText += `${e.type.replace('_', ' ')}: ${time} | `;
-                            });
-                            body.push([timbratureText.slice(0, -3)]);
-                            body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
-                        }
-                        break;
-                    case 'ferie':
-                        statusText = 'Ferie';
-                        body.push(['Giorno di ferie approvato.']);
-                        break;
-                    case 'malattia':
-                         statusText = 'Malattia';
-                         body.push(['Giorno di malattia approvato.']);
-                        break;
-                    case 'mancata_timbratura':
-                        statusText = 'Mancata Timbratura';
-                        body.push(['Nessuna timbratura registrata in un giorno lavorativo.']);
-                        break;
-                    case 'festa':
-                        statusText = 'Festivo';
-                        body.push(['Giorno festivo.']);
-                        break;
-                }
-                
-                doc.autoTable({
-                    startY: y,
-                    head: [[`${title} - ${statusText}`]],
-                    body: body,
-                    theme: 'striped',
-                    headStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20] },
-                    styles: {
-                         fillColor: [255, 255, 255],
-                         textColor: [40, 40, 40],
-                    },
-                    didDrawPage: (data) => {
-                        y = data.cursor?.y || y;
-                    }
-                });
-                 y = doc.autoTable.previous.finalY + 5;
-            });
-            
-            const pdfBlob = doc.output('blob');
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            window.open(pdfUrl, '_blank');
-            // We don't revoke the URL immediately to allow the new tab to open.
-            // Modern browsers handle garbage collection of blob URLs.
+        return doc;
+    };
 
+    const handlePrint = async () => {
+        setIsProcessing(true);
+        try {
+            const doc = await generatePdfDoc();
+            doc.autoPrint();
+            doc.output('dataurlnewwindow');
         } catch (error) {
-            console.error("Failed to generate PDF", error);
+            console.error("Failed to generate PDF for printing", error);
             toast({ title: "Errore Stampa", description: "Impossibile generare il file PDF.", variant: "destructive" });
         } finally {
-            setIsPrinting(false);
+            setIsProcessing(false);
         }
     };
 
+    const handleShare = async () => {
+        if (!navigator.share) {
+            toast({ title: "Non supportato", description: "La condivisione non è supportata su questo browser.", variant: "destructive" });
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            const doc = await generatePdfDoc();
+            const pdfBlob = doc.output('blob');
+            const pdfFile = new File([pdfBlob], `Riepilogo_${operator?.firstName}-${operator?.lastName}_${format(currentMonth, 'MMMM-yyyy')}.pdf`, { type: 'application/pdf' });
+            
+            await navigator.share({
+                title: `Riepilogo Lavoro di ${operator?.firstName}`,
+                text: `Ecco il riepilogo per ${format(currentMonth, 'MMMM yyyy')}.`,
+                files: [pdfFile],
+            });
+        } catch (error) {
+            console.error("Failed to share PDF", error);
+            // Ignore error if user cancels share dialog
+            if ((error as DOMException).name !== 'AbortError') {
+                 toast({ title: "Errore Condivisione", description: "Impossibile condividere il file PDF.", variant: "destructive" });
+            }
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     const handleCleanMonth = async () => {
         if (!firestore || !operatorId || !currentMonth) return;
@@ -327,47 +330,25 @@ export default function EndOfMonthPage() {
 
         const batch = writeBatch(firestore);
 
-        // Delete timbrature for the month
-        const timbratureQuery = query(
-            collection(firestore, `app-users/${operatorId}/timbrature`),
-            where('timestamp', '>=', monthStart),
-            where('timestamp', '<=', monthEnd)
-        );
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', monthStart), where('timestamp', '<=', monthEnd));
         const timbratureSnap = await getDocs(timbratureQuery);
         timbratureSnap.forEach(doc => batch.delete(doc.ref));
 
-        // Delete straordinari for the month
-        const straordinariQuery = query(
-            collection(firestore, `app-users/${operatorId}/straordinari`),
-            where('date', '>=', monthStart),
-            where('date', '<=', monthEnd)
-        );
+        const straordinariQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('date', '>=', monthStart), where('date', '<=', monthEnd));
         const straordinariSnap = await getDocs(straordinariQuery);
         straordinariSnap.forEach(doc => batch.delete(doc.ref));
 
-        // Delete requests for the month
-        const requestsQuery = query(
-            collection(firestore, `app-users/${operatorId}/requests`),
-            where('startDate', '>=', monthStart),
-            where('startDate', '<=', monthEnd)
-        );
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', monthStart), where('startDate', '<=', monthEnd));
         const requestsSnap = await getDocs(requestsQuery);
         requestsSnap.forEach(doc => batch.delete(doc.ref));
 
         try {
             await batch.commit();
-            toast({
-                title: "Successo!",
-                description: `I dati di ${format(currentMonth, 'MMMM yyyy', { locale: it })} sono stati eliminati.`
-            });
-            fetchDataForMonth(); // Refetch data to update the view
+            toast({ title: "Successo!", description: `I dati di ${format(currentMonth, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
+            fetchDataForMonth();
         } catch (error) {
             console.error("Errore pulizia mese:", error);
-            toast({
-                title: "Errore",
-                description: "Impossibile completare la pulizia del mese.",
-                variant: "destructive"
-            });
+            toast({ title: "Errore", description: "Impossibile completare la pulizia del mese.", variant: "destructive" });
         } finally {
             setIsCleaning(false);
             setIsCleanConfirmOpen(false);
@@ -389,9 +370,13 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                         <Button onClick={handlePrintAndShare} disabled={isPrinting} className="w-full sm:w-auto">
-                            {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                            {isPrinting ? "Stampa in corso..." : "Stampa/Condividi Riepilogo"}
+                        <Button onClick={handlePrint} disabled={isProcessing} className="w-full sm:w-auto">
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                            Stampa PDF
+                        </Button>
+                        <Button onClick={handleShare} disabled={isProcessing} className="w-full sm:w-auto">
+                           {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
+                            Condividi PDF
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
