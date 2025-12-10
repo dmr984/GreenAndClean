@@ -1,3 +1,4 @@
+
 // src/app/dashboard/operators/[operatorId]/end-of-month/page.tsx
 
 'use client';
@@ -302,19 +303,11 @@ export default function EndOfMonthPage() {
                  y = doc.autoTable.previous.finalY + 5;
             });
             
-            doc.autoPrint();
             const pdfBlob = doc.output('blob');
             const pdfUrl = URL.createObjectURL(pdfBlob);
-
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = pdfUrl;
-            document.body.appendChild(iframe);
-            iframe.onload = () => {
-                setTimeout(() => {
-                    iframe.contentWindow?.print();
-                }, 1);
-            };
+            window.open(pdfUrl, '_blank');
+            // We don't revoke the URL immediately to allow the new tab to open.
+            // Modern browsers handle garbage collection of blob URLs.
 
         } catch (error) {
             console.error("Failed to generate PDF", error);
