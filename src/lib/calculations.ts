@@ -40,6 +40,7 @@ type Request = {
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    associatedShiftId?: string;
 };
 
 type Shift = {
@@ -69,10 +70,27 @@ export type MonthlySummary = {
     malattiaDays: number;
 };
 
-const roundToNearestHalfHour = (minutes: number): number => {
+// Simple, direct rounding for ordinary hours
+const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const hours = Math.floor(minutes / 30);
-    return hours * 0.5;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+
+    if (remainingMinutes >= 55) { // From 55 to 59:59 -> round up to next hour
+         return hours + 1;
+    } else if (remainingMinutes >= 25) { // From 25 to 54:59 -> round up to half hour
+        return hours + 0.5;
+    } else { // From 0 to 24:59 -> round down
+        return hours;
+    }
+};
+
+// Simple, direct rounding for overtime
+const roundOvertimeHours = (minutes: number): number => {
+    if (minutes <= 0) return 0;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return hours + (remainingMinutes >= 50 ? 1 : 0);
 };
 
 
@@ -135,6 +153,9 @@ export const processMonthlyData = (
 
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
     const details: DailyDetail[] = [];
+    
+    // This will hold overtime from approved shifts, calculated day by day.
+    let totalCalculatedOvertimeMinutes = 0;
 
     // Process each day of the month
     for (const day of allDaysOfMonth) {
@@ -162,16 +183,20 @@ export const processMonthlyData = (
             
             const { workedMinutes } = calculateShiftDetails(events, dailySchedule, ignoreContractualStart);
            
-            const contractualMinutes = contractualHours * 60;
-            const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
-            const ordinaryHours = roundToNearestHalfHour(ordinaryMinutes);
+            let ordinaryMinutes = 0;
+            let overtimeMinutes = 0;
 
-            // Straordinario calcolato da approvazione turno + straordinario manuale
-            const autoOvertimeRequest = monthlyData.requests.find(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day) && (r as any).associatedShiftId);
-            const manualOvertimeRequest = monthlyData.requests.find(r => r.type === 'straordinario' && isSameDay(r.startDate.toDate(), day) && !(r as any).associatedShiftId);
+            if (isWorkDay) {
+                 const contractualMinutes = contractualHours * 60;
+                 ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
+                 overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
+            } else {
+                // Not a workday, all worked time is overtime
+                overtimeMinutes = workedMinutes;
+            }
             
-            const overtimeHours = (autoOvertimeRequest?.hours || 0) + (manualOvertimeRequest?.hours || 0);
-
+            totalCalculatedOvertimeMinutes += overtimeMinutes;
+            
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -185,8 +210,8 @@ export const processMonthlyData = (
                     events,
                     contractualHours,
                     workedMinutes,
-                    ordinaryHours,
-                    overtimeHours,
+                    ordinaryHours: roundOrdinaryHours(ordinaryMinutes),
+                    overtimeHours: roundOvertimeHours(overtimeMinutes), // Store rounded overtime for this day
                     permissionHours,
                     isPureOvertime: !isWorkDay
                 },
@@ -203,10 +228,13 @@ export const processMonthlyData = (
     // SUMMARIZE
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     
-    const totalOvertime = monthlyData.requests
+    // Overtime from manual requests (not associated with an auto-approved shift)
+    const manualOvertimeHours = monthlyData.requests
         .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
-    
+        
+    const totalCalculatedOvertimeHours = roundOvertimeHours(totalCalculatedOvertimeMinutes);
+
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -217,7 +245,11 @@ export const processMonthlyData = (
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
         if (req.type === 'ferie' || req.type === 'malattia') {
-            for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
+             // Clone the date to avoid modifying the original object
+            const startDate = new Date(req.startDate.toDate());
+            const endDate = new Date(req.endDate.toDate());
+
+            for (let day = startOfDay(startDate); day <= startOfDay(endDate); day.setDate(day.getDate() + 1)) {
                 if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
@@ -235,7 +267,7 @@ export const processMonthlyData = (
     const monthlySummary: MonthlySummary = {
         workedDays: details.filter(d => d.status === 'lavorato').length,
         ordinaryHours: totalOrdinary,
-        overtimeHours: totalOvertime,
+        overtimeHours: totalCalculatedOvertimeHours + manualOvertimeHours, // Combine calculated and manual
         ferieDays,
         permessoHours: totalPermesso,
         malattiaDays,
