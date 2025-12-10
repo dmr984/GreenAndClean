@@ -312,20 +312,6 @@ export default function EndOfMonthPage() {
         }
     };
     
-    const handlePrint = () => {
-        if (!pdfPreviewUrl) return;
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = pdfPreviewUrl;
-        document.body.appendChild(iframe);
-        iframe.onload = () => {
-            setTimeout(() => {
-                iframe.contentWindow?.print();
-                document.body.removeChild(iframe);
-            }, 100);
-        };
-    };
-
     const handleDownload = async () => {
         if (!operator) return;
         const doc = await generatePdfDoc();
@@ -508,7 +494,6 @@ export default function EndOfMonthPage() {
                 </div>
                 <ResponsiveDialogFooter className="pt-4 flex-col sm:flex-row gap-2">
                     <Button variant="outline" onClick={() => setPdfPreviewUrl(null)}>Chiudi</Button>
-                    <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
                     <Button onClick={handleDownload}><Download className="mr-2 h-4 w-4" />Salva PDF</Button>
                 </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
