@@ -314,8 +314,23 @@ export default function EndOfMonthPage() {
     
     const handleDownload = async () => {
         if (!operator) return;
-        const doc = await generatePdfDoc();
-        doc.save(`Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`);
+        try {
+            const doc = await generatePdfDoc();
+            doc.save(`Riepilogo_${operator.firstName}-${operator.lastName}_${format(currentMonth, 'MMMM-yyyy', { locale: it })}.pdf`);
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile scaricare il PDF.", variant: "destructive" });
+        }
+    };
+    
+    const handlePrint = async () => {
+        try {
+            const doc = await generatePdfDoc();
+            // This opens the PDF in a new tab and immediately triggers the print dialog.
+            doc.autoPrint();
+            doc.output("dataurlnewwindow");
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile avviare la stampa.", variant: "destructive" });
+        }
     };
 
     const handleCleanMonth = async () => {
@@ -485,16 +500,14 @@ export default function EndOfMonthPage() {
             <ResponsiveDialogContent className="max-w-4xl h-[90vh] flex flex-col">
                 <ResponsiveDialogHeader>
                     <ResponsiveDialogTitle>Anteprima Riepilogo</ResponsiveDialogTitle>
-                    <ResponsiveDialogDescription>
-                        Controlla il documento prima di stamparlo o salvarlo.
-                    </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
-                <div className="flex-grow">
+                <div className="flex-grow my-4">
                     {pdfPreviewUrl && <embed src={pdfPreviewUrl} type="application/pdf" className="w-full h-full" />}
                 </div>
                 <ResponsiveDialogFooter className="pt-4 flex-col sm:flex-row gap-2">
                     <Button variant="outline" onClick={() => setPdfPreviewUrl(null)}>Chiudi</Button>
                     <Button onClick={handleDownload}><Download className="mr-2 h-4 w-4" />Salva PDF</Button>
+                    <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Stampa</Button>
                 </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
