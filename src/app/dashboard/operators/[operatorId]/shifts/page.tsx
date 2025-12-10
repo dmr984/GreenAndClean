@@ -1260,24 +1260,35 @@ export default function ShiftApprovalPage() {
         
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
         if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
-
+    
         const { calculationStart } = calculateShiftDurations(shift.events);
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
         if (!calculationStart) {
             return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
         }
-
+    
         const { ordinary, overtime } = calculateHours(shift);
-        const breakDuration = shift.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
-            const finePausa = shift.events.find(ep => ep.type === 'fine_pausa' && ep.timestamp.toMillis() > current.timestamp.toMillis());
-            if (finePausa) return acc + (finePausa.timestamp.toMillis() - current.timestamp.toMillis());
-            return acc;
-        }, 0);
-
+        
+        // Find all break segments and sum their duration in milliseconds
+        let breakDurationMillis = 0;
+        let breakStartEvent: Timbratura | undefined = undefined;
+        for (const event of shift.events.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis())) {
+            if (event.type === 'pausa') {
+                breakStartEvent = event;
+            }
+            if (event.type === 'fine_pausa' && breakStartEvent) {
+                breakDurationMillis += event.timestamp.toMillis() - breakStartEvent.timestamp.toMillis();
+                breakStartEvent = undefined; // Reset for next possible break
+            }
+        }
+    
         const totalCalculatedMinutes = (ordinary + overtime) * 60;
-        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
-
+        const totalCalculatedMillis = totalCalculatedMinutes * 60000;
+    
+        const calculatedEndTime = new Date(calculationStart.getTime() + totalCalculatedMillis + breakDurationMillis);
+    
+        // Compare calculated end time with actual clock-out time, allowing for a small tolerance (e.g., 60 seconds)
         if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
              return { display: `${originalTime} (${format(calculatedEndTime, 'HH:mm')})`, calculationEnd: calculatedEndTime };
         }
@@ -2021,5 +2032,7 @@ export default function ShiftApprovalPage() {
 
 
 
+
+    
 
     
