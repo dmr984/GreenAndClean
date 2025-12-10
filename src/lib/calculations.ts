@@ -1,7 +1,7 @@
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays } from 'date-fns';
 import { isPublicHoliday } from '@/lib/holidays';
 
 // Type Definitions
@@ -76,10 +76,13 @@ const roundOrdinaryHours = (minutes: number): number => {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
 
-    if (remainingMinutes >= 25) { 
-        return hours + 0.5;
-    } 
-    return hours;
+    let roundedHours = hours;
+    if (remainingMinutes >= 25 && remainingMinutes < 55) {
+        roundedHours += 0.5;
+    } else if (remainingMinutes >= 55) {
+        roundedHours += 1;
+    }
+    return roundedHours;
 };
 
 
@@ -88,7 +91,7 @@ const roundOvertimeHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-
+    
     if (remainingMinutes >= 50) {
         return hours + 1;
     }
@@ -128,11 +131,13 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
+    
+    const finalCalculationEnd = new Date(calculationStartTime.getTime() + workedMillis + breakDurationMillis);
 
     return { 
         workedMinutes,
         calculationStart: calculationStartTime,
-        calculationEnd: new Date(calculationStartTime.getTime() + workedMillis + breakDurationMillis),
+        calculationEnd: finalCalculationEnd,
         breakMinutes: Math.floor(breakDurationMillis / 60000)
     };
 };
@@ -190,7 +195,6 @@ export const processMonthlyData = (
                  ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
                  overtimeMinutes = Math.max(0, workedMinutes - ordinaryMinutes);
             } else {
-                // Not a workday, all worked time is overtime
                 ordinaryMinutes = 0;
                 overtimeMinutes = workedMinutes;
             }
@@ -228,11 +232,15 @@ export const processMonthlyData = (
     // =================================================================
     const totalOrdinary = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     
-    // THIS IS THE SINGLE SOURCE OF TRUTH for total overtime.
-    // Sum all approved 'straordinario' requests within the month.
-    const totalOvertime = monthlyData.requests
-        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval))
+    // SOURCE OF TRUTH: Sum the daily calculated (and rounded) overtime hours.
+    const totalOvertimeFromShifts = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
+    
+    // Add manually approved overtime requests that might not be associated with a regular shift
+    const manualOvertimeHours = monthlyData.requests
+        .filter(r => r.type === 'straordinario' && isWithinInterval(r.startDate.toDate(), monthInterval) && !r.associatedShiftId)
         .reduce((sum, r) => sum + (r.hours || 0), 0);
+
+    const totalOvertime = totalOvertimeFromShifts + manualOvertimeHours;
 
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -247,7 +255,7 @@ export const processMonthlyData = (
             const startDate = startOfDay(req.startDate.toDate());
             const endDate = startOfDay(req.endDate.toDate());
 
-            for (let day = new Date(startDate); day <= endDate; day.setDate(day.getDate() + 1)) {
+            for (let day = new Date(startDate); day <= endDate; day = addDays(day, 1)) {
                  if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
@@ -265,7 +273,7 @@ export const processMonthlyData = (
     const monthlySummary: MonthlySummary = {
         workedDays: details.filter(d => d.status === 'lavorato').length,
         ordinaryHours: totalOrdinary,
-        overtimeHours: totalOvertime, // SOURCE OF TRUTH
+        overtimeHours: totalOvertime,
         ferieDays,
         permessoHours: totalPermesso,
         malattiaDays,
