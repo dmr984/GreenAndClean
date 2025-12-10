@@ -1,4 +1,5 @@
 
+
 // src/app/dashboard/operators/[operatorId]/end-of-month/page.tsx
 
 'use client';
@@ -293,7 +294,7 @@ export default function EndOfMonthPage() {
             setIsProcessing(false);
         }
     };
-
+    
     const handleShare = async () => {
         if (!navigator.share) {
             toast({ title: "Non supportato", description: "La condivisione non è supportata su questo browser.", variant: "destructive" });
@@ -311,7 +312,6 @@ export default function EndOfMonthPage() {
                 files: [pdfFile],
             });
         } catch (error) {
-            console.error("Failed to share PDF", error);
             // Ignore error if user cancels share dialog
             if ((error as DOMException).name !== 'AbortError') {
                  toast({ title: "Errore Condivisione", description: "Impossibile condividere il file PDF.", variant: "destructive" });
