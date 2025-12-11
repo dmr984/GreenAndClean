@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import Image from 'next/image';
+
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -262,18 +262,8 @@ const PrintPageContent = () => {
         if (!pdf) return;
 
         const url = URL.createObjectURL(pdf.blob);
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = url;
-        document.body.appendChild(iframe);
-        iframe.onload = () => {
-            setTimeout(() => {
-                iframe.contentWindow?.focus();
-                iframe.contentWindow?.print();
-                document.body.removeChild(iframe);
-                URL.revokeObjectURL(url);
-            }, 1);
-        };
+        window.open(url, '_blank');
+        URL.revokeObjectURL(url);
     };
 
     const handleDownload = async () => {
@@ -347,12 +337,23 @@ a.click();
 
             <main className="flex justify-center p-4 sm:p-8">
                 <div className="w-full max-w-4xl bg-background p-8 shadow-lg print-area">
-                    {/* Header */}
-                    <div className="text-center mb-8">
-                        <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={80} height={80} className="mx-auto" />
-                        <h1 className="text-2xl font-bold mt-4">SERVECO SRL</h1>
-                        <p className="text-sm text-muted-foreground">Riepilogo Mensile Operatore</p>
-                    </div>
+                     <table className="w-full mb-6">
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '80px', height: '80px'}} />
+                                </td>
+                                <td className="text-center align-middle">
+                                    <h1 className="text-2xl font-bold">SERVECO SRL</h1>
+                                    <p className="text-sm text-muted-foreground">Sede Legale: Via Francesco Cilea, 21 - 84043 Agropoli (SA)</p>
+                                    <p className="text-sm text-muted-foreground">P.IVA: 05244990658</p>
+                                </td>
+                                <td style={{width: '80px'}}></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div className="border-t my-4"></div>
 
                     {/* Operator Info */}
                     <table className="w-full mb-6 text-sm">
@@ -369,26 +370,26 @@ a.click();
                     <div className="border-t my-4"></div>
 
                     {/* Summary */}
-                    <h2 className="text-lg font-semibold mb-2">Riepilogo Generale</h2>
+                    <h2 className="text-lg font-semibold mb-2 text-center">RIEPILOGO GENERALE</h2>
                      <table className="w-full text-sm mb-8">
                         <thead>
                             <tr className="border-b">
-                                <th className="text-left py-2 font-semibold">GIORNI LAVORATI</th>
-                                <th className="text-left py-2 font-semibold">ORE ORDINARIE</th>
-                                <th className="text-left py-2 font-semibold">ORE STRAORD.</th>
-                                <th className="text-left py-2 font-semibold">FERIE (gg)</th>
-                                <th className="text-left py-2 font-semibold">PERMESSI (h)</th>
-                                <th className="text-left py-2 font-semibold">MALATTIA (gg)</th>
+                                <th className="text-center py-2 font-semibold">GIORNI LAVORATI</th>
+                                <th className="text-center py-2 font-semibold">ORE ORDINARIE</th>
+                                <th className="text-center py-2 font-semibold">ORE STRAORD.</th>
+                                <th className="text-center py-2 font-semibold">FERIE (gg)</th>
+                                <th className="text-center py-2 font-semibold">PERMESSI (h)</th>
+                                <th className="text-center py-2 font-semibold">MALATTIA (gg)</th>
                             </tr>
                         </thead>
                          <tbody>
                             <tr>
-                                <td className="py-2">{monthlySummary.workedDays || 0}</td>
-                                <td className="py-2">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="py-2">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="py-2">{monthlySummary.ferieDays || 0}</td>
-                                <td className="py-2">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="py-2">{monthlySummary.malattiaDays || 0}</td>
+                                <td className="py-2 text-center">{monthlySummary.workedDays || 0}</td>
+                                <td className="py-2 text-center">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="py-2 text-center">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="py-2 text-center">{monthlySummary.ferieDays || 0}</td>
+                                <td className="py-2 text-center">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="py-2 text-center">{monthlySummary.malattiaDays || 0}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -396,7 +397,7 @@ a.click();
                      <div className="border-t my-4"></div>
 
                     {/* Daily Details */}
-                    <h2 className="text-lg font-semibold mb-2">Dettaglio Giornaliero</h2>
+                    <h2 className="text-lg font-semibold mb-2 text-center">DETTAGLIO GIORNALIERO</h2>
                     <div className="space-y-4">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                              const isSunday = getDay(detail.date) === 0;
