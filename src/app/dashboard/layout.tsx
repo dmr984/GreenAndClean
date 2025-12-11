@@ -71,11 +71,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   
   return (
     <>
-    <div className="flex flex-col min-h-screen w-full">
-        <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
-            {renderDashboardContent()}
-        </main>
-    </div>
+    <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
+        {renderDashboardContent()}
+    </main>
     <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
     </>
   );
