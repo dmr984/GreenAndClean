@@ -99,8 +99,6 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
-    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-    const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
     
 
     useEffect(() => {
@@ -276,9 +274,17 @@ export default function EndOfMonthPage() {
                 cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
             },
             columnStyles: { 0: { cellWidth: 'auto' } },
-            didParseCell: (data) => {
+            didDrawCell: (data) => {
                 if (data.row.index % 2 !== 0 && data.cell.raw.toString().startsWith('Ore Previste')) {
-                     data.row.cells[0].styles.cellPadding.bottom = 4;
+                    doc.setDrawColor(200, 200, 200); // Separator color
+                    doc.line(data.cell.x, data.cell.y + data.cell.height + 2, data.cell.x + data.cell.width, data.cell.y + data.cell.height + 2);
+                }
+                 if (!data.cell.raw.toString().startsWith('Ore Previste') && data.row.index % 2 === 0) {
+                     doc.setDrawColor(200, 200, 200); // Separator color
+                     const previousRow = data.table.body[data.row.index - 1];
+                     if (previousRow && !previousRow.cells[0].raw.toString().startsWith('Ore Previste')) {
+                         doc.line(data.cell.x, data.cell.y - 2, data.cell.x + data.cell.width, data.cell.y - 2);
+                     }
                 }
             }
         });
@@ -292,94 +298,13 @@ export default function EndOfMonthPage() {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const blob = doc.output('blob');
-            const url = URL.createObjectURL(blob);
-            setPdfBlobUrl(url);
-            setIsPreviewOpen(true);
+            const blob = doc.output('bloburl');
+            window.open(blob, '_blank');
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
             console.error(error);
         } finally {
             setIsProcessing(false);
-        }
-    };
-
-    const handlePrintPdf = async () => {
-        if (!pdfBlobUrl) {
-            if (isProcessing || !operator) return;
-            setIsProcessing(true);
-            try {
-                const doc = await generatePdfDoc();
-                const blob = doc.output('blob');
-                const url = URL.createObjectURL(blob);
-                window.open(url, '_blank');
-            } catch (error) {
-                toast({ title: "Errore", description: "Impossibile generare il PDF per la stampa.", variant: "destructive" });
-            } finally {
-                setIsProcessing(false);
-            }
-        } else {
-            window.open(pdfBlobUrl, '_blank');
-        }
-    };
-
-    const handleDownloadPdf = async () => {
-        if (!operator) return;
-        let urlToDownload = pdfBlobUrl;
-        if (!urlToDownload) {
-             if (isProcessing) return;
-             setIsProcessing(true);
-             try {
-                const doc = await generatePdfDoc();
-                const blob = doc.output('blob');
-                urlToDownload = URL.createObjectURL(blob);
-             } catch (error) {
-                toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
-                setIsProcessing(false);
-                return;
-             } finally {
-                setIsProcessing(false);
-             }
-        }
-
-        const link = document.createElement('a');
-        link.href = urlToDownload;
-        link.download = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const handleSharePdf = async () => {
-        if (!operator) return;
-         let fileToShare: File;
-
-        try {
-            if (pdfBlobUrl) {
-                 const response = await fetch(pdfBlobUrl);
-                 const blob = await response.blob();
-                 fileToShare = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
-            } else {
-                if (isProcessing) return;
-                setIsProcessing(true);
-                const doc = await generatePdfDoc();
-                const blob = doc.output('blob');
-                fileToShare = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
-                setIsProcessing(false);
-            }
-            
-            if (navigator.share && navigator.canShare({ files: [fileToShare] })) {
-                await navigator.share({
-                    files: [fileToShare],
-                    title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
-                });
-            } else {
-                handleDownloadPdf();
-            }
-        } catch (error) {
-            console.error('Error sharing:', error);
-            toast({ title: "Condivisione non supportata", description: "Il tuo browser non supporta la condivisione di file. Il file verrà scaricato.", variant: "destructive" });
-            handleDownloadPdf();
         }
     };
     
@@ -564,42 +489,6 @@ export default function EndOfMonthPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
-
-        <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 sm:p-2">
-                <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
-                    <DialogTitle>
-                         <div className="flex justify-between items-center">
-                            <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
-                            <div className="flex items-center gap-2">
-                                <Button variant="outline" size="icon" onClick={handlePrintPdf}>
-                                    <Printer className="h-5 w-5" />
-                                    <span className="sr-only">Stampa</span>
-                                </Button>
-                                <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
-                                    <Download className="h-5 w-5" />
-                                    <span className="sr-only">Scarica</span>
-                                </Button>
-                                <Button variant="outline" size="icon" onClick={handleSharePdf}>
-                                    <Share2 className="h-5 w-5" />
-                                    <span className="sr-only">Condividi</span>
-                                </Button>
-                            </div>
-                        </div>
-                    </DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 overflow-auto p-4">
-                    {pdfBlobUrl ? (
-                         <iframe src={pdfBlobUrl} className="w-full h-full border-none" title="Anteprima PDF" />
-                    ) : (
-                        <div className="flex items-center justify-center h-full">
-                            <Loader2 className="h-8 w-8 animate-spin" />
-                        </div>
-                    )}
-                </div>
-            </DialogContent>
-        </Dialog>
-
         </>
     );
 }

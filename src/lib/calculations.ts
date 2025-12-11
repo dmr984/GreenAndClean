@@ -291,7 +291,13 @@ export const processMonthlyData = (
     // =================================================================
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
-    const workedDays = details.filter(d => d.status === 'lavorato').length;
+    
+    const workedDays = details.filter(d => {
+        // A day is a "worked day" if it's a contractual day and the status is 'lavorato'.
+        const dayName = dayIndexToName[getDay(d.date)];
+        const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+        return d.status === 'lavorato' && isContractualDay;
+    }).length;
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
