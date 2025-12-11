@@ -16,17 +16,8 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
-
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF;
-  }
-}
+import type jsPDF from 'jspdf';
 
 
 // Type definitions are now in calculations.ts
@@ -174,135 +165,134 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = useCallback(async (): Promise<jsPDF> => {
-        if (!operator) throw new Error("Operator not loaded");
-
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        let y = 20;
-
-        doc.setTextColor(40, 40, 40);
-        doc.setFillColor(255, 255, 255);
+    
+    const handleGenerateAndOpen = async () => {
+        if (isProcessing || !operator) return;
+        setIsProcessing(true);
 
         try {
-            const loadLogo = new Promise<string>((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = "Anonymous";
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) return reject(new Error('Failed to get canvas context'));
-                    ctx.drawImage(img, 0, 0);
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                img.onerror = (err) => reject(err);
-                img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png'; 
-            });
+            const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
 
-            const base64data = await loadLogo;
-            doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
-        } catch (error) {
-            console.warn("Could not load logo for PDF, proceeding without it.");
-        }
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            let y = 20;
 
-        doc.setFontSize(16);
-        doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
+            doc.setTextColor(40, 40, 40);
+            doc.setFillColor(255, 255, 255);
 
-        y = 40;
+            try {
+                const loadLogo = new Promise<string>((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous";
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) return reject(new Error('Failed to get canvas context'));
+                        ctx.drawImage(img, 0, 0);
+                        resolve(canvas.toDataURL('image/png'));
+                    };
+                    img.onerror = (err) => reject(err);
+                    img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png'; 
+                });
 
-        const summaryData = [
-            { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
-            { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
-            { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
-            { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
-            { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
-            { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
-        ];
-
-        autoTable(doc, {
-            startY: y,
-            body: [
-                summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
-                summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
-            ],
-            theme: 'grid',
-            styles: {
-                halign: 'center', valign: 'middle', fontSize: 9,
-                fillColor: [255, 255, 255], textColor: 40,
-                lineColor: [200, 200, 200], lineWidth: 0.1,
-            },
-        });
-
-        y = (doc as any).autoTable.previous.finalY + 10;
-
-        doc.setFontSize(14);
-        doc.text("Dettaglio Giornaliero", 15, y);
-        y += 8;
-
-        dailyDetails.forEach(detail => {
-            if (detail.status === 'riposo') return;
-            if (y > 270) { doc.addPage(); y = 20; }
-
-            const title = format(detail.date, 'eeee dd MMMM', { locale: it });
-            let statusText = '';
-            const body = [];
-
-            switch(detail.status) {
-                case 'lavorato':
-                    statusText = `Lavorato`;
-                    if (detail.shift) {
-                        let timbratureText = 'Timbrature: ';
-                         detail.shift.events.forEach(e => {
-                            const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                            let referenceTime = '';
-
-                            if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
-                                if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                        referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                }
-                            }
-                             timbratureText += `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime} | `;
-                        });
-                        body.push([timbratureText.slice(0, -3)]);
-                        body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
-                    }
-                    break;
-                case 'ferie': statusText = 'Ferie'; body.push(['Giorno di ferie approvato.']); break;
-                case 'malattia': statusText = 'Malattia'; body.push(['Giorno di malattia approvato.']); break;
-                case 'mancata_timbratura': statusText = 'Mancata Timbratura'; body.push(['Nessuna timbratura registrata in un giorno lavorativo.']); break;
-                case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
+                const base64data = await loadLogo;
+                doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
+            } catch (error) {
+                console.warn("Could not load logo for PDF, proceeding without it.");
             }
+
+            doc.setFontSize(16);
+            doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
+            doc.setFontSize(10);
+            doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
+
+            y = 40;
+
+            const summaryData = [
+                { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
+                { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
+                { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
+                { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
+                { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
+                { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
+            ];
 
             autoTable(doc, {
                 startY: y,
-                head: [[`${title} - ${statusText}`]],
-                body: body,
-                theme: 'striped',
-                headStyles: { fillColor: [244, 244, 245], textColor: 20 },
-                styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
-                didDrawPage: (data: any) => y = data.cursor?.y || y
+                body: [
+                    summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
+                    summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
+                ],
+                theme: 'grid',
+                styles: {
+                    halign: 'center', valign: 'middle', fontSize: 9,
+                    fillColor: [255, 255, 255], textColor: 40,
+                    lineColor: [200, 200, 200], lineWidth: 0.1,
+                },
             });
-            y = (doc as any).autoTable.previous.finalY + 5;
-        });
 
-        return doc;
-    }, [operator, currentMonth, monthlySummary, dailyDetails]);
-    
-    const handleGenerateAndOpen = async () => {
-        if (isProcessing) return;
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
+            y = (doc as any).autoTable.previous.finalY + 10;
+
+            doc.setFontSize(14);
+            doc.text("Dettaglio Giornaliero", 15, y);
+            y += 8;
+
+            dailyDetails.forEach(detail => {
+                if (detail.status === 'riposo') return;
+                if (y > 270) { doc.addPage(); y = 20; }
+
+                const title = format(detail.date, 'eeee dd MMMM', { locale: it });
+                let statusText = '';
+                const body = [];
+
+                switch(detail.status) {
+                    case 'lavorato':
+                        statusText = `Lavorato`;
+                        if (detail.shift) {
+                            let timbratureText = 'Timbrature: ';
+                            detail.shift.events.forEach(e => {
+                                const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
+                                let referenceTime = '';
+
+                                if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
+                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
+                                    if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
+                                        referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                    } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
+                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                    }
+                                }
+                                timbratureText += `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime} | `;
+                            });
+                            body.push([timbratureText.slice(0, -3)]);
+                            body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
+                        }
+                        break;
+                    case 'ferie': statusText = 'Ferie'; body.push(['Giorno di ferie approvato.']); break;
+                    case 'malattia': statusText = 'Malattia'; body.push(['Giorno di malattia approvato.']); break;
+                    case 'mancata_timbratura': statusText = 'Mancata Timbratura'; body.push(['Nessuna timbratura registrata in un giorno lavorativo.']); break;
+                    case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
+                }
+
+                autoTable(doc, {
+                    startY: y,
+                    head: [[`${title} - ${statusText}`]],
+                    body: body,
+                    theme: 'striped',
+                    headStyles: { fillColor: [244, 244, 245], textColor: 20 },
+                    styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
+                    didDrawPage: (data: any) => y = data.cursor?.y || y
+                });
+                y = (doc as any).autoTable.previous.finalY + 5;
+            });
+            
             const blob = doc.output('blob');
             const url = URL.createObjectURL(blob);
             window.open(url, '_blank');
+
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
             console.error(error);
