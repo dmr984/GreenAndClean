@@ -163,19 +163,19 @@ const PrintPageContent = () => {
         
         // Summary Table
         const summaryBody = [[
-            { content: 'Giorni Lavorati', styles: { halign: 'center' } },
-            { content: 'Ore Ordinarie', styles: { halign: 'center' } },
-            { content: 'Ore\nStraordinarie', styles: { halign: 'center', } },
-            { content: 'Ferie\n(giorni)', styles: { halign: 'center' } },
-            { content: 'Permessi\n(ore)', styles: { halign: 'center' } },
-            { content: 'Malattia\n(giorni)', styles: { halign: 'center' } },
+            { content: 'Giorni Lav.', styles: { halign: 'center', fontSize: 8 } },
+            { content: 'Ore Ordinarie', styles: { halign: 'center', fontSize: 8 } },
+            { content: 'Ore\nStraordinarie', styles: { halign: 'center', fontSize: 8 } },
+            { content: 'Ferie', styles: { halign: 'center', fontSize: 8 } },
+            { content: 'Permessi', styles: { halign: 'center', fontSize: 8 } },
+            { content: 'Malattia', styles: { halign: 'center', fontSize: 8 } },
         ], [
-            { content: (monthlySummary.workedDays || 0).toString(), styles: { halign: 'center' } },
-            { content: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'), styles: { halign: 'center' } },
-            { content: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'), styles: { halign: 'center' } },
-            { content: (monthlySummary.ferieDays || 0).toString(), styles: { halign: 'center' } },
-            { content: (monthlySummary.permessoHours || 0).toLocaleString('it-IT'), styles: { halign: 'center' } },
-            { content: (monthlySummary.malattiaDays || 0).toString(), styles: { halign: 'center' } },
+            { content: (monthlySummary.workedDays || 0).toString(), styles: { halign: 'center', fontSize: 12 } },
+            { content: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', fontSize: 12 } },
+            { content: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', fontSize: 12 } },
+            { content: (monthlySummary.ferieDays || 0).toString(), styles: { halign: 'center', fontSize: 12 } },
+            { content: (monthlySummary.permessoHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', fontSize: 12 } },
+            { content: (monthlySummary.malattiaDays || 0).toString(), styles: { halign: 'center', fontSize: 12 } },
         ]];
     
         (doc as any).autoTable({
@@ -183,6 +183,14 @@ const PrintPageContent = () => {
             body: summaryBody,
             theme: 'grid',
             styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+             columnStyles: {
+                0: { cellWidth: 25 },
+                1: { cellWidth: 35 },
+                2: { cellWidth: 35 },
+                3: { cellWidth: 25 },
+                4: { cellWidth: 25 },
+                5: { cellWidth: 25 },
+            }
         });
     
         // Daily Details
@@ -201,7 +209,7 @@ const PrintPageContent = () => {
             }
              if (detail.status === 'lavorato') statusStr = 'Lavorato';
              
-            const line1 = `${dateStr} - ${statusStr} | Timbrature: ${timbratureStr}`;
+            const line1 = `${dateStr} - ${statusStr}\n${timbratureStr}`;
             
             let line2 = '';
             if(detail.shift) {
@@ -322,12 +330,12 @@ const PrintPageContent = () => {
                     <table className="w-full text-xs border border-collapse mb-8 table-fixed">
                         <thead>
                             <tr className="border-b">
-                                <th className="border p-1 font-semibold text-center text-[10px]">Giorni Lav.</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]">Ore Ordinarie</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]">Ore<br/>Straordinarie</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]">Ferie</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]">Permessi</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]">Malattia</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Giorni Lav.</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '20%' }}>Ore Ordinarie</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '20%' }}>Ore<br/>Straordinarie</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Ferie</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Permessi</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Malattia</th>
                             </tr>
                         </thead>
                          <tbody>
