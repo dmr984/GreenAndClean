@@ -314,9 +314,13 @@ export default function EndOfMonthPage() {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const pdfBlob = doc.output('blob');
-            const url = URL.createObjectURL(pdfBlob);
-            window.open(url); // Opens in a new tab, user can print from there
+            doc.autoPrint();
+            // Workaround for cross-origin issues and mobile compatibility
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = doc.output('bloburl').toString();
+            document.body.appendChild(iframe);
+            iframe.contentWindow?.print();
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile preparare la stampa.", variant: "destructive" });
             console.error(error);
@@ -344,7 +348,7 @@ export default function EndOfMonthPage() {
                 doc.save(filename);
                 toast({
                     title: 'Download Avviato',
-                    description: 'La condivisione non è supportata dal browser, il file è stato scaricato.',
+                    description: 'La condivisione non è supportata, il file è stato scaricato.',
                 });
             }
         } catch (error) {
