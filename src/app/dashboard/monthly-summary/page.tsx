@@ -6,7 +6,7 @@ import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay } from 'date-fns';
@@ -198,14 +198,18 @@ const MonthlySummaryContent = () => {
             </CardHeader>
             <CardContent className="space-y-8">
                  <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
                     <div className="flex items-center gap-2">
                         <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
                         <Button variant="ghost" size="icon" onClick={fetchDataForMonth} disabled={isLoading}>
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
                         </Button>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(1)}>Succ.</Button>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
                 </div>
                 
                  {isLoading ? (

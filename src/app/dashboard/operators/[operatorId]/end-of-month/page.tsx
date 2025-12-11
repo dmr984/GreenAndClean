@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -232,14 +232,18 @@ export default function EndOfMonthPage() {
             </CardHeader>
             <CardContent className="space-y-8">
                  <div className="flex items-center justify-between p-2 border rounded-md">
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
                     <div className="flex-1 flex items-center justify-center gap-2">
                         <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
                         <Button variant="ghost" size="icon" onClick={fetchDataForMonth} disabled={isLoading}>
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
                         </Button>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleMonthChange(1)}>Succ.</Button>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
                 </div>
 
                 {isLoading ? (
