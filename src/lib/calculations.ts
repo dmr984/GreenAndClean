@@ -84,11 +84,11 @@ export const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-
-    if (remainingMinutes >= 45) {
+    
+    if (remainingMinutes > 45) {
         return hours + 1;
     }
-    if (remainingMinutes >= 15) {
+    if (remainingMinutes > 15) {
         return hours + 0.5;
     }
     return hours;
@@ -162,9 +162,9 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     };
 };
 
-export const calculateHours = (shift: Shift, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
+export const calculateHours = (shift: Shift, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
     
-    const { workedMinutes, breakMinutes, contractualEndTime } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    const { workedMinutes, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
@@ -174,7 +174,7 @@ export const calculateHours = (shift: Shift, schedule: DailySchedule | undefined
     if (!isWorkDay) {
         return {
             ordinary: 0,
-            overtime: roundOvertimeHours(workedMinutes),
+            overtime: roundOvertimeHours(workedMinutes, overtimeCalculation),
             leave: 0,
             worked: workedMinutes,
             break: breakMinutes
@@ -186,7 +186,7 @@ export const calculateHours = (shift: Shift, schedule: DailySchedule | undefined
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
 
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-    const overtimeHours = roundOvertimeHours(overtimeMinutes);
+    const overtimeHours = roundOvertimeHours(overtimeMinutes, overtimeCalculation);
 
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
 
@@ -261,7 +261,7 @@ export const processMonthlyData = (
                 isPureOvertime: !isWorkDay
             };
 
-            const { ordinary, overtime } = calculateHours(shiftForCalc, dailySchedule, ignoreContractualStart);
+            const { ordinary, overtime } = calculateHours(shiftForCalc, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
 
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
