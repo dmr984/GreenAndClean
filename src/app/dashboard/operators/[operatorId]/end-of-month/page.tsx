@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import type jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -99,6 +99,8 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     
 
     useEffect(() => {
@@ -166,7 +168,7 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async (): Promise<jsPDF> => {
+    const generatePdfDoc = async (action: 'open' | 'print' | 'download' | 'share' = 'open'): Promise<jsPDF> => {
         const { default: jsPDF } = await import('jspdf');
         
         const doc = new jsPDF();
@@ -232,14 +234,15 @@ export default function EndOfMonthPage() {
         doc.setFontSize(12);
         doc.text("Dettaglio Giornaliero", 15, y);
         y += 6;
-
+        
         const bodyRows: any[] = [];
         dailyDetails.forEach(detail => {
              if (detail.status === 'riposo') return;
 
-             const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
              let mainLine = '';
              let detailLine = '';
+
+             const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
 
              switch(detail.status) {
                 case 'lavorato':
@@ -258,38 +261,31 @@ export default function EndOfMonthPage() {
                 case 'festa': mainLine = `${dayStr} - Giorno Festivo`; break;
                 case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
              }
-
-             bodyRows.push([mainLine]);
+             
+             let combinedText = mainLine;
              if (detailLine) {
-                 bodyRows.push([{ content: detailLine, styles: { textColor: [100, 100, 100], fontSize: 8 } }]);
+                combinedText += `\n${detailLine}`;
              }
+             bodyRows.push([combinedText]);
         });
-        
+
+
         autoTable(doc, {
             startY: y,
             body: bodyRows,
             theme: 'plain',
             styles: {
                 fontSize: 9,
-                cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
+                cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 },
             },
             columnStyles: { 0: { cellWidth: 'auto' } },
             didDrawCell: (data) => {
-                if (data.row.index % 2 !== 0 && data.cell.raw.toString().startsWith('Ore Previste')) {
-                    doc.setDrawColor(200, 200, 200); // Separator color
-                    doc.line(data.cell.x, data.cell.y + data.cell.height + 2, data.cell.x + data.cell.width, data.cell.y + data.cell.height + 2);
-                }
-                 if (!data.cell.raw.toString().startsWith('Ore Previste') && data.row.index % 2 === 0) {
-                     doc.setDrawColor(200, 200, 200); // Separator color
-                     const previousRow = data.table.body[data.row.index - 1];
-                     if (previousRow && !previousRow.cells[0].raw.toString().startsWith('Ore Previste')) {
-                         doc.line(data.cell.x, data.cell.y - 2, data.cell.x + data.cell.width, data.cell.y - 2);
-                     }
-                }
+                 // Draw a line after each row, which now represents a full day
+                 doc.setDrawColor(200, 200, 200); // Separator color
+                 doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
             }
         });
-
-
+        
         return doc;
     }
     
@@ -298,13 +294,48 @@ export default function EndOfMonthPage() {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const blob = doc.output('bloburl');
-            window.open(blob, '_blank');
+            const blob = doc.output('blob');
+            const url = URL.createObjectURL(blob);
+            setPdfUrl(url);
+            setIsPreviewOpen(true);
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
             console.error(error);
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handlePrintPdf = async () => {
+        const doc = await generatePdfDoc('print');
+        window.open(doc.output('bloburl'), '_blank');
+    };
+    
+    const handleDownloadPdf = async () => {
+        const doc = await generatePdfDoc('download');
+        doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+    };
+
+    const handleSharePdf = async () => {
+        if (!navigator.share) {
+             handleDownloadPdf();
+             return;
+        }
+
+        const doc = await generatePdfDoc('share');
+        const blob = doc.output('blob');
+        const file = new File([blob], `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+        
+        try {
+            await navigator.share({
+                title: 'Riepilogo Mensile',
+                text: `Riepilogo di ${format(currentMonth, 'MMMM yyyy')} per ${operator?.firstName} ${operator?.lastName}`,
+                files: [file],
+            });
+        } catch (error) {
+            console.error("Share failed:", error);
+            // Fallback to download if share is cancelled or fails
+            handleDownloadPdf();
         }
     };
     
@@ -489,6 +520,34 @@ export default function EndOfMonthPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+        
+        <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+                <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
+                     <div className="flex justify-between items-center">
+                        <DialogDescription className="text-lg font-semibold">Anteprima Riepilogo PDF</DialogDescription>
+                         <div className="flex items-center gap-2">
+                             <Button variant="outline" size="icon" onClick={handlePrintPdf}>
+                                 <Printer className="h-5 w-5" />
+                             </Button>
+                             <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
+                                 <Download className="h-5 w-5" />
+                             </Button>
+                             {navigator.share && (
+                                <Button variant="outline" size="icon" onClick={handleSharePdf}>
+                                    <Share2 className="h-5 w-5" />
+                                </Button>
+                             )}
+                         </div>
+                     </div>
+                </DialogHeader>
+                {pdfUrl && (
+                    <div className="flex-1 overflow-hidden">
+                        <embed src={pdfUrl} type="application/pdf" className="w-full h-full" />
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
         </>
     );
 }
