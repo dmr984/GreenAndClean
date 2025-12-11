@@ -6,7 +6,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams } from 'next/navigation';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set } from 'date-fns';
@@ -174,7 +174,7 @@ export default function EndOfMonthPage() {
         
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
-        let y = 20;
+        let y = 15;
 
         doc.setTextColor(40, 40, 40);
         doc.setFillColor(255, 255, 255);
@@ -197,17 +197,17 @@ export default function EndOfMonthPage() {
             });
 
             const base64data = await loadLogo;
-            doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
+            doc.addImage(base64data, 'PNG', 15, y - 5, 15, 15);
         } catch (error) {
             console.warn("Could not load logo for PDF, proceeding without it.");
         }
 
         doc.setFontSize(16);
-        doc.text(`${operator?.firstName} ${operator?.lastName}`, pageWidth - 15, 18, { align: 'right' });
+        doc.text(`${operator?.firstName} ${operator?.lastName}`, pageWidth - 15, y + 2, { align: 'right' });
         doc.setFontSize(10);
-        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
-
-        y = 40;
+        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, y + 8, { align: 'right' });
+        
+        y += 20;
 
         const summaryData = [
             { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
@@ -220,72 +220,72 @@ export default function EndOfMonthPage() {
 
         autoTable(doc, {
             startY: y,
-            body: [
-                summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
-                summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
-            ],
+            body: [summaryData.map(d => `${d.title}\n${d.value}`)],
             theme: 'grid',
             styles: {
-                halign: 'center', valign: 'middle', fontSize: 9,
+                halign: 'center', valign: 'middle', fontSize: 8,
                 fillColor: [255, 255, 255], textColor: 40,
                 lineColor: [200, 200, 200], lineWidth: 0.1,
+                cellPadding: 1.5,
             },
         });
+        
+        y = (doc as any).autoTable.previous.finalY + 8;
 
-        y = (doc as any).autoTable.previous.finalY + 10;
-
-        doc.setFontSize(14);
+        doc.setFontSize(12);
         doc.text("Dettaglio Giornaliero", 15, y);
-        y += 8;
+        y += 6;
 
+        const bodyRows: any[] = [];
         dailyDetails.forEach(detail => {
-            if (detail.status === 'riposo') return;
-            if (y > 270) { doc.addPage(); y = 20; }
+             if (detail.status === 'riposo') return;
 
-            const title = format(detail.date, 'eeee dd MMMM', { locale: it });
-            let statusText = '';
-            const body = [];
+             const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
+             let mainLine = '';
+             let detailLine = '';
 
-            switch(detail.status) {
+             switch(detail.status) {
                 case 'lavorato':
-                    statusText = `Lavorato`;
-                    if (detail.shift) {
-                        let timbratureText = 'Timbrature: ';
-                        detail.shift.events.forEach(e => {
-                            const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                            let referenceTime = '';
+                    mainLine = `${dayStr} - Lavorato`;
+                     if (detail.shift) {
+                        let timbratureText = ' | Timbrature: ';
+                         detail.shift.events.forEach(e => {
+                             const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                             timbratureText += `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${originalTime} | `;
+                         });
+                         mainLine += timbratureText.slice(0, -3);
 
-                            if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
-                                if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                        referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                }
-                            }
-                            timbratureText += `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime} | `;
-                        });
-                        body.push([timbratureText.slice(0, -3)]);
-                        body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
-                    }
-                    break;
-                case 'ferie': statusText = 'Ferie'; body.push(['Giorno di ferie approvato.']); break;
-                case 'malattia': statusText = 'Malattia'; body.push(['Giorno di malattia approvato.']); break;
-                case 'mancata_timbratura': statusText = 'Mancata Timbratura'; body.push(['Nessuna timbratura registrata in un giorno lavorativo.']); break;
-                case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
-            }
+                        detailLine = `Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`;
+                     }
+                     break;
+                case 'ferie': mainLine = `${dayStr} - Giorno di Ferie`; break;
+                case 'malattia': mainLine = `${dayStr} - Giorno di Malattia`; break;
+                case 'festa': mainLine = `${dayStr} - Giorno Festivo`; break;
+                case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
+             }
 
-            autoTable(doc, {
-                startY: y,
-                head: [[`${title} - ${statusText}`]],
-                body: body,
-                theme: 'striped',
-                headStyles: { fillColor: [244, 244, 245], textColor: 20 },
-                styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
-                didDrawPage: (data: any) => y = data.cursor?.y || y
-            });
-            y = (doc as any).autoTable.previous.finalY + 5;
+             bodyRows.push([mainLine]);
+             if (detailLine) {
+                 bodyRows.push([{ content: detailLine, styles: { textColor: [100, 100, 100], fontSize: 8 } }]);
+             }
         });
+        
+        autoTable(doc, {
+            startY: y,
+            body: bodyRows,
+            theme: 'plain',
+            styles: {
+                fontSize: 9,
+                cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
+            },
+            columnStyles: { 0: { cellWidth: 'auto' } },
+            didParseCell: (data) => {
+                if (data.row.index % 2 !== 0 && data.cell.raw.toString().startsWith('Ore Previste')) {
+                     data.row.cells[0].styles.cellPadding.bottom = 4;
+                }
+            }
+        });
+
 
         return doc;
     }
@@ -528,23 +528,25 @@ export default function EndOfMonthPage() {
         </AlertDialog>
 
         <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 sm:p-2">
+             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 sm:p-2">
                 <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
-                    <DialogTitle className="flex justify-between items-center">
-                        <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline" size="icon" onClick={handlePrintPdf}>
-                                <Printer className="h-5 w-5" />
-                                <span className="sr-only">Stampa</span>
-                            </Button>
-                            <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
-                                <Download className="h-5 w-5" />
-                                <span className="sr-only">Scarica</span>
-                            </Button>
-                            <Button variant="outline" size="icon" onClick={handleSharePdf}>
-                                <Share2 className="h-5 w-5" />
-                                <span className="sr-only">Condividi</span>
-                            </Button>
+                    <DialogTitle>
+                         <div className="flex justify-between items-center">
+                            <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="icon" onClick={handlePrintPdf}>
+                                    <Printer className="h-5 w-5" />
+                                    <span className="sr-only">Stampa</span>
+                                </Button>
+                                <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
+                                    <Download className="h-5 w-5" />
+                                    <span className="sr-only">Scarica</span>
+                                </Button>
+                                <Button variant="outline" size="icon" onClick={handleSharePdf}>
+                                    <Share2 className="h-5 w-5" />
+                                    <span className="sr-only">Condividi</span>
+                                </Button>
+                            </div>
                         </div>
                     </DialogTitle>
                 </DialogHeader>
