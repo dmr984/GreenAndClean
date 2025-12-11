@@ -170,6 +170,7 @@ export default function EndOfMonthPage() {
 
     const generatePdfDoc = async (): Promise<jsPDF> => {
         const { default: jsPDF } = await import('jspdf');
+        const { default: autoTable } = await import('jspdf-autotable');
         
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -235,7 +236,7 @@ export default function EndOfMonthPage() {
         doc.text("Dettaglio Giornaliero", 15, y);
         y += 6;
         
-        const bodyRows: any[] = [];
+        const bodyRows: any[][] = [];
         dailyDetails.forEach(detail => {
              if (detail.status === 'riposo') return;
              
@@ -261,11 +262,11 @@ export default function EndOfMonthPage() {
                 case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
              }
              
-             let combinedText = mainLine;
+             const rowContent = [mainLine];
              if (detailLine) {
-                combinedText += `\n${detailLine}`;
+                 rowContent.push(detailLine);
              }
-             bodyRows.push([combinedText]);
+             bodyRows.push([rowContent.join('\n')]);
         });
 
 
@@ -279,7 +280,7 @@ export default function EndOfMonthPage() {
             },
             columnStyles: { 0: { cellWidth: 'auto' } },
             didDrawCell: (data) => {
-                if (data.row.index < bodyRows.length - 1) {
+                 if (data.row.index < bodyRows.length - 1) {
                     doc.setDrawColor(200, 200, 200); // Separator color
                     doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
                 }
@@ -305,17 +306,18 @@ export default function EndOfMonthPage() {
             setIsProcessing(false);
         }
     };
-
-    const handlePrintPdf = async () => {
-        const doc = await generatePdfDoc();
-        window.open(doc.output('bloburl'), '_blank');
-    };
     
     const handleDownloadPdf = async () => {
         const doc = await generatePdfDoc();
         doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
     };
 
+    const handlePrintPdf = async () => {
+        const doc = await generatePdfDoc();
+        doc.autoPrint();
+        window.open(doc.output('bloburl'), '_blank');
+    };
+    
     const handleSharePdf = async () => {
         if (!navigator.share) {
              handleDownloadPdf();
@@ -333,12 +335,12 @@ export default function EndOfMonthPage() {
                 files: [file],
             });
         } catch (error: any) {
-            if (error.name === 'AbortError' || error.name === 'PermissionDeniedError') {
-                console.warn("Share was cancelled or denied.", error);
+            if (error.name === 'AbortError' || error.name === 'PermissionDeniedError' || error.name === 'NotAllowedError') {
+                console.warn("Share was cancelled or denied, falling back to download.", error);
                 handleDownloadPdf();
             } else {
-                console.error("Share failed:", error);
-                handleDownloadPdf(); // Fallback to download on any other error
+                console.error("Share failed, falling back to download:", error);
+                handleDownloadPdf();
             }
         }
     };
@@ -537,11 +539,6 @@ export default function EndOfMonthPage() {
                             <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
                                 <Download className="h-5 w-5" />
                             </Button>
-                            {navigator.share && (
-                                <Button variant="outline" size="icon" onClick={handleSharePdf}>
-                                    <Share2 className="h-5 w-5" />
-                                </Button>
-                            )}
                         </div>
                     </DialogTitle>
                 </DialogHeader>
