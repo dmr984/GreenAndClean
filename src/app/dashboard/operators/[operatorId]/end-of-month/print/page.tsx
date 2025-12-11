@@ -170,8 +170,8 @@ const PrintPageContent = () => {
 
         const summaryBody = [
             [
-                { content: `GIORNI LAVORATI: ${monthlySummary.workedDays || 0}`, styles: { fontStyle: 'bold' }},
-                { content: `FERIE: ${monthlySummary.ferieDays || 0}`, styles: { fontStyle: 'bold', halign: 'right' }},
+                { content: `GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold' }},
+                { content: `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold', halign: 'right' }},
             ],
             [
                 { content: `ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold' }},
@@ -183,7 +183,7 @@ const PrintPageContent = () => {
             ],
              [
                 { content: `ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold' }},
-                { content: `GIORNI DI MALATTIA: ${monthlySummary.malattiaDays || 0}`, styles: { fontStyle: 'bold', halign: 'right' }},
+                { content: `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold', halign: 'right' }},
             ],
         ];
 
@@ -204,7 +204,10 @@ const PrintPageContent = () => {
         doc.text("Dettaglio Giornaliero", 15, dailyDetailStartY);
 
         const dailyBody = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-            const dateStr = format(detail.date, 'eeee dd MMMM', { locale: it });
+            const dayOfWeek = format(detail.date, 'eeee', { locale: it });
+            const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
+            const dateStr = `${dayOfWeek} ${restOfDate}`;
+
             let line1 = '';
             let line2 = '';
 
@@ -235,17 +238,23 @@ const PrintPageContent = () => {
                 }
             },
             willDrawCell: function (data) {
-                if (data.section === 'body') {
-                     const text = data.cell.text as string[];
-                     if (text && text.length > 0) {
-                        const dateLine = text[0];
-                        const dateParts = dateLine.split(' - ');
-                        if (dateParts.length > 0) {
-                             // This is a bit of a hack to make just the date part bold, jspdf-autotable doesn't support rich text well.
-                             // We make the whole cell bold as a compromise.
-                             data.cell.styles.fontStyle = 'bold';
+                if (data.section === 'body' && data.row.raw && Array.isArray(data.row.raw)) {
+                     const cellContent = (data.row.raw[0] as { content: string }).content;
+                     if (cellContent) {
+                        const [line1, line2] = cellContent.split('\n');
+                        const dayOfWeek = line1.split(' ')[0];
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(dayOfWeek, data.cell.x + 1.5, data.cell.y + data.cell.padding('top'));
+
+                        const restOfLine1 = line1.substring(dayOfWeek.length);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(restOfLine1, data.cell.x + 1.5 + doc.getStringUnitWidth(dayOfWeek) * doc.getFontSize(), data.cell.y + data.cell.padding('top'));
+                        
+                        if (line2) {
+                            doc.text(line2, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1);
                         }
-                    }
+                     }
+                      return false; // Prevent default rendering
                 }
             }
         });
@@ -352,11 +361,11 @@ const PrintPageContent = () => {
                                 <tr>
                                     <td className="py-1">
                                         <span className="font-bold">GIORNI LAVORATI: </span>
-                                        <span className="font-bold font-mono">{monthlySummary.workedDays || 0}</span>
+                                        <span className="font-bold font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span>
                                     </td>
                                     <td className="py-1 text-right">
                                         <span className="font-bold">FERIE: </span>
-                                        <span className="font-bold font-mono">{monthlySummary.ferieDays || 0}</span>
+                                        <span className="font-bold font-mono">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span>
                                     </td>
                                 </tr>
                                 <tr>
@@ -386,7 +395,7 @@ const PrintPageContent = () => {
                                     </td>
                                     <td className="py-1 text-right">
                                         <span className="font-bold">GIORNI DI MALATTIA: </span>
-                                        <span className="font-bold font-mono">{monthlySummary.malattiaDays || 0}</span>
+                                        <span className="font-bold font-mono">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span>
                                     </td>
                                 </tr>
                             </tbody>
@@ -400,7 +409,9 @@ const PrintPageContent = () => {
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                             let line1 = '';
                             let line2 = '';
-                             const dateStr = format(detail.date, 'eeee dd MMMM', { locale: it });
+                             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
+                             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
+                             const dateStr = `${dayOfWeek} ${restOfDate}`;
 
                             if (detail.shift) {
                                 const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
@@ -414,7 +425,9 @@ const PrintPageContent = () => {
 
                             return (
                                 <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-1.5 mb-1.5">
-                                    <p className="font-bold text-[9px] capitalize">{line1}</p>
+                                    <p className="text-[9px] capitalize">
+                                        <span className="font-bold">{dayOfWeek}</span> {restOfDate} - {line1.split(' - ')[1]}
+                                    </p>
                                     {line2 && <p className="text-gray-600 text-[9px]">{line2}</p>}
                                 </div>
                             )
