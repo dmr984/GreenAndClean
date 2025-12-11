@@ -99,8 +99,6 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
-    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     
 
     useEffect(() => {
@@ -290,32 +288,34 @@ export default function EndOfMonthPage() {
         return doc;
     }
     
-    const handleGenerateAndOpen = async () => {
-        if (isProcessing || !operator) return;
+    const handleDownloadPdf = async () => {
+        if (isProcessing) return;
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const blob = doc.output('blob');
-            const url = URL.createObjectURL(blob);
-            setPdfUrl(url);
-            setIsPreviewOpen(true);
+            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
         } catch (error) {
-            toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+            toast({ title: "Errore", description: "Impossibile generare il PDF per il download.", variant: "destructive" });
             console.error(error);
         } finally {
             setIsProcessing(false);
         }
     };
-    
-    const handleDownloadPdf = async () => {
-        const doc = await generatePdfDoc();
-        doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-    };
 
     const handlePrintPdf = async () => {
-        const doc = await generatePdfDoc();
-        doc.autoPrint();
-        window.open(doc.output('bloburl'), '_blank');
+        if (isProcessing) return;
+        setIsProcessing(true);
+        try {
+            const doc = await generatePdfDoc();
+            const blob = doc.output('blob');
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile preparare il PDF per la stampa.", variant: "destructive" });
+            console.error(error);
+        } finally {
+            setIsProcessing(false);
+        }
     };
     
     const handleCleanMonth = async () => {
@@ -367,9 +367,13 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handleGenerateAndOpen} disabled={isProcessing} className="w-full sm:w-auto">
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                            Genera Riepilogo PDF
+                        <Button onClick={handlePrintPdf} disabled={isProcessing} className="w-full sm:w-auto">
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                            Stampa
+                        </Button>
+                        <Button onClick={handleDownloadPdf} disabled={isProcessing} className="w-full sm:w-auto">
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Scarica
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
@@ -500,30 +504,6 @@ export default function EndOfMonthPage() {
             </AlertDialogContent>
         </AlertDialog>
         
-        <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
-                <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
-                    <DialogTitle className="flex justify-between items-center">
-                        <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline" size="icon" onClick={handlePrintPdf}>
-                                <Printer className="h-5 w-5" />
-                            </Button>
-                            <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
-                                <Download className="h-5 w-5" />
-                            </Button>
-                        </div>
-                    </DialogTitle>
-                </DialogHeader>
-                {pdfUrl && (
-                    <div className="flex-1 overflow-hidden">
-                        <object data={pdfUrl} type="application/pdf" className="w-full h-full">
-                            <p>Il tuo browser non supporta l'anteprima PDF. Puoi <a href={pdfUrl} download>scaricare il file</a> per visualizzarlo.</p>
-                        </object>
-                    </div>
-                )}
-            </DialogContent>
-        </Dialog>
         </>
     );
 }
