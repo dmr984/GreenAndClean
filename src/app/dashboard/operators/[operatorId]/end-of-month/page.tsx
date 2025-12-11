@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import type jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -95,7 +95,7 @@ export default function EndOfMonthPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbrature[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
@@ -524,8 +524,8 @@ export default function EndOfMonthPage() {
         <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
                 <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
-                     <div className="flex justify-between items-center">
-                        <DialogDescription className="text-lg font-semibold">Anteprima Riepilogo PDF</DialogDescription>
+                     <DialogTitle className="flex justify-between items-center">
+                         <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
                          <div className="flex items-center gap-2">
                              <Button variant="outline" size="icon" onClick={handlePrintPdf}>
                                  <Printer className="h-5 w-5" />
@@ -539,7 +539,7 @@ export default function EndOfMonthPage() {
                                 </Button>
                              )}
                          </div>
-                     </div>
+                     </DialogTitle>
                 </DialogHeader>
                 {pdfUrl && (
                     <div className="flex-1 overflow-hidden">
