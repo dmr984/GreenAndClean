@@ -95,7 +95,7 @@ export default function EndOfMonthPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbrature[], requests: Request[] }>({ timbrature: [], requests: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
@@ -168,7 +168,7 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async (action: 'open' | 'print' | 'download' | 'share' = 'open'): Promise<jsPDF> => {
+    const generatePdfDoc = async (): Promise<jsPDF> => {
         const { default: jsPDF } = await import('jspdf');
         
         const doc = new jsPDF();
@@ -238,11 +238,10 @@ export default function EndOfMonthPage() {
         const bodyRows: any[] = [];
         dailyDetails.forEach(detail => {
              if (detail.status === 'riposo') return;
-
+             
+             const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
              let mainLine = '';
              let detailLine = '';
-
-             const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
 
              switch(detail.status) {
                 case 'lavorato':
@@ -280,9 +279,10 @@ export default function EndOfMonthPage() {
             },
             columnStyles: { 0: { cellWidth: 'auto' } },
             didDrawCell: (data) => {
-                 // Draw a line after each row, which now represents a full day
-                 doc.setDrawColor(200, 200, 200); // Separator color
-                 doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+                if (data.row.index < bodyRows.length - 1) {
+                    doc.setDrawColor(200, 200, 200); // Separator color
+                    doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+                }
             }
         });
         
@@ -307,12 +307,12 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrintPdf = async () => {
-        const doc = await generatePdfDoc('print');
+        const doc = await generatePdfDoc();
         window.open(doc.output('bloburl'), '_blank');
     };
     
     const handleDownloadPdf = async () => {
-        const doc = await generatePdfDoc('download');
+        const doc = await generatePdfDoc();
         doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
     };
 
@@ -322,7 +322,7 @@ export default function EndOfMonthPage() {
              return;
         }
 
-        const doc = await generatePdfDoc('share');
+        const doc = await generatePdfDoc();
         const blob = doc.output('blob');
         const file = new File([blob], `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
         
@@ -332,10 +332,14 @@ export default function EndOfMonthPage() {
                 text: `Riepilogo di ${format(currentMonth, 'MMMM yyyy')} per ${operator?.firstName} ${operator?.lastName}`,
                 files: [file],
             });
-        } catch (error) {
-            console.error("Share failed:", error);
-            // Fallback to download if share is cancelled or fails
-            handleDownloadPdf();
+        } catch (error: any) {
+            if (error.name === 'AbortError' || error.name === 'PermissionDeniedError') {
+                console.warn("Share was cancelled or denied.", error);
+                handleDownloadPdf();
+            } else {
+                console.error("Share failed:", error);
+                handleDownloadPdf(); // Fallback to download on any other error
+            }
         }
     };
     
@@ -524,22 +528,22 @@ export default function EndOfMonthPage() {
         <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
                 <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
-                     <DialogTitle className="flex justify-between items-center">
-                         <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
-                         <div className="flex items-center gap-2">
-                             <Button variant="outline" size="icon" onClick={handlePrintPdf}>
-                                 <Printer className="h-5 w-5" />
-                             </Button>
-                             <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
-                                 <Download className="h-5 w-5" />
-                             </Button>
-                             {navigator.share && (
+                    <DialogTitle className="flex justify-between items-center">
+                        <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="icon" onClick={handlePrintPdf}>
+                                <Printer className="h-5 w-5" />
+                            </Button>
+                            <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
+                                <Download className="h-5 w-5" />
+                            </Button>
+                            {navigator.share && (
                                 <Button variant="outline" size="icon" onClick={handleSharePdf}>
                                     <Share2 className="h-5 w-5" />
                                 </Button>
-                             )}
-                         </div>
-                     </DialogTitle>
+                            )}
+                        </div>
+                    </DialogTitle>
                 </DialogHeader>
                 {pdfUrl && (
                     <div className="flex-1 overflow-hidden">
