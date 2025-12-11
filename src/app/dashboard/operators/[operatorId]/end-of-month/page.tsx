@@ -257,31 +257,44 @@ export default function EndOfMonthPage() {
                      <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
                 <>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
-                    <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
-                    <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
-                    <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
-                    <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
-                    <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
+                <div className="space-y-4">
+                    {/* Total Due Card */}
                     <SummaryCard 
-                        title="Costo Ore Ordinarie" 
-                        value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                        icon={Euro}
-                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${(operator.hourlyRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
-                    />
-                    <SummaryCard 
-                        title="Costo Ore Straordinarie" 
-                        value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                        icon={Euro}
-                        subtext={`${monthlySummary.overtimeHours || 0}h x ${(operator.overtimeRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
-                    />
-                     <SummaryCard 
                         title="Totale Dovuto" 
                         value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
                         className="bg-accent/20 border-accent"
                     />
+
+                    {/* Worked Hours */}
+                    <div className="grid gap-4 grid-cols-2">
+                        <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
+                        <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
+                    </div>
+
+                    {/* Costs */}
+                    <div className="grid gap-4 grid-cols-2">
+                         <SummaryCard 
+                            title="Costo Ore Ordinarie" 
+                            value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext={`${monthlySummary.ordinaryHours || 0}h x ${(operator.hourlyRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
+                        />
+                        <SummaryCard 
+                            title="Costo Ore Straordinarie" 
+                            value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext={`${monthlySummary.overtimeHours || 0}h x ${(operator.overtimeRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
+                        />
+                    </div>
+                    
+                    {/* Absences and Worked Days */}
+                    <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+                        <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
+                        <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
+                        <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
+                        <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
+                    </div>
                 </div>
 
                 <Separator />
