@@ -197,6 +197,11 @@ export default function EndOfMonthPage() {
             setIsCleanConfirmOpen(false);
         }
     };
+    
+    const handleOpenPrintPreview = () => {
+        const monthString = format(currentMonth, 'yyyy-MM');
+        window.open(`/dashboard/operators/${operatorId}/end-of-month/print?month=${monthString}`, '_blank');
+    };
 
     if (!operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -212,9 +217,8 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
-                            {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
-                            Pulisci Mese
+                         <Button variant="outline" onClick={handleOpenPrintPreview}>
+                            <Printer className="mr-2 h-4 w-4" /> Crea Report
                         </Button>
                      </div>
                 </div>
