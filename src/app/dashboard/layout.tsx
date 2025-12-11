@@ -21,29 +21,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const firestore = useFirestore();
   const pathname = usePathname();
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-
-  const handleLogout = async () => {
-    localStorage.removeItem('user');
-    // Force a full page reload to clear all state and go to the login page.
-    // This is more robust than router.replace for ensuring a clean state.
-    window.location.href = '/';
-  }
-
-  const getAvatarFallback = () => {
-     if (user?.firstName && user?.lastName) {
-        return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
-     }
-     if (user?.username) {
-        return user.username.substring(0, 2).toUpperCase();
-     }
-     return "U";
-  }
-  
-  const showBackButton = pathname !== '/dashboard';
-
   const renderDashboardContent = () => {
      if (isLoading || !user) { // Show loader while loading or if user is null (before redirect)
       return (
@@ -71,10 +50,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   
   return (
     <>
-    <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
-        {renderDashboardContent()}
-    </main>
-    <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
+        <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
+            {renderDashboardContent()}
+        </main>
+        <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
     </>
   );
 }
