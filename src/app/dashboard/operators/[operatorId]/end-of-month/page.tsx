@@ -66,8 +66,8 @@ type Timbratura = {
     ignoreContractualStart?: boolean;
 };
 
-const SummaryCard = ({ title, value, icon: Icon, subtext }: { title: string, value: string | number, icon: React.ElementType, subtext?: string }) => (
-    <Card>
+const SummaryCard = ({ title, value, icon: Icon, subtext, className }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string }) => (
+    <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">{title}</CardTitle>
             <Icon className="h-4 w-4 text-muted-foreground" />
@@ -219,6 +219,7 @@ export default function EndOfMonthPage() {
     
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+    const totalDue = ordinaryCost + overtimeCost;
 
     return (
         <>
@@ -237,7 +238,7 @@ export default function EndOfMonthPage() {
                 </div>
             </CardHeader>
             <CardContent className="space-y-8">
-                 <div className="flex items-center justify-between p-2 border rounded-md">
+                 <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
                     <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -256,7 +257,7 @@ export default function EndOfMonthPage() {
                      <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
                 <>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
                     <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
                     <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
@@ -267,13 +268,19 @@ export default function EndOfMonthPage() {
                         title="Costo Ore Ordinarie" 
                         value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
-                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${operator.hourlyRate?.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) || 'N/D'}`}
+                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${(operator.hourlyRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
                     />
                     <SummaryCard 
                         title="Costo Ore Straordinarie" 
                         value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
-                        subtext={`${monthlySummary.overtimeHours || 0}h x ${operator.overtimeRate?.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) || 'N/D'}`}
+                        subtext={`${monthlySummary.overtimeHours || 0}h x ${(operator.overtimeRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
+                    />
+                     <SummaryCard 
+                        title="Totale Dovuto" 
+                        value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                        icon={Euro}
+                        className="bg-accent/20 border-accent"
                     />
                 </div>
 
