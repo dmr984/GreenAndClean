@@ -129,9 +129,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [canClockIn, setCanClockIn] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isLocationHelpOpen, setIsLocationHelpOpen] = useState(false);
+  const [currentDate, setCurrentDate] = useState<Date | null>(null);
+
 
   const { toast } = useToast();
   const firestore = useFirestore();
+
+    useEffect(() => {
+        // Set date only on the client
+        setCurrentDate(new Date());
+    }, []);
   
     useEffect(() => {
         if (!firestore || !authUser?.id) {
@@ -597,7 +604,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
     const renderOvertimeClockingInterface = () => {
-        if (!currentOvertimeShift) return null;
+        if (!currentOvertimeShift || !currentDate) return null;
         
         return (
             <Card>
@@ -612,7 +619,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </CardHeader>
                 <CardContent className="flex flex-col items-center justify-center gap-4">
                     <div className="text-xl font-medium text-muted-foreground capitalize">
-                        {format(new Date(), 'eeee, dd MMMM yyyy', { locale: it })}
+                        {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
                     </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
@@ -624,7 +631,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         );
     };
 
-  if (isUserLoading || operator === null || isWorkDay === null) {
+  if (isUserLoading || operator === null || isWorkDay === null || !currentDate) {
       return <div className="flex items-center justify-center h-full">
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -656,7 +663,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center gap-4">
                <div className="text-xl font-medium text-muted-foreground capitalize">
-                  {format(new Date(), 'eeee, dd MMMM yyyy', { locale: it })}
+                  {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
                </div>
               {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
             </CardContent>

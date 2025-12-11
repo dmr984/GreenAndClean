@@ -498,7 +498,12 @@ export default function OperatorSummaryPage() {
 
     const searchParams = useSearchParams();
     const [currentView, setCurrentView] = useState<'monthly' | 'daily'>('monthly');
-    const [dailyViewDate, setDailyViewDate] = useState(new Date());
+    const [dailyViewDate, setDailyViewDate] = useState<Date | null>(null);
+
+    useEffect(() => {
+        // Set the initial date only on the client side to avoid hydration mismatch
+        setDailyViewDate(new Date());
+    }, []);
 
     const { operatorId: routeOperatorId } = useParams();
 
@@ -606,7 +611,7 @@ export default function OperatorSummaryPage() {
     };
 
 
-    if (isUserLoading || isLoading || !operator) {
+    if (isUserLoading || isLoading || !operator || !dailyViewDate) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
@@ -668,7 +673,7 @@ export default function OperatorSummaryPage() {
 
 const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: string, operator: Operator, onCleanMonth: (date: Date) => void }) => {
     const firestore = useFirestore();
-    const [currentDate, setCurrentDate] = useState(new Date());
+    const [currentDate, setCurrentDate] = useState<Date | null>(null);
     const [requests, setRequests] = useState<Request[]>([]);
     const [timbrature, setTimbrature] = useState<Timbratura[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -679,10 +684,15 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     
     const {toast} = useToast();
     const { user } = useUser();
+    
+    useEffect(() => {
+        // Set the initial date only on the client side
+        setCurrentDate(new Date());
+    }, []);
 
 
     useEffect(() => {
-        if (!firestore || !operatorId) return;
+        if (!firestore || !operatorId || !currentDate) return;
         setIsLoading(true);
 
         const startOfMonthValue = startOfMonth(currentDate);
@@ -732,7 +742,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     }, [firestore, operatorId, currentDate, toast]);
     
     const summary = useMemo(() => {
-        if (!operator) {
+        if (!operator || !currentDate) {
             return { workedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [], overtimeHoursByDay: [] };
         }
 
@@ -827,7 +837,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
 
 
     const handleMonthChange = (offset: number) => {
-        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+        setCurrentDate(prev => prev ? new Date(prev.getFullYear(), prev.getMonth() + offset, 1) : new Date());
     };
     
     const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
@@ -994,7 +1004,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     };
 
     const renderDetailTable = () => {
-        if (!detailView || detailView.items.length === 0) {
+        if (!detailView || detailView.items.length === 0 || !currentDate) {
             return <p className="text-center text-muted-foreground py-4">Nessun dato per questo mese.</p>;
         }
 
@@ -1124,7 +1134,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     };
 
 
-    if (isLoading) return <Loader2 className="h-5 w-5 animate-spin"/>;
+    if (isLoading || !currentDate) return <Loader2 className="h-5 w-5 animate-spin"/>;
     
     return (
         <>
@@ -1172,7 +1182,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                 <ResponsiveDialogHeader>
                     <ResponsiveDialogTitle>{detailView?.title}</ResponsiveDialogTitle>
                     <ResponsiveDialogDescription>
-                        Riepilogo delle voci per {format(currentDate, 'MMMM yyyy', { locale: it })}.
+                        Riepilogo delle voci per {currentDate ? format(currentDate, 'MMMM yyyy', { locale: it }) : ''}.
                     </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
                  <div className="py-4">

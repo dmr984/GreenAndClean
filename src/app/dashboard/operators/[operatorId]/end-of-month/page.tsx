@@ -92,12 +92,16 @@ export default function EndOfMonthPage() {
     const operatorId = params.operatorId as string;
     
     const [operator, setOperator] = useState<Operator | null>(null);
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
     
+    useEffect(() => {
+        // Set the initial month only on the client side
+        setCurrentMonth(new Date());
+    }, []);
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -112,7 +116,7 @@ export default function EndOfMonthPage() {
     }, [firestore, operatorId]);
 
     const fetchDataForMonth = useCallback(async () => {
-        if (!firestore || !operatorId) {
+        if (!firestore || !operatorId || !currentMonth) {
             setIsLoading(false);
             return;
         };
@@ -150,18 +154,20 @@ export default function EndOfMonthPage() {
     }, [firestore, operatorId, currentMonth, toast]);
 
     useEffect(() => {
-        fetchDataForMonth();
-    }, [fetchDataForMonth]);
+        if (currentMonth) {
+            fetchDataForMonth();
+        }
+    }, [fetchDataForMonth, currentMonth]);
     
     const { monthlySummary, dailyDetails } = useMemo(() => {
-        if (!operator || isLoading) {
+        if (!operator || isLoading || !currentMonth) {
             return { monthlySummary: {} as MonthlySummary, dailyDetails: [] as DailyDetail[] };
         }
         return processMonthlyData(currentMonth, operator, monthlyData);
     }, [operator, currentMonth, monthlyData, isLoading]);
 
     const handleMonthChange = (offset: number) => {
-        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+        setCurrentMonth(prev => prev ? new Date(prev.getFullYear(), prev.getMonth() + offset, 1) : new Date());
     };
     
     const handleCleanMonth = async () => {
@@ -199,11 +205,12 @@ export default function EndOfMonthPage() {
     };
     
     const handleOpenPrintPreview = () => {
+        if (!currentMonth) return;
         const monthString = format(currentMonth, 'yyyy-MM');
         window.open(`/dashboard/operators/${operatorId}/end-of-month/print?month=${monthString}`, '_blank');
     };
 
-    if (!operator) {
+    if (!operator || !currentMonth) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 

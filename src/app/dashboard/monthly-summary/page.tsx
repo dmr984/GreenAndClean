@@ -89,9 +89,14 @@ const MonthlySummaryContent = () => {
     
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoadingOperator, setIsLoadingOperator] = useState(true);
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        // Set the initial month only on the client side
+        setCurrentMonth(new Date());
+    }, []);
 
     const fetchOperatorData = useCallback(async () => {
         if (!firestore || !user?.id) {
@@ -116,7 +121,7 @@ const MonthlySummaryContent = () => {
 
 
     const fetchDataForMonth = useCallback(async () => {
-        if (!firestore || !user?.id) {
+        if (!firestore || !user?.id || !currentMonth) {
             setIsLoading(false);
             return;
         };
@@ -154,12 +159,14 @@ const MonthlySummaryContent = () => {
     }, [firestore, user, currentMonth, toast]);
 
     useEffect(() => {
-        fetchDataForMonth();
-    }, [fetchDataForMonth]);
+        if(currentMonth) {
+            fetchDataForMonth();
+        }
+    }, [fetchDataForMonth, currentMonth]);
 
     
     const { monthlySummary, dailyDetails } = useMemo(() => {
-        if (!operator || isLoading) {
+        if (!operator || isLoading || !currentMonth) {
             return { monthlySummary: {} as MonthlySummary, dailyDetails: [] as DailyDetail[] };
         }
         return processMonthlyData(currentMonth, operator, monthlyData);
@@ -167,10 +174,10 @@ const MonthlySummaryContent = () => {
 
 
     const handleMonthChange = (offset: number) => {
-        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+        setCurrentMonth(prev => prev ? new Date(prev.getFullYear(), prev.getMonth() + offset, 1) : new Date());
     };
 
-    if (isUserLoading || isLoadingOperator) {
+    if (isUserLoading || isLoadingOperator || !currentMonth) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
