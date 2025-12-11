@@ -257,13 +257,8 @@ const PrintPageContent = () => {
         return { blob, fileName };
     };
 
-    const handlePrint = async () => {
-        const pdf = await generatePdf();
-        if (!pdf) return;
-
-        const url = URL.createObjectURL(pdf.blob);
-        window.open(url, '_blank');
-        URL.revokeObjectURL(url);
+    const handlePrint = () => {
+        window.print();
     };
 
     const handleDownload = async () => {
