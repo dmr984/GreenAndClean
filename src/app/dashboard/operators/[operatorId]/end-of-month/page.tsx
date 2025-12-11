@@ -167,12 +167,6 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const handlePrint = () => {
-      const monthTimestamp = currentMonth.getTime();
-      const url = `/dashboard/operators/${operatorId}/end-of-month/print?month=${monthTimestamp}`;
-      window.open(url, '_blank');
-    };
-    
     const handleDownloadPdf = async () => {
         if (isProcessing) return;
         setIsProcessing(true);
@@ -315,7 +309,8 @@ export default function EndOfMonthPage() {
                 case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
              }
              
-             bodyRows.push([`${mainLine}\n${detailLine}`.trim()]);
+             const combinedText = `${mainLine}${detailLine ? `\n${detailLine}` : ''}`;
+             bodyRows.push([combinedText]);
         });
 
 
@@ -329,7 +324,8 @@ export default function EndOfMonthPage() {
             },
             columnStyles: { 0: { cellWidth: 'auto' } },
             didDrawCell: (data: any) => {
-                 if (data.row.index < bodyRows.length -1) {
+                 const isLastRow = data.row.index === bodyRows.length - 1;
+                 if (!isLastRow) {
                     doc.setDrawColor(200, 200, 200); // Separator color
                     doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
                 }
@@ -353,10 +349,6 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handlePrint} disabled={isProcessing} className="w-full sm:w-auto">
-                            <Printer className="mr-2 h-4 w-4" />
-                            Stampa
-                        </Button>
                         <Button onClick={handleDownloadPdf} disabled={isProcessing} className="w-full sm:w-auto">
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                             Scarica
