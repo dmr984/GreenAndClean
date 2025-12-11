@@ -231,9 +231,9 @@ export default function EndOfMonthPage() {
                 </div>
             </CardHeader>
             <CardContent className="space-y-8">
-                 <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                 <div className="flex items-center justify-between p-2 border rounded-md">
                     <Button variant="outline" size="sm" onClick={() => handleMonthChange(-1)}>Prec.</Button>
-                    <div className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center justify-center gap-2">
                         <h3 className="text-lg font-semibold text-center capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h3>
                         <Button variant="ghost" size="icon" onClick={fetchDataForMonth} disabled={isLoading}>
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
@@ -339,7 +339,7 @@ export default function EndOfMonthPage() {
                     <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
                     <AlertDialogDescription>
                         Questa azione è irreversibile. Verranno eliminate tutte le timbrature, richieste e straordinari dell'operatore per il mese di{' '}
-                        <span className="font-bold">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>.
+                        <span className="font-bold">{currentMonth ? format(currentMonth, 'MMMM yyyy', { locale: it }) : ''}</span>.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
