@@ -303,8 +303,10 @@ const PrintPageContent = () => {
     
     const SummaryItem = ({ label, value, subLabel, subValue }: { label: string, value: string | number, subLabel?: string, subValue?: string | number }) => (
         <div className="flex justify-between items-baseline">
-            <p className="font-bold text-gray-700 uppercase">{label}: <span className="font-mono">{value}</span></p>
-            {subLabel && <p className="font-bold text-gray-700 uppercase">{subLabel}: <span className="font-mono">{subValue}</span></p>}
+            <p className="font-bold text-gray-700 uppercase">
+                {label}: <span className="font-mono font-bold">{value}</span>
+            </p>
+            {subLabel && <p className="font-bold text-gray-700 uppercase">{subLabel}: <span className="font-mono font-bold">{subValue}</span></p>}
         </div>
     );
     
@@ -316,10 +318,10 @@ const PrintPageContent = () => {
                      <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}>
                         {isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Printer className="h-4 w-4" />}
                     </Button>
-                     <Button variant="outline" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}>
+                     <Button variant="default" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}>
                         {isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Share2 className="h-4 w-4" />}
                     </Button>
-                     <Button variant="outline" size="icon" onClick={handleDownload} disabled={isGenerating}>
+                     <Button variant="default" size="icon" onClick={handleDownload} disabled={isGenerating}>
                         {isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4" />}
                     </Button>
                 </div>
