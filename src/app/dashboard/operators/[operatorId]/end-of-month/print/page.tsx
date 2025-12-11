@@ -163,9 +163,9 @@ const PrintPageContent = () => {
         
         // Summary Table
         const summaryBody = [[
-            { content: 'Giorni\nLavorati', styles: { halign: 'center' } },
-            { content: 'Ore\nOrdinarie', styles: { halign: 'center' } },
-            { content: 'Ore\nStraordinarie', styles: { halign: 'center' } },
+            { content: 'Giorni Lavorati', styles: { halign: 'center' } },
+            { content: 'Ore Ordinarie', styles: { halign: 'center' } },
+            { content: 'Ore\nStraordinarie', styles: { halign: 'center', } },
             { content: 'Ferie\n(giorni)', styles: { halign: 'center' } },
             { content: 'Permessi\n(ore)', styles: { halign: 'center' } },
             { content: 'Malattia\n(giorni)', styles: { halign: 'center' } },
@@ -277,8 +277,8 @@ const PrintPageContent = () => {
     }
     
     return (
-        <div className="bg-muted/40 min-h-screen">
-             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 shadow-sm no-print">
+        <div className="bg-white text-black min-h-screen">
+             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-gray-50 px-4 shadow-sm no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
                      <Button variant="default" size="sm" onClick={handlePrint} disabled={isGenerating}>
@@ -322,12 +322,12 @@ const PrintPageContent = () => {
                     <table className="w-full text-xs border border-collapse mb-8 table-fixed">
                         <thead>
                             <tr className="border-b">
-                                <th className="border p-1 font-semibold text-center">Giorni Lavorati</th>
-                                <th className="border p-1 font-semibold text-center">Ore Ordinarie</th>
-                                <th className="border p-1 font-semibold text-center">Ore Straordinarie</th>
-                                <th className="border p-1 font-semibold text-center">Ferie (giorni)</th>
-                                <th className="border p-1 font-semibold text-center">Permessi (ore)</th>
-                                <th className="border p-1 font-semibold text-center">Malattia (giorni)</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]">Giorni Lav.</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]">Ore Ordinarie</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]">Ore<br/>Straordinarie</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]">Ferie</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]">Permessi</th>
+                                <th className="border p-1 font-semibold text-center text-[10px]">Malattia</th>
                             </tr>
                         </thead>
                          <tbody>
@@ -336,7 +336,7 @@ const PrintPageContent = () => {
                                 <td className="border p-2 text-center text-sm">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
                                 <td className="border p-2 text-center text-sm">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
                                 <td className="border p-2 text-center text-sm">{(monthlySummary.ferieDays || 0)}</td>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border p-2 text-center text-sm">{(monthlySummary.permessoHours || 0)}</td>
                                 <td className="border p-2 text-center text-sm">{(monthlySummary.malattiaDays || 0)}</td>
                             </tr>
                         </tbody>
