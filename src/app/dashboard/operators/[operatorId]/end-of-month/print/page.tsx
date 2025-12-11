@@ -168,29 +168,33 @@ const PrintPageContent = () => {
         const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
 
-        const summaryData = [
-            `GIORNI LAVORATI: ${monthlySummary.workedDays || 0} | FERIE: ${monthlySummary.ferieDays || 0}`,
-            `ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} | COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`,
-            `ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} | COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`,
-            `ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} | GIORNI DI MALATTIA: ${monthlySummary.malattiaDays || 0}`
+        const summaryBody = [
+            [
+                { content: `GIORNI LAVORATI: ${monthlySummary.workedDays || 0}`, styles: { fontStyle: 'bold' }},
+                { content: `FERIE: ${monthlySummary.ferieDays || 0}`, styles: { fontStyle: 'bold', halign: 'right' }},
+            ],
+            [
+                { content: `ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold' }},
+                { content: `COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`, styles: { fontStyle: 'bold', halign: 'right' }},
+            ],
+            [
+                { content: `ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold' }},
+                { content: `COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`, styles: { fontStyle: 'bold', halign: 'right' }},
+            ],
+             [
+                { content: `ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, styles: { fontStyle: 'bold' }},
+                { content: `GIORNI DI MALATTIA: ${monthlySummary.malattiaDays || 0}`, styles: { fontStyle: 'bold', halign: 'right' }},
+            ],
         ];
 
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0);
-        
         autoTable(doc, {
-            body: summaryData.map(row => [row]),
+            body: summaryBody,
             startY: 40,
             theme: 'plain',
             styles: {
-                fontSize: 9,
-                cellPadding: { top: 2, right: 2, bottom: 2, left: 0 },
+                fontSize: 8,
+                cellPadding: { top: 1, right: 0, bottom: 1, left: 0 },
             },
-            didParseCell: function (data) {
-                // Make the numbers bold in the PDF
-                data.cell.styles.fontStyle = 'bold';
-            }
         });
     
         // 3. Daily Details
@@ -232,12 +236,13 @@ const PrintPageContent = () => {
             },
             willDrawCell: function (data) {
                 if (data.section === 'body') {
-                    // Make the day of the week bold
                      const text = data.cell.text as string[];
                      if (text && text.length > 0) {
                         const dateLine = text[0];
                         const dateParts = dateLine.split(' - ');
                         if (dateParts.length > 0) {
+                             // This is a bit of a hack to make just the date part bold, jspdf-autotable doesn't support rich text well.
+                             // We make the whole cell bold as a compromise.
                              data.cell.styles.fontStyle = 'bold';
                         }
                     }
@@ -301,15 +306,6 @@ const PrintPageContent = () => {
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     
-    const SummaryItem = ({ label, value, subLabel, subValue }: { label: string, value: string | number, subLabel?: string, subValue?: string | number }) => (
-        <div className="flex justify-between items-baseline">
-            <p className="font-bold text-gray-700 uppercase">
-                {label}: <span className="font-mono font-bold">{value}</span>
-            </p>
-            {subLabel && <p className="font-bold text-gray-700 uppercase">{subLabel}: <span className="font-mono font-bold">{subValue}</span></p>}
-        </div>
-    );
-    
     return (
         <div className="bg-white text-black min-h-screen">
              <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-white px-4 no-print">
@@ -351,10 +347,50 @@ const PrintPageContent = () => {
 
                     {/* Summary List */}
                     <div className="mb-8 space-y-1 text-xs">
-                        <SummaryItem label="GIORNI LAVORATI" value={monthlySummary.workedDays || 0} subLabel="FERIE" subValue={monthlySummary.ferieDays || 0} />
-                        <SummaryItem label="ORE ORDINARIE" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} subLabel={`COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
-                        <SummaryItem label="ORE STRAORDINARIE" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} subLabel={`COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
-                        <SummaryItem label="ORE PERMESSI" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} subLabel="GIORNI DI MALATTIA" subValue={monthlySummary.malattiaDays || 0} />
+                        <table className="w-full">
+                            <tbody>
+                                <tr>
+                                    <td className="py-1">
+                                        <span className="font-bold">GIORNI LAVORATI: </span>
+                                        <span className="font-bold font-mono">{monthlySummary.workedDays || 0}</span>
+                                    </td>
+                                    <td className="py-1 text-right">
+                                        <span className="font-bold">FERIE: </span>
+                                        <span className="font-bold font-mono">{monthlySummary.ferieDays || 0}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td className="py-1">
+                                        <span className="font-bold">ORE ORDINARIE: </span>
+                                        <span className="font-bold font-mono">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span>
+                                    </td>
+                                    <td className="py-1 text-right">
+                                        <span className="font-bold">COSTO ORDINARIE ({`${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`}): </span>
+                                        <span className="font-bold font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td className="py-1">
+                                        <span className="font-bold">ORE STRAORDINARIE: </span>
+                                        <span className="font-bold font-mono">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span>
+                                    </td>
+                                    <td className="py-1 text-right">
+                                        <span className="font-bold">COSTO STRAORDINARIE ({`${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`}): </span>
+                                        <span className="font-bold font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                    </td>
+                                </tr>
+                                 <tr>
+                                    <td className="py-1">
+                                        <span className="font-bold">ORE PERMESSI: </span>
+                                        <span className="font-bold font-mono">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span>
+                                    </td>
+                                    <td className="py-1 text-right">
+                                        <span className="font-bold">GIORNI DI MALATTIA: </span>
+                                        <span className="font-bold font-mono">{monthlySummary.malattiaDays || 0}</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
 
 
