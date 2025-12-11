@@ -17,8 +17,6 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
-import type jsPDF from 'jspdf';
-import 'jspdf-autotable';
 
 
 // Type definitions are now in calculations.ts
@@ -93,7 +91,6 @@ export default function EndOfMonthPage() {
     const { toast } = useToast();
     const operatorId = params.operatorId as string;
     
-    const [isProcessing, setIsProcessing] = useState(false);
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
@@ -166,22 +163,6 @@ export default function EndOfMonthPage() {
     const handleMonthChange = (offset: number) => {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
-
-    const handleDownloadPdf = async () => {
-        if (isProcessing) return;
-        setIsProcessing(true);
-        try {
-            const { default: jsPDF } = await import('jspdf');
-            const { default: autoTable } = await import('jspdf-autotable');
-            const doc = await generatePdfDoc(jsPDF, autoTable);
-            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-        } catch (error) {
-            toast({ title: "Errore", description: "Impossibile generare il PDF per il download.", variant: "destructive" });
-            console.error(error);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
     
     const handleCleanMonth = async () => {
         if (!firestore || !operatorId || !currentMonth) return;
@@ -217,124 +198,6 @@ export default function EndOfMonthPage() {
         }
     };
 
-    const generatePdfDoc = async (jsPDF: any, autoTable: any): Promise<jsPDF> => {
-        
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        let y = 15;
-
-        doc.setTextColor(40, 40, 40);
-        doc.setFillColor(255, 255, 255);
-
-        try {
-            const loadLogo = new Promise<string>((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = "Anonymous";
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) return reject(new Error('Failed to get canvas context'));
-                    ctx.drawImage(img, 0, 0);
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                img.onerror = (err) => reject(err);
-                img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png'; 
-            });
-
-            const base64data = await loadLogo;
-            doc.addImage(base64data, 'PNG', 15, y - 5, 15, 15);
-        } catch (error) {
-            console.warn("Could not load logo for PDF, proceeding without it.");
-        }
-
-        doc.setFontSize(16);
-        doc.text(`${operator?.firstName} ${operator?.lastName}`, pageWidth - 15, y + 2, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, y + 8, { align: 'right' });
-        
-        y += 20;
-
-        const summaryData = [
-            { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
-            { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
-            { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
-            { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
-            { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
-            { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
-        ];
-
-        autoTable(doc, {
-            startY: y,
-            body: [summaryData.map(d => `${d.title}\n${d.value}`)],
-            theme: 'grid',
-            styles: {
-                halign: 'center', valign: 'middle', fontSize: 8,
-                fillColor: [255, 255, 255], textColor: 40,
-                lineColor: [200, 200, 200], lineWidth: 0.1,
-                cellPadding: 1.5,
-            },
-        });
-        
-        y = (doc as any).autoTable.previous.finalY + 8;
-
-        doc.setFontSize(12);
-        doc.text("Dettaglio Giornaliero", 15, y);
-        y += 6;
-        
-        const bodyRows: any[][] = [];
-        dailyDetails.forEach(detail => {
-             if (detail.status === 'riposo') return;
-             
-             const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
-             let mainLine = '';
-             let detailLine = '';
-
-             switch(detail.status) {
-                case 'lavorato':
-                    let timbratureText = '';
-                     if (detail.shift) {
-                        detail.shift.events.forEach(e => {
-                             const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                             timbratureText += `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${originalTime} | `;
-                         });
-                         mainLine = `${dayStr} - Lavorato | Timbrature: ${timbratureText.slice(0, -3)}`;
-                         detailLine = `   Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`;
-                     }
-                     break;
-                case 'ferie': mainLine = `${dayStr} - Giorno di Ferie`; break;
-                case 'malattia': mainLine = `${dayStr} - Giorno di Malattia`; break;
-                case 'festa': mainLine = `${dayStr} - Giorno Festivo`; break;
-                case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
-             }
-             
-             const combinedText = `${mainLine}${detailLine ? `\n${detailLine}` : ''}`;
-             bodyRows.push([combinedText]);
-        });
-
-
-        autoTable(doc, {
-            startY: y,
-            body: bodyRows,
-            theme: 'plain',
-            styles: {
-                fontSize: 9,
-                cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 },
-            },
-            columnStyles: { 0: { cellWidth: 'auto' } },
-            didDrawCell: (data: any) => {
-                 const isLastRow = data.row.index === bodyRows.length - 1;
-                 if (!isLastRow) {
-                    doc.setDrawColor(200, 200, 200); // Separator color
-                    doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
-                }
-            }
-        });
-        
-        return doc;
-    }
-
     if (!operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
@@ -349,10 +212,6 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handleDownloadPdf} disabled={isProcessing} className="w-full sm:w-auto">
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                            Scarica
-                        </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
                             Pulisci Mese
