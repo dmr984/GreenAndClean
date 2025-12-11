@@ -9,9 +9,9 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { format, isValid } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { processMonthlyData, type MonthlySummary, type DailyDetail } from '@/lib/calculations';
+import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails } from '@/lib/calculations';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -146,87 +146,94 @@ const PrintPageContent = () => {
         setIsGenerating(true);
     
         const doc = new jsPDF();
+        
+        // Use the browser's Image object, not Next.js's
         const img = new (window as any).Image();
         img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
+        img.crossOrigin = "Anonymous"; // Important for jsPDF
         
         await new Promise(resolve => { img.onload = resolve; });
     
-        // Header
-        doc.addImage(img, 'PNG', 15, 10, 25, 25);
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${operator.firstName} ${operator.lastName}`, 200, 20, { align: 'right' });
+        // 1. Header
+        doc.addImage(img, 'PNG', 15, 10, 20, 20);
         doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${operator.firstName} ${operator.lastName}`, 195, 20, { align: 'right' });
+        doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100);
-        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, 200, 27, { align: 'right' });
+        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, 195, 26, { align: 'right' });
         
-        // Summary Table
+        // 2. Summary Table
+        const summaryHead = [[
+            'Giorni Lav.', 'Ore Ordinarie', 'Ore\nStraordinarie', 'Ferie', 'Permessi', 'Malattia'
+        ]];
         const summaryBody = [[
-            { content: 'Giorni Lav.', styles: { halign: 'center', fontSize: 8 } },
-            { content: 'Ore Ordinarie', styles: { halign: 'center', fontSize: 8 } },
-            { content: 'Ore\nStraordinarie', styles: { halign: 'center', fontSize: 8 } },
-            { content: 'Ferie', styles: { halign: 'center', fontSize: 8 } },
-            { content: 'Permessi', styles: { halign: 'center', fontSize: 8 } },
-            { content: 'Malattia', styles: { halign: 'center', fontSize: 8 } },
-        ], [
-            { content: (monthlySummary.workedDays || 0).toString(), styles: { halign: 'center', fontSize: 12 } },
-            { content: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', fontSize: 12 } },
-            { content: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', fontSize: 12 } },
-            { content: (monthlySummary.ferieDays || 0).toString(), styles: { halign: 'center', fontSize: 12 } },
-            { content: (monthlySummary.permessoHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', fontSize: 12 } },
-            { content: (monthlySummary.malattiaDays || 0).toString(), styles: { halign: 'center', fontSize: 12 } },
+            (monthlySummary.workedDays || 0).toString(),
+            (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'),
+            (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'),
+            (monthlySummary.ferieDays || 0).toString(),
+            (monthlySummary.permessoHours || 0).toLocaleString('it-IT'),
+            (monthlySummary.malattiaDays || 0).toString(),
         ]];
     
-        (doc as any).autoTable({
+        autoTable(doc, {
             startY: 40,
+            head: summaryHead,
             body: summaryBody,
             theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-             columnStyles: {
-                0: { cellWidth: 25 },
-                1: { cellWidth: 35 },
-                2: { cellWidth: 35 },
-                3: { cellWidth: 25 },
-                4: { cellWidth: 25 },
-                5: { cellWidth: 25 },
-            }
+            headStyles: {
+                fillColor: [248, 250, 252],
+                textColor: [51, 65, 85],
+                fontSize: 8,
+                halign: 'center',
+                valign: 'middle',
+                lineWidth: 0.1,
+                lineColor: [203, 213, 225]
+            },
+            bodyStyles: {
+                fontSize: 10,
+                halign: 'center',
+                lineWidth: 0.1,
+                lineColor: [203, 213, 225]
+            },
         });
     
-        // Daily Details
-        const startY = (doc as any).lastAutoTable.finalY + 10;
+        // 3. Daily Details
+        const dailyDetailStartY = (doc as any).lastAutoTable.finalY + 10;
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text("Dettaglio Giornaliero", 15, startY);
+        doc.text("Dettaglio Giornaliero", 15, dailyDetailStartY);
 
         const dailyBody = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
             const dateStr = format(detail.date, 'eeee dd MMMM', { locale: it });
-            let statusStr = detail.status.charAt(0).toUpperCase() + detail.status.slice(1);
-            let timbratureStr = '';
-            
-            if (detail.shift) {
-                timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-            }
-             if (detail.status === 'lavorato') statusStr = 'Lavorato';
-             
-            const line1 = `${dateStr} - ${statusStr}\n${timbratureStr}`;
-            
+            let line1 = '';
             let line2 = '';
-            if(detail.shift) {
+
+            if (detail.shift) {
+                const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+            } else {
+                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
+                 if(detail.status === 'festa') statusText = 'Giorno Festivo';
+                 line1 = `${dateStr} - ${statusText}`;
             }
-             return [{ content: `${line1}\n${line2}`, styles: { cellPadding: { top: 3, bottom: 3 } } }];
+
+            return [
+                { content: `${line1}\n${line2}`, styles: { cellPadding: { top: 3, bottom: 3 } } }
+            ];
         });
         
-        (doc as any).autoTable({
-            startY: startY + 5,
+        autoTable(doc, {
+            startY: dailyDetailStartY + 5,
             body: dailyBody,
-            theme: 'grid',
-            styles: { fontSize: 8, overflow: 'linebreak' },
-            didDrawCell: (data: any) => {
-                 if (data.row.index % 2 === 1) { // Apply to odd rows
-                    doc.setFillColor(245, 245, 245);
-                    doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 1.5 },
+             didDrawCell: (data) => {
+                 if (data.row.index < dailyBody.length - 1) { // Don't draw under the last row
+                    doc.setDrawColor(226, 232, 240); // tailwind gray-300
+                    doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
                 }
             }
         });
@@ -310,15 +317,15 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8">
-                <div className="w-full max-w-4xl bg-white text-black p-8 shadow-lg print-area">
+                <div className="w-full max-w-4xl bg-white text-black p-8 shadow-lg print-area" style={{ width: '210mm', minHeight: '297mm' }}>
                     {/* Header */}
-                    <table className="w-full mb-6">
+                     <table className="w-full mb-6">
                         <tbody>
                             <tr>
                                 <td style={{ width: '25%' }}>
                                     <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
                                 </td>
-                                <td style={{ width: '75%' }} className="text-right align-top">
+                                <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
                                     <h2 className="text-lg font-bold">{`${operator.firstName} ${operator.lastName}`}</h2>
                                     <p className="text-sm text-gray-600">{`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`}</p>
                                 </td>
@@ -327,60 +334,55 @@ const PrintPageContent = () => {
                     </table>
 
                     {/* Summary Table */}
-                    <table className="w-full text-xs border border-collapse mb-8 table-fixed">
+                    <table className="w-full text-xs border border-collapse mb-8 table-fixed border-gray-300">
                         <thead>
-                            <tr className="border-b">
-                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Giorni Lav.</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '20%' }}>Ore Ordinarie</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '20%' }}>Ore<br/>Straordinarie</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Ferie</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Permessi</th>
-                                <th className="border p-1 font-semibold text-center text-[10px]" style={{ width: '15%' }}>Malattia</th>
+                            <tr className="border-b border-gray-300">
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Giorni Lav.</th>
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Ore Ordinarie</th>
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Ore<br/>Straordinarie</th>
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Ferie</th>
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Permessi</th>
+                                <th className="p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Malattia</th>
                             </tr>
                         </thead>
                          <tbody>
-                            <tr>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.workedDays || 0)}</td>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.ferieDays || 0)}</td>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.permessoHours || 0)}</td>
-                                <td className="border p-2 text-center text-sm">{(monthlySummary.malattiaDays || 0)}</td>
+                            <tr className="border-b border-gray-300">
+                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.workedDays || 0)}</td>
+                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.ferieDays || 0)}</td>
+                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.permessoHours || 0)}</td>
+                                <td className="p-2 text-center text-sm font-bold">{(monthlySummary.malattiaDays || 0)}</td>
                             </tr>
                         </tbody>
                     </table>
 
                     {/* Daily Details */}
-                    <h3 className="text-md font-bold mb-4 border-b pb-2">Dettaglio Giornaliero</h3>
-                    <div className="space-y-3 text-xs">
+                    <h3 className="text-md font-bold mb-2 border-b border-black pb-1">Dettaglio Giornaliero</h3>
+                    <div className="space-y-2 text-xs">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-                             if (!detail.shift) {
-                                return (
-                                     <div key={detail.date.toISOString()} className="border-b pb-2">
-                                        <p className="font-semibold">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.charAt(0).toUpperCase() + detail.status.slice(1)}</p>
-                                    </div>
-                                )
-                             }
-                            
-                            const dateStr = format(detail.date, 'eeee dd MMMM', { locale: it });
-                            let statusStr = detail.status.charAt(0).toUpperCase() + detail.status.slice(1);
-                            if (detail.status === 'lavorato') statusStr = 'Lavorato';
+                            let line1 = '';
+                            let line2 = '';
+                             const dateStr = format(detail.date, 'eeee dd MMMM', { locale: it });
 
-                            const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-                            const hoursStr = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                            if (detail.shift) {
+                                const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                                line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
+                                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                            } else {
+                                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
+                                 if(detail.status === 'festa') statusText = 'Giorno Festivo';
+                                 line1 = `${dateStr} - ${statusText}`;
+                            }
 
                             return (
-                                <div key={detail.date.toISOString()} className="border-b pb-2">
-                                    <div className="flex justify-between items-center">
-                                       <span className="font-semibold">{dateStr} - {statusStr}</span>
-                                       <span className="text-gray-600">{timbratureStr}</span>
-                                    </div>
-                                    <p className="text-gray-600 mt-1">{hoursStr}</p>
+                                <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-1.5 mb-1.5">
+                                    <p className="font-semibold text-[9px]">{line1}</p>
+                                    {line2 && <p className="text-gray-600 text-[9px]">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
                     </div>
-
                 </div>
             </main>
         </div>
