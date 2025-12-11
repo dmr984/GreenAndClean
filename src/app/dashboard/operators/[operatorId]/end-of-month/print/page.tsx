@@ -60,9 +60,9 @@ type Timbratura = {
 };
 
 const SummaryItem = ({ title, value }: { title: string, value: string | number }) => (
-    <div className="flex flex-col items-center justify-center p-2 border border-gray-300 rounded-md text-center h-full">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">{title}</p>
-        <p className="text-xl font-bold">{value}</p>
+    <div className="flex flex-col items-center justify-center p-1 border border-gray-300 rounded-md text-center h-full text-black">
+        <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-600">{title}</p>
+        <p className="text-lg font-bold">{value}</p>
     </div>
 );
 
@@ -159,28 +159,28 @@ export default function PrintPage() {
 
     return (
     <div className="bg-gray-500 min-h-screen py-8 px-4 font-sans">
-        <div className="max-w-4xl mx-auto bg-white text-black p-8 shadow-2xl rounded-lg">
+        <div className="max-w-4xl mx-auto bg-white p-8 shadow-2xl rounded-lg">
             
              <header className="mb-4 text-center">
                  <div className="flex justify-center items-center gap-3">
                     <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8"/>
-                    <h1 className="text-xl font-bold uppercase tracking-wider">Serveco SRL</h1>
+                    <h1 className="text-xl font-bold uppercase tracking-wider text-black">Serveco SRL</h1>
                  </div>
-                <h2 className="text-2xl font-bold mt-4">{operator.firstName} {operator.lastName}</h2>
+                <h2 className="text-2xl font-bold mt-4 text-black">{operator.firstName} {operator.lastName}</h2>
                 <p className="text-md text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
             </header>
              <div className="border-b border-gray-300 my-4"></div>
             
             <div className="py-4 my-4">
-                <table className="w-full">
+                <table className="w-full border-collapse">
                     <tbody>
                         <tr>
-                            <td className="p-1"><SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} /></td>
-                            <td className="p-1"><SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} /></td>
-                            <td className="p-1"><SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} /></td>
-                            <td className="p-1"><SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} /></td>
-                            <td className="p-1"><SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} /></td>
-                            <td className="p-1"><SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} /></td>
+                            <td className="p-1 w-[16.66%]"><SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} /></td>
+                            <td className="p-1 w-[16.66%]"><SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1 w-[16.66%]"><SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1 w-[16.66%]"><SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} /></td>
+                            <td className="p-1 w-[16.66%]"><SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1 w-[16.66%]"><SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} /></td>
                         </tr>
                     </tbody>
                 </table>
@@ -188,7 +188,7 @@ export default function PrintPage() {
             <div className="border-b border-gray-300 my-4"></div>
             
              <section>
-                <h2 className="text-xl font-bold mb-3">Dettaglio Giornaliero</h2>
+                <h2 className="text-xl font-bold mb-3 text-black">Dettaglio Giornaliero</h2>
                 <div className="text-sm space-y-3">
                     {dailyDetails.map((detail) => {
                         if (detail.status === 'riposo') return null;
@@ -231,7 +231,7 @@ export default function PrintPage() {
                         return (
                              <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-2">
                                 <div className="flex justify-between items-baseline">
-                                     <p className="font-bold capitalize">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.replace(/_/g, ' ')}</p>
+                                     <p className="font-bold capitalize text-black">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.replace(/_/g, ' ')}</p>
                                      <p className="text-gray-600 text-right text-xs">{timbratureText}</p>
                                 </div>
                                 <p className="text-gray-800 font-medium mt-1">{detailsText}</p>
