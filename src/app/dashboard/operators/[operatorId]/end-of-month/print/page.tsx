@@ -60,9 +60,9 @@ type Timbratura = {
 };
 
 const SummaryItem = ({ title, value }: { title: string, value: string | number }) => (
-    <div className="flex flex-col items-center justify-center p-2 border border-gray-300 rounded-md text-center">
+    <div className="flex flex-col items-center justify-center p-2 border border-gray-300 rounded-md text-center h-full">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">{title}</p>
-        <p className="text-base font-bold">{value}</p>
+        <p className="text-xl font-bold">{value}</p>
     </div>
 );
 
@@ -160,55 +160,53 @@ export default function PrintPage() {
     return (
     <div className="bg-gray-500 min-h-screen py-8 px-4">
         <div className="max-w-4xl mx-auto bg-white text-black p-8 font-sans shadow-2xl rounded-lg">
-            <header className="mb-6 border-b pb-4">
-                 <table className="w-full">
-                    <tbody>
-                        <tr>
-                            <td style={{ width: '20%' }}>
-                                <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" className="h-16 w-16" />
-                            </td>
-                            <td className="text-right align-top" style={{ width: '80%' }}>
-                                <h1 className="text-xl font-bold">{operator.firstName} {operator.lastName}</h1>
-                                <p className="text-sm text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            
+            <header className="mb-4 text-center">
+                <h1 className="text-2xl font-bold">{operator.firstName} {operator.lastName}</h1>
+                <p className="text-md text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
             </header>
             
-            <section className="mb-6">
-                <table className="w-full border-collapse">
-                    <tbody>
-                        <tr>
-                            <td className="p-1"><SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} /></td>
-                            <td className="p-1"><SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} /></td>
-                            <td className="p-1"><SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} /></td>
-                            <td className="p-1"><SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} /></td>
-                            <td className="p-1"><SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} /></td>
-                            <td className="p-1"><SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} /></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </section>
+            <div className="border-t border-b border-gray-300 py-4 my-4">
+                <div className="grid grid-cols-6 gap-2">
+                    <SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} />
+                    <SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} />
+                    <SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} />
+                    <SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} />
+                    <SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} />
+                    <SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} />
+                </div>
+            </div>
             
              <section>
-                <h2 className="text-lg font-bold border-b pb-1 mb-2">Dettaglio Giornaliero</h2>
-                <div className="text-xs">
+                <h2 className="text-xl font-bold mb-3">Dettaglio Giornaliero</h2>
+                <div className="text-sm space-y-4">
                     {dailyDetails.map((detail, index) => {
                         if (detail.status === 'riposo') return null;
 
-                        const isLast = index === dailyDetails.length - 1;
-
                         let timbratureText = '';
                         if (detail.shift) {
-                            timbratureText = detail.shift.events
-                                .map(e => `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`)
-                                .join(' | ');
+                             const entrata = detail.shift.events.find(e => e.type === 'entrata');
+                             const uscita = detail.shift.events.find(e => e.type === 'uscita');
+                             const pausa = detail.shift.events.find(e => e.type === 'pausa');
+                             const fine_pausa = detail.shift.events.find(e => e.type === 'fine_pausa');
+                             
+                             let parts: string[] = [];
+                             if(entrata) parts.push(`Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')}`);
+                             if(pausa) parts.push(`Pausa: ${format(pausa.timestamp.toDate(), 'HH:mm')}`);
+                             if(fine_pausa) parts.push(`Fine_pausa: ${format(fine_pausa.timestamp.toDate(), 'HH:mm')}`);
+                             if(uscita) parts.push(`Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')}`);
+
+                             timbratureText = parts.join(' | ');
                         }
                         
                         let detailsText = '';
                         if (detail.shift) {
-                            detailsText = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                             let parts: string[] = [];
+                             if(detail.shift.contractualHours > 0) parts.push(`Ore Previste: ${detail.shift.contractualHours}h`);
+                             if(detail.shift.ordinaryHours > 0) parts.push(`Ore Ordinarie: ${detail.shift.ordinaryHours}h`);
+                             if(detail.shift.overtimeHours > 0) parts.push(`Straordinario: ${detail.shift.overtimeHours}h`);
+                             if(detail.shift.permissionHours > 0) parts.push(`Permesso: ${detail.shift.permissionHours}h`);
+                             detailsText = parts.join(' | ');
                         } else if(detail.status === 'ferie') {
                             detailsText = "Giorno di ferie approvato";
                         } else if(detail.status === 'malattia') {
@@ -221,12 +219,12 @@ export default function PrintPage() {
 
 
                         return (
-                             <div key={detail.date.toISOString()} className={cn(!isLast && "border-b border-gray-200 pb-2 mb-2")}>
-                                <div className="flex justify-between">
+                             <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-2">
+                                <div className="flex justify-between items-baseline">
                                      <p className="font-bold capitalize">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.replace(/_/g, ' ')}</p>
-                                     <p className="text-gray-600 text-right">{timbratureText}</p>
+                                     <p className="text-gray-600 text-right text-xs">{timbratureText}</p>
                                 </div>
-                                <p className="text-gray-800 font-medium mt-0.5">{detailsText}</p>
+                                <p className="text-gray-800 font-medium mt-1">{detailsText}</p>
                             </div>
                         )
                     })}
