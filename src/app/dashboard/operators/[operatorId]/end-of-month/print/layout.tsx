@@ -7,7 +7,7 @@ export default function PrintLayout({
   children: React.ReactNode;
 }>) {
   return (
-      <div className="font-body antialiased">
+      <div className="font-body antialiased bg-muted/40">
             {children}
             <Toaster />
       </div>

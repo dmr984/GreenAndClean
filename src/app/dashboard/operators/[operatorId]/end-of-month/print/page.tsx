@@ -165,48 +165,59 @@ const PrintPageContent = () => {
         doc.setTextColor(100);
         doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, 195, 26, { align: 'right' });
         
-        // 2. Summary Table
         const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
-        
-        const summaryHead = [[
-            { content: 'Ore Ordinarie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-            { content: 'Costo Ordinarie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-            { content: 'Ore\nStraordinarie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-            { content: 'Costo\nStraordinarie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-            { content: 'Ferie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-            { content: 'Permessi', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-            { content: 'Malattia', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
-        ]];
-        const summaryBody = [[
-            (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'),
-            ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }),
-            (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'),
-            overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }),
-            (monthlySummary.ferieDays || 0).toString(),
-            (monthlySummary.permessoHours || 0).toLocaleString('it-IT'),
-            (monthlySummary.malattiaDays || 0).toString(),
-        ]];
-    
-        autoTable(doc, {
-            startY: 40,
-            head: summaryHead,
-            body: summaryBody,
-            theme: 'grid',
+
+        const tableStyles = {
+            theme: 'grid' as const,
             headStyles: {
                 fillColor: [248, 250, 252],
                 textColor: [51, 65, 85],
-                valign: 'middle',
+                valign: 'middle' as const,
+                halign: 'center' as const,
+                fontSize: 8,
+                fontStyle: 'bold' as const,
                 lineWidth: 0.1,
                 lineColor: [203, 213, 225]
             },
             bodyStyles: {
                 fontSize: 10,
-                halign: 'center',
-                valign: 'middle',
+                halign: 'center' as const,
+                valign: 'middle' as const,
                 lineWidth: 0.1,
                 lineColor: [203, 213, 225]
             },
+        };
+
+        // 2. Summary Tables (2 rows of 4)
+        const summaryHead1 = [['Giorni Lavorati', 'Ore Ordinarie', 'Ore Straordinarie', 'Ferie']];
+        const summaryBody1 = [[
+            (monthlySummary.workedDays || 0).toString(),
+            (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'),
+            (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'),
+            (monthlySummary.ferieDays || 0).toString(),
+        ]];
+
+        autoTable(doc, {
+            startY: 40,
+            head: summaryHead1,
+            body: summaryBody1,
+            ...tableStyles
+        });
+
+        const summaryHead2 = [['Permessi (ore)', 'Malattia (giorni)', 'Costo Ordinarie', 'Costo Straordinarie']];
+        const summaryBody2 = [[
+            (monthlySummary.permessoHours || 0).toLocaleString('it-IT'),
+            (monthlySummary.malattiaDays || 0).toString(),
+            ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }),
+            overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }),
+        ]];
+
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY + 2,
+            head: summaryHead2,
+            body: summaryBody2,
+            ...tableStyles
         });
     
         // 3. Daily Details
@@ -305,8 +316,8 @@ const PrintPageContent = () => {
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     
     return (
-        <div className="bg-white text-black min-h-screen">
-             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-gray-50 px-4 shadow-sm no-print">
+        <div className="bg-background text-foreground min-h-screen">
+             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
                      <Button variant="default" size="sm" onClick={handlePrint} disabled={isGenerating}>
@@ -330,7 +341,7 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8">
-                <div className="w-full max-w-4xl print-area" style={{ width: '210mm', minHeight: '297mm' }}>
+                <div className="w-full max-w-4xl bg-card p-6 sm:p-8 rounded-lg shadow-lg print-area" style={{ width: '210mm', minHeight: '297mm' }}>
                     {/* Header */}
                      <table className="w-full mb-6">
                         <tbody>
@@ -346,31 +357,44 @@ const PrintPageContent = () => {
                         </tbody>
                     </table>
 
-                    {/* Summary Table */}
-                    <table className="w-full text-xs border border-collapse mb-8 table-fixed border-gray-300">
+                    {/* Summary Tables */}
+                    <table className="w-full text-xs border-collapse mb-2 table-fixed border-gray-300">
                         <thead>
                             <tr className="border-b border-gray-300">
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Ore Ordinarie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Costo Ordinarie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Ore<br/>Straordinarie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Costo<br/>Straordinarie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Ferie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Permessi</th>
-                                <th className="p-1 font-semibold text-center text-[8px] uppercase" style={{width: '14.28%'}}>Malattia</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Giorni Lavorati</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Ore Ordinarie</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Ore Straordinarie</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Ferie</th>
                             </tr>
                         </thead>
                          <tbody>
                             <tr className="border-b border-gray-300">
-                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
-                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
-                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.ferieDays || 0)}</td>
-                                <td className="border-r border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.permessoHours || 0)}</td>
-                                <td className="p-2 text-center text-sm font-bold">{(monthlySummary.malattiaDays || 0)}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.workedDays || 0)}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.ferieDays || 0)}</td>
                             </tr>
                         </tbody>
                     </table>
+                     <table className="w-full text-xs border-collapse mb-8 table-fixed border-gray-300">
+                        <thead>
+                            <tr className="border-b border-gray-300">
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Permessi (ore)</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Malattia (giorni)</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Costo Ordinarie</th>
+                                <th className="border border-gray-300 p-1 font-semibold text-center uppercase" style={{width: '25%'}}>Costo Straordinarie</th>
+                            </tr>
+                        </thead>
+                         <tbody>
+                            <tr className="border-b border-gray-300">
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{(monthlySummary.malattiaDays || 0)}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                <td className="border border-gray-300 p-2 text-center text-sm font-bold">{overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
 
                     {/* Daily Details */}
                     <h3 className="text-md font-bold mb-2 border-b border-black pb-1">Dettaglio Giornaliero</h3>
