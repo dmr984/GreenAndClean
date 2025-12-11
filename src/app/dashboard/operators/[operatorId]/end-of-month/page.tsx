@@ -136,7 +136,7 @@ export default function EndOfMonthPage() {
     
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery)
+                getDocs(requestsSnapshot)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
@@ -239,8 +239,7 @@ export default function EndOfMonthPage() {
              if (detail.status === 'riposo') return;
              
              const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
-             let mainLine = '';
-             let detailLine = '';
+             let rowContent: string[] = [];
 
              switch(detail.status) {
                 case 'lavorato':
@@ -250,20 +249,16 @@ export default function EndOfMonthPage() {
                              const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                              timbratureText += `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${originalTime} | `;
                          });
-                         mainLine = `${dayStr} - Lavorato${timbratureText.slice(0, -3)}`;
-                        detailLine = `Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`;
+                         rowContent.push(`${dayStr} - Lavorato${timbratureText.slice(0, -3)}`);
+                        rowContent.push(`Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`);
                      }
                      break;
-                case 'ferie': mainLine = `${dayStr} - Giorno di Ferie`; break;
-                case 'malattia': mainLine = `${dayStr} - Giorno di Malattia`; break;
-                case 'festa': mainLine = `${dayStr} - Giorno Festivo`; break;
-                case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
+                case 'ferie': rowContent.push(`${dayStr} - Giorno di Ferie`); break;
+                case 'malattia': rowContent.push(`${dayStr} - Giorno di Malattia`); break;
+                case 'festa': rowContent.push(`${dayStr} - Giorno Festivo`); break;
+                case 'mancata_timbratura': rowContent.push(`${dayStr} - Mancata Timbratura`); break;
              }
              
-            const rowContent = [mainLine];
-             if (detailLine) {
-                 rowContent.push(detailLine);
-             }
              bodyRows.push([rowContent.join('\n')]);
         });
 
@@ -307,9 +302,31 @@ export default function EndOfMonthPage() {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const blob = doc.output('blob');
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            const pdfBlob = doc.output('blob');
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = pdfUrl;
+            document.body.appendChild(iframe);
+
+            iframe.onload = () => {
+                try {
+                    iframe.contentWindow?.focus();
+                    iframe.contentWindow?.print();
+                } catch (e) {
+                    console.error("Print failed:", e);
+                    toast({
+                        title: "Stampa non riuscita",
+                        description: "Non è stato possibile aprire il dialogo di stampa. Prova a scaricare il file.",
+                        variant: "destructive"
+                    });
+                }
+                 setTimeout(() => {
+                    document.body.removeChild(iframe);
+                    URL.revokeObjectURL(pdfUrl);
+                }, 100);
+            };
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile preparare il PDF per la stampa.", variant: "destructive" });
             console.error(error);
