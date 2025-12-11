@@ -19,7 +19,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import type jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import printJS from 'print-js';
 
 
 // Type definitions are now in calculations.ts
@@ -246,15 +245,13 @@ export default function EndOfMonthPage() {
 
              switch(detail.status) {
                 case 'lavorato':
-                    mainLine = `${dayStr} - Lavorato`;
+                    let timbratureText = ' | Timbrature: ';
                      if (detail.shift) {
-                        let timbratureText = ' | Timbrature: ';
-                         detail.shift.events.forEach(e => {
+                        detail.shift.events.forEach(e => {
                              const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                              timbratureText += `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${originalTime} | `;
                          });
-                         mainLine += timbratureText.slice(0, -3);
-
+                         mainLine = `${dayStr} - Lavorato${timbratureText.slice(0, -3)}`;
                         detailLine = `Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`;
                      }
                      break;
@@ -308,14 +305,45 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrintPdf = async () => {
-        if (!pdfBlobUrl) return;
-        printJS({ printable: pdfBlobUrl, type: 'pdf', showModal: true });
+        if (!pdfBlobUrl) {
+            if (isProcessing || !operator) return;
+            setIsProcessing(true);
+            try {
+                const doc = await generatePdfDoc();
+                const blob = doc.output('blob');
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+            } catch (error) {
+                toast({ title: "Errore", description: "Impossibile generare il PDF per la stampa.", variant: "destructive" });
+            } finally {
+                setIsProcessing(false);
+            }
+        } else {
+            window.open(pdfBlobUrl, '_blank');
+        }
     };
 
     const handleDownloadPdf = async () => {
-        if (!operator || !pdfBlobUrl) return;
+        if (!operator) return;
+        let urlToDownload = pdfBlobUrl;
+        if (!urlToDownload) {
+             if (isProcessing) return;
+             setIsProcessing(true);
+             try {
+                const doc = await generatePdfDoc();
+                const blob = doc.output('blob');
+                urlToDownload = URL.createObjectURL(blob);
+             } catch (error) {
+                toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+                setIsProcessing(false);
+                return;
+             } finally {
+                setIsProcessing(false);
+             }
+        }
+
         const link = document.createElement('a');
-        link.href = pdfBlobUrl;
+        link.href = urlToDownload;
         link.download = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
         document.body.appendChild(link);
         link.click();
@@ -323,16 +351,26 @@ export default function EndOfMonthPage() {
     };
 
     const handleSharePdf = async () => {
-        if (!operator || !pdfBlobUrl) return;
+        if (!operator) return;
+         let fileToShare: File;
 
         try {
-            const response = await fetch(pdfBlobUrl);
-            const blob = await response.blob();
-            const file = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+            if (pdfBlobUrl) {
+                 const response = await fetch(pdfBlobUrl);
+                 const blob = await response.blob();
+                 fileToShare = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+            } else {
+                if (isProcessing) return;
+                setIsProcessing(true);
+                const doc = await generatePdfDoc();
+                const blob = doc.output('blob');
+                fileToShare = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+                setIsProcessing(false);
+            }
             
-            if (navigator.share && navigator.canShare({ files: [file] })) {
+            if (navigator.share && navigator.canShare({ files: [fileToShare] })) {
                 await navigator.share({
-                    files: [file],
+                    files: [fileToShare],
                     title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
                 });
             } else {
