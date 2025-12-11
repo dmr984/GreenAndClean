@@ -8,7 +8,7 @@ import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch }
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -18,7 +18,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import type jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import 'jspdf-autotable';
 
 
 // Type definitions are now in calculations.ts
@@ -89,6 +89,7 @@ const InfoBox = ({ label, value }: { label: string, value: string }) => (
 export default function EndOfMonthPage() {
     const firestore = useFirestore();
     const params = useParams();
+    const router = useRouter();
     const { toast } = useToast();
     const operatorId = params.operatorId as string;
     
@@ -166,9 +167,63 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async (): Promise<jsPDF> => {
-        const { default: jsPDF } = await import('jspdf');
-        const { default: autoTable } = await import('jspdf-autotable');
+    const handlePrint = () => {
+      const monthTimestamp = currentMonth.getTime();
+      const url = `/dashboard/operators/${operatorId}/end-of-month/print?month=${monthTimestamp}`;
+      window.open(url, '_blank');
+    };
+    
+    const handleDownloadPdf = async () => {
+      if (isProcessing) return;
+      setIsProcessing(true);
+      try {
+          const { default: jsPDF } = await import('jspdf');
+          const { default: autoTable } = await import('jspdf-autotable');
+          const doc = await generatePdfDoc(jsPDF, autoTable);
+          doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+      } catch (error) {
+          toast({ title: "Errore", description: "Impossibile generare il PDF per il download.", variant: "destructive" });
+          console.error(error);
+      } finally {
+          setIsProcessing(false);
+      }
+    };
+    
+    const handleCleanMonth = async () => {
+        if (!firestore || !operatorId || !currentMonth) return;
+        setIsCleaning(true);
+
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+
+        const batch = writeBatch(firestore);
+
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', monthStart), where('timestamp', '<=', monthEnd));
+        const timbratureSnap = await getDocs(timbratureQuery);
+        timbratureSnap.forEach(doc => batch.delete(doc.ref));
+
+        const straordinariQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('date', '>=', monthStart), where('date', '<=', monthEnd));
+        const straordinariSnap = await getDocs(straordinariQuery);
+        straordinariSnap.forEach(doc => batch.delete(doc.ref));
+
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', monthStart), where('startDate', '<=', monthEnd));
+        const requestsSnap = await getDocs(requestsQuery);
+        requestsSnap.forEach(doc => batch.delete(doc.ref));
+
+        try {
+            await batch.commit();
+            toast({ title: "Successo!", description: `I dati di ${format(currentMonth, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
+            fetchDataForMonth();
+        } catch (error) {
+            console.error("Errore pulizia mese:", error);
+            toast({ title: "Errore", description: "Impossibile completare la pulizia del mese.", variant: "destructive" });
+        } finally {
+            setIsCleaning(false);
+            setIsCleanConfirmOpen(false);
+        }
+    };
+
+    const generatePdfDoc = async (jsPDF: any, autoTable: any): Promise<jsPDF> => {
         
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -239,27 +294,28 @@ export default function EndOfMonthPage() {
              if (detail.status === 'riposo') return;
              
              const dayStr = format(detail.date, 'eeee dd MMMM', { locale: it });
-             let rowContent: string[] = [];
+             let mainLine = '';
+             let detailLine = '';
 
              switch(detail.status) {
                 case 'lavorato':
-                    let timbratureText = ' | Timbrature: ';
+                    let timbratureText = '';
                      if (detail.shift) {
                         detail.shift.events.forEach(e => {
                              const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                              timbratureText += `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${originalTime} | `;
                          });
-                         rowContent.push(`${dayStr} - Lavorato${timbratureText.slice(0, -3)}`);
-                        rowContent.push(`Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`);
+                         mainLine = `${dayStr} - Lavorato | Timbrature: ${timbratureText.slice(0, -3)}`;
+                         detailLine = `   Ore Previste: ${detail.shift.contractualHours}h  |  Ore Ordinarie: ${detail.shift.ordinaryHours}h  |  Straordinario: ${detail.shift.overtimeHours}h  |  Permesso: ${detail.shift.permissionHours}h`;
                      }
                      break;
-                case 'ferie': rowContent.push(`${dayStr} - Giorno di Ferie`); break;
-                case 'malattia': rowContent.push(`${dayStr} - Giorno di Malattia`); break;
-                case 'festa': rowContent.push(`${dayStr} - Giorno Festivo`); break;
-                case 'mancata_timbratura': rowContent.push(`${dayStr} - Mancata Timbratura`); break;
+                case 'ferie': mainLine = `${dayStr} - Giorno di Ferie`; break;
+                case 'malattia': mainLine = `${dayStr} - Giorno di Malattia`; break;
+                case 'festa': mainLine = `${dayStr} - Giorno Festivo`; break;
+                case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
              }
              
-             bodyRows.push([rowContent.join('\n')]);
+             bodyRows.push([`${mainLine}\n${detailLine}`.trim()]);
         });
 
 
@@ -272,8 +328,8 @@ export default function EndOfMonthPage() {
                 cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 },
             },
             columnStyles: { 0: { cellWidth: 'auto' } },
-            didDrawCell: (data) => {
-                 if (data.row.index < bodyRows.length - 1) {
+            didDrawCell: (data: any) => {
+                 if (data.row.index < bodyRows.length -1) {
                     doc.setDrawColor(200, 200, 200); // Separator color
                     doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
                 }
@@ -282,98 +338,6 @@ export default function EndOfMonthPage() {
         
         return doc;
     }
-    
-    const handleDownloadPdf = async () => {
-        if (isProcessing) return;
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
-            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-        } catch (error) {
-            toast({ title: "Errore", description: "Impossibile generare il PDF per il download.", variant: "destructive" });
-            console.error(error);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handlePrintPdf = async () => {
-        if (isProcessing) return;
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
-            const pdfBlob = doc.output('blob');
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = pdfUrl;
-            document.body.appendChild(iframe);
-
-            iframe.onload = () => {
-                try {
-                    iframe.contentWindow?.focus();
-                    iframe.contentWindow?.print();
-                } catch (e: any) {
-                    console.error("Print failed:", e);
-                     // If printing is blocked, open in a new tab as a fallback
-                    if (e.name === 'SecurityError') {
-                        window.open(pdfUrl, '_blank');
-                    } else {
-                        toast({
-                            title: "Stampa non riuscita",
-                            description: "Non è stato possibile aprire il dialogo di stampa. Prova a scaricare il file.",
-                            variant: "destructive"
-                        });
-                    }
-                }
-                 setTimeout(() => {
-                    document.body.removeChild(iframe);
-                    URL.revokeObjectURL(pdfUrl);
-                }, 1000); // Increased timeout
-            };
-        } catch (error) {
-            toast({ title: "Errore", description: "Impossibile preparare il PDF per la stampa.", variant: "destructive" });
-            console.error(error);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-    
-    const handleCleanMonth = async () => {
-        if (!firestore || !operatorId || !currentMonth) return;
-        setIsCleaning(true);
-
-        const monthStart = startOfMonth(currentMonth);
-        const monthEnd = endOfMonth(currentMonth);
-
-        const batch = writeBatch(firestore);
-
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', monthStart), where('timestamp', '<=', monthEnd));
-        const timbratureSnap = await getDocs(timbratureQuery);
-        timbratureSnap.forEach(doc => batch.delete(doc.ref));
-
-        const straordinariQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('date', '>=', monthStart), where('date', '<=', monthEnd));
-        const straordinariSnap = await getDocs(straordinariQuery);
-        straordinariSnap.forEach(doc => batch.delete(doc.ref));
-
-        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', monthStart), where('startDate', '<=', monthEnd));
-        const requestsSnap = await getDocs(requestsQuery);
-        requestsSnap.forEach(doc => batch.delete(doc.ref));
-
-        try {
-            await batch.commit();
-            toast({ title: "Successo!", description: `I dati di ${format(currentMonth, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
-            fetchDataForMonth();
-        } catch (error) {
-            console.error("Errore pulizia mese:", error);
-            toast({ title: "Errore", description: "Impossibile completare la pulizia del mese.", variant: "destructive" });
-        } finally {
-            setIsCleaning(false);
-            setIsCleanConfirmOpen(false);
-        }
-    };
-
 
     if (!operator) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -389,8 +353,8 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handlePrintPdf} disabled={isProcessing} className="w-full sm:w-auto">
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                        <Button onClick={handlePrint} disabled={isProcessing} className="w-full sm:w-auto">
+                            <Printer className="mr-2 h-4 w-4" />
                             Stampa
                         </Button>
                         <Button onClick={handleDownloadPdf} disabled={isProcessing} className="w-full sm:w-auto">

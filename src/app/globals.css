@@ -57,3 +57,13 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  .no-print {
+    display: none;
+  }
+}
