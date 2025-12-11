@@ -169,24 +169,28 @@ const PrintPageContent = () => {
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
 
         const summaryData = [
-            [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${(monthlySummary.ferieDays || 0)}`],
-            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`],
-            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`],
-            [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`]
+            `GIORNI LAVORATI: ${monthlySummary.workedDays || 0} | FERIE: ${monthlySummary.ferieDays || 0}`,
+            `ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} | COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`,
+            `ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} | COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}): ${overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`,
+            `ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} | GIORNI DI MALATTIA: ${monthlySummary.malattiaDays || 0}`
         ];
-        
+
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0);
         
         autoTable(doc, {
-            body: summaryData,
+            body: summaryData.map(row => [row]),
             startY: 40,
             theme: 'plain',
             styles: {
                 fontSize: 9,
                 cellPadding: { top: 2, right: 2, bottom: 2, left: 0 },
             },
+            didParseCell: function (data) {
+                // Make the numbers bold in the PDF
+                data.cell.styles.fontStyle = 'bold';
+            }
         });
     
         // 3. Daily Details
@@ -224,6 +228,19 @@ const PrintPageContent = () => {
                  if (data.row.index < dailyBody.length - 1) {
                     doc.setDrawColor(226, 232, 240);
                     doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+                }
+            },
+            willDrawCell: function (data) {
+                if (data.section === 'body') {
+                    // Make the day of the week bold
+                     const text = data.cell.text as string[];
+                     if (text && text.length > 0) {
+                        const dateLine = text[0];
+                        const dateParts = dateLine.split(' - ');
+                        if (dateParts.length > 0) {
+                             data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
                 }
             }
         });
@@ -284,16 +301,16 @@ const PrintPageContent = () => {
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     
-    const SummaryItem = ({ label, value }: { label: string, value: string | number}) => (
-        <div className="flex justify-between items-center text-sm">
-            <span className="font-bold uppercase text-gray-700">{label}:</span>
-            <span className="font-mono">{value}</span>
+    const SummaryItem = ({ label, value, subLabel, subValue }: { label: string, value: string | number, subLabel?: string, subValue?: string | number }) => (
+        <div className="flex justify-between items-center text-sm font-bold">
+            <span className="uppercase text-gray-700">{label}: <span className="font-mono">{value}</span></span>
+            {subLabel && <span className="uppercase text-gray-700">{subLabel}: <span className="font-mono">{subValue}</span></span>}
         </div>
     );
     
     return (
-        <div className="bg-background text-foreground min-h-screen">
-             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
+        <div className="bg-white text-black min-h-screen">
+             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-white px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
                      <Button variant="default" size="sm" onClick={handlePrint} disabled={isGenerating}>
@@ -317,7 +334,7 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8">
-                <div className="w-full max-w-4xl bg-card p-6 sm:p-8 print-area" style={{ width: '210mm', minHeight: '297mm' }}>
+                <div className="w-full max-w-4xl bg-white p-6 sm:p-8 print-area" style={{ width: '210mm', minHeight: '297mm' }}>
                     {/* Header */}
                      <table className="w-full mb-6">
                         <tbody>
@@ -334,20 +351,11 @@ const PrintPageContent = () => {
                     </table>
 
                     {/* Summary List */}
-                    <div className="mb-8 p-4 border rounded-lg">
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                           <SummaryItem label="Giorni Lavorati" value={monthlySummary.workedDays || 0} />
-                           <SummaryItem label="Ferie" value={monthlySummary.ferieDays || 0} />
-
-                           <SummaryItem label="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} />
-                           <SummaryItem label={`Costo Ordinarie (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} value={ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
-                           
-                           <SummaryItem label="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} />
-                           <SummaryItem label={`Costo Straordinarie (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} value={overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
-                           
-                           <SummaryItem label="Ore Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} />
-                           <SummaryItem label="Giorni di Malattia" value={monthlySummary.malattiaDays || 0} />
-                        </div>
+                    <div className="mb-8 space-y-1">
+                        <SummaryItem label="Giorni Lavorati" value={monthlySummary.workedDays || 0} subLabel="Ferie" subValue={monthlySummary.ferieDays || 0} />
+                        <SummaryItem label="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} subLabel={`Costo Ordinarie (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
+                        <SummaryItem label="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} subLabel={`Costo Straordinarie (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
+                        <SummaryItem label="Ore Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} subLabel="Giorni di Malattia" subValue={monthlySummary.malattiaDays || 0} />
                     </div>
 
 
@@ -371,7 +379,7 @@ const PrintPageContent = () => {
 
                             return (
                                 <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-1.5 mb-1.5">
-                                    <p className="font-semibold text-[9px]">{line1}</p>
+                                    <p className="font-bold text-[9px] capitalize">{line1}</p>
                                     {line2 && <p className="text-gray-600 text-[9px]">{line2}</p>}
                                 </div>
                             )
