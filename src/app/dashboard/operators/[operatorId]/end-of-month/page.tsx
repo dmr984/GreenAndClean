@@ -107,7 +107,6 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
-    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
     
 
     useEffect(() => {
@@ -296,66 +295,17 @@ export default function EndOfMonthPage() {
         return doc;
     }, [operator, currentMonth, monthlySummary, dailyDetails]);
     
-    const handleGeneratePreview = async () => {
+    const handleGenerateAndOpen = async () => {
+        if (isProcessing) return;
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const url = doc.output('bloburi');
-            setPdfPreviewUrl(url.toString());
+            const blob = doc.output('blob');
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
         } catch (error) {
-            toast({ title: "Errore", description: "Impossibile generare l'anteprima PDF.", variant: "destructive" });
+            toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
             console.error(error);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handlePrintPdf = async () => {
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
-            doc.autoPrint();
-            // Workaround for cross-origin issues and mobile compatibility
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = doc.output('bloburl').toString();
-            document.body.appendChild(iframe);
-            iframe.contentWindow?.print();
-        } catch (error) {
-            toast({ title: "Errore", description: "Impossibile preparare la stampa.", variant: "destructive" });
-            console.error(error);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-    
-     const handleSharePdf = async () => {
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
-            const pdfBlob = doc.output('blob');
-            const filename = `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
-            const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
-
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-                await navigator.share({
-                    title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
-                    text: `Riepilogo di ${operator?.firstName} ${operator?.lastName}`,
-                    files: [pdfFile],
-                });
-            } else {
-                // Fallback for browsers that don't support navigator.share with files
-                doc.save(filename);
-                toast({
-                    title: 'Download Avviato',
-                    description: 'La condivisione non è supportata, il file è stato scaricato.',
-                });
-            }
-        } catch (error) {
-            if ((error as Error).name !== 'AbortError') { // Ignore user canceling the share dialog
-                toast({ title: "Errore", description: "Impossibile condividere il PDF.", variant: "destructive" });
-                console.error(error);
-            }
         } finally {
             setIsProcessing(false);
         }
@@ -410,9 +360,9 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handleGeneratePreview} disabled={isProcessing} className="w-full sm:w-auto">
+                        <Button onClick={handleGenerateAndOpen} disabled={isProcessing} className="w-full sm:w-auto">
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                            Calcolo Fine Mese
+                            Genera Riepilogo PDF
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
@@ -543,31 +493,6 @@ export default function EndOfMonthPage() {
             </AlertDialogContent>
         </AlertDialog>
 
-        <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => {if (!open) setPdfPreviewUrl(null)}}>
-            <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0">
-                 <DialogHeader className="p-4 border-b bg-muted/50">
-                    <DialogTitle>
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-semibold">Anteprima Riepilogo PDF</h3>
-                            <div className="flex items-center gap-2">
-                                <Button onClick={handlePrintPdf} disabled={isProcessing}>
-                                    <Printer className="mr-2 h-4 w-4" /> Stampa
-                                </Button>
-                                <Button onClick={handleSharePdf} disabled={isProcessing}>
-                                    <Share2 className="mr-2 h-4 w-4" /> Condividi
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => setPdfPreviewUrl(null)}>
-                                    <X className="h-5 w-5" />
-                                </Button>
-                            </div>
-                        </div>
-                    </DialogTitle>
-                 </DialogHeader>
-                {pdfPreviewUrl && (
-                    <embed src={pdfPreviewUrl} type="application/pdf" className="w-full flex-1" />
-                )}
-            </DialogContent>
-        </Dialog>
         </>
     );
 }
