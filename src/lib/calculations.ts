@@ -118,7 +118,25 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     // 1. Determine Calculation Start Time
     if (schedule?.startTime && !ignoreContractualStart) {
         const [h, m] = schedule.startTime.split(':').map(Number);
-        calculationStartTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+        const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+
+        const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+
+        if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
+            calculationStartTime = contractualStartDateTime;
+        } else {
+            const minutes = clockInTime.getMinutes();
+            const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+
+            if (minutes > 15 && minutes <= 45) {
+                roundedTime.setMinutes(30);
+            } else if (minutes > 45) {
+                roundedTime.setHours(roundedTime.getHours() + 1, 0);
+            } else { // minutes <= 15
+                roundedTime.setMinutes(0);
+            }
+            calculationStartTime = roundedTime;
+        }
     }
     
     const clockOutTime = clockOutEvent.timestamp.toDate();
@@ -149,7 +167,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     }
 
     // 4. Calculate Total Worked Milliseconds
-    const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+    const totalMillis = clockOutTime.getTime() - clockInTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
 
