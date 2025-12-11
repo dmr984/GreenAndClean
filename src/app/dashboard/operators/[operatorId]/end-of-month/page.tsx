@@ -20,7 +20,6 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, Resp
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import html2canvas from 'html2canvas';
 
 
 declare module 'jspdf' {
@@ -109,10 +108,6 @@ export default function EndOfMonthPage() {
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
     
-    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-    const [previewContent, setPreviewContent] = useState<string>('');
-    const pdfPreviewRef = useRef<HTMLDivElement>(null);
-
 
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -179,7 +174,7 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async (): Promise<jsPDF> => {
+    const generatePdfDoc = async (action: 'print' | 'save' | 'open') => {
         if (!operator) throw new Error("Operator not loaded");
 
         const doc = new jsPDF();
@@ -296,47 +291,27 @@ export default function EndOfMonthPage() {
             });
             y = (doc as any).autoTable.previous.finalY + 5;
         });
-
-        return doc;
-    };
-
-    const handleGeneratePreview = async () => {
-        setIsProcessing(true);
-        try {
-            if (pdfPreviewRef.current) {
-                const canvas = await html2canvas(pdfPreviewRef.current, { scale: 2 });
-                const imgData = canvas.toDataURL('image/png');
-                setPreviewContent(imgData);
-                setIsPreviewOpen(true);
-            }
-        } catch (error) {
-            console.error("Error generating preview:", error);
-            toast({ title: "Errore", description: "Impossibile generare l'anteprima.", variant: "destructive" });
-        } finally {
-            setIsProcessing(false);
+        
+        switch(action) {
+            case 'print':
+                doc.autoPrint();
+                window.open(doc.output('bloburl'), '_blank');
+                break;
+            case 'save':
+                doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+                break;
+            case 'open':
+                window.open(doc.output('bloburl'), '_blank');
+                break;
         }
     };
     
-    const handlePrint = async () => {
+    const handlePdfAction = async (action: 'print' | 'save' | 'open') => {
         setIsProcessing(true);
         try {
-            const doc = await generatePdfDoc();
-            doc.autoPrint();
-            window.open(doc.output('bloburl'), '_blank');
+            await generatePdfDoc(action);
         } catch (error) {
-            toast({ title: "Errore", description: "Impossibile preparare la stampa.", variant: "destructive" });
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleDownload = async () => {
-        setIsProcessing(true);
-        try {
-            const doc = await generatePdfDoc();
-            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-        } catch (error) {
-            toast({ title: "Errore", description: "Impossibile scaricare il PDF.", variant: "destructive" });
+            toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
         } finally {
             setIsProcessing(false);
         }
@@ -383,39 +358,6 @@ export default function EndOfMonthPage() {
 
     return (
         <>
-        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-            <div ref={pdfPreviewRef} style={{ width: '210mm', minHeight: '297mm', background: 'white', padding: '10mm' }}>
-                 {/* This is the off-screen content for html2canvas */}
-                 <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
-                <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-8">
-                     <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
-                     <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
-                     <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
-                     <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
-                     <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
-                     <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
-                </div>
-                 <Separator className="my-8" />
-                 <div>
-                    <h3 className="text-xl font-semibold mb-4">Dettaglio Giornaliero</h3>
-                    {dailyDetails.length > 0 ? (
-                        <div className="space-y-2">
-                             {dailyDetails.map(detail => {
-                                 if (detail.status === 'riposo') return null;
-                                 const isSunday = getDay(detail.date) === 0;
-                                return (
-                                <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
-                                     <h4 className={cn("font-bold text-lg capitalize", isSunday && "text-red-600")}>{format(detail.date, 'eeee dd MMMM', { locale: it })}</h4>
-                                </div>
-                                );
-                            })}
-                        </div>
-                    ) : null}
-                 </div>
-            </div>
-        </div>
-
         <Card className="p-4 sm:p-6">
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -424,9 +366,13 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handleGeneratePreview} disabled={isProcessing} className="w-full sm:w-auto">
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                            Genera Riepilogo PDF
+                        <Button onClick={() => handlePdfAction('print')} disabled={isProcessing} className="w-full sm:w-auto">
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                            Stampa
+                        </Button>
+                        <Button onClick={() => handlePdfAction('save')} disabled={isProcessing} className="w-full sm:w-auto">
+                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                             Scarica PDF
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
@@ -537,37 +483,6 @@ export default function EndOfMonthPage() {
                 )}
             </CardContent>
         </Card>
-
-        <ResponsiveDialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-            <ResponsiveDialogContent className="max-w-4xl h-[90vh] flex flex-col">
-                <ResponsiveDialogHeader>
-                    <ResponsiveDialogTitle>Anteprima Riepilogo</ResponsiveDialogTitle>
-                    <ResponsiveDialogDescription>
-                        Controlla il riepilogo. Puoi stamparlo o scaricarlo.
-                    </ResponsiveDialogDescription>
-                </ResponsiveDialogHeader>
-                 <div className="flex-grow overflow-auto my-4">
-                    {previewContent ? (
-                         <img src={previewContent} alt="Anteprima Riepilogo" className="w-full h-auto" />
-                    ) : (
-                        <div className="flex items-center justify-center h-full">
-                            <Loader2 className="h-8 w-8 animate-spin" />
-                        </div>
-                    )}
-                </div>
-                <ResponsiveDialogFooter className="flex-shrink-0">
-                    <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Chiudi</Button>
-                    <Button onClick={handleDownload} disabled={isProcessing}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Scarica PDF
-                    </Button>
-                    <Button onClick={handlePrint} disabled={isProcessing}>
-                        <Printer className="mr-2 h-4 w-4" />
-                        Stampa
-                    </Button>
-                </ResponsiveDialogFooter>
-            </ResponsiveDialogContent>
-        </ResponsiveDialog>
         
         <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
             <AlertDialogContent>
