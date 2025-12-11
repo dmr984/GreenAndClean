@@ -174,7 +174,7 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async (action: 'print' | 'save' | 'open') => {
+    const generatePdfDoc = async () => {
         if (!operator) throw new Error("Operator not loaded");
 
         const doc = new jsPDF();
@@ -291,25 +291,20 @@ export default function EndOfMonthPage() {
             });
             y = (doc as any).autoTable.previous.finalY + 5;
         });
-        
-        switch(action) {
-            case 'print':
-                doc.autoPrint();
-                window.open(doc.output('bloburl'), '_blank');
-                break;
-            case 'save':
-                doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-                break;
-            case 'open':
-                window.open(doc.output('bloburl'), '_blank');
-                break;
-        }
+
+        return doc;
     };
     
-    const handlePdfAction = async (action: 'print' | 'save' | 'open') => {
+    const handlePdfAction = async (action: 'print' | 'save') => {
         setIsProcessing(true);
         try {
-            await generatePdfDoc(action);
+            const doc = await generatePdfDoc();
+            if (action === 'print') {
+                doc.autoPrint();
+                window.open(doc.output('bloburl'), '_blank');
+            } else { // save
+                doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+            }
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
         } finally {
