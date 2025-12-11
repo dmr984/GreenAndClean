@@ -11,7 +11,7 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
-import 'jspdf-autotable';
+import Image from 'next/image';
 
 
 // Type definitions are now in calculations.ts
@@ -158,29 +158,39 @@ export default function PrintPage() {
     
 
     return (
-    <div className="bg-gray-500 min-h-screen py-8 px-4">
-        <div className="max-w-4xl mx-auto bg-white text-black p-8 font-sans shadow-2xl rounded-lg">
+    <div className="bg-gray-500 min-h-screen py-8 px-4 font-sans">
+        <div className="max-w-4xl mx-auto bg-white text-black p-8 shadow-2xl rounded-lg">
             
-            <header className="mb-4 text-center">
-                <h1 className="text-2xl font-bold">{operator.firstName} {operator.lastName}</h1>
+             <header className="mb-4 text-center">
+                 <div className="flex justify-center items-center gap-3">
+                    <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8"/>
+                    <h1 className="text-xl font-bold uppercase tracking-wider">Serveco SRL</h1>
+                 </div>
+                <h2 className="text-2xl font-bold mt-4">{operator.firstName} {operator.lastName}</h2>
                 <p className="text-md text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
             </header>
+             <div className="border-b border-gray-300 my-4"></div>
             
-            <div className="border-t border-b border-gray-300 py-4 my-4">
-                <div className="grid grid-cols-6 gap-2">
-                    <SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} />
-                    <SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} />
-                    <SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} />
-                    <SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} />
-                    <SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} />
-                    <SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} />
-                </div>
+            <div className="py-4 my-4">
+                <table className="w-full">
+                    <tbody>
+                        <tr>
+                            <td className="p-1"><SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} /></td>
+                            <td className="p-1"><SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1"><SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1"><SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} /></td>
+                            <td className="p-1"><SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1"><SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} /></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
+            <div className="border-b border-gray-300 my-4"></div>
             
              <section>
                 <h2 className="text-xl font-bold mb-3">Dettaglio Giornaliero</h2>
-                <div className="text-sm space-y-4">
-                    {dailyDetails.map((detail, index) => {
+                <div className="text-sm space-y-3">
+                    {dailyDetails.map((detail) => {
                         if (detail.status === 'riposo') return null;
 
                         let timbratureText = '';
@@ -193,14 +203,14 @@ export default function PrintPage() {
                              let parts: string[] = [];
                              if(entrata) parts.push(`Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')}`);
                              if(pausa) parts.push(`Pausa: ${format(pausa.timestamp.toDate(), 'HH:mm')}`);
-                             if(fine_pausa) parts.push(`Fine_pausa: ${format(fine_pausa.timestamp.toDate(), 'HH:mm')}`);
+                             if(fine_pausa) parts.push(`Fine Pausa: ${format(fine_pausa.timestamp.toDate(), 'HH:mm')}`);
                              if(uscita) parts.push(`Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')}`);
 
                              timbratureText = parts.join(' | ');
                         }
                         
                         let detailsText = '';
-                        if (detail.shift) {
+                         if (detail.status === 'lavorato' && detail.shift) {
                              let parts: string[] = [];
                              if(detail.shift.contractualHours > 0) parts.push(`Ore Previste: ${detail.shift.contractualHours}h`);
                              if(detail.shift.ordinaryHours > 0) parts.push(`Ore Ordinarie: ${detail.shift.ordinaryHours}h`);

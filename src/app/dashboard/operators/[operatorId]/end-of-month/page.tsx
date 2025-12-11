@@ -174,19 +174,19 @@ export default function EndOfMonthPage() {
     };
     
     const handleDownloadPdf = async () => {
-      if (isProcessing) return;
-      setIsProcessing(true);
-      try {
-          const { default: jsPDF } = await import('jspdf');
-          const { default: autoTable } = await import('jspdf-autotable');
-          const doc = await generatePdfDoc(jsPDF, autoTable);
-          doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-      } catch (error) {
-          toast({ title: "Errore", description: "Impossibile generare il PDF per il download.", variant: "destructive" });
-          console.error(error);
-      } finally {
-          setIsProcessing(false);
-      }
+        if (isProcessing) return;
+        setIsProcessing(true);
+        try {
+            const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
+            const doc = await generatePdfDoc(jsPDF, autoTable);
+            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile generare il PDF per il download.", variant: "destructive" });
+            console.error(error);
+        } finally {
+            setIsProcessing(false);
+        }
     };
     
     const handleCleanMonth = async () => {
