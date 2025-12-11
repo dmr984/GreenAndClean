@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog';
 
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
@@ -301,7 +301,7 @@ export default function EndOfMonthPage() {
         try {
             const doc = await generatePdfDoc();
             const url = doc.output('bloburl');
-            setPdfPreviewUrl(url);
+            window.open(url, '_blank');
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
         } finally {
@@ -385,7 +385,7 @@ export default function EndOfMonthPage() {
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         <Button onClick={handleGeneratePdf} disabled={isProcessing} className="w-full sm:w-auto">
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                            Genera Riepilogo PDF
+                            Calcolo Fine Mese
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
@@ -518,20 +518,24 @@ export default function EndOfMonthPage() {
 
         <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => {if (!open) setPdfPreviewUrl(null)}}>
             <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0">
-                <div className="flex justify-between items-center bg-muted/50 p-4 border-b">
-                    <h3 className="font-semibold">Anteprima Riepilogo PDF</h3>
-                    <div className="flex items-center gap-2">
-                         <Button onClick={handlePrintPdf} disabled={isProcessing}>
-                            <Printer className="mr-2 h-4 w-4" /> Stampa
-                        </Button>
-                        <Button onClick={handleDownloadPdf} disabled={isProcessing}>
-                            <Download className="mr-2 h-4 w-4" /> Scarica
-                        </Button>
-                         <Button variant="ghost" size="icon" onClick={() => setPdfPreviewUrl(null)}>
-                            <X className="h-5 w-5" />
-                        </Button>
-                    </div>
-                </div>
+                <DialogHeader className="p-4 border-b bg-muted/50">
+                    <DialogTitle>
+                         <div className="flex justify-between items-center">
+                            <h3 className="font-semibold">Anteprima Riepilogo PDF</h3>
+                            <div className="flex items-center gap-2">
+                                <Button onClick={handlePrintPdf} disabled={isProcessing}>
+                                    <Printer className="mr-2 h-4 w-4" /> Stampa
+                                </Button>
+                                <Button onClick={handleDownloadPdf} disabled={isProcessing}>
+                                    <Download className="mr-2 h-4 w-4" /> Scarica
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => setPdfPreviewUrl(null)}>
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogTitle>
+                </DialogHeader>
                 {pdfPreviewUrl && (
                     <embed src={pdfPreviewUrl} type="application/pdf" className="w-full flex-1" />
                 )}
