@@ -150,7 +150,7 @@ export default function PrintPage() {
 
     if (isLoading || !operator) {
         return (
-            <div className="flex h-screen w-screen items-center justify-center bg-muted">
+            <div className="flex h-screen w-screen items-center justify-center bg-gray-100">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
         );
@@ -158,30 +158,42 @@ export default function PrintPage() {
     
 
     return (
-    <div className="bg-gray-800 min-h-screen py-8 px-4">
-        <div className="max-w-4xl mx-auto bg-white text-black p-6 sm:p-8 font-sans shadow-2xl rounded-lg">
-             <header className="flex justify-between items-start mb-6 border-b pb-4">
-                <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" className="h-16 w-16" />
-                <div className="text-right">
-                    <h1 className="text-xl font-bold">{operator.firstName} {operator.lastName}</h1>
-                    <p className="text-sm text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
-                </div>
+    <div className="bg-gray-500 min-h-screen py-8 px-4">
+        <div className="max-w-4xl mx-auto bg-white text-black p-8 font-sans shadow-2xl rounded-lg">
+            <header className="mb-6 border-b pb-4">
+                 <table className="w-full">
+                    <tbody>
+                        <tr>
+                            <td style={{ width: '20%' }}>
+                                <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" className="h-16 w-16" />
+                            </td>
+                            <td className="text-right align-top" style={{ width: '80%' }}>
+                                <h1 className="text-xl font-bold">{operator.firstName} {operator.lastName}</h1>
+                                <p className="text-sm text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </header>
             
             <section className="mb-6">
-                 <div className="grid grid-cols-6 gap-2">
-                    <SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} />
-                    <SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} />
-                    <SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} />
-                    <SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} />
-                    <SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} />
-                    <SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} />
-                </div>
+                <table className="w-full border-collapse">
+                    <tbody>
+                        <tr>
+                            <td className="p-1"><SummaryItem title="Giorni Lavorati" value={monthlySummary.workedDays || 0} /></td>
+                            <td className="p-1"><SummaryItem title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1"><SummaryItem title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1"><SummaryItem title="Ferie" value={monthlySummary.ferieDays || 0} /></td>
+                            <td className="p-1"><SummaryItem title="Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} /></td>
+                            <td className="p-1"><SummaryItem title="Malattia" value={monthlySummary.malattiaDays || 0} /></td>
+                        </tr>
+                    </tbody>
+                </table>
             </section>
             
              <section>
                 <h2 className="text-lg font-bold border-b pb-1 mb-2">Dettaglio Giornaliero</h2>
-                <div className="space-y-2 text-xs">
+                <div className="text-xs">
                     {dailyDetails.map((detail, index) => {
                         if (detail.status === 'riposo') return null;
 
@@ -210,7 +222,7 @@ export default function PrintPage() {
 
                         return (
                              <div key={detail.date.toISOString()} className={cn(!isLast && "border-b border-gray-200 pb-2 mb-2")}>
-                                <div className="grid grid-cols-2 gap-x-4">
+                                <div className="flex justify-between">
                                      <p className="font-bold capitalize">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.replace(/_/g, ' ')}</p>
                                      <p className="text-gray-600 text-right">{timbratureText}</p>
                                 </div>
