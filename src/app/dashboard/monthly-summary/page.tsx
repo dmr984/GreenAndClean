@@ -41,6 +41,8 @@ type Operator = {
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    hourlyRate?: number;
+    overtimeRate?: number;
 };
 
 type Request = {

@@ -41,6 +41,14 @@
             "type": "string",
             "enum": ["hourly", "half_hourly"],
             "description": "Determines how overtime is calculated. 'hourly' triggers at 50 minutes, 'half_hourly' triggers at 25/55 minutes."
+        },
+        "hourlyRate": {
+          "type": "number",
+          "description": "The standard hourly pay rate for the operator."
+        },
+        "overtimeRate": {
+            "type": "number",
+            "description": "The hourly pay rate for overtime work."
         }
       },
       "required": [

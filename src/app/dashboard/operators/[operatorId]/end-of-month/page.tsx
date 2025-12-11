@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -43,6 +43,8 @@ type Operator = {
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    hourlyRate?: number;
+    overtimeRate?: number;
 };
 
 type Request = {
@@ -64,7 +66,7 @@ type Timbratura = {
     ignoreContractualStart?: boolean;
 };
 
-const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
+const SummaryCard = ({ title, value, icon: Icon, subtext }: { title: string, value: string | number, icon: React.ElementType, subtext?: string }) => (
     <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">{title}</CardTitle>
@@ -72,6 +74,7 @@ const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: strin
         </CardHeader>
         <CardContent>
             <div className="text-2xl font-bold">{value}</div>
+            {subtext && <p className="text-xs text-muted-foreground">{subtext}</p>}
         </CardContent>
     </Card>
 );
@@ -213,6 +216,9 @@ export default function EndOfMonthPage() {
     if (!operator || !currentMonth) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
+    
+    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+    const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
 
     return (
         <>
@@ -250,13 +256,25 @@ export default function EndOfMonthPage() {
                      <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
                 <>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
                     <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
                     <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
                     <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
                     <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
                     <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
+                    <SummaryCard 
+                        title="Costo Ore Ordinarie" 
+                        value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                        icon={Euro}
+                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${operator.hourlyRate?.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) || 'N/D'}`}
+                    />
+                    <SummaryCard 
+                        title="Costo Ore Straordinarie" 
+                        value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                        icon={Euro}
+                        subtext={`${monthlySummary.overtimeHours || 0}h x ${operator.overtimeRate?.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) || 'N/D'}`}
+                    />
                 </div>
 
                 <Separator />

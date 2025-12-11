@@ -22,6 +22,8 @@ type WorkSchedule = {
 type Operator = {
     workSchedule: WorkSchedule;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    hourlyRate?: number;
+    overtimeRate?: number;
 };
 
 type Timbratura = {

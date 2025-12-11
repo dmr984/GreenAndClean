@@ -68,6 +68,8 @@ type Operator = {
     role: 'operator';
     workSchedule: WorkSchedule;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    hourlyRate?: number;
+    overtimeRate?: number;
 };
 
 export default function ManageOperatorsPage() {
@@ -90,6 +92,8 @@ export default function ManageOperatorsPage() {
     const [newLastName, setNewLastName] = useState("");
     const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
     const [newOvertimeCalculation, setNewOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+    const [newHourlyRate, setNewHourlyRate] = useState<number | string>('');
+    const [newOvertimeRate, setNewOvertimeRate] = useState<number | string>('');
 
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
@@ -97,6 +101,8 @@ export default function ManageOperatorsPage() {
     const [editingLastName, setEditingLastName] = useState("");
     const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
     const [editingOvertimeCalculation, setEditingOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+    const [editingHourlyRate, setEditingHourlyRate] = useState<number | string>('');
+    const [editingOvertimeRate, setEditingOvertimeRate] = useState<number | string>('');
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -204,6 +210,8 @@ export default function ManageOperatorsPage() {
         const lastName = action === 'add' ? newLastName : editingLastName;
         const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
         const overtimeCalculation = action === 'add' ? newOvertimeCalculation : editingOvertimeCalculation;
+        const hourlyRate = action === 'add' ? newHourlyRate : editingHourlyRate;
+        const overtimeRate = action === 'add' ? newOvertimeRate : editingOvertimeRate;
 
         if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
@@ -249,6 +257,8 @@ export default function ManageOperatorsPage() {
             lastName,
             workSchedule: finalWorkSchedule,
             overtimeCalculation: overtimeCalculation,
+            hourlyRate: parseFloat(String(hourlyRate)) || 0,
+            overtimeRate: parseFloat(String(overtimeRate)) || 0,
         };
 
         if (action === 'add') {
@@ -261,6 +271,8 @@ export default function ManageOperatorsPage() {
                 setNewLastName("");
                 setNewWorkSchedule({});
                 setNewOvertimeCalculation('hourly');
+                setNewHourlyRate('');
+                setNewOvertimeRate('');
               }).catch((error: any) => {
                 if (error.code === 'permission-denied') {
                      errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'create', path: 'app-users', requestResourceData: operatorData }));
@@ -421,7 +433,7 @@ export default function ManageOperatorsPage() {
                                         </DialogDescription>
                                     </DialogHeader>
                                     <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             <div>
                                                 <Label htmlFor="new-code">Codice Operatore</Label>
                                                 <Input id="new-code" value={newOperatorCode} onChange={(e) => setNewOperatorCode(e.target.value)} required />
@@ -438,15 +450,23 @@ export default function ManageOperatorsPage() {
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
                                             <div>
+                                                <Label htmlFor="new-hourlyRate">Tariffa Oraria (€)</Label>
+                                                <Input id="new-hourlyRate" type="number" value={newHourlyRate} onChange={(e) => setNewHourlyRate(e.target.value)} min="0" step="0.01" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="md:col-span-1">
                                                 <Label htmlFor="new-firstName">Nome</Label>
                                                 <Input id="new-firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} required />
                                             </div>
-                                             <div>
+                                             <div className="md:col-span-1">
                                                 <Label htmlFor="new-lastName">Cognome</Label>
                                                 <Input id="new-lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} required />
+                                            </div>
+                                            <div className="md:col-span-1">
+                                                <Label htmlFor="new-overtimeRate">Tariffa Straordinari (€)</Label>
+                                                <Input id="new-overtimeRate" type="number" value={newOvertimeRate} onChange={(e) => setNewOvertimeRate(e.target.value)} min="0" step="0.01" />
                                             </div>
                                         </div>
                                         <div>
@@ -499,7 +519,7 @@ export default function ManageOperatorsPage() {
                                                 <TableCell>{`${operator.firstName} ${operator.lastName}`}</TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -526,7 +546,7 @@ export default function ManageOperatorsPage() {
                             </DialogDescription>
                         </DialogHeader>
                          <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                  <div>
                                     <Label htmlFor="editing-code">Codice Operatore</Label>
                                     <Input id="editing-code" value={editingOperatorCode} onChange={(e) => setEditingOperatorCode(e.target.value)} required />
@@ -543,15 +563,23 @@ export default function ManageOperatorsPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
                                 <div>
+                                    <Label htmlFor="editing-hourlyRate">Tariffa Oraria (€)</Label>
+                                    <Input id="editing-hourlyRate" type="number" value={editingHourlyRate} onChange={(e) => setEditingHourlyRate(e.target.value)} min="0" step="0.01" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="md:col-span-1">
                                     <Label htmlFor="editing-firstName">Nome</Label>
                                     <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} required />
                                 </div>
-                                    <div>
+                                    <div className="md:col-span-1">
                                     <Label htmlFor="editing-lastName">Cognome</Label>
                                     <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} required />
+                                </div>
+                                <div className="md:col-span-1">
+                                    <Label htmlFor="editing-overtimeRate">Tariffa Straordinari (€)</Label>
+                                    <Input id="editing-overtimeRate" type="number" value={editingOvertimeRate} onChange={(e) => setEditingOvertimeRate(e.target.value)} min="0" step="0.01" />
                                 </div>
                             </div>
                             <div>
