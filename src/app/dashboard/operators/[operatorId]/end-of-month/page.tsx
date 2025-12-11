@@ -175,7 +175,7 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async (): Promise<jsPDF> => {
+    const generatePdfDoc = useCallback(async (): Promise<jsPDF> => {
         if (!operator) throw new Error("Operator not loaded");
 
         const doc = new jsPDF();
@@ -294,16 +294,16 @@ export default function EndOfMonthPage() {
         });
 
         return doc;
-    };
+    }, [operator, currentMonth, monthlySummary, dailyDetails]);
     
     const handleGeneratePreview = async () => {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
             const url = doc.output('bloburi');
-            setPdfPreviewUrl(url);
+            setPdfPreviewUrl(url.toString());
         } catch (error) {
-            toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+            toast({ title: "Errore", description: "Impossibile generare l'anteprima PDF.", variant: "destructive" });
             console.error(error);
         } finally {
             setIsProcessing(false);
@@ -316,29 +316,11 @@ export default function EndOfMonthPage() {
             const doc = await generatePdfDoc();
             const pdfBlob = doc.output('blob');
             const url = URL.createObjectURL(pdfBlob);
-            
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = url;
-            document.body.appendChild(iframe);
-            
-            iframe.onload = () => {
-                setTimeout(() => {
-                    try {
-                        iframe.contentWindow?.print();
-                    } catch (e) {
-                         toast({ title: "Errore Stampa", description: "Impossibile aprire il dialogo di stampa.", variant: "destructive" });
-                         console.error(e);
-                    } finally {
-                        document.body.removeChild(iframe);
-                        URL.revokeObjectURL(url);
-                        setIsProcessing(false);
-                    }
-                }, 100);
-            };
+            window.open(url); // Opens in a new tab, user can print from there
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile preparare la stampa.", variant: "destructive" });
             console.error(error);
+        } finally {
             setIsProcessing(false);
         }
     };
@@ -348,7 +330,8 @@ export default function EndOfMonthPage() {
         try {
             const doc = await generatePdfDoc();
             const pdfBlob = doc.output('blob');
-            const pdfFile = new File([pdfBlob], `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+            const filename = `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
+            const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
 
             if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
                 await navigator.share({
@@ -357,14 +340,15 @@ export default function EndOfMonthPage() {
                     files: [pdfFile],
                 });
             } else {
-                doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+                // Fallback for browsers that don't support navigator.share with files
+                doc.save(filename);
                 toast({
                     title: 'Download Avviato',
-                    description: 'La condivisione non è supportata, il file è stato scaricato.',
+                    description: 'La condivisione non è supportata dal browser, il file è stato scaricato.',
                 });
             }
         } catch (error) {
-            if ((error as Error).name !== 'AbortError') {
+            if ((error as Error).name !== 'AbortError') { // Ignore user canceling the share dialog
                 toast({ title: "Errore", description: "Impossibile condividere il PDF.", variant: "destructive" });
                 console.error(error);
             }
@@ -557,11 +541,11 @@ export default function EndOfMonthPage() {
 
         <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => {if (!open) setPdfPreviewUrl(null)}}>
             <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0">
-                <DialogHeader className="p-4 border-b bg-muted/50">
+                 <DialogHeader className="p-4 border-b bg-muted/50">
                     <DialogTitle>
-                         <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center">
                             <h3 className="font-semibold">Anteprima Riepilogo PDF</h3>
-                             <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2">
                                 <Button onClick={handlePrintPdf} disabled={isProcessing}>
                                     <Printer className="mr-2 h-4 w-4" /> Stampa
                                 </Button>
@@ -574,7 +558,7 @@ export default function EndOfMonthPage() {
                             </div>
                         </div>
                     </DialogTitle>
-                </DialogHeader>
+                 </DialogHeader>
                 {pdfPreviewUrl && (
                     <embed src={pdfPreviewUrl} type="application/pdf" className="w-full flex-1" />
                 )}
