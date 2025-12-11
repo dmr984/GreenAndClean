@@ -15,11 +15,11 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 
 declare module 'jspdf' {
@@ -224,7 +224,7 @@ export default function EndOfMonthPage() {
             { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
         ];
 
-        doc.autoTable({
+        autoTable(doc, {
             startY: y,
             body: [
                 summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
@@ -281,14 +281,14 @@ export default function EndOfMonthPage() {
                 case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
             }
 
-            doc.autoTable({
+            autoTable(doc, {
                 startY: y,
                 head: [[`${title} - ${statusText}`]],
                 body: body,
                 theme: 'striped',
                 headStyles: { fillColor: [244, 244, 245], textColor: 20 },
                 styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
-                didDrawPage: (data) => y = (data.cursor as any)?.y || y
+                didDrawPage: (data: any) => y = data.cursor?.y || y
             });
             y = (doc as any).autoTable.previous.finalY + 5;
         });
@@ -301,7 +301,7 @@ export default function EndOfMonthPage() {
         try {
             const doc = await generatePdfDoc();
             const url = doc.output('bloburi');
-            setPdfPreviewUrl(url); // This will open the Dialog
+            setPdfPreviewUrl(url);
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
             console.error(error);
@@ -317,20 +317,24 @@ export default function EndOfMonthPage() {
             const pdfBlob = doc.output('blob');
             const url = URL.createObjectURL(pdfBlob);
             
-            // Create a hidden iframe
             const iframe = document.createElement('iframe');
             iframe.style.display = 'none';
             iframe.src = url;
             document.body.appendChild(iframe);
             
-            // Wait for the iframe to load and then print
             iframe.onload = () => {
                 setTimeout(() => {
-                    iframe.contentWindow?.print();
-                    document.body.removeChild(iframe);
-                    URL.revokeObjectURL(url);
-                    setIsProcessing(false);
-                }, 100); // Small delay to ensure content is rendered
+                    try {
+                        iframe.contentWindow?.print();
+                    } catch (e) {
+                         toast({ title: "Errore Stampa", description: "Impossibile aprire il dialogo di stampa.", variant: "destructive" });
+                         console.error(e);
+                    } finally {
+                        document.body.removeChild(iframe);
+                        URL.revokeObjectURL(url);
+                        setIsProcessing(false);
+                    }
+                }, 100);
             };
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile preparare la stampa.", variant: "destructive" });
@@ -353,7 +357,6 @@ export default function EndOfMonthPage() {
                     files: [pdfFile],
                 });
             } else {
-                // Fallback for browsers that don't support sharing files
                 doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
                 toast({
                     title: 'Download Avviato',
@@ -361,7 +364,7 @@ export default function EndOfMonthPage() {
                 });
             }
         } catch (error) {
-            if ((error as Error).name !== 'AbortError') { // Ignore user cancelling the share dialog
+            if ((error as Error).name !== 'AbortError') {
                 toast({ title: "Errore", description: "Impossibile condividere il PDF.", variant: "destructive" });
                 console.error(error);
             }
