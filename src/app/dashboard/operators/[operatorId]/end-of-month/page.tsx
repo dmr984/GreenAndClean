@@ -136,7 +136,7 @@ export default function EndOfMonthPage() {
     
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsSnapshot)
+                getDocs(requestsQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
@@ -314,18 +314,23 @@ export default function EndOfMonthPage() {
                 try {
                     iframe.contentWindow?.focus();
                     iframe.contentWindow?.print();
-                } catch (e) {
+                } catch (e: any) {
                     console.error("Print failed:", e);
-                    toast({
-                        title: "Stampa non riuscita",
-                        description: "Non è stato possibile aprire il dialogo di stampa. Prova a scaricare il file.",
-                        variant: "destructive"
-                    });
+                     // If printing is blocked, open in a new tab as a fallback
+                    if (e.name === 'SecurityError') {
+                        window.open(pdfUrl, '_blank');
+                    } else {
+                        toast({
+                            title: "Stampa non riuscita",
+                            description: "Non è stato possibile aprire il dialogo di stampa. Prova a scaricare il file.",
+                            variant: "destructive"
+                        });
+                    }
                 }
                  setTimeout(() => {
                     document.body.removeChild(iframe);
                     URL.revokeObjectURL(pdfUrl);
-                }, 100);
+                }, 1000); // Increased timeout
             };
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile preparare il PDF per la stampa.", variant: "destructive" });
