@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams } from 'next/navigation';
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogDescription } from '@/components/ui/responsive-dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import jsPDF from 'jspdf';
@@ -107,6 +107,7 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
     
 
     useEffect(() => {
@@ -174,7 +175,7 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const generatePdfDoc = async () => {
+    const generatePdfDoc = async (): Promise<jsPDF> => {
         if (!operator) throw new Error("Operator not loaded");
 
         const doc = new jsPDF();
@@ -295,18 +296,39 @@ export default function EndOfMonthPage() {
         return doc;
     };
     
-    const handlePdfAction = async (action: 'print' | 'save') => {
+    const handleGeneratePdf = async () => {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            if (action === 'print') {
-                doc.autoPrint();
-                window.open(doc.output('bloburl'), '_blank');
-            } else { // save
-                doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
-            }
+            const url = doc.output('bloburl');
+            setPdfPreviewUrl(url);
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handlePrintPdf = async () => {
+        setIsProcessing(true);
+        try {
+            const doc = await generatePdfDoc();
+            doc.autoPrint();
+            window.open(doc.output('bloburl'), '_blank');
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile stampare il PDF.", variant: "destructive" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const handleDownloadPdf = async () => {
+        setIsProcessing(true);
+        try {
+            const doc = await generatePdfDoc();
+            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+        } catch (error) {
+            toast({ title: "Errore", description: "Impossibile scaricare il PDF.", variant: "destructive" });
         } finally {
             setIsProcessing(false);
         }
@@ -361,13 +383,9 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={() => handlePdfAction('print')} disabled={isProcessing} className="w-full sm:w-auto">
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                            Stampa
-                        </Button>
-                        <Button onClick={() => handlePdfAction('save')} disabled={isProcessing} className="w-full sm:w-auto">
-                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                             Scarica PDF
+                        <Button onClick={handleGeneratePdf} disabled={isProcessing} className="w-full sm:w-auto">
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                            Genera Riepilogo PDF
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isCleaning} className="w-full sm:w-auto">
                             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
@@ -497,6 +515,28 @@ export default function EndOfMonthPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => {if (!open) setPdfPreviewUrl(null)}}>
+            <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0">
+                <div className="flex justify-between items-center bg-muted/50 p-4 border-b">
+                    <h3 className="font-semibold">Anteprima Riepilogo PDF</h3>
+                    <div className="flex items-center gap-2">
+                         <Button onClick={handlePrintPdf} disabled={isProcessing}>
+                            <Printer className="mr-2 h-4 w-4" /> Stampa
+                        </Button>
+                        <Button onClick={handleDownloadPdf} disabled={isProcessing}>
+                            <Download className="mr-2 h-4 w-4" /> Scarica
+                        </Button>
+                         <Button variant="ghost" size="icon" onClick={() => setPdfPreviewUrl(null)}>
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </div>
+                </div>
+                {pdfPreviewUrl && (
+                    <embed src={pdfPreviewUrl} type="application/pdf" className="w-full flex-1" />
+                )}
+            </DialogContent>
+        </Dialog>
         </>
     );
 }
