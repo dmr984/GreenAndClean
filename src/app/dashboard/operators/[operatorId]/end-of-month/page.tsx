@@ -308,8 +308,8 @@ export default function EndOfMonthPage() {
     };
 
     const handlePrintPdf = async () => {
-         if (!pdfBlobUrl) return;
-        printJS(pdfBlobUrl);
+        if (!pdfBlobUrl) return;
+        printJS({ printable: pdfBlobUrl, type: 'pdf', showModal: true });
     };
 
     const handleDownloadPdf = async () => {
@@ -323,23 +323,25 @@ export default function EndOfMonthPage() {
     };
 
     const handleSharePdf = async () => {
-        if (!navigator.share || !operator || !pdfBlobUrl) {
-            handleDownloadPdf();
-            return;
-        }
+        if (!operator || !pdfBlobUrl) return;
 
         try {
             const response = await fetch(pdfBlobUrl);
             const blob = await response.blob();
             const file = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
             
-            await navigator.share({
-                files: [file],
-                title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
-            });
+            if (navigator.share && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
+                });
+            } else {
+                handleDownloadPdf();
+            }
         } catch (error) {
             console.error('Error sharing:', error);
-            toast({ title: "Errore di condivisione", description: "Impossibile condividere il file. Prova a scaricarlo prima.", variant: "destructive" });
+            toast({ title: "Condivisione non supportata", description: "Il tuo browser non supporta la condivisione di file. Il file verrà scaricato.", variant: "destructive" });
+            handleDownloadPdf();
         }
     };
     
@@ -529,7 +531,7 @@ export default function EndOfMonthPage() {
             <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 sm:p-2">
                 <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
                     <DialogTitle className="flex justify-between items-center">
-                        <h3 className="font-semibold text-lg">Anteprima Riepilogo PDF</h3>
+                        <div className="font-semibold text-lg">Anteprima Riepilogo PDF</div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" size="icon" onClick={handlePrintPdf}>
                                 <Printer className="h-5 w-5" />
