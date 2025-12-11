@@ -71,7 +71,6 @@ const PrintPageContent = () => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
     const [isLoading, setIsLoading] = useState(true);
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
@@ -145,114 +144,90 @@ const PrintPageContent = () => {
     const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
         if (!operator) return null;
         setIsGenerating(true);
-
+    
         const doc = new jsPDF();
         const font = 'Helvetica'; // Standard font
-        const img = new Image();
+        const img = new (window as any).Image();
         img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
         
-        // Wait for image to load to prevent jsPDF errors
         await new Promise(resolve => { img.onload = resolve; });
-
-        // --- HEADER ---
+    
         const pageWidth = doc.internal.pageSize.getWidth();
-        doc.addImage(img, 'PNG', 15, 10, 30, 30);
-        doc.setFont(font, 'bold');
-        doc.setFontSize(16);
-        doc.text("SERVECO SRL", pageWidth / 2, 20, { align: 'center' });
-        doc.setFontSize(10);
-        doc.setFont(font, 'normal');
-        doc.text("Sede Legale: Via Francesco Cilea, 21 - 84043 Agropoli (SA)", pageWidth / 2, 26, { align: 'center' });
-        doc.text("P.IVA: 05244990658", pageWidth / 2, 31, { align: 'center' });
-
-        doc.setLineWidth(0.5);
-        doc.line(15, 45, pageWidth - 15, 45);
-
-        // --- OPERATOR INFO ---
-        doc.setFont(font, 'bold');
-        doc.setFontSize(12);
-        doc.text("RIEPILOGO MENSILE", pageWidth / 2, 55, { align: 'center' });
-
-        doc.setFont(font, 'bold');
-        doc.setFontSize(10);
-        doc.text("OPERATORE:", 15, 65);
-        doc.setFont(font, 'normal');
-        doc.text(`${operator.firstName.toUpperCase()} ${operator.lastName.toUpperCase()} (COD: ${operator.username})`, 50, 65);
-
-        doc.setFont(font, 'bold');
-        doc.text("MESE:", 15, 72);
-        doc.setFont(font, 'normal');
-        doc.text(format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase(), 50, 72);
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 15;
+    
+        // --- HEADER ---
+        doc.addImage(img, 'PNG', margin, 10, 20, 20);
         
-        // --- SUMMARY TABLE ---
-        const summaryData = [
-            ["GIORNI LAVORATI", monthlySummary.workedDays || 0],
-            ["ORE ORDINARIE", (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')],
-            ["ORE STRAORD.", (monthlySummary.overtimeHours || 0).toLocaleString('it-IT')],
-            ["FERIE (giorni)", monthlySummary.ferieDays || 0],
-            ["PERMESSI (ore)", (monthlySummary.permessoHours || 0).toLocaleString('it-IT')],
-            ["MALATTIA (giorni)", monthlySummary.malattiaDays || 0]
-        ];
-
-        (doc as any).autoTable({
-            startY: 80,
-            head: [['RIEPILOGO', '']],
-            headStyles: { fillColor: [22, 160, 133], halign: 'center' },
-            body: summaryData,
-            theme: 'grid',
-            styles: { font: font, fontSize: 8 },
-            columnStyles: { 0: { fontStyle: 'bold' } }
-        });
-
-        // --- DAILY DETAILS TABLE ---
-        let finalY = (doc as any).lastAutoTable.finalY + 10;
-        doc.setFont(font, 'bold');
+        doc.setFont(font, 'normal');
         doc.setFontSize(12);
-        doc.text("DETTAGLIO GIORNALIERO", 15, finalY);
-        finalY += 5;
-
-        const dailyBody = dailyDetails
-            .filter(d => d.status !== 'riposo')
-            .map(detail => {
-                let statusText = '';
-                let hoursDetails = '';
-
-                switch(detail.status) {
-                    case 'lavorato':
-                        statusText = "Lavorato";
-                        if (detail.shift) {
-                            hoursDetails = `Ord: ${detail.shift.ordinaryHours}h | Straord: ${detail.shift.overtimeHours}h | Perm: ${detail.shift.permissionHours}h`;
-                        }
-                        break;
-                    case 'ferie':
-                        statusText = "Ferie";
-                        break;
-                    case 'malattia':
-                        statusText = "Malattia";
-                        break;
-                    case 'festa':
-                        statusText = "Festivo";
-                        break;
-                    case 'mancata_timbratura':
-                        statusText = "Mancata Timbratura";
-                        break;
-                }
-                const dateStr = format(detail.date, 'eee dd/MM/yyyy', { locale: it });
-                return [dateStr, statusText, hoursDetails];
-            });
-
+        doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - margin, 15, { align: 'right' });
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - margin, 22, { align: 'right' });
+    
+        let startY = 40;
+    
+        // --- SUMMARY TABLE ---
+        const summaryBody = [[
+            { content: 'Giorni Lavorati\n' + (monthlySummary.workedDays || 0), styles: { halign: 'center', cellPadding: 2 } },
+            { content: 'Ore Ordinarie\n' + (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', cellPadding: 2 } },
+            { content: 'Ore Straordinarie\n' + (monthlySummary.overtimeHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', cellPadding: 2 } },
+            { content: 'Ferie (giorni)\n' + (monthlySummary.ferieDays || 0), styles: { halign: 'center', cellPadding: 2 } },
+            { content: 'Permessi (ore)\n' + (monthlySummary.permessoHours || 0).toLocaleString('it-IT'), styles: { halign: 'center', cellPadding: 2 } },
+            { content: 'Malattia (giorni)\n' + (monthlySummary.malattiaDays || 0), styles: { halign: 'center', cellPadding: 2 } },
+        ]];
+    
         (doc as any).autoTable({
-            startY: finalY,
-            head: [['Data', 'Stato', 'Dettaglio Ore']],
-            body: dailyBody,
+            startY: startY,
+            body: summaryBody,
             theme: 'grid',
-            styles: { font: font, fontSize: 8 },
-            headStyles: { fillColor: [44, 62, 80] },
+            styles: { font: font, fontSize: 8, lineWidth: 0.1, lineColor: [200, 200, 200] },
         });
-
+    
+        startY = (doc as any).lastAutoTable.finalY + 10;
+    
+        // --- DAILY DETAILS ---
+        doc.setFontSize(11);
+        doc.setFont(font, 'bold');
+        doc.text("Dettaglio Giornaliero", margin, startY);
+        startY += 8;
+    
+        dailyDetails.filter(d => d.status !== 'riposo').forEach(detail => {
+            if (startY > pageHeight - 20) { // Add new page if content overflows
+                doc.addPage();
+                startY = margin;
+            }
+    
+            let line1 = `${format(detail.date, 'eeee dd MMMM', { locale: it })} - ${detail.status.charAt(0).toUpperCase() + detail.status.slice(1)}`;
+            let line2 = '';
+    
+            if (detail.shift) {
+                const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                line1 += ` | Timbrature: ${timbratureStr}`;
+                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+            }
+    
+            doc.setFontSize(9);
+            doc.setFont(font, 'normal');
+            doc.text(line1, margin, startY);
+            startY += 5;
+    
+            if (line2) {
+                doc.setFontSize(8);
+                doc.setTextColor(80);
+                doc.text(line2, margin, startY);
+                startY += 5;
+            }
+            
+            doc.setDrawColor(230, 230, 230);
+            doc.line(margin, startY, pageWidth - margin, startY);
+            startY += 5;
+        });
+    
         const blob = doc.output('blob');
         const fileName = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
-
+    
         setIsGenerating(false);
         return { blob, fileName };
     };
@@ -269,7 +244,7 @@ const PrintPageContent = () => {
         a.href = url;
         a.download = pdf.fileName;
         document.body.appendChild(a);
-a.click();
+        a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     };
@@ -290,7 +265,6 @@ a.click();
             });
         } catch (error) {
             console.error('Error sharing:', error);
-            // Don't show toast for abort error
             if ((error as DOMException).name !== 'AbortError') {
                  toast({ title: 'Errore Condivisione', description: 'Impossibile condividere il file.', variant: 'destructive' });
             }
@@ -332,100 +306,60 @@ a.click();
 
             <main className="flex justify-center p-4 sm:p-8">
                 <div className="w-full max-w-4xl bg-background p-8 shadow-lg print-area">
-                     <table className="w-full mb-6">
+                    {/* Header */}
+                    <table className="w-full mb-6">
                         <tbody>
                             <tr>
-                                <td>
-                                    <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '80px', height: '80px'}} />
+                                <td style={{ width: '25%' }}>
+                                    <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
                                 </td>
-                                <td className="text-center align-middle">
-                                    <h1 className="text-2xl font-bold">SERVECO SRL</h1>
-                                    <p className="text-sm text-muted-foreground">Sede Legale: Via Francesco Cilea, 21 - 84043 Agropoli (SA)</p>
-                                    <p className="text-sm text-muted-foreground">P.IVA: 05244990658</p>
+                                <td style={{ width: '75%' }} className="text-right align-top">
+                                    <h2 className="text-lg font-bold">{`${operator.firstName} ${operator.lastName}`}</h2>
+                                    <p className="text-sm text-muted-foreground">{`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`}</p>
                                 </td>
-                                <td style={{width: '80px'}}></td>
                             </tr>
                         </tbody>
                     </table>
 
-                    <div className="border-t my-4"></div>
-
-                    {/* Operator Info */}
-                    <table className="w-full mb-6 text-sm">
-                        <tbody>
-                            <tr>
-                                <td className="font-bold pr-2">OPERATORE:</td>
-                                <td>{`${operator.firstName} ${operator.lastName} (COD: ${operator.username})`}</td>
-                                <td className="font-bold pr-2 text-right">MESE:</td>
-                                <td className="text-right">{format(currentMonth, 'MMMM yyyy', { locale: it })}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    
-                    <div className="border-t my-4"></div>
-
-                    {/* Summary */}
-                    <h2 className="text-lg font-semibold mb-2 text-center">RIEPILOGO GENERALE</h2>
-                     <table className="w-full text-sm mb-8">
+                    {/* Summary Table */}
+                    <table className="w-full text-xs border border-collapse mb-8">
                         <thead>
                             <tr className="border-b">
-                                <th className="text-center py-2 font-semibold">GIORNI LAVORATI</th>
-                                <th className="text-center py-2 font-semibold">ORE ORDINARIE</th>
-                                <th className="text-center py-2 font-semibold">ORE STRAORD.</th>
-                                <th className="text-center py-2 font-semibold">FERIE (gg)</th>
-                                <th className="text-center py-2 font-semibold">PERMESSI (h)</th>
-                                <th className="text-center py-2 font-semibold">MALATTIA (gg)</th>
+                                <th className="border p-1 font-semibold text-center">Giorni Lavorati</th>
+                                <th className="border p-1 font-semibold text-center">Ore Ordinarie</th>
+                                <th className="border p-1 font-semibold text-center">Ore Straordinarie</th>
+                                <th className="border p-1 font-semibold text-center">Ferie (giorni)</th>
+                                <th className="border p-1 font-semibold text-center">Permessi (ore)</th>
+                                <th className="border p-1 font-semibold text-center">Malattia (giorni)</th>
                             </tr>
                         </thead>
                          <tbody>
                             <tr>
-                                <td className="py-2 text-center">{monthlySummary.workedDays || 0}</td>
-                                <td className="py-2 text-center">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="py-2 text-center">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="py-2 text-center">{monthlySummary.ferieDays || 0}</td>
-                                <td className="py-2 text-center">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</td>
-                                <td className="py-2 text-center">{monthlySummary.malattiaDays || 0}</td>
+                                <td className="border p-2 text-center">{monthlySummary.workedDays || 0}</td>
+                                <td className="border p-2 text-center">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border p-2 text-center">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border p-2 text-center">{monthlySummary.ferieDays || 0}</td>
+                                <td className="border p-2 text-center">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</td>
+                                <td className="border p-2 text-center">{monthlySummary.malattiaDays || 0}</td>
                             </tr>
                         </tbody>
                     </table>
-                    
-                     <div className="border-t my-4"></div>
 
                     {/* Daily Details */}
-                    <h2 className="text-lg font-semibold mb-2 text-center">DETTAGLIO GIORNALIERO</h2>
-                    <div className="space-y-4">
+                    <h3 className="text-md font-bold mb-4">Dettaglio Giornaliero</h3>
+                    <div className="space-y-3 text-xs">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-                             const isSunday = getDay(detail.date) === 0;
-                             let statusIcon = null;
-                             let statusText = '';
-                             switch(detail.status) {
-                                 case 'lavorato': statusIcon = <Briefcase className="h-4 w-4 text-blue-500" />; statusText = 'Lavorato'; break;
-                                 case 'ferie': statusIcon = <Plane className="h-4 w-4 text-green-500" />; statusText = 'Ferie'; break;
-                                 case 'malattia': statusIcon = <Stethoscope className="h-4 w-4 text-red-500" />; statusText = 'Malattia'; break;
-                                 case 'festa': statusIcon = <Briefcase className="h-4 w-4 text-purple-500" />; statusText = 'Festivo'; break;
-                                 case 'mancata_timbratura': statusIcon = <AlertTriangle className="h-4 w-4 text-yellow-500" />; statusText = 'Mancata Timbratura'; break;
-                             }
-
+                            let line1 = `${format(detail.date, 'eeee dd MMMM', { locale: it })} - ${detail.status.charAt(0).toUpperCase() + detail.status.slice(1)}`;
+                            let line2 = '';
+                             if (detail.shift) {
+                                const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                                line1 += ` | Timbrature: ${timbratureStr}`;
+                                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                            }
                             return (
-                                <div key={detail.date.toISOString()} className={cn("text-xs", isSunday && "text-red-600")}>
-                                     <div className="grid grid-cols-2 gap-4">
-                                        <div className="font-bold capitalize flex items-center gap-2">{statusIcon} {format(detail.date, 'eeee dd MMMM', { locale: it })}</div>
-                                        <div className="text-right text-muted-foreground">
-                                             {detail.shift?.events.map(e => {
-                                                  const time = format(e.timestamp.toDate(), 'HH:mm');
-                                                  return `${e.type.charAt(0).toUpperCase()}: ${time}`;
-                                             }).join(' | ')}
-                                        </div>
-                                    </div>
-                                    {detail.shift && (
-                                        <div className="grid grid-cols-4 gap-4 mt-1 pl-6 text-center">
-                                            <div><span className="font-semibold">Previste:</span> {detail.shift.contractualHours}h</div>
-                                            <div><span className="font-semibold">Ordinarie:</span> {detail.shift.ordinaryHours}h</div>
-                                            <div><span className="font-semibold">Straord:</span> {detail.shift.overtimeHours}h</div>
-                                            <div><span className="font-semibold">Permesso:</span> {detail.shift.permissionHours}h</div>
-                                        </div>
-                                    )}
-                                    <div className="border-t my-2"></div>
+                                <div key={detail.date.toISOString()} className="border-b pb-2">
+                                    <p className="font-semibold">{line1}</p>
+                                    {line2 && <p className="text-muted-foreground">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-muted-foreground py-4">Nessun dato da mostrare.</p>}
