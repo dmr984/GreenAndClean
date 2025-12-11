@@ -302,9 +302,9 @@ const PrintPageContent = () => {
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     
     const SummaryItem = ({ label, value, subLabel, subValue }: { label: string, value: string | number, subLabel?: string, subValue?: string | number }) => (
-        <div className="flex justify-between items-center text-sm font-bold">
-            <span className="uppercase text-gray-700">{label}: <span className="font-mono">{value}</span></span>
-            {subLabel && <span className="uppercase text-gray-700">{subLabel}: <span className="font-mono">{subValue}</span></span>}
+        <div className="flex justify-between items-baseline">
+            <p className="font-bold text-gray-700 uppercase">{label}: <span className="font-mono">{value}</span></p>
+            {subLabel && <p className="font-bold text-gray-700 uppercase">{subLabel}: <span className="font-mono">{subValue}</span></p>}
         </div>
     );
     
@@ -313,17 +313,14 @@ const PrintPageContent = () => {
              <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-white px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
-                     <Button variant="default" size="sm" onClick={handlePrint} disabled={isGenerating}>
-                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />}
-                        Stampa
+                     <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}>
+                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Printer className="h-4 w-4" />}
                     </Button>
-                     <Button variant="outline" size="sm" onClick={handleShare} disabled={isGenerating || !navigator.share}>
-                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Share2 className="mr-2 h-4 w-4" />}
-                        Condividi
+                     <Button variant="outline" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}>
+                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Share2 className="h-4 w-4" />}
                     </Button>
-                     <Button variant="outline" size="sm" onClick={handleDownload} disabled={isGenerating}>
-                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />}
-                        Scarica
+                     <Button variant="outline" size="icon" onClick={handleDownload} disabled={isGenerating}>
+                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4" />}
                     </Button>
                 </div>
                  <div className="flex flex-1 items-center justify-end">
@@ -351,11 +348,11 @@ const PrintPageContent = () => {
                     </table>
 
                     {/* Summary List */}
-                    <div className="mb-8 space-y-1">
-                        <SummaryItem label="Giorni Lavorati" value={monthlySummary.workedDays || 0} subLabel="Ferie" subValue={monthlySummary.ferieDays || 0} />
-                        <SummaryItem label="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} subLabel={`Costo Ordinarie (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
-                        <SummaryItem label="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} subLabel={`Costo Straordinarie (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
-                        <SummaryItem label="Ore Permessi" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} subLabel="Giorni di Malattia" subValue={monthlySummary.malattiaDays || 0} />
+                    <div className="mb-8 space-y-1 text-xs">
+                        <SummaryItem label="GIORNI LAVORATI" value={monthlySummary.workedDays || 0} subLabel="FERIE" subValue={monthlySummary.ferieDays || 0} />
+                        <SummaryItem label="ORE ORDINARIE" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} subLabel={`COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
+                        <SummaryItem label="ORE STRAORDINARIE" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} subLabel={`COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})})`} subValue={overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} />
+                        <SummaryItem label="ORE PERMESSI" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} subLabel="GIORNI DI MALATTIA" subValue={monthlySummary.malattiaDays || 0} />
                     </div>
 
 
