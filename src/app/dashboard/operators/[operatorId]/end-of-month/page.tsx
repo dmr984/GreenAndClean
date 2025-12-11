@@ -18,6 +18,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import type jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import printJS from 'print-js';
 
 
 // Type definitions are now in calculations.ts
@@ -98,6 +100,8 @@ export default function EndOfMonthPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
     
 
     useEffect(() => {
@@ -165,139 +169,177 @@ export default function EndOfMonthPage() {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
+    const generatePdfDoc = async (): Promise<jsPDF> => {
+        const { default: jsPDF } = await import('jspdf');
+        
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        let y = 20;
+
+        doc.setTextColor(40, 40, 40);
+        doc.setFillColor(255, 255, 255);
+
+        try {
+            const loadLogo = new Promise<string>((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return reject(new Error('Failed to get canvas context'));
+                    ctx.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = (err) => reject(err);
+                img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png'; 
+            });
+
+            const base64data = await loadLogo;
+            doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
+        } catch (error) {
+            console.warn("Could not load logo for PDF, proceeding without it.");
+        }
+
+        doc.setFontSize(16);
+        doc.text(`${operator?.firstName} ${operator?.lastName}`, pageWidth - 15, 18, { align: 'right' });
+        doc.setFontSize(10);
+        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
+
+        y = 40;
+
+        const summaryData = [
+            { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
+            { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
+            { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
+            { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
+            { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
+            { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
+        ];
+
+        autoTable(doc, {
+            startY: y,
+            body: [
+                summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
+                summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
+            ],
+            theme: 'grid',
+            styles: {
+                halign: 'center', valign: 'middle', fontSize: 9,
+                fillColor: [255, 255, 255], textColor: 40,
+                lineColor: [200, 200, 200], lineWidth: 0.1,
+            },
+        });
+
+        y = (doc as any).autoTable.previous.finalY + 10;
+
+        doc.setFontSize(14);
+        doc.text("Dettaglio Giornaliero", 15, y);
+        y += 8;
+
+        dailyDetails.forEach(detail => {
+            if (detail.status === 'riposo') return;
+            if (y > 270) { doc.addPage(); y = 20; }
+
+            const title = format(detail.date, 'eeee dd MMMM', { locale: it });
+            let statusText = '';
+            const body = [];
+
+            switch(detail.status) {
+                case 'lavorato':
+                    statusText = `Lavorato`;
+                    if (detail.shift) {
+                        let timbratureText = 'Timbrature: ';
+                        detail.shift.events.forEach(e => {
+                            const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
+                            let referenceTime = '';
+
+                            if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
+                                const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
+                                if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
+                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
+                                        referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                }
+                            }
+                            timbratureText += `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime} | `;
+                        });
+                        body.push([timbratureText.slice(0, -3)]);
+                        body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
+                    }
+                    break;
+                case 'ferie': statusText = 'Ferie'; body.push(['Giorno di ferie approvato.']); break;
+                case 'malattia': statusText = 'Malattia'; body.push(['Giorno di malattia approvato.']); break;
+                case 'mancata_timbratura': statusText = 'Mancata Timbratura'; body.push(['Nessuna timbratura registrata in un giorno lavorativo.']); break;
+                case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
+            }
+
+            autoTable(doc, {
+                startY: y,
+                head: [[`${title} - ${statusText}`]],
+                body: body,
+                theme: 'striped',
+                headStyles: { fillColor: [244, 244, 245], textColor: 20 },
+                styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
+                didDrawPage: (data: any) => y = data.cursor?.y || y
+            });
+            y = (doc as any).autoTable.previous.finalY + 5;
+        });
+
+        return doc;
+    }
     
     const handleGenerateAndOpen = async () => {
         if (isProcessing || !operator) return;
         setIsProcessing(true);
-
         try {
-            const { default: jsPDF } = await import('jspdf');
-            const { default: autoTable } = await import('jspdf-autotable');
-
-            const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.getWidth();
-            let y = 20;
-
-            doc.setTextColor(40, 40, 40);
-            doc.setFillColor(255, 255, 255);
-
-            try {
-                const loadLogo = new Promise<string>((resolve, reject) => {
-                    const img = new Image();
-                    img.crossOrigin = "Anonymous";
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        const ctx = canvas.getContext('2d');
-                        if (!ctx) return reject(new Error('Failed to get canvas context'));
-                        ctx.drawImage(img, 0, 0);
-                        resolve(canvas.toDataURL('image/png'));
-                    };
-                    img.onerror = (err) => reject(err);
-                    img.src = 'https://i.postimg.cc/GhwM2hg1/1764199658760.png'; 
-                });
-
-                const base64data = await loadLogo;
-                doc.addImage(base64data, 'PNG', 15, 10, 20, 20);
-            } catch (error) {
-                console.warn("Could not load logo for PDF, proceeding without it.");
-            }
-
-            doc.setFontSize(16);
-            doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - 15, 18, { align: 'right' });
-            doc.setFontSize(10);
-            doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - 15, 25, { align: 'right' });
-
-            y = 40;
-
-            const summaryData = [
-                { title: "Giorni Lavorati", value: monthlySummary.workedDays || 0 },
-                { title: "Ore Ordinarie", value: (monthlySummary.ordinaryHours || 0).toLocaleString('it-IT') },
-                { title: "Ore Straordinarie", value: (monthlySummary.overtimeHours || 0).toLocaleString('it-IT') },
-                { title: "Ferie (giorni)", value: monthlySummary.ferieDays || 0 },
-                { title: "Permessi (ore)", value: (monthlySummary.permessoHours || 0).toLocaleString('it-IT') },
-                { title: "Malattia (giorni)", value: monthlySummary.malattiaDays || 0 }
-            ];
-
-            autoTable(doc, {
-                startY: y,
-                body: [
-                    summaryData.slice(0, 3).map(d => `${d.title}\n${d.value}`),
-                    summaryData.slice(3, 6).map(d => `${d.title}\n${d.value}`)
-                ],
-                theme: 'grid',
-                styles: {
-                    halign: 'center', valign: 'middle', fontSize: 9,
-                    fillColor: [255, 255, 255], textColor: 40,
-                    lineColor: [200, 200, 200], lineWidth: 0.1,
-                },
-            });
-
-            y = (doc as any).autoTable.previous.finalY + 10;
-
-            doc.setFontSize(14);
-            doc.text("Dettaglio Giornaliero", 15, y);
-            y += 8;
-
-            dailyDetails.forEach(detail => {
-                if (detail.status === 'riposo') return;
-                if (y > 270) { doc.addPage(); y = 20; }
-
-                const title = format(detail.date, 'eeee dd MMMM', { locale: it });
-                let statusText = '';
-                const body = [];
-
-                switch(detail.status) {
-                    case 'lavorato':
-                        statusText = `Lavorato`;
-                        if (detail.shift) {
-                            let timbratureText = 'Timbrature: ';
-                            detail.shift.events.forEach(e => {
-                                const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                                let referenceTime = '';
-
-                                if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
-                                    if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                        referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                    } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                    }
-                                }
-                                timbratureText += `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime} | `;
-                            });
-                            body.push([timbratureText.slice(0, -3)]);
-                            body.push([`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`]);
-                        }
-                        break;
-                    case 'ferie': statusText = 'Ferie'; body.push(['Giorno di ferie approvato.']); break;
-                    case 'malattia': statusText = 'Malattia'; body.push(['Giorno di malattia approvato.']); break;
-                    case 'mancata_timbratura': statusText = 'Mancata Timbratura'; body.push(['Nessuna timbratura registrata in un giorno lavorativo.']); break;
-                    case 'festa': statusText = 'Festivo'; body.push(['Giorno festivo.']); break;
-                }
-
-                autoTable(doc, {
-                    startY: y,
-                    head: [[`${title} - ${statusText}`]],
-                    body: body,
-                    theme: 'striped',
-                    headStyles: { fillColor: [244, 244, 245], textColor: 20 },
-                    styles: { fillColor: [255, 255, 255], textColor: 40, cellPadding: 3, fontSize: 8 },
-                    didDrawPage: (data: any) => y = data.cursor?.y || y
-                });
-                y = (doc as any).autoTable.previous.finalY + 5;
-            });
-            
+            const doc = await generatePdfDoc();
             const blob = doc.output('blob');
             const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
-
+            setPdfBlobUrl(url);
+            setIsPreviewOpen(true);
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
             console.error(error);
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handlePrintPdf = async () => {
+         if (!pdfBlobUrl) return;
+        printJS(pdfBlobUrl);
+    };
+
+    const handleDownloadPdf = async () => {
+        if (!operator || !pdfBlobUrl) return;
+        const link = document.createElement('a');
+        link.href = pdfBlobUrl;
+        link.download = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleSharePdf = async () => {
+        if (!navigator.share || !operator || !pdfBlobUrl) {
+            handleDownloadPdf();
+            return;
+        }
+
+        try {
+            const response = await fetch(pdfBlobUrl);
+            const blob = await response.blob();
+            const file = new File([blob], `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+            
+            await navigator.share({
+                files: [file],
+                title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
+            });
+        } catch (error) {
+            console.error('Error sharing:', error);
+            toast({ title: "Errore di condivisione", description: "Impossibile condividere il file. Prova a scaricarlo prima.", variant: "destructive" });
         }
     };
     
@@ -482,6 +524,39 @@ export default function EndOfMonthPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 sm:p-2">
+                <DialogHeader className="p-4 border-b bg-muted/50 rounded-t-lg">
+                    <DialogTitle className="flex justify-between items-center">
+                        <h3 className="font-semibold text-lg">Anteprima Riepilogo PDF</h3>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="icon" onClick={handlePrintPdf}>
+                                <Printer className="h-5 w-5" />
+                                <span className="sr-only">Stampa</span>
+                            </Button>
+                            <Button variant="outline" size="icon" onClick={handleDownloadPdf}>
+                                <Download className="h-5 w-5" />
+                                <span className="sr-only">Scarica</span>
+                            </Button>
+                            <Button variant="outline" size="icon" onClick={handleSharePdf}>
+                                <Share2 className="h-5 w-5" />
+                                <span className="sr-only">Condividi</span>
+                            </Button>
+                        </div>
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 overflow-auto p-4">
+                    {pdfBlobUrl ? (
+                         <iframe src={pdfBlobUrl} className="w-full h-full border-none" title="Anteprima PDF" />
+                    ) : (
+                        <div className="flex items-center justify-center h-full">
+                            <Loader2 className="h-8 w-8 animate-spin" />
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
 
         </>
     );
