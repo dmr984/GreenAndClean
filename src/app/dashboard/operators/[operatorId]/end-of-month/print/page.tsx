@@ -147,10 +147,9 @@ const PrintPageContent = () => {
     
         const doc = new jsPDF();
         
-        // Use the browser's Image object, not Next.js's
-        const img = new (window as any).Image();
+        const img = new Image();
         img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-        img.crossOrigin = "Anonymous"; // Important for jsPDF
+        img.crossOrigin = "Anonymous";
         
         await new Promise(resolve => { img.onload = resolve; });
     
@@ -166,7 +165,12 @@ const PrintPageContent = () => {
         
         // 2. Summary Table
         const summaryHead = [[
-            'Giorni Lav.', 'Ore Ordinarie', 'Ore\nStraordinarie', 'Ferie', 'Permessi', 'Malattia'
+            { content: 'Giorni Lav.', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
+            { content: 'Ore Ordinarie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
+            { content: 'Ore\nStraordinarie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
+            { content: 'Ferie', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
+            { content: 'Permessi', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
+            { content: 'Malattia', styles: { halign: 'center', fontSize: 8, fontStyle: 'bold' } },
         ]];
         const summaryBody = [[
             (monthlySummary.workedDays || 0).toString(),
@@ -185,8 +189,6 @@ const PrintPageContent = () => {
             headStyles: {
                 fillColor: [248, 250, 252],
                 textColor: [51, 65, 85],
-                fontSize: 8,
-                halign: 'center',
                 valign: 'middle',
                 lineWidth: 0.1,
                 lineColor: [203, 213, 225]
@@ -194,6 +196,7 @@ const PrintPageContent = () => {
             bodyStyles: {
                 fontSize: 10,
                 halign: 'center',
+                valign: 'middle',
                 lineWidth: 0.1,
                 lineColor: [203, 213, 225]
             },
@@ -231,8 +234,8 @@ const PrintPageContent = () => {
             theme: 'plain',
             styles: { fontSize: 8, cellPadding: 1.5 },
              didDrawCell: (data) => {
-                 if (data.row.index < dailyBody.length - 1) { // Don't draw under the last row
-                    doc.setDrawColor(226, 232, 240); // tailwind gray-300
+                 if (data.row.index < dailyBody.length - 1) {
+                    doc.setDrawColor(226, 232, 240);
                     doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
                 }
             }
@@ -292,7 +295,7 @@ const PrintPageContent = () => {
     }
     
     return (
-        <div className="bg-white text-black min-h-screen">
+        <div className="bg-background min-h-screen">
              <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-gray-50 px-4 shadow-sm no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
@@ -316,8 +319,8 @@ const PrintPageContent = () => {
                 </div>
             </header>
 
-            <main className="flex justify-center p-4 sm:p-8">
-                <div className="w-full max-w-4xl bg-white text-black p-8 shadow-lg print-area" style={{ width: '210mm', minHeight: '297mm' }}>
+            <main className="flex justify-center p-4 sm:p-8 bg-white text-black">
+                <div className="w-full max-w-4xl print-area" style={{ width: '210mm', minHeight: '297mm' }}>
                     {/* Header */}
                      <table className="w-full mb-6">
                         <tbody>
@@ -340,9 +343,9 @@ const PrintPageContent = () => {
                                 <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Giorni Lav.</th>
                                 <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Ore Ordinarie</th>
                                 <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Ore<br/>Straordinarie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Ferie</th>
-                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Permessi</th>
-                                <th className="p-1 font-semibold text-center text-[8px] uppercase" style={{width: '16.66%'}}>Malattia</th>
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '10%'}}>Ferie</th>
+                                <th className="border-r border-gray-300 p-1 font-semibold text-center text-[8px] uppercase" style={{width: '12%'}}>Permessi</th>
+                                <th className="p-1 font-semibold text-center text-[8px] uppercase" style={{width: '12%'}}>Malattia</th>
                             </tr>
                         </thead>
                          <tbody>
