@@ -14,7 +14,7 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle as AlertDialogTitleComponent } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
@@ -296,14 +296,15 @@ export default function EndOfMonthPage() {
         return doc;
     };
     
-    const handleGeneratePdf = async () => {
+    const handleGeneratePreview = async () => {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            const url = doc.output('bloburl');
-            window.open(url, '_blank');
+            const url = doc.output('bloburi');
+            setPdfPreviewUrl(url); // This will open the Dialog
         } catch (error) {
             toast({ title: "Errore", description: "Impossibile generare il PDF.", variant: "destructive" });
+            console.error(error);
         } finally {
             setIsProcessing(false);
         }
@@ -313,22 +314,57 @@ export default function EndOfMonthPage() {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            doc.autoPrint();
-            window.open(doc.output('bloburl'), '_blank');
+            const pdfBlob = doc.output('blob');
+            const url = URL.createObjectURL(pdfBlob);
+            
+            // Create a hidden iframe
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = url;
+            document.body.appendChild(iframe);
+            
+            // Wait for the iframe to load and then print
+            iframe.onload = () => {
+                setTimeout(() => {
+                    iframe.contentWindow?.print();
+                    document.body.removeChild(iframe);
+                    URL.revokeObjectURL(url);
+                    setIsProcessing(false);
+                }, 100); // Small delay to ensure content is rendered
+            };
         } catch (error) {
-            toast({ title: "Errore", description: "Impossibile stampare il PDF.", variant: "destructive" });
-        } finally {
+            toast({ title: "Errore", description: "Impossibile preparare la stampa.", variant: "destructive" });
+            console.error(error);
             setIsProcessing(false);
         }
     };
     
-    const handleDownloadPdf = async () => {
+     const handleSharePdf = async () => {
         setIsProcessing(true);
         try {
             const doc = await generatePdfDoc();
-            doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+            const pdfBlob = doc.output('blob');
+            const pdfFile = new File([pdfBlob], `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
+
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                await navigator.share({
+                    title: `Riepilogo ${format(currentMonth, 'MMMM yyyy')}`,
+                    text: `Riepilogo di ${operator?.firstName} ${operator?.lastName}`,
+                    files: [pdfFile],
+                });
+            } else {
+                // Fallback for browsers that don't support sharing files
+                doc.save(`Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`);
+                toast({
+                    title: 'Download Avviato',
+                    description: 'La condivisione non è supportata, il file è stato scaricato.',
+                });
+            }
         } catch (error) {
-            toast({ title: "Errore", description: "Impossibile scaricare il PDF.", variant: "destructive" });
+            if ((error as Error).name !== 'AbortError') { // Ignore user cancelling the share dialog
+                toast({ title: "Errore", description: "Impossibile condividere il PDF.", variant: "destructive" });
+                console.error(error);
+            }
         } finally {
             setIsProcessing(false);
         }
@@ -383,7 +419,7 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button onClick={handleGeneratePdf} disabled={isProcessing} className="w-full sm:w-auto">
+                        <Button onClick={handleGeneratePreview} disabled={isProcessing} className="w-full sm:w-auto">
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                             Calcolo Fine Mese
                         </Button>
@@ -500,7 +536,7 @@ export default function EndOfMonthPage() {
         <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitleComponent>Sei assolutamente sicuro?</AlertDialogTitleComponent>
+                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
                     <AlertDialogDescription>
                         Questa azione è irreversibile. Verranno eliminate tutte le timbrature, richieste e straordinari dell'operatore per il mese di{' '}
                         <span className="font-bold">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>.
@@ -522,12 +558,12 @@ export default function EndOfMonthPage() {
                     <DialogTitle>
                          <div className="flex justify-between items-center">
                             <h3 className="font-semibold">Anteprima Riepilogo PDF</h3>
-                            <div className="flex items-center gap-2">
+                             <div className="flex items-center gap-2">
                                 <Button onClick={handlePrintPdf} disabled={isProcessing}>
                                     <Printer className="mr-2 h-4 w-4" /> Stampa
                                 </Button>
-                                <Button onClick={handleDownloadPdf} disabled={isProcessing}>
-                                    <Download className="mr-2 h-4 w-4" /> Scarica
+                                <Button onClick={handleSharePdf} disabled={isProcessing}>
+                                    <Share2 className="mr-2 h-4 w-4" /> Condividi
                                 </Button>
                                 <Button variant="ghost" size="icon" onClick={() => setPdfPreviewUrl(null)}>
                                     <X className="h-5 w-5" />
