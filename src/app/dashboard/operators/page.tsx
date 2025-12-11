@@ -438,7 +438,25 @@ export default function ManageOperatorsPage() {
                                                 <Label htmlFor="new-code">Codice Operatore</Label>
                                                 <Input id="new-code" value={newOperatorCode} onChange={(e) => setNewOperatorCode(e.target.value)} required />
                                             </div>
-                                             <div>
+                                            <div>
+                                                <Label htmlFor="new-firstName">Nome</Label>
+                                                <Input id="new-firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} required />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="new-lastName">Cognome</Label>
+                                                <Input id="new-lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} required />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <Label htmlFor="new-hourlyRate">Tariffa Oraria (€)</Label>
+                                                <Input id="new-hourlyRate" type="number" value={newHourlyRate} onChange={(e) => setNewHourlyRate(e.target.value)} min="0" step="0.01" placeholder="Es: 8.50" />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="new-overtimeRate">Tariffa Straordinari (€)</Label>
+                                                <Input id="new-overtimeRate" type="number" value={newOvertimeRate} onChange={(e) => setNewOvertimeRate(e.target.value)} min="0" step="0.01" placeholder="Es: 10.00" />
+                                            </div>
+                                            <div>
                                                 <Label htmlFor="new-overtime">Calcolo Straordinario</Label>
                                                 <Select value={newOvertimeCalculation} onValueChange={(v) => setNewOvertimeCalculation(v as any)}>
                                                     <SelectTrigger id="new-overtime">
@@ -449,24 +467,6 @@ export default function ManageOperatorsPage() {
                                                         <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="new-hourlyRate">Tariffa Oraria (€)</Label>
-                                                <Input id="new-hourlyRate" type="number" value={newHourlyRate} onChange={(e) => setNewHourlyRate(e.target.value)} min="0" step="0.01" />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div className="md:col-span-1">
-                                                <Label htmlFor="new-firstName">Nome</Label>
-                                                <Input id="new-firstName" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} required />
-                                            </div>
-                                             <div className="md:col-span-1">
-                                                <Label htmlFor="new-lastName">Cognome</Label>
-                                                <Input id="new-lastName" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} required />
-                                            </div>
-                                            <div className="md:col-span-1">
-                                                <Label htmlFor="new-overtimeRate">Tariffa Straordinari (€)</Label>
-                                                <Input id="new-overtimeRate" type="number" value={newOvertimeRate} onChange={(e) => setNewOvertimeRate(e.target.value)} min="0" step="0.01" />
                                             </div>
                                         </div>
                                         <div>
@@ -552,6 +552,24 @@ export default function ManageOperatorsPage() {
                                     <Input id="editing-code" value={editingOperatorCode} onChange={(e) => setEditingOperatorCode(e.target.value)} required />
                                 </div>
                                 <div>
+                                    <Label htmlFor="editing-firstName">Nome</Label>
+                                    <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} required />
+                                </div>
+                                <div>
+                                    <Label htmlFor="editing-lastName">Cognome</Label>
+                                    <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} required />
+                                </div>
+                            </div>
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <Label htmlFor="editing-hourlyRate">Tariffa Oraria (€)</Label>
+                                    <Input id="editing-hourlyRate" type="number" value={editingHourlyRate} onChange={(e) => setEditingHourlyRate(e.target.value)} min="0" step="0.01" placeholder="Es: 8.50" />
+                                </div>
+                                 <div>
+                                    <Label htmlFor="editing-overtimeRate">Tariffa Straordinari (€)</Label>
+                                    <Input id="editing-overtimeRate" type="number" value={editingOvertimeRate} onChange={(e) => setEditingOvertimeRate(e.target.value)} min="0" step="0.01" placeholder="Es: 10.00" />
+                                </div>
+                                <div>
                                     <Label htmlFor="editing-overtime">Calcolo Straordinario</Label>
                                     <Select value={editingOvertimeCalculation} onValueChange={(v) => setEditingOvertimeCalculation(v as any)}>
                                         <SelectTrigger id="editing-overtime">
@@ -562,24 +580,6 @@ export default function ManageOperatorsPage() {
                                             <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                </div>
-                                <div>
-                                    <Label htmlFor="editing-hourlyRate">Tariffa Oraria (€)</Label>
-                                    <Input id="editing-hourlyRate" type="number" value={editingHourlyRate} onChange={(e) => setEditingHourlyRate(e.target.value)} min="0" step="0.01" />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="md:col-span-1">
-                                    <Label htmlFor="editing-firstName">Nome</Label>
-                                    <Input id="editing-firstName" value={editingFirstName} onChange={(e) => setEditingFirstName(e.target.value)} required />
-                                </div>
-                                    <div className="md:col-span-1">
-                                    <Label htmlFor="editing-lastName">Cognome</Label>
-                                    <Input id="editing-lastName" value={editingLastName} onChange={(e) => setEditingLastName(e.target.value)} required />
-                                </div>
-                                <div className="md:col-span-1">
-                                    <Label htmlFor="editing-overtimeRate">Tariffa Straordinari (€)</Label>
-                                    <Input id="editing-overtimeRate" type="number" value={editingOvertimeRate} onChange={(e) => setEditingOvertimeRate(e.target.value)} min="0" step="0.01" />
                                 </div>
                             </div>
                             <div>
