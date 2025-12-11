@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Printer } from 'lucide-react';
+import { Loader2, Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set } from 'date-fns';
@@ -61,8 +61,8 @@ type Timbratura = {
 
 const SummaryItem = ({ title, value }: { title: string, value: string | number }) => (
     <div className="flex flex-col items-center justify-center p-2 border border-gray-300 rounded-md text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-600">{title}</p>
-        <p className="text-lg font-bold">{value}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">{title}</p>
+        <p className="text-base font-bold">{value}</p>
     </div>
 );
 
@@ -148,15 +148,9 @@ export default function PrintPage() {
         return processMonthlyData(currentMonth, operator, monthlyData);
     }, [operator, currentMonth, monthlyData, isLoading]);
 
-    useEffect(() => {
-        if (!isLoading) {
-            setTimeout(() => window.print(), 500); // Delay to ensure rendering
-        }
-    }, [isLoading]);
-
     if (isLoading || !operator) {
         return (
-            <div className="flex h-screen w-screen items-center justify-center">
+            <div className="flex h-screen w-screen items-center justify-center bg-muted">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
         );
@@ -164,12 +158,13 @@ export default function PrintPage() {
     
 
     return (
-        <div className="bg-white text-black p-8 font-sans">
-             <header className="flex justify-between items-center mb-6">
+    <div className="bg-gray-800 min-h-screen py-8 px-4">
+        <div className="max-w-4xl mx-auto bg-white text-black p-6 sm:p-8 font-sans shadow-2xl rounded-lg">
+             <header className="flex justify-between items-start mb-6 border-b pb-4">
                 <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" className="h-16 w-16" />
                 <div className="text-right">
                     <h1 className="text-xl font-bold">{operator.firstName} {operator.lastName}</h1>
-                    <p className="text-sm">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                    <p className="text-sm text-gray-700">Riepilogo di {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                 </div>
             </header>
             
@@ -186,41 +181,55 @@ export default function PrintPage() {
             
              <section>
                 <h2 className="text-lg font-bold border-b pb-1 mb-2">Dettaglio Giornaliero</h2>
-                <div className="space-y-1">
+                <div className="space-y-2 text-xs">
                     {dailyDetails.map((detail, index) => {
                         if (detail.status === 'riposo') return null;
 
                         const isLast = index === dailyDetails.length - 1;
 
+                        let timbratureText = '';
+                        if (detail.shift) {
+                            timbratureText = detail.shift.events
+                                .map(e => `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`)
+                                .join(' | ');
+                        }
+                        
+                        let detailsText = '';
+                        if (detail.shift) {
+                            detailsText = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                        } else if(detail.status === 'ferie') {
+                            detailsText = "Giorno di ferie approvato";
+                        } else if(detail.status === 'malattia') {
+                            detailsText = "Giorno di malattia approvato";
+                        } else if(detail.status === 'festa') {
+                            detailsText = "Giorno festivo";
+                        } else if(detail.status === 'mancata_timbratura') {
+                            detailsText = "Nessuna timbratura registrata";
+                        }
+
+
                         return (
-                            <div key={detail.date.toISOString()} className={cn("text-xs", !isLast && "border-b border-gray-300 pb-1 mb-1")}>
-                                <div className="flex justify-between">
-                                    <p className="font-bold capitalize">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.replace('_', ' ')}</p>
-                                    {detail.shift && (
-                                        <p className="text-gray-600 text-right">
-                                            {detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ')}
-                                        </p>
-                                    )}
+                             <div key={detail.date.toISOString()} className={cn(!isLast && "border-b border-gray-200 pb-2 mb-2")}>
+                                <div className="grid grid-cols-2 gap-x-4">
+                                     <p className="font-bold capitalize">{format(detail.date, 'eeee dd MMMM', { locale: it })} - {detail.status.replace(/_/g, ' ')}</p>
+                                     <p className="text-gray-600 text-right">{timbratureText}</p>
                                 </div>
-                                {detail.shift && (
-                                     <p className="text-gray-800 font-medium mt-0.5">
-                                        {`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}
-                                    </p>
-                                )}
+                                <p className="text-gray-800 font-medium mt-0.5">{detailsText}</p>
                             </div>
                         )
                     })}
                     {dailyDetails.length === 0 && <p className="text-sm text-gray-500 text-center py-4">Nessun dato da mostrare per questo mese.</p>}
                 </div>
             </section>
-             <div className="no-print fixed top-4 right-4 flex flex-col gap-2">
-                <Button onClick={() => window.print()}>
-                    <Printer className="mr-2 h-4 w-4" /> Stampa
-                </Button>
-                <Button variant="outline" onClick={() => window.close()}>
-                    Chiudi
-                </Button>
-            </div>
         </div>
+        <div className="no-print fixed top-4 right-4 flex flex-col gap-2">
+            <Button onClick={() => window.print()}>
+                <Printer className="mr-2 h-4 w-4" /> Stampa
+            </Button>
+            <Button variant="outline" onClick={() => window.close()}>
+                <X className="mr-2 h-4 w-4" /> Chiudi
+            </Button>
+        </div>
+    </div>
     );
 }
