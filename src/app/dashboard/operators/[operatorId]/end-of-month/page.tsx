@@ -262,7 +262,7 @@ export default function EndOfMonthPage() {
                 case 'mancata_timbratura': mainLine = `${dayStr} - Mancata Timbratura`; break;
              }
              
-             const rowContent = [mainLine];
+            const rowContent = [mainLine];
              if (detailLine) {
                  rowContent.push(detailLine);
              }
@@ -316,33 +316,6 @@ export default function EndOfMonthPage() {
         const doc = await generatePdfDoc();
         doc.autoPrint();
         window.open(doc.output('bloburl'), '_blank');
-    };
-    
-    const handleSharePdf = async () => {
-        if (!navigator.share) {
-             handleDownloadPdf();
-             return;
-        }
-
-        const doc = await generatePdfDoc();
-        const blob = doc.output('blob');
-        const file = new File([blob], `Riepilogo_${operator?.username}_${format(currentMonth, 'MM-yyyy')}.pdf`, { type: 'application/pdf' });
-        
-        try {
-            await navigator.share({
-                title: 'Riepilogo Mensile',
-                text: `Riepilogo di ${format(currentMonth, 'MMMM yyyy')} per ${operator?.firstName} ${operator?.lastName}`,
-                files: [file],
-            });
-        } catch (error: any) {
-            if (error.name === 'AbortError' || error.name === 'PermissionDeniedError' || error.name === 'NotAllowedError') {
-                console.warn("Share was cancelled or denied, falling back to download.", error);
-                handleDownloadPdf();
-            } else {
-                console.error("Share failed, falling back to download:", error);
-                handleDownloadPdf();
-            }
-        }
     };
     
     const handleCleanMonth = async () => {
@@ -544,7 +517,9 @@ export default function EndOfMonthPage() {
                 </DialogHeader>
                 {pdfUrl && (
                     <div className="flex-1 overflow-hidden">
-                        <embed src={pdfUrl} type="application/pdf" className="w-full h-full" />
+                        <object data={pdfUrl} type="application/pdf" className="w-full h-full">
+                            <p>Il tuo browser non supporta l'anteprima PDF. Puoi <a href={pdfUrl} download>scaricare il file</a> per visualizzarlo.</p>
+                        </object>
                     </div>
                 )}
             </DialogContent>
