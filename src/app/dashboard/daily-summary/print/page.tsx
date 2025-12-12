@@ -126,23 +126,12 @@ const PrintPageContent = () => {
         }
     }, [selectedDate, operators, firestore, toast]);
 
-    const renderStatus = (detail: DailyDetail | undefined) => {
-        if (!detail || detail.status === 'riposo') return { text: 'Riposo', icon: <Coffee className="h-4 w-4" /> };
-        switch (detail.status) {
-            case 'lavorato': return { text: 'Presente', icon: <Briefcase className="h-4 w-4" /> };
-            case 'festa': return { text: 'Festivo', icon: <Briefcase className="h-4 w-4" /> };
-            case 'ferie': return { text: 'In Ferie', icon: <Plane className="h-4 w-4" /> };
-            case 'malattia': return { text: 'In Malattia', icon: <Stethoscope className="h-4 w-4" /> };
-            case 'mancata_timbratura': return { text: 'Assente', icon: <User className="h-4 w-4" /> };
-            default: return { text: 'N/D', icon: null };
-        }
-    };
     
     const generatePdf = useCallback(async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
         try {
-            const { jsPDF } = await import('jspdf');
-            const autoTable = (await import('jspdf-autotable')).default;
+            const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
 
             if (!selectedDate || !document) return null;
 
@@ -177,21 +166,15 @@ const PrintPageContent = () => {
             };
 
             addHeader(true);
-
+            
             operators.forEach((op, index) => {
                 const detail = dailyData.get(op.id);
-                
-                if (y > pageHeight - 40) {
-                    doc.addPage();
-                    y = 20;
-                    addHeader(false); // No header on subsequent pages
-                }
-
-                if (!detail || (detail.status === 'riposo' && !detail.note) ) return;
+                if (!detail || (detail.status === 'riposo' && !detail.note)) return;
 
                 const cumulative = monthlyCumulative.get(op.id);
+                const operatorName = `${op.firstName} ${op.lastName}`;
 
-                let timbratureStr = detail.note || '';
+                let timbratureStr = '';
                 if (detail.shift) {
                     timbratureStr = detail.shift.events.map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -206,45 +189,46 @@ const PrintPageContent = () => {
                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                     }).join(' | ');
-                } else if(detail.status === 'ferie') {
+                } else if (detail.status === 'ferie') {
                     timbratureStr = "Giorno di Ferie";
-                } else if(detail.status === 'malattia') {
+                } else if (detail.status === 'malattia') {
                     timbratureStr = "Giorno di Malattia";
-                } else if(detail.status === 'festa') {
+                } else if (detail.status === 'festa') {
                     timbratureStr = "Giorno Festivo";
+                } else if (detail.note) {
+                    timbratureStr = detail.note;
                 }
 
-                const operatorName = `${op.firstName} ${op.lastName}`;
+                const detailGiorno = `Ore Ordinarie: ${detail.shift?.ordinaryHours || 0}h, Straordinari: ${detail.shift?.overtimeHours || 0}h, Permessi: ${detail.shift?.permissionHours || 0}h`;
+                const statoMensile = `Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
                 
-                doc.setFontSize(12);
+                const blockHeight = 30; // Estimated height for each operator block
+                if (y > pageHeight - blockHeight) {
+                    doc.addPage();
+                    y = 20;
+                    addHeader(false); 
+                }
+                
+                doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
-                doc.setTextColor(0,0,0);
+                doc.setTextColor(0, 0, 0);
                 doc.text(operatorName, margin, y);
-                doc.setFont('helvetica', 'normal');
-                const operatorNameWidth = doc.getTextWidth(operatorName);
-                doc.text(` | ${timbratureStr}`, margin + operatorNameWidth + 1, y);
-                y += 6;
+                y += 7;
 
                 doc.setFontSize(11);
-                doc.setTextColor(0,0,0);
-                const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail.shift?.ordinaryHours || 0}h, Straordinari: ${detail.shift?.overtimeHours || 0}h, Permessi: ${detail.shift?.permissionHours || 0}h`;
-                const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
-                
-                const splitDetailGiorno = doc.splitTextToSize(detailGiorno, pageWidth - margin * 2 - 3);
-                doc.text(splitDetailGiorno, margin + 3, y);
-                y += (splitDetailGiorno.length * 5) + 2;
-
-                const splitStatoMensile = doc.splitTextToSize(statoMensile, pageWidth - margin * 2 - 3);
-                doc.text(splitStatoMensile, margin + 3, y);
-                y += (splitStatoMensile.length * 5) + 4;
-                
-
-                if (index < operators.length - 1) {
-                    doc.setDrawColor(200, 200, 200);
-                    doc.line(margin, y, pageWidth - margin, y);
-                    y += 8;
+                doc.setFont('helvetica', 'normal');
+                if (timbratureStr) {
+                    doc.text(`Timbrature: ${timbratureStr}`, margin, y);
+                    y += 6;
                 }
+                
+                doc.text(`Dettaglio Giorno: ${detailGiorno}`, margin, y);
+                y += 6;
+                
+                doc.text(`Stato Mensile: ${statoMensile}`, margin, y);
+                y += 10;
             });
+
 
             const blob = doc.output('blob');
             const fileName = `Report_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
@@ -322,7 +306,7 @@ const PrintPageContent = () => {
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
-                     <div id="pdf-header" className="w-full mb-6">
+                     <div id="pdf-header" className="w-full mb-6 print:break-after-avoid">
                         <table className="w-full">
                             <tbody>
                                 <tr>
@@ -338,16 +322,15 @@ const PrintPageContent = () => {
                         </table>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                          {operators.map(op => {
                             const detail = dailyData.get(op.id);
                              if (!detail || (detail.status === 'riposo' && !detail.note)) {
                                 return null;
                             }
-
                             const cumulative = monthlyCumulative.get(op.id);
-                            
-                            let timbratureStr = detail.note || '';
+
+                            let timbratureStr = '';
                              if (detail.shift) {
                                 timbratureStr = detail.shift.events.map(e => {
                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -363,32 +346,26 @@ const PrintPageContent = () => {
                                     const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                     return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
-                            } else if(detail.status === 'ferie') {
+                            } else if(detail.note) {
+                                timbratureStr = detail.note;
+                            } else if (detail.status === 'ferie') {
                                 timbratureStr = "Giorno di Ferie";
-                            } else if(detail.status === 'malattia') {
+                            } else if (detail.status === 'malattia') {
                                 timbratureStr = "Giorno di Malattia";
-                            } else if(detail.status === 'festa') {
+                            } else if (detail.status === 'festa') {
                                 timbratureStr = "Giorno Festivo";
                             }
+                            
+                            const detailGiorno = `Ore Ordinarie: ${detail.shift?.ordinaryHours || 0}h, Straordinari: ${detail.shift?.overtimeHours || 0}h, Permessi: ${detail.shift?.permissionHours || 0}h`;
+                            const statoMensile = `Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
 
                             return (
-                                <div key={op.id} className="pt-2 pb-3 text-sm print:break-inside-avoid border-b border-gray-400 last:border-b-0">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <p className="font-bold text-base text-black">{op.firstName} {op.lastName} | <span className="font-normal text-black text-sm">{timbratureStr}</span></p>
-                                        </div>
-                                    </div>
-                                    <div className="text-sm text-black space-y-1 pl-1">
-                                         <p>
-                                            <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail.shift?.ordinaryHours || 0}h</span>,
-                                            Straordinari: <span className="font-bold">{detail.shift?.overtimeHours || 0}h</span>,
-                                            Permessi: <span className="font-bold">{detail.shift?.permissionHours || 0}h</span>
-                                        </p>
-                                        <p>
-                                            <span className='font-bold'>Stato Mensile:</span> Cum. Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span>,
-                                            Cum. Straordinari: <span className="font-bold">{cumulative?.overtime || 0}h</span>,
-                                            Cum. Permessi: <span className="font-bold">{cumulative?.leave || 0}h</span>
-                                        </p>
+                                <div key={op.id} className="pt-2 pb-2 text-sm print:break-inside-avoid border-b border-gray-300 last:border-b-0">
+                                    <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
+                                    <div className="text-sm text-black space-y-1 pl-1 mt-1">
+                                        {timbratureStr && <p>Timbrature: {timbratureStr}</p>}
+                                        <p>Dettaglio Giorno: {detailGiorno}</p>
+                                        <p>Stato Mensile: {statoMensile}</p>
                                     </div>
                                 </div>
                             )
@@ -423,5 +400,3 @@ export default function PrintPage() {
         </div>
     );
 }
-
-    
