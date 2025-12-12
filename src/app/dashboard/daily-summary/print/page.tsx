@@ -308,29 +308,28 @@ a.click();
                             const status = renderStatus(detail);
                             const timbratureStr = detail?.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ') || 'Nessuna';
                             return (
-                                <div key={op.id} className="border border-gray-200 rounded-lg p-3 text-xs print:break-inside-avoid">
+                                <div key={op.id} className="pt-2 pb-3 text-xs print:break-inside-avoid border-b border-gray-400 last:border-b-0">
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
                                             <p className="font-bold text-sm text-black">{op.firstName} {op.lastName}</p>
                                         </div>
-                                        <div className="flex items-center gap-2 font-semibold text-sm">
+                                        <div className="flex items-center gap-2 font-semibold text-sm text-black">
                                             {status.icon}{status.text}
                                         </div>
                                     </div>
-                                    <p className="text-gray-500 text-[10px] mb-2">Timbrature: {timbratureStr}</p>
-                                    <table className="w-full text-[10px]">
-                                        <thead className="bg-gray-100 text-gray-700">
-                                            <tr>
-                                                <th className="p-1 text-left font-semibold" colSpan={2}>Dettaglio Giorno</th>
-                                                <th className="p-1 text-left font-semibold" colSpan={2}>Stato Mensile</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                             <tr className="border-b"><td className="p-1">Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span></td><td></td><td className="p-1">Cumulativo Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span></td></tr>
-                                             <tr className="border-b"><td className="p-1">Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span></td><td></td><td className="p-1">Cumulativo Straordinari: <span className="font-bold">{cumulative?.overtime || 0}h</span></td></tr>
-                                             <tr><td className="p-1">Permessi: <span className="font-bold">{detail?.shift?.permissionHours || 0}h</span></td><td></td><td className="p-1">Cumulativo Permessi: <span className="font-bold">{cumulative?.leave || 0}h</span></td></tr>
-                                        </tbody>
-                                    </table>
+                                    <p className="text-black text-[10px] mb-2">Timbrature: {timbratureStr}</p>
+                                    <div className="text-[10px] text-black space-y-1">
+                                         <p>
+                                            <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span>,
+                                            Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span>,
+                                            Permessi: <span className="font-bold">{detail?.shift?.permissionHours || 0}h</span>
+                                        </p>
+                                        <p>
+                                            <span className='font-bold'>Stato Mensile:</span> Cumulativo Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span>,
+                                            Cumulativo Straordinari: <span className="font-bold">{cumulative?.overtime || 0}h</span>,
+                                            Cumulativo Permessi: <span className="font-bold">{cumulative?.leave || 0}h</span>
+                                        </p>
+                                    </div>
                                 </div>
                             )
                         })}
