@@ -2029,25 +2029,31 @@ export default function ShiftApprovalPage() {
                         <div>
                             <h4 className="font-semibold mb-1">Approvazione Turni</h4>
                             <p className="text-muted-foreground">
-                                I turni in stato "sospeso" richiedono la tua attenzione. Puoi approvarli o rifiutarli. L'approvazione converte le timbrature in ore lavorate (ordinarie e straordinarie) e crea richieste di permesso se necessario.
+                                I turni in stato "sospeso" richiedono la tua attenzione. Puoi approvarli o rifiutarli. L'approvazione converte le timbrature in ore lavorate e, se necessario, ti permette di creare richieste di permesso o straordinario.
+                            </p>
+                        </div>
+                         <div>
+                            <h4 className="font-semibold mb-1">Turni di Recupero/Anticipo</h4>
+                            <p className="text-muted-foreground">
+                                Se un operatore timbra in un giorno non lavorativo e lo indica come "Recupero/Anticipo", vedrai una nota specifica nel riepilogo del turno (es. "Recupero di Lunedì"). Il calcolo delle ore ordinarie si baserà sul giorno originale, garantendo un conteggio corretto.
                             </p>
                         </div>
                         <div>
                             <h4 className="font-semibold mb-1">Gestione Pause</h4>
                             <p className="text-muted-foreground">
-                               Se per un turno è prevista una pausa obbligatoria ma non è stata registrata, il sistema ti chiederà se vuoi aggiungerla manually prima di approvare.
+                               Se per un turno è prevista una pausa obbligatoria ma non è stata registrata, il sistema ti chiederà se vuoi aggiungerla manualmente prima di approvare.
                             </p>
                         </div>
                         <div>
-                            <h4 className="font-semibold mb-1">Calcolo Ore</h4>
+                            <h4 className="font-semibold mb-1">Calcolo Ore Ordinarie</h4>
                             <p className="text-muted-foreground">
-                                Il sistema arrotonda gli orari per calcolare le ore: le ore ordinarie scattano ogni mezz'ora e gli straordinari ogni ora intera. Nel dettaglio del turno, puoi vedere gli orari di riferimento usati per il calcolo tra parentesi.
+                                Il sistema arrotonda gli orari di entrata e uscita per calcolare le ore ordinarie, che scattano ogni mezz'ora. Nel dettaglio del turno, puoi vedere gli orari di riferimento usati per il calcolo tra parentesi.
                             </p>
                         </div>
                         <div>
                             <h4 className="font-semibold mb-1">Modifica e Aggiunta Manuale</h4>
                              <p className="text-muted-foreground">
-                                Puoi modificare qualsiasi timbratura di un turno o aggiungere un intero turno manualmente in caso di dimenticanze o errori da parte dell'operatore.
+                                Puoi modificare qualsiasi timbratura di un turno o aggiungere un intero turno manualmente, specificando anche se si tratta di un recupero, in caso di dimenticanze o errori da parte dell'operatore.
                             </p>
                         </div>
                     </div>

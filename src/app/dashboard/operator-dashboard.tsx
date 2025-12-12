@@ -821,13 +821,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                  <div>
                     <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
                     <p className="text-muted-foreground">
-                        Il sistema arrotonda gli orari per calcolare le ore totali: le ore ordinarie scattano ogni mezz'ora, mentre le ore straordinarie vengono conteggiate ogni ora intera.
+                        Il sistema arrotonda gli orari di entrata e uscita per calcolare le ore ordinarie, che scattano ogni mezz'ora.
                     </p>
                 </div>
                 <div>
-                    <h4 className="font-semibold mb-1">Turno Straordinario</h4>
+                    <h4 className="font-semibold mb-1">Turno Straordinario o Recupero</h4>
                     <p className="text-muted-foreground">
-                        Se oggi non è un tuo giorno lavorativo, vedrai il pulsante per avviare un turno straordinario, che ti permette di registrare ore di lavoro extra.
+                        Se timbri in un giorno non lavorativo, il sistema ti chiederà se vuoi registrare un turno <span className="font-bold">Straordinario</span> o se stai facendo un <span className="font-bold">Recupero/Anticipo</span>. Se scegli recupero, dovrai indicare quale giorno stai sostituendo, e le ore verranno calcolate come ordinarie in base a quel giorno.
                     </p>
                 </div>
                 <div>
