@@ -72,6 +72,20 @@
       ]
     },
     {
+      "collectionGroup": "timbrature",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "shiftId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "app-users",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
