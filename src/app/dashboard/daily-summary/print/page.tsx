@@ -169,13 +169,22 @@ const PrintPageContent = () => {
             
             operators.forEach((op, index) => {
                 const detail = dailyData.get(op.id);
-                if (!detail || (detail.status === 'riposo' && !detail.note)) return;
-
                 const cumulative = monthlyCumulative.get(op.id);
                 const operatorName = `${op.firstName} ${op.lastName}`;
 
+                const blockHeight = 30;
+                if (y > pageHeight - blockHeight) {
+                    doc.addPage();
+                    y = 20;
+                    addHeader(false); 
+                }
+                
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                
                 let timbratureStr = '';
-                if (detail.shift) {
+                if (detail?.shift) {
                     timbratureStr = detail.shift.events.map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                         let referenceTime = '';
@@ -189,43 +198,41 @@ const PrintPageContent = () => {
                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                     }).join(' | ');
-                } else if (detail.status === 'ferie') {
-                    timbratureStr = "Giorno di Ferie";
-                } else if (detail.status === 'malattia') {
-                    timbratureStr = "Giorno di Malattia";
-                } else if (detail.status === 'festa') {
-                    timbratureStr = "Giorno Festivo";
-                } else if (detail.note) {
-                    timbratureStr = detail.note;
                 }
 
-                const detailGiorno = `Ore Ordinarie: ${detail.shift?.ordinaryHours || 0}h, Straordinari: ${detail.shift?.overtimeHours || 0}h, Permessi: ${detail.shift?.permissionHours || 0}h`;
-                const statoMensile = `Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
-                
-                const blockHeight = 30; // Estimated height for each operator block
-                if (y > pageHeight - blockHeight) {
-                    doc.addPage();
-                    y = 20;
-                    addHeader(false); 
+                doc.text(`${operatorName}`, margin, y);
+                 if (timbratureStr) {
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(timbratureStr, margin + 50, y, { align: 'left', maxWidth: pageWidth - margin * 2 - 50 });
                 }
-                
-                doc.setFontSize(14);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(0, 0, 0);
-                doc.text(operatorName, margin, y);
                 y += 7;
+
 
                 doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
-                if (timbratureStr) {
-                    doc.text(`Timbrature: ${timbratureStr}`, margin, y);
-                    y += 6;
+
+                if (detail?.shift) {
+                    const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail.shift.ordinaryHours || 0}h, Straordinari: ${detail.shift.overtimeHours || 0}h, Permessi: ${detail.shift.permissionHours || 0}h`;
+                     doc.text(detailGiorno, margin, y);
+                     y += 6;
+                } else if(detail) {
+                     let statusText = '';
+                    switch (detail.status) {
+                        case 'mancata_timbratura': statusText = 'Mancata Timbratura'; break;
+                        case 'ferie': statusText = 'Giorno di Ferie'; break;
+                        case 'malattia': statusText = 'Giorno di Malattia'; break;
+                        case 'riposo': statusText = 'Giorno non lavorativo'; break;
+                        case 'festa': statusText = 'Giorno Festivo'; break;
+                    }
+                    if (statusText) {
+                        doc.text(statusText, margin, y);
+                        y += 6;
+                    }
                 }
                 
-                doc.text(`Dettaglio Giorno: ${detailGiorno}`, margin, y);
-                y += 6;
-                
-                doc.text(`Stato Mensile: ${statoMensile}`, margin, y);
+                const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
+                doc.text(statoMensile, margin, y);
                 y += 10;
             });
 
@@ -325,47 +332,43 @@ const PrintPageContent = () => {
                     <div className="space-y-6">
                          {operators.map(op => {
                             const detail = dailyData.get(op.id);
-                             if (!detail || (detail.status === 'riposo' && !detail.note)) {
-                                return null;
-                            }
                             const cumulative = monthlyCumulative.get(op.id);
 
-                            let timbratureStr = '';
-                             if (detail.shift) {
-                                timbratureStr = detail.shift.events.map(e => {
-                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                    let referenceTime = '';
-
-                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                        if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                        if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                                    }
-                                    const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                    return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                }).join(' | ');
-                            } else if(detail.note) {
-                                timbratureStr = detail.note;
-                            } else if (detail.status === 'ferie') {
-                                timbratureStr = "Giorno di Ferie";
-                            } else if (detail.status === 'malattia') {
-                                timbratureStr = "Giorno di Malattia";
-                            } else if (detail.status === 'festa') {
-                                timbratureStr = "Giorno Festivo";
-                            }
-                            
-                            const detailGiorno = `Ore Ordinarie: ${detail.shift?.ordinaryHours || 0}h, Straordinari: ${detail.shift?.overtimeHours || 0}h, Permessi: ${detail.shift?.permissionHours || 0}h`;
-                            const statoMensile = `Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
-
                             return (
-                                <div key={op.id} className="pt-2 pb-2 text-sm print:break-inside-avoid border-b border-gray-300 last:border-b-0">
-                                    <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
-                                    <div className="text-sm text-black space-y-1 pl-1 mt-1">
-                                        {timbratureStr && <p>Timbrature: {timbratureStr}</p>}
-                                        <p>Dettaglio Giorno: {detailGiorno}</p>
-                                        <p>Stato Mensile: {statoMensile}</p>
+                                <div key={op.id} className="pt-2 pb-2 text-sm text-black print:break-inside-avoid border-b border-gray-300 last:border-b-0">
+                                    <div className="flex justify-between items-baseline">
+                                        <p className="font-bold text-base">{op.firstName} {op.lastName}</p>
+                                        {detail?.shift && (
+                                            <p className="text-sm shrink-0 ml-4">
+                                                {detail.shift.events.map(e => {
+                                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                    let referenceTime = '';
+                                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                                        if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                                        if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                    }
+                                                    const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                    return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                }).join(' | ')}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="text-sm space-y-1 pl-1 mt-1">
+                                        {detail?.shift ? (
+                                            <p>Dettaglio Giorno: Ore Ordinarie: {detail.shift.ordinaryHours || 0}h, Straordinari: {detail.shift.overtimeHours || 0}h, Permessi: {detail.shift.permissionHours || 0}h</p>
+                                        ) : detail ? (
+                                            <p>
+                                                {detail.status === 'mancata_timbratura' && 'Mancata Timbratura'}
+                                                {detail.status === 'ferie' && 'Giorno di Ferie'}
+                                                {detail.status === 'malattia' && 'Giorno di Malattia'}
+                                                {detail.status === 'riposo' && 'Giorno non lavorativo'}
+                                                {detail.status === 'festa' && 'Giorno Festivo'}
+                                            </p>
+                                        ) : null}
+                                        <p>Stato Mensile: Cum. Ordinarie: {cumulative?.ordinary || 0}h, Cum. Straordinari: {cumulative?.overtime || 0}h, Cum. Permessi: {cumulative?.leave || 0}h</p>
                                     </div>
                                 </div>
                             )
