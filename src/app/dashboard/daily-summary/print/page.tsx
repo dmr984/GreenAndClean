@@ -154,7 +154,8 @@ const PrintPageContent = () => {
         const margin = 15;
         let y = 20;
 
-        const addHeader = () => {
+        const addHeader = (isFirstPage: boolean) => {
+             if (!isFirstPage) return;
              const img = new Image();
             img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
             img.crossOrigin = "Anonymous";
@@ -172,7 +173,7 @@ const PrintPageContent = () => {
             y += 15;
         };
 
-        addHeader();
+        addHeader(true); // Add header to the first page
 
         const filteredOperators = operators.filter(op => {
             const detail = dailyData.get(op.id);
@@ -209,27 +210,23 @@ const PrintPageContent = () => {
             if (y > pageHeight - 40) { // Check space before drawing operator block
                 doc.addPage();
                 y = 20;
-                addHeader();
+                addHeader(false); // Do not add header to subsequent pages
             }
 
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
             doc.text(operatorName, margin, y);
             
-            doc.setFontSize(10);
-            doc.text(status.text, pageWidth - margin, y, { align: 'right' });
-            y += 6;
-
-            doc.setFontSize(9);
+            doc.setFontSize(11);
             doc.setFont('helvetica', 'normal');
-            doc.setTextColor(80, 80, 80);
-            doc.text(`Timbrature: ${timbratureStr}`, margin, y);
-            y += 5;
-
-            doc.setFontSize(9);
             doc.setTextColor(0, 0, 0);
+            
+            const operatorNameWidth = doc.getTextWidth(operatorName);
+            doc.text(timbratureStr, margin + operatorNameWidth + 3, y);
+            y += 7;
+
             doc.text(detailGiorno, margin, y);
-            y += 5;
+            y += 6;
             doc.text(statoMensile, margin, y);
             y += 8;
 
@@ -360,11 +357,11 @@ const PrintPageContent = () => {
                                             <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
                                         </div>
                                         <div className="flex items-center gap-2 font-semibold text-base text-black">
-                                            {status.icon}{status.text}
+                                            {status.icon}
                                         </div>
                                     </div>
-                                    <p className="text-black text-xs mb-2">Timbrature: {timbratureStr}</p>
-                                    <div className="text-xs text-black space-y-1">
+                                    <p className="text-black text-sm mb-2">{timbratureStr}</p>
+                                    <div className="text-sm text-black space-y-1">
                                          <p>
                                             <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span>,
                                             Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span>,
@@ -409,3 +406,5 @@ export default function PrintPage() {
         </div>
     );
 }
+
+    
