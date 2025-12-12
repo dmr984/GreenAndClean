@@ -30,6 +30,11 @@ service cloud.firestore {
         // Allow anyone to read or write requests.
         allow read, write: if true;
       }
+
+      match /daily-notes/{noteId} {
+        // Allow anyone to read or write daily notes.
+        allow read, write: if true;
+      }
     }
     
     // This rule is necessary for the admin notification bell to query
