@@ -217,7 +217,7 @@ const PrintPageContent = () => {
                 [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
                 [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`],
             ],
-            styles: { fontSize: 11, textColor: [0, 0, 0], fontStyle: 'bold' },
+            styles: { fontSize: 14, textColor: [0, 0, 0], fontStyle: 'bold' },
             columnStyles: {
                 0: { halign: 'left' },
                 1: { halign: 'right' },
@@ -231,12 +231,12 @@ const PrintPageContent = () => {
         doc.line(margin, y, pageWidth - margin, y);
         y += 8;
         
-        doc.setFontSize(14);
+        doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
         y += 15;
     
-        doc.setFontSize(14);
+        doc.setFontSize(16);
         doc.setTextColor(0,0,0);
         doc.text("Dettaglio Giornaliero", margin, y);
         y += 5;
@@ -268,10 +268,10 @@ const PrintPageContent = () => {
                         const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
                          if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                     }
-                    const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                     const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                     return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
                 }).join(' | ');
-                line1 = `${dateStr} | Timbrature: ${timbratureStr}`;
+                line1 = `${dateStr} | ${timbratureStr}`;
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             } else {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
@@ -280,19 +280,19 @@ const PrintPageContent = () => {
                  line1 = `${dateStr} - ${statusText}`;
             }
     
-            doc.setFontSize(11);
+            doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
             const splitLine1 = doc.splitTextToSize(line1, pageWidth - margin * 2);
             doc.text(splitLine1, margin, y);
             y += (splitLine1.length * 5);
             
             if(line2) {
-                doc.setFontSize(10);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(50, 50, 50);
                 const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
                 doc.text(splitLine2, margin + 3, y);
-                y += (splitLine2.length * 4.5);
+                y += (splitLine2.length * 5);
             }
     
             y += 2;
@@ -399,28 +399,28 @@ const PrintPageContent = () => {
                     </table>
 
                     {/* Summary Table */}
-                    <div className="mb-4 text-sm">
+                    <div className="mb-4">
                         <table className="w-full">
                            <tbody className="text-black font-bold text-base">
                                 <tr>
-                                    <td className="py-1">GIORNI LAVORATI: <span className="font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right">FERIE: <span className="font-mono">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-lg">GIORNI LAVORATI: <span className="font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right text-lg">FERIE: <span className="font-mono">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1">ORE ORDINARIE: <span className="font-mono">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}): <span className="font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1 text-lg">ORE ORDINARIE: <span className="font-mono">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right text-lg">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}): <span className="font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1">ORE STRAORDINARIE: <span className="font-mono">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate || 0)}€/h`}): <span className="font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1 text-lg">ORE STRAORDINARIE: <span className="font-mono">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right text-lg">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate || 0)}€/h`}): <span className="font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                  <tr>
-                                    <td className="py-1">ORE PERMESSI: <span className="font-mono">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right">GIORNI DI MALATTIA: <span className="font-mono">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-lg">ORE PERMESSI: <span className="font-mono">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right text-lg">GIORNI DI MALATTIA: <span className="font-mono">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
                                 </tr>
                            </tbody>
                         </table>
-                         <div className="text-right font-bold text-lg mt-2 border-t-2 border-black pt-1 text-black">
+                         <div className="text-right font-bold text-xl mt-2 border-t-2 border-black pt-1 text-black">
                              <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                         </div>
                     </div>
@@ -428,7 +428,7 @@ const PrintPageContent = () => {
 
                     {/* Daily Details */}
                     <h3 className="text-lg font-bold text-black mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
-                    <div className="space-y-3 text-base">
+                    <div className="space-y-3">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                              let line1 = '';
                              let line2 = '';
@@ -451,7 +451,7 @@ const PrintPageContent = () => {
                                      const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                     return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
-                                line1 = `${dateStr} | Timbrature: ${timbratureStr}`;
+                                line1 = `${dateStr} | ${timbratureStr}`;
                                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
                             } else {
                                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
@@ -465,7 +465,7 @@ const PrintPageContent = () => {
                                     <p className="font-bold text-black text-sm capitalize leading-tight">
                                         {line1}
                                     </p>
-                                    {line2 && <p className="text-gray-600 text-xs pl-1 leading-tight">{line2}</p>}
+                                    {line2 && <p className="text-gray-600 text-sm pl-1 leading-tight">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
