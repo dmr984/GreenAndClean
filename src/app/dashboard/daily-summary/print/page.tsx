@@ -138,7 +138,7 @@ const PrintPageContent = () => {
         }
     };
     
-    const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
+   const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
         const { jsPDF } = await import('jspdf');
         const autoTable = (await import('jspdf-autotable')).default;
@@ -173,7 +173,7 @@ const PrintPageContent = () => {
             y += 15;
         };
 
-        addHeader(true); // Add header to the first page
+        addHeader(true);
 
         const filteredOperators = operators.filter(op => {
             const detail = dailyData.get(op.id);
@@ -181,9 +181,8 @@ const PrintPageContent = () => {
         });
 
         filteredOperators.forEach((op, index) => {
-             const detail = dailyData.get(op.id);
+            const detail = dailyData.get(op.id);
             const cumulative = monthlyCumulative.get(op.id);
-            const status = renderStatus(detail);
             
             let timbratureStr = 'Nessuna timbratura presente.';
             if (detail?.shift) {
@@ -207,13 +206,13 @@ const PrintPageContent = () => {
             const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
             const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
 
-            if (y > pageHeight - 40) { // Check space before drawing operator block
+            if (y > pageHeight - 40) {
                 doc.addPage();
                 y = 20;
-                addHeader(false); // Do not add header to subsequent pages
+                addHeader(false);
             }
 
-            doc.setFontSize(12);
+            doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
             doc.text(operatorName, margin, y);
             
@@ -225,6 +224,7 @@ const PrintPageContent = () => {
             doc.text(timbratureStr, margin + operatorNameWidth + 3, y);
             y += 7;
 
+            doc.setFontSize(11);
             doc.text(detailGiorno, margin, y);
             y += 6;
             doc.text(statoMensile, margin, y);
@@ -307,19 +307,21 @@ const PrintPageContent = () => {
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
-                     <table className="w-full mb-6">
-                        <tbody>
-                            <tr>
-                                <td style={{ width: '25%', verticalAlign: 'top' }}>
-                                    <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
-                                </td>
-                                <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
-                                    <h2 className="text-lg font-bold text-black">Report Giornaliero</h2>
-                                    <p className="text-sm text-gray-700 capitalize">{format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it })}</p>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                     <div id="pdf-header" className="w-full mb-6">
+                        <table className="w-full">
+                            <tbody>
+                                <tr>
+                                    <td style={{ width: '25%', verticalAlign: 'top' }}>
+                                        <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
+                                    </td>
+                                    <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
+                                        <h2 className="text-xl font-bold text-black">Report Giornaliero</h2>
+                                        <p className="text-base text-gray-700 capitalize">{format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it })}</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
                     <div className="space-y-4">
                         {operators
@@ -330,9 +332,8 @@ const PrintPageContent = () => {
                             .map(op => {
                             const detail = dailyData.get(op.id);
                             const cumulative = monthlyCumulative.get(op.id);
-                            const status = renderStatus(detail);
                             
-                            let timbratureStr = 'Nessuna timbratura presente.';
+                            let timbratureStr = '';
                             if (detail?.shift) {
                                 const events = detail.shift.events || [];
                                 timbratureStr = events.map(e => {
@@ -355,9 +356,6 @@ const PrintPageContent = () => {
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
                                             <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
-                                        </div>
-                                        <div className="flex items-center gap-2 font-semibold text-base text-black">
-                                            {status.icon}
                                         </div>
                                     </div>
                                     <p className="text-black text-sm mb-2">{timbratureStr}</p>
@@ -406,5 +404,3 @@ export default function PrintPage() {
         </div>
     );
 }
-
-    
