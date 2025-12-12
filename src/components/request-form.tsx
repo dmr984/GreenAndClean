@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format, eachDayOfInterval, isSameDay, startOfDay, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { Badge } from '@/components/ui/badge';
 
 type ExistingRequest = {
     id: string;
