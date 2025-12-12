@@ -141,7 +141,7 @@ export default function EndOfMonthPage() {
     
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery)
+                getDocs(requestsSnapshot)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
@@ -257,7 +257,7 @@ export default function EndOfMonthPage() {
                      <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
                 <>
-                <div className="space-y-4">
+                 <div className="space-y-2">
                     <SummaryCard 
                         title="Totale Dovuto" 
                         value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 

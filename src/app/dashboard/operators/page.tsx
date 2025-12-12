@@ -450,11 +450,11 @@ export default function ManageOperatorsPage() {
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <Label htmlFor="new-hourlyRate">Tariffa Oraria (€)</Label>
-                                                <Input id="new-hourlyRate" type="number" value={newHourlyRate} onChange={(e) => setNewHourlyRate(e.target.value)} min="0" step="0.01" placeholder="Es: 8.50" />
+                                                <Input id="new-hourlyRate" type="number" value={newHourlyRate} onChange={(e) => setNewHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
                                             </div>
                                             <div>
                                                 <Label htmlFor="new-overtimeRate">Tariffa Straordinari (€)</Label>
-                                                <Input id="new-overtimeRate" type="number" value={newOvertimeRate} onChange={(e) => setNewOvertimeRate(e.target.value)} min="0" step="0.01" placeholder="Es: 10.00" />
+                                                <Input id="new-overtimeRate" type="number" value={newOvertimeRate} onChange={(e) => setNewOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
                                             </div>
                                             <div>
                                                 <Label htmlFor="new-overtime">Calcolo Straordinario</Label>
@@ -563,11 +563,11 @@ export default function ManageOperatorsPage() {
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <Label htmlFor="editing-hourlyRate">Tariffa Oraria (€)</Label>
-                                    <Input id="editing-hourlyRate" type="number" value={editingHourlyRate} onChange={(e) => setEditingHourlyRate(e.target.value)} min="0" step="0.01" placeholder="Es: 8.50" />
+                                    <Input id="editing-hourlyRate" type="number" value={editingHourlyRate} onChange={(e) => setEditingHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
                                 </div>
                                  <div>
                                     <Label htmlFor="editing-overtimeRate">Tariffa Straordinari (€)</Label>
-                                    <Input id="editing-overtimeRate" type="number" value={editingOvertimeRate} onChange={(e) => setEditingOvertimeRate(e.target.value)} min="0" step="0.01" placeholder="Es: 10.00" />
+                                    <Input id="editing-overtimeRate" type="number" value={editingOvertimeRate} onChange={(e) => setEditingOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
                                 </div>
                                 <div>
                                     <Label htmlFor="editing-overtime">Calcolo Straordinario</Label>
