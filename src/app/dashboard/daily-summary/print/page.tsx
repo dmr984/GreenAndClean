@@ -7,7 +7,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'fireba
 import { Loader2, Printer, Download, Share2, X, User, Briefcase, Plane, Stethoscope } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useParams, useSearchParams } from 'next/navigation';
-import { format, startOfDay, endOfDay, isValid, startOfMonth } from 'date-fns';
+import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
@@ -300,7 +300,6 @@ a.click();
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
                                             <p className="font-bold text-sm text-black">{op.firstName} {op.lastName}</p>
-                                            <p className="text-gray-600">Codice: {op.username}</p>
                                         </div>
                                         <div className="flex items-center gap-2 font-semibold text-sm">
                                             {status.icon}{status.text}
