@@ -61,6 +61,11 @@ type Timbratura = {
     ignoreContractualStart?: boolean;
 };
 
+type DailyNote = {
+    note: string;
+    date: string;
+}
+
 const PrintPageContent = () => {
     const firestore = useFirestore();
     const params = useParams();
@@ -70,7 +75,7 @@ const PrintPageContent = () => {
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -115,16 +120,24 @@ const PrintPageContent = () => {
                     collection(firestore, `app-users/${operatorId}/requests`),
                     where('status', '==', 'approvato')
                 );
+                
+                const notesQuery = query(
+                    collection(firestore, `app-users/${operatorId}/daily-notes`),
+                     where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
+                     where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
+                );
 
-                const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
+                const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
                     getDocs(timbratureQuery),
-                    getDocs(requestsQuery)
+                    getDocs(requestsQuery),
+                    getDocs(notesQuery)
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
                 const requestsData = requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
+                const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
 
-                setMonthlyData({ timbrature: timbratureData, requests: requestsData });
+                setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
 
             } catch (error) {
                  console.error("Error fetching data for print:", error);
@@ -250,7 +263,7 @@ const PrintPageContent = () => {
             } else {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                 if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
+                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Mancata Timbratura';
                  line1 = `${dateStr} - ${statusText}`;
             }
     
@@ -430,7 +443,7 @@ const PrintPageContent = () => {
                             } else {
                                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                                 if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
+                                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Mancata Timbratura';
                                  line1 = `${dateStr} - ${statusText}`;
                             }
 

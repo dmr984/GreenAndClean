@@ -47,6 +47,11 @@ type Request = {
     associatedShiftId?: string;
 };
 
+type DailyNote = {
+    note: string;
+    date: string;
+}
+
 type Shift = {
     date: Date;
     events: Timbratura[];
@@ -69,6 +74,7 @@ export type DailyDetail = {
         permissionHours: number;
     } | null;
     request: Request | null;
+    note?: string;
 };
 
 export type MonthlySummary = {
@@ -225,7 +231,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
 export const processMonthlyData = (
     currentMonth: Date,
     operator: Operator,
-    monthlyData: { timbrature: Timbratura[], requests: Request[] }
+    monthlyData: { timbrature: Timbratura[], requests: Request[], dailyNotes?: DailyNote[] }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
@@ -277,9 +283,11 @@ export const processMonthlyData = (
             isWithinInterval(day, { start: r.startDate.toDate(), end: r.endDate.toDate() })
         );
 
+        const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
+
         
         if (isHoliday && !workedEventsRaw) {
-             details.push({ date: day, status: 'festa', request: null, shift: null });
+             details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (workedEventsRaw) {
             const dayShifts: { date: Date, events: Timbratura[] }[] = [];
             let currentShiftEvents: Timbratura[] = [];
@@ -300,8 +308,8 @@ export const processMonthlyData = (
             }
             
             if (dayShifts.length === 0) {
-                 if (isWorkDay) details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null });
-                 else details.push({ date: day, status: 'riposo', request: null, shift: null });
+                 if (isWorkDay) details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
+                 else details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
                  continue;
             }
 
@@ -332,13 +340,14 @@ export const processMonthlyData = (
                     overtimeHours: totalOvertime, 
                     permissionHours: permissionHours,
                 },
+                note: dailyNote?.note,
             });
         } else if (leaveRequest && isWorkDay) {
-            details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null });
+            details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
         } else if (isWorkDay) {
-             details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null });
+             details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
         } else {
-             details.push({ date: day, status: 'riposo', request: null, shift: null });
+             details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
         }
     }
     
