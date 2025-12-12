@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, addDoc, serverTimestamp, Timestamp, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, query, where, getDocs, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { format, eachDayOfInterval, isSameDay, startOfDay } from 'date-fns';
+import { format, eachDayOfInterval, isSameDay, startOfDay, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 type ExistingRequest = {
@@ -25,6 +25,20 @@ type ExistingRequest = {
     startDate: Timestamp;
     endDate: Timestamp;
 }
+
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+type DailySchedule = {
+    totalHours?: number;
+};
+type WorkSchedule = {
+    [key in DayOfWeek]?: DailySchedule;
+};
+type Operator = {
+    workSchedule?: WorkSchedule;
+};
+
 
 // 1. Define Zod schema
 const requestSchema = z.object({
@@ -51,9 +65,18 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     const [isEndPickerOpen, setIsEndPickerOpen] = useState(false);
     const [existingRequests, setExistingRequests] = useState<ExistingRequest[]>([]);
     const [bookedDays, setBookedDays] = useState<Date[]>([]);
+    const [operator, setOperator] = useState<Operator | null>(null);
 
     useEffect(() => {
         if (!firestore || !userId) return;
+        
+        const fetchOperator = async () => {
+            const operatorDoc = await getDoc(doc(firestore, 'app-users', userId));
+            if(operatorDoc.exists()) {
+                setOperator(operatorDoc.data() as Operator);
+            }
+        }
+        fetchOperator();
 
         const allBookedDays = new Set<string>();
         const unsubs: (() => void)[] = [];
@@ -181,6 +204,19 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     const selectedType = watch('requestType');
     const startDateValue = watch('startDate');
     
+    const isDayDisabled = (day: Date): boolean => {
+        if (role === 'operator' && day < startOfDay(new Date())) return true;
+        if (bookedDays.some(bookedDay => isSameDay(day, bookedDay))) return true;
+
+        if (operator?.workSchedule) {
+            const dayName = dayIndexToName[getDay(day)];
+            const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+            if (!isContractualDay) return true;
+        }
+        
+        return false;
+    };
+    
     const onSubmit = async (data: RequestFormValues) => {
         if (!firestore) return;
 
@@ -281,9 +317,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                       }}
                                       initialFocus
                                       locale={it}
-                                      disabled={role === 'operator' ? { before: new Date() } : bookedDays}
-                                      modifiers={role === 'admin' ? { booked: bookedDays } : {}}
-                                      modifiersClassNames={{ booked: "bg-destructive/80 text-destructive-foreground opacity-100" }}
+                                      disabled={isDayDisabled}
                                     />
                                 </DialogContent>
                             </Dialog>
@@ -324,11 +358,12 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                           field.onChange(date);
                                           setIsEndPickerOpen(false);
                                         }}
-                                        disabled={[{ before: startDateValue! }, ...(role === 'admin' ? bookedDays : []) ]}
+                                        disabled={day => {
+                                            if (startDateValue && day < startDateValue) return true;
+                                            return isDayDisabled(day);
+                                        }}
                                         initialFocus 
                                         locale={it}
-                                        modifiers={role === 'admin' ? { booked: bookedDays } : {}}
-                                        modifiersClassNames={{ booked: "bg-destructive/80 text-destructive-foreground opacity-100" }}
                                     />
                                 </DialogContent>
                             </Dialog>
