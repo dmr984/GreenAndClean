@@ -198,13 +198,13 @@ const PrintPageContent = () => {
         (doc as any).autoTable({
             startY: y,
             theme: 'plain',
-            styles: { fontSize: 8, cellPadding: 0.5, textColor: [0,0,0], fontStyle: 'bold' },
             body: [
                 [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${(monthlySummary.ferieDays || 0)}`],
                 [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0)}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
                 [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
                 [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`],
             ],
+            styles: { fontSize: 8, textColor: [0, 0, 0], fontStyle: 'bold' },
             columnStyles: {
                 0: { halign: 'left' },
                 1: { halign: 'right' },
@@ -264,7 +264,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(8);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(50, 50, 50);
-                const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3); // Indent
+                const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
                 doc.text(splitLine2, margin + 3, y);
                 y += (splitLine2.length * 4);
             }
@@ -282,7 +282,7 @@ const PrintPageContent = () => {
         return { blob, fileName };
     };
 
-    const handlePrint = async () => {
+    const handlePrint = () => {
         window.print();
     };
     
