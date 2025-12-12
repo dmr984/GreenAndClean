@@ -215,51 +215,37 @@ const PrintPageContent = () => {
         doc.text("Dettaglio Giornaliero", 15, dailyDetailStartY);
 
         const dailyBody = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-            let line1 = '';
-            let line2 = '';
+            let column1 = '';
+            let column2 = '';
 
             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
-            
+            column1 = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
+
             if (detail.shift) {
                 const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-                line1 = `Lavorato | Timbrature: ${timbratureStr}`;
-                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                column1 += `\nLavorato | Timbrature: ${timbratureStr}`;
+                column2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             } else {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                 line1 = statusText;
+                 if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
+                 column1 += `\n${statusText}`;
             }
 
             return [
-                { content: `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`, styles: { fontStyle: 'bold' } },
-                { content: line1 },
-                { content: line2 }
+                { content: column1, styles: { fontStyle: 'bold' } },
+                { content: column2, styles: { halign: 'right' } },
             ];
         });
         
          autoTable(doc, {
             startY: dailyDetailStartY + 5,
             body: dailyBody,
-            theme: 'plain',
-            styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 10 },
-            columnStyles: { 0: { cellWidth: 35 } },
-            didDrawCell: (data) => {
-                 if (data.section === 'body' && data.row.index < dailyBody.length - 1) {
-                    doc.setDrawColor(226, 232, 240); // tailwind gray-200
-                    doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
-                }
-            },
-            willDrawCell: function (data) {
-                if (data.section === 'body' && data.column.index > 0 && Array.isArray(data.row.raw)) {
-                     const cellContent = (data.row.raw[data.column.index] as { content: string }).content;
-                     if (cellContent) {
-                         const startY = data.column.index === 1 ? data.cell.y + 4 : data.cell.y + 9;
-                         doc.text(cellContent, data.cell.x + 1.5, startY);
-                     }
-                      return false; // Prevent default rendering for these columns
-                }
-            }
+            theme: 'striped',
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0] },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
         });
     
         const blob = doc.output('blob');
