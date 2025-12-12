@@ -75,6 +75,7 @@ type Shift = {
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
     isOvertime: boolean;
     ignoreContractualStart?: boolean;
+    makeupOfDay?: DayOfWeek;
 };
 
 type StraordinarioEvent = {
@@ -230,8 +231,9 @@ export default function ShiftApprovalPage() {
         const clockInEvent = events.find(e => e.type === 'entrata');
         const isOvertime = clockInEvent?.isOvertime ?? false;
         const ignoreContractualStart = clockInEvent?.ignoreContractualStart ?? false;
+        const makeupOfDay = clockInEvent?.makeupOfDay;
 
-        return { date: startTime.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
+        return { date: startTime.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart, makeupOfDay };
     };
 
      useEffect(() => {
@@ -1352,6 +1354,7 @@ export default function ShiftApprovalPage() {
                                                 <TableCell className='flex items-center gap-2 whitespace-nowrap'>
                                                   {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
                                                   {formatDate(startTime)}
+                                                  {shift.makeupOfDay && <Badge variant="outline">Rec. {weekDayLabels[shift.makeupOfDay].substring(0,3)}</Badge>}
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
@@ -1631,7 +1634,7 @@ export default function ShiftApprovalPage() {
                         <div className="flex justify-between items-start">
                             <div>
                                  <ResponsiveDialogTitle>Dettaglio Turno per {operator.firstName}</ResponsiveDialogTitle>
-                                {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)}</ResponsiveDialogDescription>}
+                                {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)} {detailShift.makeupOfDay && `(Recupero di ${weekDayLabels[detailShift.makeupOfDay]})`}</ResponsiveDialogDescription>}
                             </div>
                              {detailShift?.isOnLeaveDay && (
                                 <div className='flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded-md'>

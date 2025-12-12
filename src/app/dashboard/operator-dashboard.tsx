@@ -31,9 +31,10 @@ import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
 import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from '@/components/ui/responsive-dialog';
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isPublicHoliday } from '@/lib/holidays';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 type ClockingEvent = {
     id: string;
@@ -44,6 +45,7 @@ type ClockingEvent = {
     longitude?: number;
     status: 'sospesa' | 'confermata' | 'rifiutata';
     viewedByOperator?: boolean;
+    makeupOfDay?: DayOfWeek;
 };
 
 type Shift = {
@@ -56,6 +58,8 @@ type Shift = {
 
 type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const weekDayLabels: Record<DayOfWeek, string> = { monday: 'Lunedì', tuesday: 'Martedì', wednesday: 'Mercoledì', thursday: 'Giovedì', friday: 'Venerdì', saturday: 'Sabato', sunday: 'Domenica' };
+
 
 type DailySchedule = {
     totalHours?: number;
@@ -125,6 +129,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
+  const [isMakeupShiftDialogOpen, setIsMakeupShiftDialogOpen] = useState(false);
+  const [makeupShiftType, setMakeupShiftType] = useState<'overtime' | 'makeup' | null>(null);
+  const [makeupDay, setMakeupDay] = useState<DayOfWeek | ''>('');
+
 
   const [canClockIn, setCanClockIn] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -395,13 +403,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
 
   const handleClocking = async (type: 'entrata' | 'uscita') => {
+    if (type === 'entrata' && !isWorkDay) {
+        setIsMakeupShiftDialogOpen(true);
+        return;
+    }
+    await performClocking(type);
+  }
+
+  const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: DayOfWeek) => {
     if (!firestore || !operator || isProcessing) return;
     
     try {
         const currentLoc = await getLocation();
         
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
-        const newTimbratura = {
+        const newTimbratura: Omit<ClockingEvent, 'id'> = {
             userId: operator.id,
             type,
             timestamp: serverTimestamp(),
@@ -411,6 +427,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             viewedByOperator: true,
         };
         
+        if (type === 'entrata' && makeupDayInfo) {
+            newTimbratura.makeupOfDay = makeupDayInfo;
+        }
+
         addDoc(timbraturaRef, newTimbratura)
             .then(() => {
                 toast({
@@ -443,8 +463,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         });
     } finally {
         setIsProcessing(false);
+        setIsMakeupShiftDialogOpen(false);
     }
   }
+
 
   const handleUnlockRequest = async () => {
     if (!firestore || !operator) return;
@@ -544,6 +566,18 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         }
     };
 
+  const handleMakeupShiftDialogSubmit = () => {
+    if (makeupShiftType === 'overtime') {
+        handleOvertimeClocking('entrata');
+    } else if (makeupShiftType === 'makeup' && makeupDay) {
+        performClocking('entrata', makeupDay);
+    } else {
+         toast({ title: "Selezione mancante", description: "Seleziona il giorno che vuoi recuperare.", variant: "destructive" });
+    }
+    setIsMakeupShiftDialogOpen(false);
+  };
+
+
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
     const leaveTypeText = leaveStatus.type === 'ferie' ? 'Ferie' : 'Malattia';
@@ -591,12 +625,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </CardHeader>
             <CardContent>
                 <p className="text-blue-600">
-                    Puoi registrare un turno di lavoro straordinario.
+                    Puoi avviare un turno straordinario o recuperare un giorno lavorativo.
                 </p>
             </CardContent>
              <CardFooter>
-                <Button className="w-full" size="lg" onClick={() => handleOvertimeClocking('entrata')}>
-                    <PlusCircle className="mr-2 h-5 w-5" /> Avvia Turno Straordinario
+                <Button className="w-full" size="lg" onClick={() => handleClocking('entrata')}>
+                    <Play className="mr-2 h-5 w-5" /> Avvia Turno
                 </Button>
             </CardFooter>
         </Card>
@@ -674,7 +708,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         size="lg" 
                         variant="destructive"
                         disabled={isProcessing} 
-                        onClick={() => handleClocking('uscita')}
+                        onClick={() => performClocking('uscita')}
                     >
                          {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
                          Termina Turno
@@ -706,6 +740,60 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
        {renderClockingInterface()}
       
     </div>
+
+    <ResponsiveDialog open={isMakeupShiftDialogOpen} onOpenChange={setIsMakeupShiftDialogOpen}>
+        <ResponsiveDialogContent>
+             <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle>Tipo di Turno</ResponsiveDialogTitle>
+                <ResponsiveDialogDescription>
+                    Stai timbrando in un giorno non lavorativo. Che tipo di turno vuoi iniziare?
+                </ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
+             <div className="py-4 space-y-4">
+                <Button 
+                    variant={makeupShiftType === 'overtime' ? 'secondary' : 'outline'} 
+                    className="w-full justify-start text-left h-auto py-3"
+                    onClick={() => setMakeupShiftType('overtime')}
+                >
+                    <div>
+                        <p className="font-semibold">Turno Straordinario</p>
+                        <p className="text-xs text-muted-foreground">Le ore verranno calcolate come straordinario.</p>
+                    </div>
+                </Button>
+                <Button 
+                    variant={makeupShiftType === 'makeup' ? 'secondary' : 'outline'} 
+                    className="w-full justify-start text-left h-auto py-3"
+                    onClick={() => setMakeupShiftType('makeup')}
+                >
+                     <div>
+                        <p className="font-semibold">Recupero / Anticipo di un altro giorno</p>
+                        <p className="text-xs text-muted-foreground">Le ore verranno calcolate come turno ordinario.</p>
+                    </div>
+                </Button>
+
+                {makeupShiftType === 'makeup' && (
+                    <div className="space-y-2 pt-2">
+                        <Label>Seleziona il giorno da recuperare/anticipare</Label>
+                        <Select value={makeupDay} onValueChange={v => setMakeupDay(v as DayOfWeek)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Seleziona un giorno..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {Object.entries(weekDayLabels).map(([value, label]) => (
+                                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+            </div>
+            <ResponsiveDialogFooter>
+                <Button variant="outline" onClick={() => setIsMakeupShiftDialogOpen(false)}>Annulla</Button>
+                <Button onClick={handleMakeupShiftDialogSubmit}>Avvia Turno</Button>
+            </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+    </ResponsiveDialog>
+
 
     <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
         <ResponsiveDialogContent>
