@@ -262,6 +262,19 @@
         }
       },
       "required": ["userId", "username", "productId", "productName", "requestedQuantity", "status", "createdAt"]
+    },
+    "DailyNote": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Daily Note",
+      "type": "object",
+      "description": "An admin-only note for a specific user on a specific day, typically for justifying a missed clock-in.",
+      "properties": {
+        "userId": { "type": "string", "description": "The ID of the user this note pertains to." },
+        "date": { "type": "string", "format": "date", "description": "The date for which the note is relevant (YYYY-MM-DD)." },
+        "note": { "type": "string", "description": "The content of the note." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "The last time the note was updated." }
+      },
+      "required": ["userId", "date", "note", "updatedAt"]
     }
   },
   "auth": {
@@ -356,6 +369,18 @@
           "description": "Stores all supply requests from all operators.",
           "params": [
             { "name": "supplyRequestId", "description": "The supply request's unique ID." }
+          ]
+        }
+      },
+      {
+        "path": "/app-users/{userId}/daily-notes/{date}",
+        "definition": {
+          "entityName": "DailyNote",
+          "schema": { "$ref": "#/backend/entities/DailyNote" },
+          "description": "Stores admin-only notes for a user on a specific day.",
+          "params": [
+            { "name": "userId", "description": "The user's unique ID." },
+            { "name": "date", "description": "The date of the note in YYYY-MM-DD format." }
           ]
         }
       }

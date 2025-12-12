@@ -4,8 +4,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore } from '@/firebase';
-import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro } from 'lucide-react';
+import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -15,8 +15,10 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 
 // Type definitions are now in calculations.ts
@@ -66,6 +68,11 @@ type Timbratura = {
     ignoreContractualStart?: boolean;
 };
 
+type DailyNote = {
+    note: string;
+    date: string;
+}
+
 const SummaryCard = ({ title, value, icon: Icon, subtext, className }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string }) => (
     <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -96,11 +103,15 @@ export default function EndOfMonthPage() {
     
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
     
+    const [editingNote, setEditingNote] = useState<{ date: Date, currentNote: string } | null>(null);
+    const [noteContent, setNoteContent] = useState('');
+
+
     useEffect(() => {
         // Set the initial month only on the client side
         setCurrentMonth(new Date());
@@ -138,16 +149,24 @@ export default function EndOfMonthPage() {
                 collection(firestore, `app-users/${operatorId}/requests`),
                 where('status', '==', 'approvato')
             );
+
+            const notesQuery = query(
+                collection(firestore, `app-users/${operatorId}/daily-notes`),
+                 where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
+                 where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
+            );
     
-            const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery)
+                getDocs(requestsQuery),
+                getDocs(notesQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
+            const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
 
-            setMonthlyData({ timbrature: timbratureData, requests: requestsData });
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
         } catch (error) {
             console.error("Error fetching monthly data:", error);
             toast({ title: 'Errore', description: 'Impossibile caricare i dati del mese.', variant: 'destructive' });
@@ -193,6 +212,10 @@ export default function EndOfMonthPage() {
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', monthStart), where('startDate', '<=', monthEnd));
         const requestsSnap = await getDocs(requestsQuery);
         requestsSnap.forEach(doc => batch.delete(doc.ref));
+        
+        const notesQuery = query(collection(firestore, `app-users/${operatorId}/daily-notes`), where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')), where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd')));
+        const notesSnap = await getDocs(notesQuery);
+        notesSnap.forEach(doc => batch.delete(doc.ref));
 
         try {
             await batch.commit();
@@ -211,6 +234,36 @@ export default function EndOfMonthPage() {
         if (!currentMonth) return;
         const monthString = format(currentMonth, 'yyyy-MM');
         window.open(`/dashboard/operators/${operatorId}/end-of-month/print?month=${monthString}`, '_blank');
+    };
+    
+    const handleSaveNote = async () => {
+        if (!firestore || !operatorId || !editingNote) return;
+
+        const dateString = format(editingNote.date, 'yyyy-MM-dd');
+        const noteRef = doc(firestore, `app-users/${operatorId}/daily-notes`, dateString);
+
+        try {
+            await setDoc(noteRef, {
+                note: noteContent,
+                date: dateString,
+                userId: operatorId,
+                updatedAt: serverTimestamp()
+            });
+            toast({ title: 'Nota salvata', description: 'La nota per il giorno selezionato è stata aggiornata.'});
+            setMonthlyData(prev => ({
+                ...prev,
+                dailyNotes: [
+                    ...prev.dailyNotes.filter(n => n.date !== dateString),
+                    { note: noteContent, date: dateString }
+                ]
+            }));
+        } catch(error) {
+            console.error("Error saving note:", error);
+            toast({ title: 'Errore', description: 'Impossibile salvare la nota.', variant: 'destructive'});
+        } finally {
+            setEditingNote(null);
+            setNoteContent('');
+        }
     };
 
     if (!operator || !currentMonth) {
@@ -355,7 +408,23 @@ export default function EndOfMonthPage() {
                                     ) : detail.status === 'festa' ? (
                                         <p className="text-muted-foreground mt-1">Giorno festivo.</p>
                                     ) : detail.status === 'mancata_timbratura' ? (
-                                        <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <p className="text-yellow-600 font-semibold">
+                                                {monthlyData.dailyNotes.find(n => n.date === format(detail.date, 'yyyy-MM-dd'))?.note || 'Nessuna timbratura registrata in un giorno lavorativo.'}
+                                            </p>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-6 w-6"
+                                                onClick={() => {
+                                                    const currentNote = monthlyData.dailyNotes.find(n => n.date === format(detail.date, 'yyyy-MM-dd'))?.note || '';
+                                                    setEditingNote({ date: detail.date, currentNote });
+                                                    setNoteContent(currentNote);
+                                                }}
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     ) : null}
 
                                 </div>
@@ -388,6 +457,31 @@ export default function EndOfMonthPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={!!editingNote} onOpenChange={(open) => !open && setEditingNote(null)}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Modifica Nota Giornaliera</DialogTitle>
+                    <DialogDescription>
+                        Aggiungi o modifica la nota per il giorno {editingNote ? format(editingNote.date, 'PPP', { locale: it }) : ''}.
+                        Questa nota sarà visibile solo agli amministratori.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="note-content">Nota</Label>
+                    <Input
+                        id="note-content"
+                        value={noteContent}
+                        onChange={(e) => setNoteContent(e.target.value)}
+                        placeholder="Es: Assenza giustificata verbalmente"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditingNote(null)}>Annulla</Button>
+                    <Button onClick={handleSaveNote}>Salva Nota</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         
         </>
     );
