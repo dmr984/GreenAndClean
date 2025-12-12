@@ -341,11 +341,12 @@ const PrintPageContent = () => {
                     <div className="space-y-4">
                          {operators.map(op => {
                             const detail = dailyData.get(op.id);
-                            
+                            if (!detail || (detail.status === 'riposo' && !detail.note)) return null;
+
                             const cumulative = monthlyCumulative.get(op.id);
                             
-                            let timbratureStr = detail?.note || '';
-                             if (detail?.shift) {
+                            let timbratureStr = detail.note || '';
+                             if (detail.shift) {
                                 timbratureStr = detail.shift.events.map(e => {
                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                     let referenceTime = '';
@@ -360,11 +361,11 @@ const PrintPageContent = () => {
                                     const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                     return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
-                            } else if(detail?.status === 'ferie') {
+                            } else if(detail.status === 'ferie') {
                                 timbratureStr = "Giorno di Ferie";
-                            } else if(detail?.status === 'malattia') {
+                            } else if(detail.status === 'malattia') {
                                 timbratureStr = "Giorno di Malattia";
-                            } else if(detail?.status === 'festa') {
+                            } else if(detail.status === 'festa') {
                                 timbratureStr = "Giorno Festivo";
                             }
 
@@ -377,9 +378,9 @@ const PrintPageContent = () => {
                                     </div>
                                     <div className="text-sm text-black space-y-1 pl-1">
                                          <p>
-                                            <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span>,
-                                            Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span>,
-                                            Permessi: <span className="font-bold">{detail?.shift?.permissionHours || 0}h</span>
+                                            <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail.shift?.ordinaryHours || 0}h</span>,
+                                            Straordinari: <span className="font-bold">{detail.shift?.overtimeHours || 0}h</span>,
+                                            Permessi: <span className="font-bold">{detail.shift?.permissionHours || 0}h</span>
                                         </p>
                                         <p>
                                             <span className='font-bold'>Stato Mensile:</span> Cum. Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span>,
