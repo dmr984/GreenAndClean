@@ -637,9 +637,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <CardTitle className="text-2xl text-blue-700">{isHoliday ? 'Oggi è un giorno festivo' : 'Oggi non è un giorno lavorativo'}</CardTitle>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
                 <p className="text-blue-600">
                     Puoi avviare un turno straordinario o recuperare un giorno lavorativo.
+                </p>
+                 <p className="text-xs text-blue-800/70 bg-blue-500/10 p-2 rounded-md">
+                    <span className='font-bold'>Nota:</span> i giorni di straordinari e recupero giorno, devono essere sempre concordati con il datore di lavoro prima della timbratura. Qualsiasi timbratura straordinaria non concordata non verrà presa in considerazione.
                 </p>
             </CardContent>
              <CardFooter>
