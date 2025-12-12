@@ -12,8 +12,6 @@ import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
 import { Toaster } from '@/components/ui/toaster';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 
 
 type Operator = {
@@ -142,43 +140,109 @@ const PrintPageContent = () => {
     
     const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
-        const pdfContainer = document.getElementById('print-content');
-        if (!pdfContainer || !selectedDate) {
+        const { jsPDF } = await import('jspdf');
+        const autoTable = (await import('jspdf-autotable')).default;
+
+        if (!selectedDate || !document) {
             setIsGenerating(false);
             return null;
         }
 
-        const { jsPDF } = await import('jspdf');
-        const html2canvas = (await import('html2canvas')).default;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pageHeight = doc.internal.pageSize.height;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 15;
+        let y = 20;
 
-        const canvas = await html2canvas(pdfContainer, { scale: 2 });
-        const imgData = canvas.toDataURL('image/png');
-        
-        const doc = new jsPDF({
-            orientation: 'p',
-            unit: 'mm',
-            format: 'a4'
+        const addHeader = () => {
+             const img = new Image();
+            img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
+            img.crossOrigin = "Anonymous";
+            doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
+
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Report Giornaliero", pageWidth - margin, y, { align: 'right' });
+            y += 7;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100);
+            const dateStr = format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it });
+            doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth - margin, y, { align: 'right' });
+            y += 15;
+        };
+
+        addHeader();
+
+        const filteredOperators = operators.filter(op => {
+            const detail = dailyData.get(op.id);
+            return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
         });
 
-        const pdfWidth = doc.internal.pageSize.getWidth();
-        const pdfHeight = doc.internal.pageSize.getHeight();
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        const ratio = canvasWidth / canvasHeight;
-        
-        let imgWidth = pdfWidth;
-        let imgHeight = pdfWidth / ratio;
-        
-        // If the calculated height is greater than the page height, it means we need to scale by height instead.
-        if (imgHeight > pdfHeight) {
-            imgHeight = pdfHeight;
-            imgWidth = pdfHeight * ratio;
-        }
+        filteredOperators.forEach((op, index) => {
+             const detail = dailyData.get(op.id);
+            const cumulative = monthlyCumulative.get(op.id);
+            const status = renderStatus(detail);
+            
+            let timbratureStr = 'Nessuna timbratura presente.';
+            if (detail?.shift) {
+                const events = detail.shift.events || [];
+                timbratureStr = events.map(e => {
+                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                    let referenceTime = '';
 
-        doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                        if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                        if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                    }
+                    return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
+                }).join(' | ');
+            }
+
+            const operatorName = `${op.firstName} ${op.lastName}`;
+            const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
+            const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
+
+            if (y > pageHeight - 40) { // Check space before drawing operator block
+                doc.addPage();
+                y = 20;
+                addHeader();
+            }
+
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(operatorName, margin, y);
+            
+            doc.setFontSize(10);
+            doc.text(status.text, pageWidth - margin, y, { align: 'right' });
+            y += 6;
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(80, 80, 80);
+            doc.text(`Timbrature: ${timbratureStr}`, margin, y);
+            y += 5;
+
+            doc.setFontSize(9);
+            doc.setTextColor(0, 0, 0);
+            doc.text(detailGiorno, margin, y);
+            y += 5;
+            doc.text(statoMensile, margin, y);
+            y += 8;
+
+            if (index < filteredOperators.length - 1) {
+                doc.setDrawColor(200, 200, 200);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 8;
+            }
+        });
 
         const blob = doc.output('blob');
         const fileName = `Report_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
+
         setIsGenerating(false);
         return { blob, fileName };
     };
@@ -271,7 +335,7 @@ const PrintPageContent = () => {
                             const cumulative = monthlyCumulative.get(op.id);
                             const status = renderStatus(detail);
                             
-                            let timbratureStr = 'Nessuna';
+                            let timbratureStr = 'Nessuna timbratura presente.';
                             if (detail?.shift) {
                                 const events = detail.shift.events || [];
                                 timbratureStr = events.map(e => {
@@ -290,26 +354,26 @@ const PrintPageContent = () => {
                             }
 
                             return (
-                                <div key={op.id} className="pt-2 pb-3 text-xs print:break-inside-avoid border-b border-gray-400 last:border-b-0">
+                                <div key={op.id} className="pt-2 pb-3 text-sm print:break-inside-avoid border-b border-gray-400 last:border-b-0">
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
-                                            <p className="font-bold text-sm text-black">{op.firstName} {op.lastName}</p>
+                                            <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
                                         </div>
-                                        <div className="flex items-center gap-2 font-semibold text-sm text-black">
+                                        <div className="flex items-center gap-2 font-semibold text-base text-black">
                                             {status.icon}{status.text}
                                         </div>
                                     </div>
-                                    <p className="text-black text-[10px] mb-2">Timbrature: {timbratureStr}</p>
-                                    <div className="text-[10px] text-black space-y-1">
+                                    <p className="text-black text-xs mb-2">Timbrature: {timbratureStr}</p>
+                                    <div className="text-xs text-black space-y-1">
                                          <p>
                                             <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span>,
                                             Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span>,
                                             Permessi: <span className="font-bold">{detail?.shift?.permissionHours || 0}h</span>
                                         </p>
                                         <p>
-                                            <span className='font-bold'>Stato Mensile:</span> Cumulativo Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span>,
-                                            Cumulativo Straordinari: <span className="font-bold">{cumulative?.overtime || 0}h</span>,
-                                            Cumulativo Permessi: <span className="font-bold">{cumulative?.leave || 0}h</span>
+                                            <span className='font-bold'>Stato Mensile:</span> Cum. Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span>,
+                                            Cum. Straordinari: <span className="font-bold">{cumulative?.overtime || 0}h</span>,
+                                            Cum. Permessi: <span className="font-bold">{cumulative?.leave || 0}h</span>
                                         </p>
                                     </div>
                                 </div>

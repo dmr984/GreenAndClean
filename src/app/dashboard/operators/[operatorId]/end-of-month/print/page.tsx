@@ -217,7 +217,7 @@ const PrintPageContent = () => {
                 [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
                 [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`],
             ],
-            styles: { fontSize: 8, textColor: [0, 0, 0], fontStyle: 'bold' },
+            styles: { fontSize: 10, textColor: [0, 0, 0], fontStyle: 'bold' },
             columnStyles: {
                 0: { halign: 'left' },
                 1: { halign: 'right' },
@@ -231,7 +231,7 @@ const PrintPageContent = () => {
         doc.line(margin, y, pageWidth - margin, y);
         y += 8;
         
-        doc.setFontSize(10);
+        doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
         y += 15;
@@ -279,14 +279,14 @@ const PrintPageContent = () => {
                  line1 = `${dateStr} - ${statusText}`;
             }
     
-            doc.setFontSize(9);
+            doc.setFontSize(10);
             doc.setFont('helvetica', 'bold');
             const splitLine1 = doc.splitTextToSize(line1, pageWidth - margin * 2);
             doc.text(splitLine1, margin, y);
             y += (splitLine1.length * 4);
             
             if(line2) {
-                doc.setFontSize(8);
+                doc.setFontSize(9);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(50, 50, 50);
                 const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
@@ -390,15 +390,15 @@ const PrintPageContent = () => {
                                     <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
                                 </td>
                                 <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
-                                    <h2 className="text-lg font-bold text-black">{`${operator.firstName} ${operator.lastName}`}</h2>
-                                    <p className="text-sm text-gray-700">{`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`}</p>
+                                    <h2 className="text-xl font-bold text-black">{`${operator.firstName} ${operator.lastName}`}</h2>
+                                    <p className="text-base text-gray-700">{`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`}</p>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
 
                     {/* Summary Table */}
-                    <div className="mb-4 text-xs">
+                    <div className="mb-4 text-sm">
                         <table className="w-full">
                            <tbody className="text-black font-bold">
                                 <tr>
@@ -419,15 +419,15 @@ const PrintPageContent = () => {
                                 </tr>
                            </tbody>
                         </table>
-                         <div className="text-right font-bold text-sm mt-2 border-t-2 border-black pt-1 text-black">
+                         <div className="text-right font-bold text-base mt-2 border-t-2 border-black pt-1 text-black">
                              <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                         </div>
                     </div>
 
 
                     {/* Daily Details */}
-                    <h3 className="text-md font-bold text-black mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
-                    <div className="space-y-2.5 text-xs">
+                    <h3 className="text-lg font-bold text-black mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
+                    <div className="space-y-3 text-sm">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                              let line1 = '';
                              let line2 = '';
@@ -459,11 +459,11 @@ const PrintPageContent = () => {
                             }
 
                             return (
-                                <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-1.5 mb-1.5 print:break-inside-avoid">
-                                    <p className="font-bold text-black text-[9px] capitalize leading-tight">
+                                <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-2 mb-2 print:break-inside-avoid">
+                                    <p className="font-bold text-black text-sm capitalize leading-tight">
                                         {line1}
                                     </p>
-                                    {line2 && <p className="text-gray-600 text-[8px] pl-1 leading-tight">{line2}</p>}
+                                    {line2 && <p className="text-gray-600 text-xs pl-1 leading-tight">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
