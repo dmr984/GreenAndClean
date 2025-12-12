@@ -9,12 +9,12 @@ import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'fireb
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { isPublicHoliday } from '@/lib/holidays';
-import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
+import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours } from '@/lib/calculations';
 
 
 // Type definitions are now in calculations.ts
@@ -62,7 +62,7 @@ type Timbratura = {
     isOvertime?: boolean;
     isAuto?: boolean;
     ignoreContractualStart?: boolean;
-    makeupOfDay?: DayOfWeek;
+    makeupOfDay?: string;
 };
 
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
@@ -257,24 +257,19 @@ const MonthlySummaryContent = () => {
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
                                                  {detail.shift.events.map((e, index) => {
+                                                    let displayTime = '';
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                                                     let referenceTime = '';
-
-                                                    if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                                        const clockInEvent = detail.shift.events.find(ev => ev.type === 'entrata');
-                                                        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDay(detail.date)];
-                                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayToUse], e.ignoreContractualStart);
-
-                                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                                        }
+                                                    if(e.type === 'entrata' && detail.shift?.calculationStart) {
+                                                         displayTime = `${originalTime} ${Math.abs(detail.shift.calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000 ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}`.trim();
+                                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                                         displayTime = `${originalTime} ${Math.abs(detail.shift.calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000 ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}`.trim();
+                                                    } else {
+                                                        displayTime = originalTime;
                                                     }
 
                                                     return (
-                                                        <span key={e.id} className={cn('mr-2')}>
-                                                            {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
+                                                        <span key={(e as any).id || index} className={cn('mr-2')}>
+                                                            {`${e.type.replace('_', ' ')}: ${displayTime}`}
                                                              {index < detail.shift.events.length - 1 && ` | `}
                                                         </span>
                                                     )

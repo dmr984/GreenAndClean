@@ -112,7 +112,7 @@ const DailySummaryPage = () => {
 
         } catch (error) {
             console.error("Error fetching daily summary data:", error);
-            toast({ title: 'Errore', description: 'Impossibile caricare il riepilogo giornaliero.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile caricare il report giornaliero.', variant: 'destructive' });
         } finally {
             setIsLoading(false);
         }
@@ -158,7 +158,7 @@ const DailySummaryPage = () => {
             <Card>
                 <CardHeader className='flex-row items-center justify-between'>
                     <div>
-                        <CardTitle className="text-2xl">Riepilogo Giornaliero</CardTitle>
+                        <CardTitle className="text-2xl">Report Giornaliero</CardTitle>
                         <CardDescription>Visualizza lo stato di tutti gli operatori per un giorno specifico.</CardDescription>
                     </div>
                      <Button onClick={handleOpenPrintPreview} disabled={isLoading}>
@@ -173,13 +173,13 @@ const DailySummaryPage = () => {
                                 {selectedDate ? format(selectedDate, "PPP", { locale: it }) : <span>Seleziona una data</span>}
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="w-auto">
-                            <DialogHeader>
-                                <DialogTitle>Seleziona una data</DialogTitle>
-                                <DialogDescription>
-                                    Scegli il giorno per cui visualizzare il riepilogo.
-                                </DialogDescription>
-                            </DialogHeader>
+                        <DialogContent className="w-auto p-0">
+                             <DialogHeader className="p-4 pb-0">
+                               <DialogTitle>Seleziona una data</DialogTitle>
+                               <DialogDescription>
+                                   Scegli il giorno per cui visualizzare il report.
+                               </DialogDescription>
+                             </DialogHeader>
                             <Calendar
                                 mode="single"
                                 selected={selectedDate}
@@ -201,6 +201,16 @@ const DailySummaryPage = () => {
                             {operators.map(op => {
                                 const detail = dailyData.get(op.id);
                                 const cumulative = monthlyCumulative.get(op.id);
+                                
+                                let timbratureString = '';
+                                if(detail?.shift) {
+                                    const entrata = detail.shift.events.find(e => e.type === 'entrata');
+                                    const uscita = detail.shift.events.find(e => e.type === 'uscita');
+                                    const entrataDisplay = entrata ? `Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationStart ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}` : '';
+                                    const uscitaDisplay = uscita ? `Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationEnd ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}` : '';
+                                    timbratureString = [entrataDisplay, uscitaDisplay].filter(Boolean).join(' | ');
+                                }
+
                                 return (
                                     <Card key={op.id} className={cn(detail?.status === 'mancata_timbratura' && 'bg-red-500/5 border-red-500/20')}>
                                         <CardHeader>
@@ -217,7 +227,7 @@ const DailySummaryPage = () => {
                                                 <div className='text-sm'>
                                                     <p className='font-semibold'>Timbrature del giorno:</p>
                                                     <p className='text-muted-foreground'>
-                                                        {detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ')}
+                                                         {timbratureString}
                                                     </p>
                                                 </div>
                                             )}

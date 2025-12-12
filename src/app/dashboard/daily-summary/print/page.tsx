@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
 import { Toaster } from '@/components/ui/toaster';
 import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 
 type Operator = {
@@ -146,13 +147,13 @@ const PrintPageContent = () => {
     const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
         if (!selectedDate || operators.length === 0) return null;
         setIsGenerating(true);
-
+    
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageHeight = doc.internal.pageSize.height;
         const pageWidth = doc.internal.pageSize.width;
         const margin = 15;
         let y = 20;
-
+    
         // Header
         try {
             const img = new Image();
@@ -163,17 +164,17 @@ const PrintPageContent = () => {
         } catch (e) {
             console.error("Could not load image for PDF header", e);
         }
-
+    
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text('Riepilogo Giornaliero', pageWidth - margin, y, { align: 'right' });
+        doc.text('Report Giornaliero', pageWidth - margin, y, { align: 'right' });
         y += 7;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100);
         doc.text(format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it }), pageWidth - margin, y, { align: 'right', 'charSpace': 0.1, 'lineHeightFactor': 1.5});
         y += 15;
-
+    
         // Content
         operators
             .filter(op => {
@@ -185,12 +186,22 @@ const PrintPageContent = () => {
                     doc.addPage();
                     y = 20;
                 }
-
+    
                 const detail = dailyData.get(op.id);
                 const cumulative = monthlyCumulative.get(op.id);
                 const status = renderStatus(detail);
-                const timbratureStr = detail?.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ') || 'Nessuna';
+                
+                let timbratureStr = '';
+                if(detail?.shift) {
+                    const entrata = detail.shift.events.find(e => e.type === 'entrata');
+                    const uscita = detail.shift.events.find(e => e.type === 'uscita');
+                    const entrataDisplay = entrata ? `Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationStart ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}` : '';
+                    const uscitaDisplay = uscita ? `Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationEnd ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}` : '';
+                    timbratureStr = [entrataDisplay, uscitaDisplay].filter(Boolean).join(' | ');
+                }
+                if (!timbratureStr) timbratureStr = 'Nessuna';
 
+    
                 // Operator Name and Status
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
@@ -198,26 +209,26 @@ const PrintPageContent = () => {
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
                 doc.text(status.text, pageWidth - margin, y, { align: 'right' });
                 y += 6;
-
+    
                 // Timbrature
                 doc.setFontSize(8);
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(50);
+                doc.setTextColor(50, 50, 50);
                 doc.text(`Timbrature: ${timbratureStr}`, margin, y);
                 y += 5;
-
-                // Day Details
+    
+                // Day and Month Details on one line
                 const detailDayStr = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
+                const detailMonthStr = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
+                
+                doc.setFontSize(8);
                 doc.setFont('helvetica', 'bold');
                 doc.text(detailDayStr, margin, y);
                 y += 4;
-                
-                // Month Status
-                const detailMonthStr = `Stato Mensile: Cumulativo Ordinarie: ${cumulative?.ordinary || 0}h, Cumulativo Straordinari: ${cumulative?.overtime || 0}h, Cumulativo Permessi: ${cumulative?.leave || 0}h`;
                 doc.setFont('helvetica', 'normal');
                 doc.text(detailMonthStr, margin, y);
                 y += 6;
-
+    
                 // Separator line
                 doc.setDrawColor(200);
                 doc.setLineWidth(0.2);
@@ -226,7 +237,7 @@ const PrintPageContent = () => {
             });
         
         const blob = doc.output('blob');
-        const fileName = `Riepilogo_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
+        const fileName = `Report_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
         setIsGenerating(false);
         return { blob, fileName };
     };
@@ -255,8 +266,8 @@ const PrintPageContent = () => {
         const file = new File([pdf.blob], pdf.fileName, { type: 'application/pdf' });
         try {
             await navigator.share({
-                title: `Riepilogo Giornaliero - ${format(selectedDate!, 'PPP', { locale: it })}`,
-                text: `Riepilogo giornaliero per il ${format(selectedDate!, 'PPP', { locale: it })}`,
+                title: `Report Giornaliero - ${format(selectedDate!, 'PPP', { locale: it })}`,
+                text: `Report giornaliero per il ${format(selectedDate!, 'PPP', { locale: it })}`,
                 files: [file],
             });
         } catch (error) {
@@ -298,7 +309,7 @@ const PrintPageContent = () => {
                                     <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
                                 </td>
                                 <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
-                                    <h2 className="text-lg font-bold text-black">Riepilogo Giornaliero</h2>
+                                    <h2 className="text-lg font-bold text-black">Report Giornaliero</h2>
                                     <p className="text-sm text-gray-700 capitalize">{format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it })}</p>
                                 </td>
                             </tr>
@@ -315,7 +326,17 @@ const PrintPageContent = () => {
                             const detail = dailyData.get(op.id);
                             const cumulative = monthlyCumulative.get(op.id);
                             const status = renderStatus(detail);
-                            const timbratureStr = detail?.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ') || 'Nessuna';
+                            
+                            let timbratureStr = '';
+                            if(detail?.shift) {
+                                const entrata = detail.shift.events.find(e => e.type === 'entrata');
+                                const uscita = detail.shift.events.find(e => e.type === 'uscita');
+                                const entrataDisplay = entrata ? `Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationStart ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}` : '';
+                                const uscitaDisplay = uscita ? `Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationEnd ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}` : '';
+                                timbratureStr = [entrataDisplay, uscitaDisplay].filter(Boolean).join(' | ');
+                            }
+                            if (!timbratureStr) timbratureStr = 'Nessuna';
+
                             return (
                                 <div key={op.id} className="pt-2 pb-3 text-xs print:break-inside-avoid border-b border-gray-400 last:border-b-0">
                                     <div className="flex justify-between items-start mb-2">
