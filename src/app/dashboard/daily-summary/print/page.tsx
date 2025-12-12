@@ -12,6 +12,7 @@ import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
 import { Toaster } from '@/components/ui/toaster';
+import jsPDF from 'jspdf';
 
 
 type Operator = {
@@ -39,7 +40,7 @@ const PrintPageContent = () => {
         const date = searchParams.get('date'); // YYYY-MM-DD
         if (date) {
             const [year, month, day] = date.split('-').map(Number);
-            const parsedDate = new Date(year, month - 1, day);
+            const parsedDate = new Date(Date.UTC(year, month - 1, day));
             if (isValid(parsedDate)) {
                 setSelectedDate(parsedDate);
             }
@@ -141,6 +142,129 @@ const PrintPageContent = () => {
     const handlePrint = () => {
         window.print();
     };
+    
+    const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
+        if (!selectedDate || operators.length === 0) return null;
+        setIsGenerating(true);
+
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pageHeight = doc.internal.pageSize.height;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 15;
+        let y = 20;
+
+        // Header
+        try {
+            const img = new Image();
+            img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
+            img.crossOrigin = "Anonymous";
+            await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+            doc.addImage(img, 'PNG', margin, y - 10, 15, 15);
+        } catch (e) {
+            console.error("Could not load image for PDF header", e);
+        }
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Riepilogo Giornaliero', pageWidth - margin, y, { align: 'right' });
+        y += 7;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100);
+        doc.text(format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it }), pageWidth - margin, y, { align: 'right', 'charSpace': 0.1, 'lineHeightFactor': 1.5});
+        y += 15;
+
+        // Content
+        operators
+            .filter(op => {
+                const detail = dailyData.get(op.id);
+                return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
+            })
+            .forEach(op => {
+                if (y > pageHeight - 40) { // Check for page break
+                    doc.addPage();
+                    y = 20;
+                }
+
+                const detail = dailyData.get(op.id);
+                const cumulative = monthlyCumulative.get(op.id);
+                const status = renderStatus(detail);
+                const timbratureStr = detail?.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ') || 'Nessuna';
+
+                // Operator Name and Status
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0);
+                doc.text(`${op.firstName} ${op.lastName}`, margin, y);
+                doc.text(status.text, pageWidth - margin, y, { align: 'right' });
+                y += 6;
+
+                // Timbrature
+                doc.setFontSize(8);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(50);
+                doc.text(`Timbrature: ${timbratureStr}`, margin, y);
+                y += 5;
+
+                // Day Details
+                const detailDayStr = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
+                doc.setFont('helvetica', 'bold');
+                doc.text(detailDayStr, margin, y);
+                y += 4;
+                
+                // Month Status
+                const detailMonthStr = `Stato Mensile: Cumulativo Ordinarie: ${cumulative?.ordinary || 0}h, Cumulativo Straordinari: ${cumulative?.overtime || 0}h, Cumulativo Permessi: ${cumulative?.leave || 0}h`;
+                doc.setFont('helvetica', 'normal');
+                doc.text(detailMonthStr, margin, y);
+                y += 6;
+
+                // Separator line
+                doc.setDrawColor(200);
+                doc.setLineWidth(0.2);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 8;
+            });
+        
+        const blob = doc.output('blob');
+        const fileName = `Riepilogo_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
+        setIsGenerating(false);
+        return { blob, fileName };
+    };
+
+
+    const handleDownload = async () => {
+        const pdf = await generatePdf();
+        if (!pdf) return;
+
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(pdf.blob);
+        a.download = pdf.fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    };
+
+    const handleShare = async () => {
+        const pdf = await generatePdf();
+        if (!pdf || !navigator.share) {
+            toast({ title: 'Condivisione non supportata', description: 'Il tuo browser non supporta la condivisione di file.', variant: 'destructive' });
+            return;
+        }
+
+        const file = new File([pdf.blob], pdf.fileName, { type: 'application/pdf' });
+        try {
+            await navigator.share({
+                title: `Riepilogo Giornaliero - ${format(selectedDate!, 'PPP', { locale: it })}`,
+                text: `Riepilogo giornaliero per il ${format(selectedDate!, 'PPP', { locale: it })}`,
+                files: [file],
+            });
+        } catch (error) {
+            if ((error as DOMException).name !== 'AbortError') {
+                 toast({ title: 'Errore Condivisione', description: 'Impossibile condividere il file.', variant: 'destructive' });
+            }
+        }
+    };
 
 
     if (isLoading || !selectedDate) {
@@ -156,9 +280,9 @@ const PrintPageContent = () => {
              <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
-                     <Button variant="default" size="icon" onClick={handlePrint}><Printer className="h-4 w-4" /></Button>
-                     <Button variant="default" size="icon" onClick={handlePrint}><Share2 className="h-4 w-4" /></Button>
-                     <Button variant="default" size="icon" onClick={handlePrint}><Download className="h-4 w-4" /></Button>
+                     <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}><Printer className="h-4 w-4" /></Button>
+                     <Button variant="default" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Share2 className="h-4 w-4" />}</Button>
+                     <Button variant="default" size="icon" onClick={handleDownload} disabled={isGenerating}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4" />}</Button>
                 </div>
                  <div className="flex flex-1 items-center justify-end">
                      <Button variant="ghost" size="icon" onClick={() => window.close()}><X className="h-5 w-5" /></Button>
