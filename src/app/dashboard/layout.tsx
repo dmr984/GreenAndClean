@@ -102,6 +102,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <Button variant={pathname.startsWith('/dashboard/operators') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <Users className="h-5 w-5" /> Gestione Operatori
                             </Button>
+                           </Link>
+                           <Link href="/dashboard/daily-summary" passHref>
+                            <Button variant={pathname.startsWith('/dashboard/daily-summary') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <CalendarDays className="h-5 w-5" /> Riepilogo Giornaliero
+                            </Button>
                           </Link>
                         </>
                     )}
