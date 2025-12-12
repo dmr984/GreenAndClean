@@ -1029,21 +1029,21 @@ export default function ShiftApprovalPage() {
     };
     
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', manualBreak?: ManualBreak) => {
-        if (!firestore || !operatorId || !operator || !approvalContext) return;
-    
+        if (!firestore || !operatorId || !operator) return;
+
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
-    
+
         if (action === 'reject') {
             await updateDoc(shiftRef, { status: 'rifiutato' });
             toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
             setIsDetailOvertimeOpen(false);
             return;
         }
-    
+
+        if (!approvalContext) return;
+
         const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
-    
         const batch = writeBatch(firestore);
-    
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
         let eventsToProcess = [...shift.events];
@@ -1900,7 +1900,7 @@ export default function ShiftApprovalPage() {
                         <AlertDialogDescription>Ci sono ore di ammanco per questo turno. Sei sicuro di voler approvare senza creare una richiesta di permesso?</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setIsConfirmingNoLeave(false)}>Annulla</AlertDialogCancel>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleConfirmApprove}>Conferma</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -2013,3 +2013,4 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
+
