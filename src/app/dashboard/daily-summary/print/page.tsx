@@ -138,115 +138,124 @@ const PrintPageContent = () => {
         }
     };
     
-   const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
+    const generatePdf = useCallback(async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
-        const { jsPDF } = await import('jspdf');
-        const autoTable = (await import('jspdf-autotable')).default;
+        try {
+            const { jsPDF } = await import('jspdf');
+            const autoTable = (await import('jspdf-autotable')).default;
 
-        if (!selectedDate || !document) {
-            setIsGenerating(false);
+            if (!selectedDate || !document) return null;
+
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageHeight = doc.internal.pageSize.height;
+            const pageWidth = doc.internal.pageSize.width;
+            const margin = 15;
+            let y = 20;
+
+            const addHeader = (isFirstPage: boolean) => {
+                if (!isFirstPage) return;
+                try {
+                    const img = new Image();
+                    img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
+                    img.crossOrigin = "Anonymous";
+                    doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
+                } catch (e) {
+                    console.error("Could not add image to PDF", e);
+                }
+
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text("Report Giornaliero", pageWidth - margin, y, { align: 'right' });
+                y += 7;
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100);
+                const dateStr = format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it });
+                doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth - margin, y, { align: 'right' });
+                y += 15;
+            };
+
+            addHeader(true);
+
+            const filteredOperators = operators.filter(op => {
+                 const detail = dailyData.get(op.id);
+                 return detail?.status === 'lavorato' || (detail?.status === 'mancata_timbratura' && detail?.note);
+            });
+
+            filteredOperators.forEach((op, index) => {
+                const detail = dailyData.get(op.id);
+                const cumulative = monthlyCumulative.get(op.id);
+
+                let timbratureStr = 'Nessuna attività registrata.';
+                if (detail?.shift) {
+                    const events = detail.shift.events || [];
+                    timbratureStr = events.map(e => {
+                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                        let referenceTime = '';
+                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                        }
+                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                    }).join(' | ');
+                } else if (detail?.note) {
+                    timbratureStr = detail.note;
+                }
+
+                const operatorName = `${op.firstName} ${op.lastName}`;
+                const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
+                const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
+
+                if (y > pageHeight - 40) {
+                    doc.addPage();
+                    y = 20;
+                    addHeader(false); // No header on subsequent pages
+                }
+                
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text(operatorName, margin, y);
+
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'normal');
+                const operatorNameWidth = doc.getTextWidth(operatorName);
+                doc.text(timbratureStr, margin + operatorNameWidth + 3, y);
+                y += 7;
+
+                doc.setFontSize(11);
+                const splitDetailGiorno = doc.splitTextToSize(detailGiorno, pageWidth - margin * 2);
+                doc.text(splitDetailGiorno, margin, y);
+                y += (splitDetailGiorno.length * 5) + 2;
+
+                const splitStatoMensile = doc.splitTextToSize(statoMensile, pageWidth - margin * 2);
+                doc.text(splitStatoMensile, margin, y);
+                y += (splitStatoMensile.length * 5) + 4;
+
+
+                if (index < filteredOperators.length - 1) {
+                    doc.setDrawColor(200, 200, 200);
+                    doc.line(margin, y, pageWidth - margin, y);
+                    y += 8;
+                }
+            });
+
+            const blob = doc.output('blob');
+            const fileName = `Report_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
+
+            return { blob, fileName };
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            toast({ title: 'Errore PDF', description: 'Impossibile generare il PDF.', variant: 'destructive'});
             return null;
+        } finally {
+            setIsGenerating(false);
         }
-
-        const doc = new jsPDF('p', 'mm', 'a4');
-        const pageHeight = doc.internal.pageSize.height;
-        const pageWidth = doc.internal.pageSize.width;
-        const margin = 15;
-        let y = 20;
-
-        const addHeader = (isFirstPage: boolean) => {
-             if (!isFirstPage) return;
-             const img = new Image();
-            img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-            img.crossOrigin = "Anonymous";
-            doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
-
-            doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
-            doc.text("Report Giornaliero", pageWidth - margin, y, { align: 'right' });
-            y += 7;
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(100);
-            const dateStr = format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it });
-            doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth - margin, y, { align: 'right' });
-            y += 15;
-        };
-
-        addHeader(true);
-
-        const filteredOperators = operators.filter(op => {
-            const detail = dailyData.get(op.id);
-            // Show if worked, or if absent with a note
-            return detail?.status === 'lavorato' || (detail?.status === 'mancata_timbratura' && detail?.note);
-        });
-
-        filteredOperators.forEach((op, index) => {
-            const detail = dailyData.get(op.id);
-            const cumulative = monthlyCumulative.get(op.id);
-            
-            let timbratureStr = 'Nessuna timbratura presente.';
-            if (detail?.shift) {
-                const events = detail.shift.events || [];
-                timbratureStr = events.map(e => {
-                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                    let referenceTime = '';
-
-                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                        if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                        if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                    }
-                    return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
-                }).join(' | ');
-            } else if (detail?.note) {
-                timbratureStr = detail.note;
-            }
-
-
-            const operatorName = `${op.firstName} ${op.lastName}`;
-            const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
-            const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
-
-            if (y > pageHeight - 40) {
-                doc.addPage();
-                y = 20;
-                addHeader(false);
-            }
-
-            doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
-            doc.text(operatorName, margin, y);
-            
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(0, 0, 0);
-            
-            const operatorNameWidth = doc.getTextWidth(operatorName);
-            doc.text(timbratureStr, margin + operatorNameWidth + 3, y);
-            y += 7;
-
-            doc.setFontSize(11);
-            doc.text(detailGiorno, margin, y);
-            y += 6;
-            doc.text(statoMensile, margin, y);
-            y += 8;
-
-            if (index < filteredOperators.length - 1) {
-                doc.setDrawColor(200, 200, 200);
-                doc.line(margin, y, pageWidth - margin, y);
-                y += 8;
-            }
-        });
-
-        const blob = doc.output('blob');
-        const fileName = `Report_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
-
-        setIsGenerating(false);
-        return { blob, fileName };
-    };
+    }, [selectedDate, operators, dailyData, monthlyCumulative, toast]);
 
     const handlePrint = () => {
         window.print();
@@ -260,7 +269,7 @@ const PrintPageContent = () => {
         a.href = URL.createObjectURL(pdf.blob);
         a.download = pdf.fileName;
         document.body.appendChild(a);
-        a.click();
+a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
     };
@@ -275,8 +284,8 @@ const PrintPageContent = () => {
         const file = new File([pdf.blob], pdf.fileName, { type: 'application/pdf' });
         try {
             await navigator.share({
-                title: `Report Giornaliero - ${format(selectedDate!, 'PPP', { locale: it })}`,
-                text: `Report giornaliero per il ${format(selectedDate!, 'PPP', { locale: it })}`,
+                title: `Report Giornaliero - ${selectedDate ? format(selectedDate, 'PPP', { locale: it }) : ''}`,
+                text: `Report giornaliero per il ${selectedDate ? format(selectedDate, 'PPP', { locale: it }) : ''}`,
                 files: [file],
             });
         } catch (error) {
@@ -320,7 +329,7 @@ const PrintPageContent = () => {
                                     </td>
                                     <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
                                         <h2 className="text-xl font-bold text-black">Report Giornaliero</h2>
-                                        <p className="text-base text-gray-700 capitalize">{format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it })}</p>
+                                        <p className="text-base text-black capitalize">{format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it })}</p>
                                     </td>
                                 </tr>
                             </tbody>
