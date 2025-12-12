@@ -177,13 +177,12 @@ const PrintPageContent = () => {
 
             addHeader(true);
 
-            const filteredOperators = operators.filter(op => {
-                 const detail = dailyData.get(op.id);
-                 return detail?.status === 'lavorato' || (detail?.status === 'mancata_timbratura' && detail?.note);
-            });
-
-            filteredOperators.forEach((op, index) => {
+            operators.forEach((op, index) => {
                 const detail = dailyData.get(op.id);
+                if (!detail || (detail.status !== 'lavorato' && !detail.note)) {
+                    return; // Skip operators with no relevant activity
+                }
+
                 const cumulative = monthlyCumulative.get(op.id);
 
                 let timbratureStr = 'Nessuna attività registrata.';
@@ -237,7 +236,7 @@ const PrintPageContent = () => {
                 y += (splitStatoMensile.length * 5) + 4;
 
 
-                if (index < filteredOperators.length - 1) {
+                if (index < operators.length - 1) {
                     doc.setDrawColor(200, 200, 200);
                     doc.line(margin, y, pageWidth - margin, y);
                     y += 8;
@@ -338,16 +337,18 @@ a.click();
 
                     <div className="space-y-4">
                         {operators
-                            .filter(op => {
-                                const detail = dailyData.get(op.id);
-                                return detail?.status === 'lavorato' || (detail?.status === 'mancata_timbratura' && detail?.note);
-                            })
                             .map(op => {
                             const detail = dailyData.get(op.id);
+                            
+                            // Skip rendering if there's no detail or no relevant activity
+                            if (!detail || (detail.status !== 'lavorato' && !detail.note)) {
+                                return null;
+                            }
+
                             const cumulative = monthlyCumulative.get(op.id);
                             
-                            let timbratureStr = '';
-                            if (detail?.shift) {
+                            let timbratureStr = detail.note || '';
+                            if (detail.shift) {
                                 const events = detail.shift.events || [];
                                 timbratureStr = events.map(e => {
                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
