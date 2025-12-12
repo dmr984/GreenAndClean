@@ -644,45 +644,40 @@ export default function ShiftApprovalPage() {
 
     const handleOpenDetailDialog = async (shift: CombinedShiftHistoryItem) => {
         if (shift.type === 'regular') {
-            // For regular shifts, we might need to fetch associated break events
-            // if they were added manually during approval.
             const shiftId = shift.id;
             const shiftDate = shift.events[0].timestamp.toDate();
             const startOfShiftDay = startOfDay(shiftDate);
             const endOfShiftDay = endOfDay(shiftDate);
-
-            const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('shiftId', '==', shiftId),
+    
+            const timbratureQuery = query(
+                collection(firestore, `app-users/${operatorId}/timbrature`),
                 where('timestamp', '>=', startOfShiftDay),
                 where('timestamp', '<=', endOfShiftDay)
             );
-            
-            const dayEventsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`),
-                 where('timestamp', '>=', startOfShiftDay),
-                 where('timestamp', '<=', endOfShiftDay)
-            );
+    
+            try {
+                const dayEventsSnapshot = await getDocs(timbratureQuery);
+                const allDayEvents = dayEventsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+                
+                // Filter in memory to find the specific shift's events
+                const shiftEvents = allDayEvents.filter(e => e.shiftId === shiftId || (!e.shiftId && shift.events.some(se => se.id === e.id)));
 
-
-            const [shiftIdSnapshot, dayEventsSnapshot] = await Promise.all([getDocs(timbratureQuery), getDocs(dayEventsQuery)]);
-            
-            let allRelevantEvents: Timbratura[] = [];
-            if (!shiftIdSnapshot.empty) {
-                allRelevantEvents = shiftIdSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
-            } else {
-                 allRelevantEvents = dayEventsSnapshot.docs.filter(d => {
-                     const eventDay = d.data().timestamp.toDate().toDateString();
-                     return eventDay === shiftDate.toDateString();
-                 }).map(d => ({ id: d.id, ...d.data() } as Timbratura));
+                if(shiftEvents.length > 0) {
+                    const processedShift = processShift(shiftEvents, new Set());
+                    if (processedShift) {
+                        setDetailShift({ ...shift, ...processedShift, events: shiftEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()) });
+                    } else {
+                        setDetailShift(shift);
+                    }
+                } else {
+                    setDetailShift(shift);
+                }
+            } catch (error) {
+                console.error("Error fetching shift details:", error);
+                toast({ title: "Errore", description: "Impossibile caricare i dettagli del turno.", variant: "destructive" });
+                setDetailShift(shift);
             }
-            
-            const processedShift = processShift(allRelevantEvents, new Set());
-
-            if (processedShift) {
-                setDetailShift({ ...shift, ...processedShift, events: allRelevantEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()) });
-            } else {
-                 setDetailShift(shift);
-            }
-
+    
             setIsDetailOpen(true);
         } else {
             setDetailOvertimeShift(shift);
