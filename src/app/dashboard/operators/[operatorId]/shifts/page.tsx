@@ -153,6 +153,7 @@ export default function ShiftApprovalPage() {
     const [isOvertimeMissingBreakConfirmOpen, setIsOvertimeMissingBreakConfirmOpen] = useState(false);
     const [isOvertimeAddBreakDialogOpen, setIsOvertimeAddBreakDialogOpen] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
+    const [isConfirmingNoLeave, setIsConfirmingNoLeave] = useState(false);
 
 
     const contractualStartTime = useMemo(() => {
@@ -369,6 +370,19 @@ export default function ShiftApprovalPage() {
     }, [allShifts, overtimeShifts]);
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
+    
+    const handleApprovalClick = () => {
+        if (!approvalContext) return;
+        const { leaveHours, createLeaveRequest } = approvalContext;
+        const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
+
+        if (hasLeaveHours && !createLeaveRequest) {
+            setIsConfirmingNoLeave(true);
+        } else {
+            handleConfirmApprove();
+        }
+    };
+
 
     const handleConfirmApprove = async () => {
         if (!firestore || !approvalContext || !operator) return;
@@ -643,6 +657,7 @@ export default function ShiftApprovalPage() {
     };
 
     const handleOpenDetailDialog = async (shift: CombinedShiftHistoryItem) => {
+        if (!firestore || !operatorId) return;
         if (shift.type === 'regular') {
             const shiftId = shift.id;
             const shiftDate = shift.events[0].timestamp.toDate();
@@ -659,8 +674,15 @@ export default function ShiftApprovalPage() {
                 const dayEventsSnapshot = await getDocs(timbratureQuery);
                 const allDayEvents = dayEventsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
                 
-                // Filter in memory to find the specific shift's events
-                const shiftEvents = allDayEvents.filter(e => e.shiftId === shiftId || (!e.shiftId && shift.events.some(se => se.id === e.id)));
+                const shiftEvents = allDayEvents.filter(e => {
+                     // If shiftId exists on the event, it must match.
+                    if (e.shiftId) {
+                        return e.shiftId === shiftId;
+                    }
+                    // Fallback for older data: check if event id is in the original shift's events.
+                    // This covers shifts created before the shiftId property was introduced.
+                    return shift.events.some(se => se.id === e.id);
+                });
 
                 if(shiftEvents.length > 0) {
                     const processedShift = processShift(shiftEvents, new Set());
@@ -828,7 +850,7 @@ export default function ShiftApprovalPage() {
             overtimeHours: String(overtime),
             leaveHours: String(leave),
             manualBreak: manualBreak,
-            createLeaveRequest: leave > 0,
+            createLeaveRequest: false, // Default to false as per user request
             isOvertimeShift: isOvertimeShift
         });
         setIsApproveDialogOpen(true);
@@ -1849,7 +1871,7 @@ export default function ShiftApprovalPage() {
                     )}
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmApprove}>Approva e Registra</AlertDialogAction>
+                        <AlertDialogAction onClick={handleApprovalClick}>Approva e Registra</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -1863,6 +1885,19 @@ export default function ShiftApprovalPage() {
                     <AlertDialogFooter>
                         <Button variant="outline" onClick={handleApproveWithoutBreak}>No, approva senza</Button>
                         <Button onClick={handleOpenAddBreakDialog}>Sì, aggiungi</Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+             <AlertDialog open={isConfirmingNoLeave} onOpenChange={setIsConfirmingNoLeave}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Conferma Approvazione</AlertDialogTitle>
+                        <AlertDialogDescription>Ci sono ore di ammanco per questo turno. Sei sicuro di voler approvare senza creare una richiesta di permesso?</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setIsConfirmingNoLeave(false)}>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => { setIsConfirmingNoLeave(false); handleConfirmApprove(); }}>Conferma</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
