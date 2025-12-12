@@ -350,7 +350,8 @@ export const processMonthlyData = (
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    const workedDays = details.filter(d => d.status === 'lavorato').length;
+    // A worked day is a day with a shift that produced ordinary hours.
+    const workedDays = details.filter(d => d.status === 'lavorato' && d.shift && d.shift.ordinaryHours > 0).length;
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
