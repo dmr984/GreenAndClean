@@ -11,6 +11,7 @@ import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails } from '@/lib/calculations';
 import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -153,87 +154,89 @@ const PrintPageContent = () => {
     const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
         if (!operator) return null;
         setIsGenerating(true);
-
+    
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageHeight = doc.internal.pageSize.height;
         const pageWidth = doc.internal.pageSize.width;
         const margin = 15;
         let y = 20;
-
-        // Add custom font if needed, assuming it's available or use standard
-        // doc.addFont("Helvetica", "Helvetica", "normal");
-        
-        // 1. Header
-        const img = new Image();
-        img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-        img.crossOrigin = "Anonymous";
-        await new Promise(resolve => { img.onload = resolve; });
-        doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
-
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - margin, y, { align: 'right' });
-        y += 7;
-        doc.setFontSize(10);
+    
+        // Add custom font if needed
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100);
-        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - margin, y, { align: 'right' });
+    
+        // 1. Header
+        const addHeader = async () => {
+            const img = new Image();
+            img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
+            img.crossOrigin = "Anonymous";
+            await new Promise(resolve => { img.onload = resolve; });
+            doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
+    
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - margin, y, { align: 'right' });
+            y += 7;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100);
+            doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - margin, y, { align: 'right' });
+        };
+    
+        await addHeader();
         y += 15;
-
+    
         // 2. Summary Section
         const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
         const totalDue = ordinaryCost + overtimeCost;
-        const col1_x = margin;
-        const col2_x = pageWidth - margin;
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0);
-
-        doc.text(`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, col1_x, y);
-        doc.text(`FERIE: ${(monthlySummary.ferieDays || 0)}`, col2_x, y, { align: 'right' });
-        y += 7;
-
-        doc.text(`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0)}`, col1_x, y);
-        doc.text(`COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, col2_x, y, { align: 'right' });
-        y += 7;
-
-        doc.text(`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, col1_x, y);
-        doc.text(`COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, col2_x, y, { align: 'right' });
-        y += 7;
-
-        doc.text(`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, col1_x, y);
-        doc.text(`GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`, col2_x, y, { align: 'right' });
-        y += 7;
-
+        
+        (doc as any).autoTable({
+            startY: y,
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 0.5 },
+            body: [
+                [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${(monthlySummary.ferieDays || 0)}`],
+                [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0)}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`],
+            ],
+            columnStyles: {
+                0: { halign: 'left', fontStyle: 'bold' },
+                1: { halign: 'right', fontStyle: 'bold' },
+            }
+        });
+        y = (doc as any).lastAutoTable.finalY + 2;
+    
+        doc.setDrawColor(0);
         doc.setLineWidth(0.5);
         doc.line(margin, y, pageWidth - margin, y);
         y += 8;
         
+        doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
         y += 15;
-
-        // 3. Daily Details
+    
+        // 3. Daily Details Section
         doc.setFontSize(12);
         doc.text("Dettaglio Giornaliero", margin, y);
-        y += 10;
-        
+        y += 5;
         doc.setLineWidth(0.2);
-        
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 8;
+    
         dailyDetails.filter(d => d.status !== 'riposo').forEach(detail => {
             if (y > pageHeight - 30) {
                 doc.addPage();
                 y = 20;
             }
-
+    
             let line1 = '';
             let line2 = '';
             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
             const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
-
+    
             if (detail.shift) {
                 const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
                 line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
@@ -244,26 +247,27 @@ const PrintPageContent = () => {
                  if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
                  line1 = `${dateStr} - ${statusText}`;
             }
-
+    
             doc.setFontSize(9);
             doc.setFont('helvetica', 'bold');
             const splitLine1 = doc.splitTextToSize(line1, pageWidth - margin * 2);
             doc.text(splitLine1, margin, y);
-            y += splitLine1.length * 5;
+            y += (splitLine1.length * 4);
             
             if(line2) {
                 doc.setFontSize(8);
                 doc.setFont('helvetica', 'normal');
                 const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3); // Indent
                 doc.text(splitLine2, margin + 3, y);
-                y += splitLine2.length * 4;
+                y += (splitLine2.length * 4);
             }
-
-            y += 3;
+    
+            y += 2;
+            doc.setLineWidth(0.1);
             doc.line(margin, y, pageWidth - margin, y);
-            y += 7;
+            y += 6;
         });
-
+    
         const blob = doc.output('blob');
         const fileName = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
     
@@ -271,35 +275,10 @@ const PrintPageContent = () => {
         return { blob, fileName };
     };
 
-    const handlePrint = async () => {
-        const pdf = await generatePdf();
-        if (!pdf) return;
-
-        const url = URL.createObjectURL(pdf.blob);
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = 'none';
-        iframe.src = url;
-        
-        iframe.onload = function() {
-            try {
-                iframe.contentWindow?.focus();
-                iframe.contentWindow?.print();
-            } catch (e) {
-                console.error("Printing failed", e);
-                toast({ title: 'Stampa Fallita', description: 'Impossibile aprire il dialogo di stampa.', variant: 'destructive'});
-            }
-             setTimeout(() => {
-                document.body.removeChild(iframe);
-                URL.revokeObjectURL(url);
-            }, 1000);
-        };
-        
-        document.body.appendChild(iframe);
+    const handlePrint = () => {
+        window.print();
     };
-
+    
     const handleDownload = async () => {
         const pdf = await generatePdf();
         if (!pdf) return;
@@ -308,7 +287,7 @@ const PrintPageContent = () => {
         a.href = url;
         a.download = pdf.fileName;
         document.body.appendChild(a);
-        a.click();
+a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     };
@@ -368,8 +347,8 @@ const PrintPageContent = () => {
                 </div>
             </header>
 
-            <main className="flex justify-center p-4 sm:p-8 bg-gray-300">
-                <div className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
+            <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
+                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
                     {/* Header */}
                      <table className="w-full mb-6">
                         <tbody>
@@ -417,14 +396,27 @@ const PrintPageContent = () => {
                     <h3 className="text-md font-bold mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
                     <div className="space-y-2.5 text-xs">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-                            let line1 = '';
+                             let line1 = '';
                             let line2 = '';
                              const dayOfWeek = format(detail.date, 'eeee', { locale: it });
                              const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
                              const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
 
                             if (detail.shift) {
-                                const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                                const timbratureStr = detail.shift.events.map(e => {
+                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                     let referenceTime = '';
+
+                                    if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
+                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
+                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
+                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
+                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                        }
+                                    }
+                                    return `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()
+                                }).join(' | ');
                                 line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
                                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
                             } else {
@@ -435,7 +427,7 @@ const PrintPageContent = () => {
                             }
 
                             return (
-                                <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-1.5 mb-1.5">
+                                <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-1.5 mb-1.5 print:break-inside-avoid">
                                     <p className="font-bold text-[9px] capitalize leading-tight">
                                         {line1}
                                     </p>
