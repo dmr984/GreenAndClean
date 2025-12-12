@@ -167,7 +167,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     }
 
     // 4. Calculate Total Worked Milliseconds
-    const totalMillis = clockOutTime.getTime() - clockInTime.getTime();
+    const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
 
