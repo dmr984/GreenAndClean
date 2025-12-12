@@ -191,7 +191,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 
 export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
     
-    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    const { workedMinutes, breakMinutes, calculationStart } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
@@ -202,18 +202,19 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const isWorkDay = isMakeupShift || (contractualHours > 0 && !isPublicHoliday(shift.date));
     
     if (!isWorkDay) {
+        const overtime = roundOvertimeHours(workedMinutes, overtimeCalculation);
+        const calcEnd = calculationStart ? new Date(calculationStart.getTime() + (overtime * 60 + breakMinutes) * 60000) : null;
         return {
             ordinary: 0,
-            overtime: roundOvertimeHours(workedMinutes, overtimeCalculation),
+            overtime,
             leave: 0,
             worked: workedMinutes,
             break: breakMinutes,
             calculationStart,
-            calculationEnd
+            calculationEnd: calcEnd,
         };
     }
 
-    // Strict separation between ordinary and overtime minutes
     const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
 
@@ -221,6 +222,10 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const overtimeHours = roundOvertimeHours(overtimeMinutes, overtimeCalculation);
 
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
+
+    const totalCalculatedMinutes = (ordinaryHours + overtimeHours) * 60;
+    const calculationEnd = calculationStart ? new Date(calculationStart.getTime() + totalCalculatedMinutes * 60000 + breakMinutes * 60000) : null;
+
 
     return { 
         ordinary: ordinaryHours, 
@@ -322,8 +327,9 @@ export const processMonthlyData = (
             let totalOrdinary = 0;
             let totalOvertime = 0;
             const allDayEvents: Timbratura[] = [];
-            let calcStart: Date | null = null;
-            let calcEnd: Date | null = null;
+            let finalCalcStart: Date | undefined = undefined;
+            let finalCalcEnd: Date | undefined = undefined;
+
 
             dayShifts.forEach(shift => {
                  const ignoreContractualStart = shift.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
@@ -331,8 +337,8 @@ export const processMonthlyData = (
                  totalOrdinary += ordinary;
                  totalOvertime += overtime;
                  allDayEvents.push(...shift.events);
-                 if (calculationStart) calcStart = calculationStart;
-                 if (calculationEnd) calcEnd = calculationEnd;
+                 if (calculationStart) finalCalcStart = calculationStart;
+                 if (calculationEnd) finalCalcEnd = calculationEnd;
             });
             
             const permissionHours = monthlyData.requests
@@ -349,8 +355,8 @@ export const processMonthlyData = (
                     ordinaryHours: totalOrdinary,
                     overtimeHours: totalOvertime, 
                     permissionHours: permissionHours,
-                    calculationStart: calcStart || undefined,
-                    calculationEnd: calcEnd || undefined,
+                    calculationStart: finalCalcStart,
+                    calculationEnd: finalCalcEnd,
                 },
                 note: dailyNote?.note,
             });

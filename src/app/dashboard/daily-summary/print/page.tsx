@@ -235,7 +235,7 @@ const PrintPageContent = () => {
              <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
-                     <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}><Printer className="h-4 w-4" /></Button>
+                     <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Printer className="h-4 w-4" />}</Button>
                      <Button variant="default" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Share2 className="h-4 w-4" />}</Button>
                      <Button variant="default" size="icon" onClick={handleDownload} disabled={isGenerating}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4" />}</Button>
                 </div>
@@ -333,8 +333,6 @@ const PrintPageWrapper = () => (
     </Suspense>
 );
 
-// We need to conditionally import html2canvas only on the client
-// to avoid "window is not defined" error during server-side rendering.
 export default function PrintPage() {
     const [isClient, setIsClient] = useState(false);
     useEffect(() => {
