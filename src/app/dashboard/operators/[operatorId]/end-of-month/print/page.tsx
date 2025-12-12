@@ -177,29 +177,18 @@ const PrintPageContent = () => {
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
         const totalDue = ordinaryCost + overtimeCost;
     
-        const summaryBody = [
-            [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`],
-            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)} €/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate)} €/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-            [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`]
-        ];
-
         autoTable(doc, {
-            body: summaryBody,
+            body: [
+                [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`],
+                [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)} €/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate)} €/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`]
+            ],
             startY: 40,
             theme: 'plain',
-            styles: {
-                fontSize: 9,
-                cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
-            },
-            didParseCell: function (data) {
-                // Set bold for labels and values
-                data.cell.styles.fontStyle = 'bold';
-            },
-            columnStyles: {
-                0: { halign: 'left' },
-                1: { halign: 'right' }
-            }
+            styles: { fontSize: 9 },
+            didParseCell: function (data) { data.cell.styles.fontStyle = 'bold'; },
+            columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right' } }
         });
     
         let finalY = (doc as any).lastAutoTable.finalY + 5;
@@ -208,7 +197,7 @@ const PrintPageContent = () => {
         doc.setFont('helvetica', 'bold');
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, 195, finalY, { align: 'right' });
 
-        // 3. Daily Details
+        // 3. Daily Details Header
         let detailY = finalY + 15;
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
@@ -219,9 +208,9 @@ const PrintPageContent = () => {
         doc.line(15, detailY, 195, detailY); // Top border
         detailY += 5;
 
-
+        // 4. Manually draw daily details
         dailyDetails.filter(d => d.status !== 'riposo').forEach(detail => {
-            if (detailY > 270) { // Check for page break
+            if (detailY > 270) {
                 doc.addPage();
                 detailY = 20;
             }
@@ -243,19 +232,21 @@ const PrintPageContent = () => {
                  line1 = `${dateStr} - ${statusText}`;
             }
 
-            doc.setFontSize(8);
+            doc.setFontSize(9);
             doc.setFont('helvetica', 'bold');
             doc.text(line1, 15, detailY);
-            detailY += 4;
+            detailY += 5;
             
             if(line2) {
+                doc.setFontSize(8);
                 doc.setFont('helvetica', 'normal');
                 doc.text(line2, 18, detailY);
-                detailY += 4;
+                detailY += 5;
             }
 
             doc.setLineWidth(0.1);
-            doc.line(15, detailY, 195, detailY); // Separator line
+            doc.setDrawColor(200);
+            doc.line(15, detailY, 195, detailY);
             detailY += 5;
         });
         
@@ -266,8 +257,16 @@ const PrintPageContent = () => {
         return { blob, fileName };
     };
 
-    const handlePrint = () => {
-        window.print();
+    const handlePrint = async () => {
+        const pdf = await generatePdf();
+        if (!pdf) return;
+
+        const url = URL.createObjectURL(pdf.blob);
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = url;
+        document.body.appendChild(iframe);
+        iframe.contentWindow?.print();
     };
 
     const handleDownload = async () => {
