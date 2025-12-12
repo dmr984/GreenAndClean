@@ -1,7 +1,7 @@
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays, parse } from 'date-fns';
 import { isPublicHoliday } from '@/lib/holidays';
 
 // Type Definitions
@@ -34,7 +34,7 @@ type Timbratura = {
     isOvertime?: boolean;
     isAuto?: boolean;
     ignoreContractualStart?: boolean;
-    makeupOfDay?: DayOfWeek;
+    makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
 };
 
 type Request = {
@@ -181,7 +181,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     };
 };
 
-export const calculateHours = (shift: Shift, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
+export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
     
     const { workedMinutes, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
@@ -255,7 +255,9 @@ export const processMonthlyData = (
         
         // If it's a makeup shift, use the schedule of the day being made up
         if (makeupShiftInfo?.makeupOfDay) {
-            dailySchedule = operator.workSchedule[makeupShiftInfo.makeupOfDay];
+            const makeupDate = parse(makeupShiftInfo.makeupOfDay, 'yyyy-MM-dd', new Date());
+            const makeupDayName = dayIndexToName[getDay(makeupDate)];
+            dailySchedule = operator.workSchedule[makeupDayName];
         }
         
         const contractualHours = dailySchedule?.totalHours || 0;
@@ -264,8 +266,7 @@ export const processMonthlyData = (
         
         // Check if this day was a contractual day but was made up on another day
         const isMadeUpElsewhere = monthlyData.timbrature.some(t => {
-            const tDate = t.timestamp.toDate();
-            return t.makeupOfDay === dayName && !isSameDay(tDate, day) && isWithinInterval(tDate, monthInterval);
+             return t.makeupOfDay === format(day, 'yyyy-MM-dd');
         });
         if (isMadeUpElsewhere) {
             isWorkDay = false; 
@@ -280,7 +281,7 @@ export const processMonthlyData = (
         if (isHoliday && !workedEventsRaw) {
              details.push({ date: day, status: 'festa', request: null, shift: null });
         } else if (workedEventsRaw) {
-            const dayShifts: Shift[] = [];
+            const dayShifts: { date: Date, events: Timbratura[] }[] = [];
             let currentShiftEvents: Timbratura[] = [];
             const sortedEvents = [...workedEventsRaw].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
@@ -292,9 +293,6 @@ export const processMonthlyData = (
                         dayShifts.push({
                             date: day,
                             events: currentShiftEvents,
-                            contractualHours,
-                            isPureOvertime: !isWorkDay,
-                            workedMinutes: 0, ordinaryMinutes: 0, overtimeMinutes: 0 
                         });
                     }
                     currentShiftEvents = []; 

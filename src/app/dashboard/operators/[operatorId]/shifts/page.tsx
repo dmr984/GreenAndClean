@@ -62,7 +62,7 @@ type Timbratura = {
     isAuto?: boolean;
     shiftId?: string;
     ignoreContractualStart?: boolean;
-    makeupOfDay?: DayOfWeek;
+    makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
 };
 
 type Shift = {
@@ -75,7 +75,7 @@ type Shift = {
     isOnLeaveDay?: boolean; // Flag for shifts on leave days
     isOvertime: boolean;
     ignoreContractualStart?: boolean;
-    makeupOfDay?: DayOfWeek;
+    makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
 };
 
 type StraordinarioEvent = {
@@ -725,7 +725,10 @@ export default function ShiftApprovalPage() {
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if(!clockInEvent) return 0;
 
-        const dayToUse = clockInEvent.makeupOfDay || dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
+        const makeupDayString = clockInEvent.makeupOfDay;
+        const shiftDate = clockInEvent.timestamp.toDate();
+        const dayToUseDate = makeupDayString ? parse(makeupDayString, 'yyyy-MM-dd', new Date()) : shiftDate;
+        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
 
         return operator.workSchedule[dayToUse]?.totalHours || 0;
     };
@@ -737,7 +740,8 @@ export default function ShiftApprovalPage() {
         const hasBreak = shift.events.some(e => e.type === 'pausa');
         
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())];
+        const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shift.date;
+        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const dailySchedule = operator.workSchedule[dayToUse];
         const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
 
@@ -767,7 +771,8 @@ export default function ShiftApprovalPage() {
 
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
         const clockInEvent = shiftForBreak.events.find(e => e.type === 'entrata');
-        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(shiftDate)];
+        const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shiftDate;
+        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const mandatoryBreakMinutes = operator.workSchedule[dayToUse]?.breakMinutes || 0;
 
         const existingBreakStart = shiftForBreak.events.find(e => e.type === 'pausa');
@@ -852,7 +857,8 @@ export default function ShiftApprovalPage() {
         } else {
             const regularShift = shift as Shift;
             const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
-            const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(regularShift.date)];
+            const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
+            const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
             const schedule = operator.workSchedule[dayToUse];
             const ignoreContractualStart = regularShift.ignoreContractualStart || false;
             
@@ -1004,7 +1010,7 @@ export default function ShiftApprovalPage() {
                 if (event.type === 'entrata') {
                     eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
                     if(newShiftIsMakeup && newShiftMakeupDay) {
-                        eventPayload.makeupOfDay = newShiftMakeupDay;
+                        eventPayload.makeupOfDay = format(newShiftMakeupDay, 'yyyy-MM-dd');
                     }
                 }
                 batch.set(newDocRef, eventPayload);
@@ -1238,7 +1244,8 @@ export default function ShiftApprovalPage() {
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
         
-        const dayToUse = clockInEvent.makeupOfDay || dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
+        const dayToUseDate = clockInEvent.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shift.date;
+        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
         const ignoreContractualStart = shift.ignoreContractualStart || false;
         
@@ -1261,7 +1268,8 @@ export default function ShiftApprovalPage() {
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(shift.date)];
+        const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shift.date;
+        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
         const ignoreContractualStart = shift.ignoreContractualStart || false;
         
@@ -1354,7 +1362,7 @@ export default function ShiftApprovalPage() {
                                                 <TableCell className='flex items-center gap-2 whitespace-nowrap'>
                                                   {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
                                                   {formatDate(startTime)}
-                                                  {shift.makeupOfDay && <Badge variant="outline">Rec. {weekDayLabels[shift.makeupOfDay].substring(0,3)}</Badge>}
+                                                  {shift.makeupOfDay && <Badge variant="outline">Recupero</Badge>}
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
@@ -1634,7 +1642,7 @@ export default function ShiftApprovalPage() {
                         <div className="flex justify-between items-start">
                             <div>
                                  <ResponsiveDialogTitle>Dettaglio Turno per {operator.firstName}</ResponsiveDialogTitle>
-                                {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)} {detailShift.makeupOfDay && `(Recupero di ${weekDayLabels[detailShift.makeupOfDay]})`}</ResponsiveDialogDescription>}
+                                {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)} {detailShift.makeupOfDay && `(Recupero del ${format(parse(detailShift.makeupOfDay, 'yyyy-MM-dd', new Date()), 'PPP', { locale: it })})`}</ResponsiveDialogDescription>}
                             </div>
                              {detailShift?.isOnLeaveDay && (
                                 <div className='flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded-md'>
@@ -1647,7 +1655,8 @@ export default function ShiftApprovalPage() {
 
                      {detailShift && operator && (() => {
                         const clockInEvent = detailShift.events.find(e => e.type === 'entrata');
-                        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(detailShift.date)];
+                        const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : detailShift.date;
+                        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                         const schedule = operator.workSchedule[dayToUse];
                         const ignoreContractualStart = detailShift.ignoreContractualStart || false;
                         

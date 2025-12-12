@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
@@ -29,12 +29,14 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isPublicHoliday } from '@/lib/holidays';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
 
 type ClockingEvent = {
     id: string;
@@ -45,7 +47,7 @@ type ClockingEvent = {
     longitude?: number;
     status: 'sospesa' | 'confermata' | 'rifiutata';
     viewedByOperator?: boolean;
-    makeupOfDay?: DayOfWeek;
+    makeupOfDay?: string; // Changed to ISO date string 'YYYY-MM-DD'
 };
 
 type Shift = {
@@ -131,7 +133,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
   const [isMakeupShiftDialogOpen, setIsMakeupShiftDialogOpen] = useState(false);
   const [makeupShiftType, setMakeupShiftType] = useState<'overtime' | 'makeup' | null>(null);
-  const [makeupDay, setMakeupDay] = useState<DayOfWeek | ''>('');
+  const [makeupDay, setMakeupDay] = useState<Date | undefined>(undefined);
+  const [bookedDays, setBookedDays] = useState<Date[]>([]);
 
 
   const [canClockIn, setCanClockIn] = useState(true);
@@ -285,12 +288,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             let leaveType: LeaveStatus['type'] = null;
             let unlockRequestExists = false;
 
+            const newBookedDays = new Set<string>();
+
             snapshot.forEach(doc => {
                 const request = doc.data();
                 const startDate = request.startDate.toDate();
                 const endDate = request.endDate.toDate();
 
-                if (isWithinInterval(today, { start: startOfDay(startDate), end: endOfDay(endDate) })) {
+                 if (isWithinInterval(today, { start: startOfDay(startDate), end: endOfDay(endDate) })) {
                     if (request.type === 'ferie' || request.type === 'malattia') {
                       onLeaveToday = true;
                       leaveType = request.type;
@@ -299,7 +304,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                        unlockRequestExists = true;
                     }
                 }
+
+                // For calendar disabling
+                if(request.type === 'ferie' || request.type === 'malattia') {
+                     for (let day = startOfDay(startDate); day <= endOfDay(endDate); day.setDate(day.getDate() + 1)) {
+                        newBookedDays.add(format(day, 'yyyy-MM-dd'));
+                    }
+                }
             });
+            setBookedDays(Array.from(newBookedDays).map(d => new Date(d)));
             setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
             setUnlockRequestSent(unlockRequestExists);
         });
@@ -410,7 +423,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     await performClocking(type);
   }
 
-  const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: DayOfWeek) => {
+  const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: string) => {
     if (!firestore || !operator || isProcessing) return;
     
     try {
@@ -464,6 +477,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     } finally {
         setIsProcessing(false);
         setIsMakeupShiftDialogOpen(false);
+        setMakeupDay(undefined);
     }
   }
 
@@ -570,7 +584,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     if (makeupShiftType === 'overtime') {
         handleOvertimeClocking('entrata');
     } else if (makeupShiftType === 'makeup' && makeupDay) {
-        performClocking('entrata', makeupDay);
+        performClocking('entrata', format(makeupDay, 'yyyy-MM-dd'));
     } else {
          toast({ title: "Selezione mancante", description: "Seleziona il giorno che vuoi recuperare.", variant: "destructive" });
     }
@@ -730,6 +744,29 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       );
   }
 
+  const calendarDisabledMatcher = (day: Date) => {
+    const today = startOfDay(new Date());
+    // Disable past days that are not the current day
+    // if (day < today) return true;
+
+    // Check if it's a day with confirmed clock-ins (from clockings data)
+    const hasClockings = clockings?.some(c => isSameDay(c.timestamp.toDate(), day));
+    if (hasClockings) return true;
+
+    // Check if it's a day with approved leave
+    const onLeave = bookedDays.some(leaveDay => isSameDay(leaveDay, day));
+    if (onLeave) return true;
+    
+    if (isPublicHoliday(day)) return true;
+
+    // Check if it's a contractual workday
+    const dayName = dayIndexToName[getDay(day)];
+    const isContractualWorkDay = (operator?.workSchedule?.[dayName]?.totalHours || 0) > 0;
+    if (!isContractualWorkDay) return true;
+
+    return false;
+  };
+
   return (
     <>
     <div className="space-y-6">
@@ -774,22 +811,29 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 {makeupShiftType === 'makeup' && (
                     <div className="space-y-2 pt-2">
                         <Label>Seleziona il giorno da recuperare/anticipare</Label>
-                        <Select value={makeupDay} onValueChange={v => setMakeupDay(v as DayOfWeek)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Seleziona un giorno..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {Object.entries(weekDayLabels).map(([value, label]) => (
-                                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                         <Calendar
+                            mode="single"
+                            selected={makeupDay}
+                            onSelect={setMakeupDay}
+                            className="rounded-md border"
+                            locale={it}
+                            disabled={calendarDisabledMatcher}
+                            month={currentDate || new Date()}
+                            onMonthChange={setCurrentDate}
+                            fromMonth={subMonths(new Date(), 2)}
+                            toMonth={addMonths(new Date(), 2)}
+                         />
+                         {makeupDay && (
+                            <p className="text-sm text-center text-primary font-semibold pt-2">
+                                Giorno selezionato: {format(makeupDay, 'PPP', { locale: it })}
+                            </p>
+                         )}
                     </div>
                 )}
             </div>
             <ResponsiveDialogFooter>
                 <Button variant="outline" onClick={() => setIsMakeupShiftDialogOpen(false)}>Annulla</Button>
-                <Button onClick={handleMakeupShiftDialogSubmit}>Avvia Turno</Button>
+                <Button onClick={handleMakeupShiftDialogSubmit} disabled={makeupShiftType === 'makeup' && !makeupDay}>Avvia Turno</Button>
             </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
     </ResponsiveDialog>
@@ -827,7 +871,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 <div>
                     <h4 className="font-semibold mb-1">Turno Straordinario o Recupero</h4>
                     <p className="text-muted-foreground">
-                        Se timbri in un giorno non lavorativo, il sistema ti chiederà se vuoi registrare un turno <span className="font-bold">Straordinario</span> o se stai facendo un <span className="font-bold">Recupero/Anticipo</span>. Se scegli recupero, dovrai indicare quale giorno stai sostituendo, e le ore verranno calcolate come ordinarie in base a quel giorno.
+                        Se timbri in un giorno non lavorativo, il sistema ti chiederà se vuoi registrare un turno <span className="font-bold">Straordinario</span> o se stai facendo un <span className="font-bold">Recupero/Anticipo</span>. Se scegli recupero, potrai selezionare dal calendario il giorno esatto che stai sostituendo e le ore verranno calcolate come ordinarie in base a quel giorno.
                     </p>
                 </div>
                 <div>
