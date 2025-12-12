@@ -11,8 +11,6 @@ import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval }
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { Toaster } from '@/components/ui/toaster';
 
 
@@ -140,123 +138,10 @@ const PrintPageContent = () => {
         }
     };
     
-    const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
-        if (!selectedDate) return null;
-        setIsGenerating(true);
-
-        const doc = new jsPDF('p', 'mm', 'a4');
-        const pageHeight = doc.internal.pageSize.height;
-        const pageWidth = doc.internal.pageSize.width;
-        const margin = 15;
-        let y = 20;
-
-        const addHeader = async () => {
-             try {
-                const img = new Image();
-                img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-                img.crossOrigin = "Anonymous";
-                await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
-                doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
-            } catch (e) {
-                console.error("Could not load image for PDF header", e);
-            }
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`Riepilogo Giornaliero`, pageWidth - margin, y, { align: 'right' });
-            y += 7;
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(100);
-            doc.text(`${format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it })}`, pageWidth - margin, y, { align: 'right' });
-        };
-        await addHeader();
-        y += 15;
-
-        operators
-            .filter(op => {
-                const detail = dailyData.get(op.id);
-                return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
-            })
-            .forEach((op, index) => {
-             const detail = dailyData.get(op.id);
-             const cumulative = monthlyCumulative.get(op.id);
-             const { text: statusText } = renderStatus(detail);
-             const timbratureStr = detail?.shift?.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ') || 'Nessuna';
-
-            if (y > pageHeight - 40) {
-                doc.addPage();
-                y = 20;
-            }
-            
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-            doc.setFont('helvetica', 'normal');
-            doc.text(statusText, pageWidth - margin, y, { align: 'right' });
-            y += 5;
-            
-            doc.setFontSize(8);
-            doc.setTextColor(100);
-            doc.text(`Timbrature: ${timbratureStr}`, margin, y);
-            y += 8;
-
-            const tableBody = [
-                ['Ore Ordinarie', `${detail?.shift?.ordinaryHours || 0}h`, `Cumulativo: ${cumulative?.ordinary || 0}h`],
-                ['Straordinari', `${detail?.shift?.overtimeHours || 0}h`, `Cumulativo: ${cumulative?.overtime || 0}h`],
-                ['Permessi', `${detail?.shift?.permissionHours || 0}h`, `Cumulativo: ${cumulative?.leave || 0}h`],
-            ];
-
-            (doc as any).autoTable({
-                startY: y,
-                head: [['Dettaglio Giorno', 'Ore', 'Stato Mensile']],
-                body: tableBody,
-                theme: 'grid',
-                headStyles: { fillColor: [230, 230, 230], textColor: [40, 40, 40], fontSize: 8, fontStyle: 'bold' },
-                bodyStyles: { fontSize: 8 },
-                columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' } },
-            });
-            y = (doc as any).lastAutoTable.finalY + 10;
-        });
-
-        const blob = doc.output('blob');
-        const fileName = `Riepilogo_Giornaliero_${format(selectedDate, 'dd-MM-yyyy')}.pdf`;
-
-        setIsGenerating(false);
-        return { blob, fileName };
+    const handlePrint = () => {
+        window.print();
     };
 
-    const handlePrint = () => window.print();
-    const handleDownload = async () => {
-        const pdf = await generatePdf();
-        if (!pdf) return;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(pdf.blob);
-        a.download = pdf.fileName;
-        document.body.appendChild(a);
-a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-    };
-
-    const handleShare = async () => {
-        const pdf = await generatePdf();
-        if (!pdf || !navigator.share) {
-            toast({ title: 'Condivisione non supportata', variant: 'destructive' });
-            return;
-        }
-        const file = new File([pdf.blob], pdf.fileName, { type: 'application/pdf' });
-        try {
-            await navigator.share({
-                title: `Riepilogo Giornaliero`,
-                text: `Ecco il riepilogo per il ${selectedDate ? format(selectedDate, 'PPP') : 'giorno selezionato'}.`,
-                files: [file],
-            });
-        } catch (error) {
-            if ((error as DOMException).name !== 'AbortError') {
-                 toast({ title: 'Errore Condivisione', description: 'Impossibile condividere il file.', variant: 'destructive' });
-            }
-        }
-    };
 
     if (isLoading || !selectedDate) {
         return (
@@ -271,9 +156,9 @@ a.click();
              <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
-                     <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}><Printer className="h-4 w-4" /></Button>
-                     <Button variant="default" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}><Share2 className="h-4 w-4" /></Button>
-                     <Button variant="default" size="icon" onClick={handleDownload} disabled={isGenerating}><Download className="h-4 w-4" /></Button>
+                     <Button variant="default" size="icon" onClick={handlePrint}><Printer className="h-4 w-4" /></Button>
+                     <Button variant="default" size="icon" onClick={handlePrint}><Share2 className="h-4 w-4" /></Button>
+                     <Button variant="default" size="icon" onClick={handlePrint}><Download className="h-4 w-4" /></Button>
                 </div>
                  <div className="flex flex-1 items-center justify-end">
                      <Button variant="ghost" size="icon" onClick={() => window.close()}><X className="h-5 w-5" /></Button>
