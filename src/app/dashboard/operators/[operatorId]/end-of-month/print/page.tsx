@@ -250,14 +250,14 @@ const PrintPageContent = () => {
                 y = 20;
             }
     
-            let line1 = '';
-            let line2 = '';
             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
             const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
+            let timbratureStr = '';
+            let line2 = '';
     
             if (detail.shift) {
-                const timbratureStr = detail.shift.events.map(e => {
+                timbratureStr = detail.shift.events.map(e => {
                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                      let referenceTime = '';
 
@@ -271,25 +271,34 @@ const PrintPageContent = () => {
                      const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                     return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
                 }).join(' | ');
-                line1 = `${dateStr} | ${timbratureStr}`;
+                
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+            
+                 doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text(dateStr, margin, y);
+                
+                doc.setFont('helvetica', 'normal');
+                const timbratureText = `| ${timbratureStr}`;
+                doc.text(timbratureText, margin + doc.getTextWidth(dateStr) + 1, y);
+
+                y += 5;
+
             } else {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
                  if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Mancata Timbratura';
-                 line1 = `${dateStr} - ${statusText}`;
+                 
+                 doc.setFontSize(12);
+                 doc.setFont('helvetica', 'bold');
+                 doc.text(`${dateStr} - ${statusText}`, margin, y);
+                 y += 5;
             }
-    
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            const splitLine1 = doc.splitTextToSize(line1, pageWidth - margin * 2);
-            doc.text(splitLine1, margin, y);
-            y += (splitLine1.length * 5);
-            
+                
             if(line2) {
                 doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(50, 50, 50);
+                doc.setTextColor(0, 0, 0); // Black text
                 const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
                 doc.text(splitLine2, margin + 3, y);
                 y += (splitLine2.length * 5);
@@ -401,22 +410,22 @@ const PrintPageContent = () => {
                     {/* Summary Table */}
                     <div className="mb-4">
                         <table className="w-full">
-                           <tbody className="text-black font-bold text-base">
+                           <tbody className="text-black font-bold text-lg">
                                 <tr>
-                                    <td className="py-1 text-lg">GIORNI LAVORATI: <span className="font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right text-lg">FERIE: <span className="font-mono">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1">GIORNI LAVORATI: <span className="font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right">FERIE: <span className="font-mono">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1 text-lg">ORE ORDINARIE: <span className="font-mono">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right text-lg">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}): <span className="font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1">ORE ORDINARIE: <span className="font-mono">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}): <span className="font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1 text-lg">ORE STRAORDINARIE: <span className="font-mono">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right text-lg">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate || 0)}€/h`}): <span className="font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1">ORE STRAORDINARIE: <span className="font-mono">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate || 0)}€/h`}): <span className="font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                  <tr>
-                                    <td className="py-1 text-lg">ORE PERMESSI: <span className="font-mono">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right text-lg">GIORNI DI MALATTIA: <span className="font-mono">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1">ORE PERMESSI: <span className="font-mono">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right">GIORNI DI MALATTIA: <span className="font-mono">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
                                 </tr>
                            </tbody>
                         </table>
@@ -462,10 +471,25 @@ const PrintPageContent = () => {
 
                             return (
                                 <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-2 mb-2 print:break-inside-avoid">
-                                    <p className="font-bold text-black text-sm capitalize leading-tight">
-                                        {line1}
+                                    <p className="text-black text-sm capitalize leading-tight">
+                                        <span className="font-bold">{dateStr}</span>
+                                        {detail.shift && ` | ${detail.shift.events.map(e => {
+                                            const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                            let referenceTime = '';
+
+                                            if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                                const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                                if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                            } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                                const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                                if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                            }
+                                            const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                            return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                        }).join(' | ')}`}
+                                        {!detail.shift && ` - ${line1.split(' - ')[1]}`}
                                     </p>
-                                    {line2 && <p className="text-gray-600 text-sm pl-1 leading-tight">{line2}</p>}
+                                    {line2 && <p className="text-black text-sm pl-1 leading-tight">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
