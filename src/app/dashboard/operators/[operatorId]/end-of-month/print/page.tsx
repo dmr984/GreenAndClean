@@ -179,8 +179,8 @@ const PrintPageContent = () => {
     
         const summaryBody = [
             [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`],
-            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)} €): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate)} €): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)} €/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate)} €/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
             [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`]
         ];
 
@@ -209,45 +209,56 @@ const PrintPageContent = () => {
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, 195, finalY, { align: 'right' });
 
         // 3. Daily Details
-        const dailyDetailStartY = finalY + 10;
+        let detailY = finalY + 15;
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text("Dettaglio Giornaliero", 15, dailyDetailStartY);
+        doc.text("Dettaglio Giornaliero", 15, detailY);
+        detailY += 5;
+        
+        doc.setLineWidth(0.2);
+        doc.line(15, detailY, 195, detailY); // Top border
+        detailY += 5;
 
-        const dailyBody = dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-            let column1 = '';
-            let column2 = '';
 
+        dailyDetails.filter(d => d.status !== 'riposo').forEach(detail => {
+            if (detailY > 270) { // Check for page break
+                doc.addPage();
+                detailY = 20;
+            }
+
+            let line1 = '';
+            let line2 = '';
             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
-            column1 = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
+            const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
 
             if (detail.shift) {
                 const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
-                column1 += `\nLavorato | Timbrature: ${timbratureStr}`;
-                column2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
+                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             } else {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
                  if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
-                 column1 += `\n${statusText}`;
+                 line1 = `${dateStr} - ${statusText}`;
             }
 
-            return [
-                { content: column1, styles: { fontStyle: 'bold' } },
-                { content: column2, styles: { halign: 'right' } },
-            ];
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'bold');
+            doc.text(line1, 15, detailY);
+            detailY += 4;
+            
+            if(line2) {
+                doc.setFont('helvetica', 'normal');
+                doc.text(line2, 18, detailY);
+                detailY += 4;
+            }
+
+            doc.setLineWidth(0.1);
+            doc.line(15, detailY, 195, detailY); // Separator line
+            detailY += 5;
         });
         
-         autoTable(doc, {
-            startY: dailyDetailStartY + 5,
-            body: dailyBody,
-            theme: 'striped',
-            styles: { fontSize: 8, cellPadding: 2 },
-            headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0] },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-        });
-    
         const blob = doc.output('blob');
         const fileName = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
     
@@ -380,7 +391,7 @@ const PrintPageContent = () => {
                             let line2 = '';
                              const dayOfWeek = format(detail.date, 'eeee', { locale: it });
                              const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
-                             const dateStr = `${dayOfWeek} ${restOfDate}`;
+                             const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
 
                             if (detail.shift) {
                                 const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
@@ -389,15 +400,16 @@ const PrintPageContent = () => {
                             } else {
                                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
                                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
+                                 if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
                                  line1 = `${dateStr} - ${statusText}`;
                             }
 
                             return (
                                 <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-1.5 mb-1.5">
-                                    <p className="text-[9px] capitalize">
-                                        <span className="font-bold">{dayOfWeek}</span> {restOfDate} - {line1.split(' - ')[1]}
+                                    <p className="font-bold text-[9px] capitalize">
+                                        {line1}
                                     </p>
-                                    {line2 && <p className="text-gray-600 text-[9px]">{line2}</p>}
+                                    {line2 && <p className="text-gray-600 text-[8px] pl-1">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
