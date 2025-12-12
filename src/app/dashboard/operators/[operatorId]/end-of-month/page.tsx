@@ -220,6 +220,14 @@ export default function EndOfMonthPage() {
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     const totalDue = ordinaryCost + overtimeCost;
+    
+    const formatFullRate = (rate?: number) => {
+        if (typeof rate !== 'number') return '0,00';
+        return rate.toLocaleString('it-IT', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 4,
+        });
+    };
 
     return (
         <>
@@ -258,7 +266,7 @@ export default function EndOfMonthPage() {
                 ) : (
                 <>
                  <div className="space-y-2">
-                    <SummaryCard 
+                     <SummaryCard 
                         title="Totale Dovuto" 
                         value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
@@ -270,14 +278,14 @@ export default function EndOfMonthPage() {
                         title="Costo Ore Ordinarie" 
                         value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
-                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${(operator.hourlyRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
+                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${formatFullRate(operator.hourlyRate)} €/h`}
                     />
                     <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
                      <SummaryCard 
                         title="Costo Ore Straordinarie" 
                         value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
-                        subtext={`${monthlySummary.overtimeHours || 0}h x ${(operator.overtimeRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}/h`}
+                        subtext={`${monthlySummary.overtimeHours || 0}h x ${formatFullRate(operator.overtimeRate)} €/h`}
                     />
                     <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
                     <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />

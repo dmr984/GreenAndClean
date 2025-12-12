@@ -143,6 +143,14 @@ const PrintPageContent = () => {
         return processMonthlyData(currentMonth, operator, monthlyData);
     }, [operator, currentMonth, monthlyData, isLoading]);
 
+    const formatFullRate = (rate?: number) => {
+        if (typeof rate !== 'number') return '0,00';
+        return rate.toLocaleString('it-IT', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 4,
+        });
+    };
+
     const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
         if (!operator) return null;
         setIsGenerating(true);
@@ -171,8 +179,8 @@ const PrintPageContent = () => {
     
         const summaryBody = [
             [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`],
-            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)} €): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate)} €): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
             [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`]
         ];
 
@@ -360,11 +368,11 @@ const PrintPageContent = () => {
                                 </tr>
                                 <tr>
                                     <td className="py-1.5"><span className="font-bold">ORE ORDINARIE:</span> <span className="font-mono font-bold">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1.5 text-right"><span className="font-bold">COSTO ORDINARIE ({`${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}/h`}):</span> <span className="font-mono font-bold">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1.5 text-right"><span className="font-bold">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}):</span> <span className="font-mono font-bold">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                 <tr>
                                     <td className="py-1.5"><span className="font-bold">ORE STRAORDINARIE:</span> <span className="font-mono font-bold">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1.5 text-right"><span className="font-bold">COSTO STRAORDINARIE ({`${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}/h`}):</span> <span className="font-mono font-bold">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1.5 text-right"><span className="font-bold">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate)}€/h`}):</span> <span className="font-mono font-bold">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                  <tr>
                                     <td className="py-1.5"><span className="font-bold">ORE PERMESSI:</span> <span className="font-mono font-bold">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
