@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
-import { Loader2, Printer, Download, Share2, X, User, Briefcase, Plane, Stethoscope } from 'lucide-react';
+import { Loader2, Printer, Download, Share2, X, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useParams, useSearchParams } from 'next/navigation';
 import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval } from 'date-fns';
@@ -127,7 +127,7 @@ const PrintPageContent = () => {
     }, [selectedDate, operators, firestore, toast]);
 
     const renderStatus = (detail: DailyDetail | undefined) => {
-        if (!detail || detail.status === 'riposo') return { text: 'Riposo', icon: <User className="h-4 w-4" /> };
+        if (!detail || detail.status === 'riposo') return { text: 'Riposo', icon: <Coffee className="h-4 w-4" /> };
         switch (detail.status) {
             case 'lavorato': return { text: 'Presente', icon: <Briefcase className="h-4 w-4" /> };
             case 'festa': return { text: 'Festivo', icon: <Briefcase className="h-4 w-4" /> };
@@ -170,7 +170,12 @@ const PrintPageContent = () => {
         await addHeader();
         y += 15;
 
-        operators.forEach((op, index) => {
+        operators
+            .filter(op => {
+                const detail = dailyData.get(op.id);
+                return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
+            })
+            .forEach((op, index) => {
              const detail = dailyData.get(op.id);
              const cumulative = monthlyCumulative.get(op.id);
              const { text: statusText } = renderStatus(detail);
@@ -290,7 +295,12 @@ a.click();
                     </table>
 
                     <div className="space-y-4">
-                        {operators.map(op => {
+                        {operators
+                            .filter(op => {
+                                const detail = dailyData.get(op.id);
+                                return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
+                            })
+                            .map(op => {
                             const detail = dailyData.get(op.id);
                             const cumulative = monthlyCumulative.get(op.id);
                             const status = renderStatus(detail);
@@ -309,14 +319,14 @@ a.click();
                                     <table className="w-full text-[10px]">
                                         <thead className="bg-gray-100 text-gray-700">
                                             <tr>
-                                                <th className="p-1 text-left font-semibold">Dettaglio Giorno</th>
-                                                <th className="p-1 text-left font-semibold">Stato Mensile</th>
+                                                <th className="p-1 text-left font-semibold" colSpan={2}>Dettaglio Giorno</th>
+                                                <th className="p-1 text-left font-semibold" colSpan={2}>Stato Mensile</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                             <tr className="border-b"><td className="p-1">Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span></td><td className="p-1">Cumulativo: <span className="font-bold">{cumulative?.ordinary || 0}h</span></td></tr>
-                                             <tr className="border-b"><td className="p-1">Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span></td><td className="p-1">Cumulativo: <span className="font-bold">{cumulative?.overtime || 0}h</span></td></tr>
-                                             <tr><td className="p-1">Permessi: <span className="font-bold">{detail?.shift?.permissionHours || 0}h</span></td><td className="p-1">Cumulativo: <span className="font-bold">{cumulative?.leave || 0}h</span></td></tr>
+                                             <tr className="border-b"><td className="p-1">Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span></td><td></td><td className="p-1">Cumulativo Ordinarie: <span className="font-bold">{cumulative?.ordinary || 0}h</span></td></tr>
+                                             <tr className="border-b"><td className="p-1">Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span></td><td></td><td className="p-1">Cumulativo Straordinari: <span className="font-bold">{cumulative?.overtime || 0}h</span></td></tr>
+                                             <tr><td className="p-1">Permessi: <span className="font-bold">{detail?.shift?.permissionHours || 0}h</span></td><td></td><td className="p-1">Cumulativo Permessi: <span className="font-bold">{cumulative?.leave || 0}h</span></td></tr>
                                         </tbody>
                                     </table>
                                 </div>
