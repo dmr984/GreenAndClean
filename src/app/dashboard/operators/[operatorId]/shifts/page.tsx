@@ -123,7 +123,6 @@ export default function ShiftApprovalPage() {
     const [bookedShiftDays, setBookedShiftDays] = useState<Date[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
-    const [associatedOvertime, setAssociatedOvertime] = useState(0);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -338,32 +337,6 @@ export default function ShiftApprovalPage() {
             unsubOvertime();
         }
     }, [firestore, operatorId, toast, operator]);
-
-    useEffect(() => {
-        if (!isDetailOpen || !detailShift || !firestore || !operatorId) {
-            setAssociatedOvertime(0);
-            return;
-        }
-
-        const fetchAssociatedOvertime = async () => {
-            const requestsRef = collection(firestore, `app-users/${operatorId}/requests`);
-            const q = query(requestsRef, 
-                where('associatedShiftId', '==', detailShift.id), 
-                where('type', '==', 'straordinario'),
-                where('status', '==', 'approvato')
-            );
-            
-            const querySnapshot = await getDocs(q);
-            let totalOvertime = 0;
-            querySnapshot.forEach((doc) => {
-                totalOvertime += doc.data().hours || 0;
-            });
-            setAssociatedOvertime(totalOvertime);
-        };
-
-        fetchAssociatedOvertime();
-    }, [isDetailOpen, detailShift, firestore, operatorId]);
-
 
     const { pendingShifts } = useMemo(() => {
         const pending = allShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
@@ -669,9 +642,47 @@ export default function ShiftApprovalPage() {
         });
     };
 
-    const handleOpenDetailDialog = (shift: CombinedShiftHistoryItem) => {
+    const handleOpenDetailDialog = async (shift: CombinedShiftHistoryItem) => {
         if (shift.type === 'regular') {
-            setDetailShift(shift);
+            // For regular shifts, we might need to fetch associated break events
+            // if they were added manually during approval.
+            const shiftId = shift.id;
+            const shiftDate = shift.events[0].timestamp.toDate();
+            const startOfShiftDay = startOfDay(shiftDate);
+            const endOfShiftDay = endOfDay(shiftDate);
+
+            const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`),
+                where('shiftId', '==', shiftId),
+                where('timestamp', '>=', startOfShiftDay),
+                where('timestamp', '<=', endOfShiftDay)
+            );
+            
+            const dayEventsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`),
+                 where('timestamp', '>=', startOfShiftDay),
+                 where('timestamp', '<=', endOfShiftDay)
+            );
+
+
+            const [shiftIdSnapshot, dayEventsSnapshot] = await Promise.all([getDocs(timbratureQuery), getDocs(dayEventsQuery)]);
+            
+            let allRelevantEvents: Timbratura[] = [];
+            if (!shiftIdSnapshot.empty) {
+                allRelevantEvents = shiftIdSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            } else {
+                 allRelevantEvents = dayEventsSnapshot.docs.filter(d => {
+                     const eventDay = d.data().timestamp.toDate().toDateString();
+                     return eventDay === shiftDate.toDateString();
+                 }).map(d => ({ id: d.id, ...d.data() } as Timbratura));
+            }
+            
+            const processedShift = processShift(allRelevantEvents, new Set());
+
+            if (processedShift) {
+                setDetailShift({ ...shift, ...processedShift, events: allRelevantEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()) });
+            } else {
+                 setDetailShift(shift);
+            }
+
             setIsDetailOpen(true);
         } else {
             setDetailOvertimeShift(shift);
@@ -1574,19 +1585,17 @@ export default function ShiftApprovalPage() {
                         const dayName = dayIndexToName[getDayFns(detailShift.date)];
                         const schedule = operator.workSchedule[dayName];
                         const ignoreContractualStart = detailShift.ignoreContractualStart || false;
-
-                        const { ordinary, overtime, leave, worked } = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
-
-                        const totalOvertime = overtime + associatedOvertime;
+                        
+                        const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
                         
                         let mainResultLabel = 'Straordinari';
-                        let mainResultValue = `${totalOvertime}h`;
+                        let mainResultValue = `${overtime}h`;
 
-                        if (totalOvertime === 0 && leave > 0) {
+                        if (overtime === 0 && leave > 0) {
                             mainResultLabel = 'Permessi';
                             mainResultValue = `${leave}h`;
-                        } else if (totalOvertime > 0 && leave > 0) {
-                             mainResultValue = `${totalOvertime}h (Perm: ${leave}h)`;
+                        } else if (overtime > 0 && leave > 0) {
+                             mainResultValue = `${overtime}h (Perm: ${leave}h)`;
                         }
 
                         return (

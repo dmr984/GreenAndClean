@@ -164,28 +164,16 @@ const PrintPageContent = () => {
         doc.setTextColor(100);
         doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, 195, 26, { align: 'right' });
         
-        // 2. Summary List
+        // 2. Summary Table
         const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
         const totalDue = ordinaryCost + overtimeCost;
-
+    
         const summaryBody = [
-            [
-                `GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`,
-                `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`
-            ],
-            [
-                `ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`,
-                `COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}/h): ${ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`
-            ],
-            [
-                `ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`,
-                `COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}/h): ${overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`
-            ],
-            [
-                `ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`,
-                `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`
-            ],
+            [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`],
+            [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${(operator.hourlyRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+            [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${(operator.overtimeRate || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+            [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`]
         ];
 
         autoTable(doc, {
@@ -194,20 +182,24 @@ const PrintPageContent = () => {
             theme: 'plain',
             styles: {
                 fontSize: 9,
-                cellPadding: { top: 1.5, right: 0, bottom: 1.5, left: 0 },
+                cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
+            },
+            didParseCell: function (data) {
+                // Set bold for labels and values
+                data.cell.styles.fontStyle = 'bold';
             },
             columnStyles: {
                 0: { halign: 'left' },
                 1: { halign: 'right' }
             }
         });
+    
+        let finalY = (doc as any).lastAutoTable.finalY + 5;
         
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        const finalY = (doc as any).lastAutoTable.finalY + 5;
-        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}`, 195, finalY, { align: 'right' });
+        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, 195, finalY, { align: 'right' });
 
-    
         // 3. Daily Details
         const dailyDetailStartY = finalY + 10;
         doc.setFontSize(12);
@@ -232,7 +224,7 @@ const PrintPageContent = () => {
             }
 
             return [
-                { content: `${dayOfWeek} ${restOfDate}`, styles: { fontStyle: 'bold' } },
+                { content: `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`, styles: { fontStyle: 'bold' } },
                 { content: line1 },
                 { content: line2 }
             ];
@@ -358,7 +350,7 @@ const PrintPageContent = () => {
                         </tbody>
                     </table>
 
-                    {/* Summary List */}
+                    {/* Summary Table */}
                     <div className="mb-4">
                         <table className="w-full text-xs">
                             <tbody>
