@@ -153,42 +153,47 @@ const PrintPageContent = () => {
             let y = 20;
 
             const addHeader = (isFirstPage: boolean) => {
-                if (!isFirstPage) return;
-                try {
-                    const img = new Image();
-                    img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-                    img.crossOrigin = "Anonymous";
-                    doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
-                } catch (e) {
-                    console.error("Could not add image to PDF", e);
-                }
+                 if (isFirstPage) {
+                    try {
+                        const img = new Image();
+                        img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
+                        img.crossOrigin = "Anonymous";
+                        doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
+                    } catch (e) {
+                        console.error("Could not add image to PDF", e);
+                    }
 
-                doc.setFontSize(14);
-                doc.setFont('helvetica', 'bold');
-                doc.text("Report Giornaliero", pageWidth - margin, y, { align: 'right' });
-                y += 7;
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(100);
-                const dateStr = format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it });
-                doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth - margin, y, { align: 'right' });
-                y += 15;
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text("Report Giornaliero", pageWidth - margin, y, { align: 'right' });
+                    y += 7;
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100);
+                    const dateStr = format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it });
+                    doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth - margin, y, { align: 'right' });
+                    y += 15;
+                }
             };
 
             addHeader(true);
 
             operators.forEach((op, index) => {
                 const detail = dailyData.get(op.id);
-                if (!detail || (detail.status !== 'lavorato' && !detail.note)) {
-                    return; // Skip operators with no relevant activity
+                
+                if (y > pageHeight - 40) {
+                    doc.addPage();
+                    y = 20;
+                    addHeader(false); // No header on subsequent pages
                 }
+
+                if (!detail || (detail.status === 'riposo' && !detail.note) ) return;
 
                 const cumulative = monthlyCumulative.get(op.id);
 
-                let timbratureStr = 'Nessuna attività registrata.';
-                if (detail?.shift) {
-                    const events = detail.shift.events || [];
-                    timbratureStr = events.map(e => {
+                let timbratureStr = detail.note || '';
+                if (detail.shift) {
+                    timbratureStr = detail.shift.events.map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                         let referenceTime = '';
                         if (e.type === 'entrata' && detail.shift?.calculationStart) {
@@ -201,40 +206,38 @@ const PrintPageContent = () => {
                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                     }).join(' | ');
-                } else if (detail?.note) {
-                    timbratureStr = detail.note;
+                } else if(detail.status === 'ferie') {
+                    timbratureStr = "Giorno di Ferie";
+                } else if(detail.status === 'malattia') {
+                    timbratureStr = "Giorno di Malattia";
+                } else if(detail.status === 'festa') {
+                    timbratureStr = "Giorno Festivo";
                 }
 
                 const operatorName = `${op.firstName} ${op.lastName}`;
-                const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
-                const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
-
-                if (y > pageHeight - 40) {
-                    doc.addPage();
-                    y = 20;
-                    addHeader(false); // No header on subsequent pages
-                }
                 
-                doc.setFontSize(14);
+                doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
-                doc.setTextColor(0, 0, 0);
+                doc.setTextColor(0,0,0);
                 doc.text(operatorName, margin, y);
-
-                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 const operatorNameWidth = doc.getTextWidth(operatorName);
-                doc.text(timbratureStr, margin + operatorNameWidth + 3, y);
-                y += 7;
+                doc.text(` | ${timbratureStr}`, margin + operatorNameWidth + 1, y);
+                y += 6;
 
                 doc.setFontSize(11);
-                const splitDetailGiorno = doc.splitTextToSize(detailGiorno, pageWidth - margin * 2);
-                doc.text(splitDetailGiorno, margin, y);
+                doc.setTextColor(0,0,0);
+                const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail.shift?.ordinaryHours || 0}h, Straordinari: ${detail.shift?.overtimeHours || 0}h, Permessi: ${detail.shift?.permissionHours || 0}h`;
+                const statoMensile = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
+                
+                const splitDetailGiorno = doc.splitTextToSize(detailGiorno, pageWidth - margin * 2 - 3);
+                doc.text(splitDetailGiorno, margin + 3, y);
                 y += (splitDetailGiorno.length * 5) + 2;
 
-                const splitStatoMensile = doc.splitTextToSize(statoMensile, pageWidth - margin * 2);
-                doc.text(splitStatoMensile, margin, y);
+                const splitStatoMensile = doc.splitTextToSize(statoMensile, pageWidth - margin * 2 - 3);
+                doc.text(splitStatoMensile, margin + 3, y);
                 y += (splitStatoMensile.length * 5) + 4;
-
+                
 
                 if (index < operators.length - 1) {
                     doc.setDrawColor(200, 200, 200);
@@ -268,7 +271,7 @@ const PrintPageContent = () => {
         a.href = URL.createObjectURL(pdf.blob);
         a.download = pdf.fileName;
         document.body.appendChild(a);
-a.click();
+        a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
     };
@@ -336,21 +339,15 @@ a.click();
                     </div>
 
                     <div className="space-y-4">
-                        {operators
-                            .map(op => {
+                         {operators.map(op => {
                             const detail = dailyData.get(op.id);
-                            
-                            // Skip rendering if there's no detail or no relevant activity
-                            if (!detail || (detail.status !== 'lavorato' && !detail.note)) {
-                                return null;
-                            }
+                            if (!detail || (detail.status === 'riposo' && !detail.note) ) return null;
 
                             const cumulative = monthlyCumulative.get(op.id);
                             
                             let timbratureStr = detail.note || '';
-                            if (detail.shift) {
-                                const events = detail.shift.events || [];
-                                timbratureStr = events.map(e => {
+                             if (detail.shift) {
+                                timbratureStr = detail.shift.events.map(e => {
                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                     let referenceTime = '';
 
@@ -361,19 +358,25 @@ a.click();
                                         const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
                                         if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                                     }
-                                    return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
+                                    const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                    return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
+                            } else if(detail.status === 'ferie') {
+                                timbratureStr = "Giorno di Ferie";
+                            } else if(detail.status === 'malattia') {
+                                timbratureStr = "Giorno di Malattia";
+                            } else if(detail.status === 'festa') {
+                                timbratureStr = "Giorno Festivo";
                             }
 
                             return (
                                 <div key={op.id} className="pt-2 pb-3 text-sm print:break-inside-avoid border-b border-gray-400 last:border-b-0">
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
-                                            <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
+                                            <p className="font-bold text-base text-black">{op.firstName} {op.lastName} | <span className="font-normal text-sm">{timbratureStr}</span></p>
                                         </div>
                                     </div>
-                                    <p className="text-black text-sm mb-2">{timbratureStr}</p>
-                                    <div className="text-sm text-black space-y-1">
+                                    <div className="text-sm text-black space-y-1 pl-1">
                                          <p>
                                             <span className='font-bold'>Dettaglio Giorno:</span> Ore Ordinarie: <span className="font-bold">{detail?.shift?.ordinaryHours || 0}h</span>,
                                             Straordinari: <span className="font-bold">{detail?.shift?.overtimeHours || 0}h</span>,
