@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
+import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours } from '@/lib/calculations';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -388,13 +388,12 @@ export default function EndOfMonthPage() {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
                                                      let referenceTime = '';
 
-                                                    if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
-                                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                                        }
+                                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                                        if(calcStart !== originalTime.substring(0,5)) referenceTime = `(${calcStart})`;
+                                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                                        if(calcEnd !== originalTime.substring(0,5)) referenceTime = `(${calcEnd})`;
                                                     }
 
                                                     return (

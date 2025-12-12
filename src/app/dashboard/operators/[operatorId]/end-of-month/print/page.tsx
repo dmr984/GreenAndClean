@@ -9,7 +9,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { format, isValid, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails } from '@/lib/calculations';
+import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails, calculateHours } from '@/lib/calculations';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -257,7 +257,19 @@ const PrintPageContent = () => {
             const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
     
             if (detail.shift) {
-                const timbratureStr = detail.shift.events.map(e => `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${format(e.timestamp.toDate(), 'HH:mm')}`).join(' | ');
+                const timbratureStr = detail.shift.events.map(e => {
+                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                     let referenceTime = '';
+
+                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                        if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                         if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                    }
+                    return `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
+                }).join(' | ');
                 line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             } else {
@@ -428,15 +440,14 @@ const PrintPageContent = () => {
                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                      let referenceTime = '';
 
-                                    if (operator && (e.type === 'entrata' || e.type === 'uscita')) {
-                                        const { calculationStart, calculationEnd } = calculateShiftDetails(detail.shift.events, operator.workSchedule[dayIndexToName[getDay(detail.date)]], e.ignoreContractualStart);
-                                        if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                        } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000) {
-                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                        }
+                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                        if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                         if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                                     }
-                                    return `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()
+                                    return `${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
                                 line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
                                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
