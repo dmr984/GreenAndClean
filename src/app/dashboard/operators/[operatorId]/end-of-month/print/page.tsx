@@ -145,7 +145,7 @@ const PrintPageContent = () => {
     }, [operator, currentMonth, monthlyData, isLoading]);
 
     const formatFullRate = (rate?: number) => {
-        if (typeof rate !== 'number') return '0,00';
+        if (typeof rate !== 'number') return '0,0000';
         return rate.toLocaleString('it-IT', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 4,
@@ -162,10 +162,8 @@ const PrintPageContent = () => {
         const margin = 15;
         let y = 20;
     
-        // Add custom font if needed
         doc.setFont('helvetica', 'normal');
     
-        // 1. Header
         const addHeader = async () => {
             try {
                 const img = new Image();
@@ -193,13 +191,10 @@ const PrintPageContent = () => {
         await addHeader();
         y += 15;
     
-        // 2. Summary Section
         const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
         const totalDue = ordinaryCost + overtimeCost;
         
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0,0,0);
         (doc as any).autoTable({
             startY: y,
             theme: 'plain',
@@ -215,8 +210,9 @@ const PrintPageContent = () => {
                 1: { halign: 'right' },
             }
         });
-        y = (doc as any).lastAutoTable.finalY + 2;
+        y = (doc as any).lastAutoTable.finalY;
     
+        y += 2;
         doc.setDrawColor(0,0,0);
         doc.setLineWidth(0.5);
         doc.line(margin, y, pageWidth - margin, y);
@@ -227,7 +223,6 @@ const PrintPageContent = () => {
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
         y += 15;
     
-        // 3. Daily Details Section
         doc.setFontSize(12);
         doc.setTextColor(0,0,0);
         doc.text("Dettaglio Giornaliero", margin, y);
@@ -281,7 +276,7 @@ const PrintPageContent = () => {
         });
     
         const blob = doc.output('blob');
-        const fileName = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
+        const fileName = `${operator.lastName}_${operator.firstName}_${format(currentMonth, 'MMMM_yyyy', { locale: it })}.pdf`;
     
         setIsGenerating(false);
         return { blob, fileName };
