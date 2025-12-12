@@ -341,7 +341,9 @@ const PrintPageContent = () => {
                     <div className="space-y-4">
                          {operators.map(op => {
                             const detail = dailyData.get(op.id);
-                            if (!detail || (detail.status === 'riposo' && !detail.note)) return null;
+                             if (!detail || (detail.status === 'riposo' && !detail.note)) {
+                                return null;
+                            }
 
                             const cumulative = monthlyCumulative.get(op.id);
                             
@@ -373,7 +375,7 @@ const PrintPageContent = () => {
                                 <div key={op.id} className="pt-2 pb-3 text-sm print:break-inside-avoid border-b border-gray-400 last:border-b-0">
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
-                                            <p className="font-bold text-base text-black">{op.firstName} {op.lastName} | <span className="font-normal text-sm">{timbratureStr}</span></p>
+                                            <p className="font-bold text-base text-black">{op.firstName} {op.lastName} | <span className="font-normal text-black text-sm">{timbratureStr}</span></p>
                                         </div>
                                     </div>
                                     <div className="text-sm text-black space-y-1 pl-1">
@@ -421,3 +423,5 @@ export default function PrintPage() {
         </div>
     );
 }
+
+    
