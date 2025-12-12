@@ -6,13 +6,15 @@ import { useFirestore } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
 import { Loader2, Printer, Download, Share2, X, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { Toaster } from '@/components/ui/toaster';
+
 
 type Operator = {
     id: string;
@@ -335,6 +337,7 @@ a.click();
                     </div>
                 </div>
             </main>
+             <Toaster />
         </div>
     );
 };
@@ -350,4 +353,3 @@ export default function PrintPage() {
         </Suspense>
     );
 }
-
