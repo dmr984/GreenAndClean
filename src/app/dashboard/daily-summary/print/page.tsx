@@ -177,7 +177,8 @@ const PrintPageContent = () => {
 
         const filteredOperators = operators.filter(op => {
             const detail = dailyData.get(op.id);
-            return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
+            // Show if worked, or if absent with a note
+            return detail?.status === 'lavorato' || (detail?.status === 'mancata_timbratura' && detail?.note);
         });
 
         filteredOperators.forEach((op, index) => {
@@ -200,7 +201,10 @@ const PrintPageContent = () => {
                     }
                     return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
                 }).join(' | ');
+            } else if (detail?.note) {
+                timbratureStr = detail.note;
             }
+
 
             const operatorName = `${op.firstName} ${op.lastName}`;
             const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
@@ -327,7 +331,7 @@ const PrintPageContent = () => {
                         {operators
                             .filter(op => {
                                 const detail = dailyData.get(op.id);
-                                return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
+                                return detail?.status === 'lavorato' || (detail?.status === 'mancata_timbratura' && detail?.note);
                             })
                             .map(op => {
                             const detail = dailyData.get(op.id);
