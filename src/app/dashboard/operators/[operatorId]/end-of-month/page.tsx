@@ -3,7 +3,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useFirestore } from '@/firebase';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
@@ -241,14 +241,16 @@ export default function EndOfMonthPage() {
 
         const dateString = format(editingNote.date, 'yyyy-MM-dd');
         const noteRef = doc(firestore, `app-users/${operatorId}/daily-notes`, dateString);
+        
+        const noteData = {
+            note: noteContent,
+            date: dateString,
+            userId: operatorId,
+            updatedAt: serverTimestamp()
+        };
 
-        try {
-            await setDoc(noteRef, {
-                note: noteContent,
-                date: dateString,
-                userId: operatorId,
-                updatedAt: serverTimestamp()
-            });
+        setDoc(noteRef, noteData)
+        .then(() => {
             toast({ title: 'Nota salvata', description: 'La nota per il giorno selezionato è stata aggiornata.'});
             setMonthlyData(prev => ({
                 ...prev,
@@ -257,13 +259,22 @@ export default function EndOfMonthPage() {
                     { note: noteContent, date: dateString }
                 ]
             }));
-        } catch(error) {
-            console.error("Error saving note:", error);
-            toast({ title: 'Errore', description: 'Impossibile salvare la nota.', variant: 'destructive'});
-        } finally {
+        })
+        .catch(err => {
+            if (err.code === 'permission-denied') {
+                errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    operation: 'write',
+                    path: noteRef.path,
+                    requestResourceData: noteData,
+                }));
+            } else {
+                toast({ title: 'Errore', description: 'Impossibile salvare la nota.', variant: 'destructive'});
+            }
+        })
+        .finally(() => {
             setEditingNote(null);
             setNoteContent('');
-        }
+        });
     };
 
     if (!operator || !currentMonth) {
