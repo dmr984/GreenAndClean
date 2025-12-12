@@ -289,14 +289,15 @@ const PrintPageContent = () => {
     const handleDownload = async () => {
         const pdf = await generatePdf();
         if (!pdf) return;
-        const url = URL.createObjectURL(pdf.blob);
+
+        // Create an anchor element and trigger the download
         const a = document.createElement('a');
-        a.href = url;
+        a.href = URL.createObjectURL(pdf.blob);
         a.download = pdf.fileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(a.href);
     };
 
     const handleShare = async () => {
@@ -438,7 +439,7 @@ const PrintPageContent = () => {
                                     <p className="font-bold text-black text-[9px] capitalize leading-tight">
                                         {line1}
                                     </p>
-                                    {line2 && <p className="text-gray-800 text-[8px] pl-1 leading-tight">{line2}</p>}
+                                    {line2 && <p className="text-gray-600 text-[8px] pl-1 leading-tight">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
