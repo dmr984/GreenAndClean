@@ -371,6 +371,17 @@ export default function ShiftApprovalPage() {
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
+    const proceedWithApproval = async () => {
+        if (!approvalContext || !firestore || !operator) return;
+        const { shift, isOvertimeShift } = approvalContext;
+    
+        if (isOvertimeShift) {
+            await handleOvertimeShiftAction(shift as StraordinarioShift, 'approve', approvalContext.manualBreak);
+        } else {
+            await handleRegularShiftApproval();
+        }
+    };
+    
     const handleApprovalClick = () => {
         if (!approvalContext) return;
         const { leaveHours, createLeaveRequest } = approvalContext;
@@ -379,21 +390,14 @@ export default function ShiftApprovalPage() {
         if (hasLeaveHours && !createLeaveRequest) {
             setIsConfirmingNoLeave(true);
         } else {
-            handleConfirmApprove();
+            proceedWithApproval();
         }
     };
 
 
     const handleConfirmApprove = async () => {
-        if (!firestore || !approvalContext || !operator) return;
-
-        const { shift, isOvertimeShift } = approvalContext;
-
-        if (isOvertimeShift) {
-            handleOvertimeShiftAction(shift as StraordinarioShift, 'approve', approvalContext.manualBreak);
-        } else {
-            handleRegularShiftApproval();
-        }
+        setIsConfirmingNoLeave(false);
+        await proceedWithApproval();
     };
     
     const handleRegularShiftApproval = async () => {
@@ -1897,7 +1901,7 @@ export default function ShiftApprovalPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel onClick={() => setIsConfirmingNoLeave(false)}>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => { setIsConfirmingNoLeave(false); handleConfirmApprove(); }}>Conferma</AlertDialogAction>
+                        <AlertDialogAction onClick={handleConfirmApprove}>Conferma</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
