@@ -203,13 +203,23 @@ const DailySummaryPage = () => {
                                 const cumulative = monthlyCumulative.get(op.id);
                                 
                                 let timbratureString = '';
-                                if(detail?.shift) {
-                                    const entrata = detail.shift.events.find(e => e.type === 'entrata');
-                                    const uscita = detail.shift.events.find(e => e.type === 'uscita');
-                                    const entrataDisplay = entrata ? `Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationStart ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}` : '';
-                                    const uscitaDisplay = uscita ? `Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationEnd ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}` : '';
-                                    timbratureString = [entrataDisplay, uscitaDisplay].filter(Boolean).join(' | ');
+                                if (detail?.shift) {
+                                    const events = detail.shift.events || [];
+                                    timbratureString = events.map(e => {
+                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                        let referenceTime = '';
+
+                                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                        }
+                                        return `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${originalTime} ${referenceTime}`.trim();
+                                    }).join(' | ');
                                 }
+
 
                                 return (
                                     <Card key={op.id} className={cn(detail?.status === 'mancata_timbratura' && 'bg-red-500/5 border-red-500/20')}>
@@ -262,3 +272,5 @@ const DailySummaryPage = () => {
 };
 
 export default DailySummaryPage;
+
+    

@@ -257,14 +257,15 @@ const MonthlySummaryContent = () => {
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
                                                  {detail.shift.events.map((e, index) => {
-                                                    let displayTime = '';
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                                                    if(e.type === 'entrata' && detail.shift?.calculationStart) {
-                                                         displayTime = `${originalTime} ${Math.abs(detail.shift.calculationStart.getTime() - e.timestamp.toDate().getTime()) > 1000 ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}`.trim();
+                                                    let displayTime = originalTime;
+
+                                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                                        if(calcStart !== originalTime) displayTime = `${originalTime} (${calcStart})`;
                                                     } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                                         displayTime = `${originalTime} ${Math.abs(detail.shift.calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 1000 ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}`.trim();
-                                                    } else {
-                                                        displayTime = originalTime;
+                                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                                        if(calcEnd !== originalTime) displayTime = `${originalTime} (${calcEnd})`;
                                                     }
 
                                                     return (
@@ -313,3 +314,5 @@ export default function MonthlySummaryPage() {
         </Suspense>
     );
 }
+
+    

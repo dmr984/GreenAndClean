@@ -191,15 +191,23 @@ const PrintPageContent = () => {
                 const cumulative = monthlyCumulative.get(op.id);
                 const status = renderStatus(detail);
                 
-                let timbratureStr = '';
-                if(detail?.shift) {
-                    const entrata = detail.shift.events.find(e => e.type === 'entrata');
-                    const uscita = detail.shift.events.find(e => e.type === 'uscita');
-                    const entrataDisplay = entrata ? `Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationStart ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}` : '';
-                    const uscitaDisplay = uscita ? `Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationEnd ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}` : '';
-                    timbratureStr = [entrataDisplay, uscitaDisplay].filter(Boolean).join(' | ');
+                let timbratureStr = 'Nessuna';
+                if (detail?.shift) {
+                    const events = detail.shift.events || [];
+                     timbratureStr = events.map(e => {
+                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                        let referenceTime = '';
+
+                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                        }
+                        return `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${originalTime} ${referenceTime}`.trim();
+                    }).join(' | ');
                 }
-                if (!timbratureStr) timbratureStr = 'Nessuna';
 
     
                 // Operator Name and Status
@@ -327,15 +335,23 @@ const PrintPageContent = () => {
                             const cumulative = monthlyCumulative.get(op.id);
                             const status = renderStatus(detail);
                             
-                            let timbratureStr = '';
-                            if(detail?.shift) {
-                                const entrata = detail.shift.events.find(e => e.type === 'entrata');
-                                const uscita = detail.shift.events.find(e => e.type === 'uscita');
-                                const entrataDisplay = entrata ? `Entrata: ${format(entrata.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationStart ? `(${format(detail.shift.calculationStart, 'HH:mm')})` : ''}` : '';
-                                const uscitaDisplay = uscita ? `Uscita: ${format(uscita.timestamp.toDate(), 'HH:mm')} ${detail.shift.calculationEnd ? `(${format(detail.shift.calculationEnd, 'HH:mm')})` : ''}` : '';
-                                timbratureStr = [entrataDisplay, uscitaDisplay].filter(Boolean).join(' | ');
+                            let timbratureStr = 'Nessuna';
+                            if (detail?.shift) {
+                                const events = detail.shift.events || [];
+                                timbratureStr = events.map(e => {
+                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                    let referenceTime = '';
+
+                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                        if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                        if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                    }
+                                    return `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${originalTime} ${referenceTime}`.trim();
+                                }).join(' | ');
                             }
-                            if (!timbratureStr) timbratureStr = 'Nessuna';
 
                             return (
                                 <div key={op.id} className="pt-2 pb-3 text-xs print:break-inside-avoid border-b border-gray-400 last:border-b-0">
@@ -382,3 +398,5 @@ export default function PrintPage() {
         </Suspense>
     );
 }
+
+    

@@ -72,6 +72,8 @@ export type DailyDetail = {
         ordinaryHours: number;
         overtimeHours: number;
         permissionHours: number;
+        calculationStart?: Date;
+        calculationEnd?: Date;
     } | null;
     request: Request | null;
     note?: string;
@@ -187,9 +189,9 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     };
 };
 
-export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number } => {
+export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
     
-    const { workedMinutes, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
@@ -205,7 +207,9 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
             overtime: roundOvertimeHours(workedMinutes, overtimeCalculation),
             leave: 0,
             worked: workedMinutes,
-            break: breakMinutes
+            break: breakMinutes,
+            calculationStart,
+            calculationEnd
         };
     }
 
@@ -223,7 +227,9 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
         overtime: overtimeHours, 
         leave: leaveHours,
         worked: workedMinutes,
-        break: breakMinutes
+        break: breakMinutes,
+        calculationStart,
+        calculationEnd
     };
 };
 
@@ -316,13 +322,17 @@ export const processMonthlyData = (
             let totalOrdinary = 0;
             let totalOvertime = 0;
             const allDayEvents: Timbratura[] = [];
+            let calcStart: Date | null = null;
+            let calcEnd: Date | null = null;
 
             dayShifts.forEach(shift => {
                  const ignoreContractualStart = shift.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                 const { ordinary, overtime } = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                 const { ordinary, overtime, calculationStart, calculationEnd } = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
                  totalOrdinary += ordinary;
                  totalOvertime += overtime;
                  allDayEvents.push(...shift.events);
+                 if (calculationStart) calcStart = calculationStart;
+                 if (calculationEnd) calcEnd = calculationEnd;
             });
             
             const permissionHours = monthlyData.requests
@@ -339,6 +349,8 @@ export const processMonthlyData = (
                     ordinaryHours: totalOrdinary,
                     overtimeHours: totalOvertime, 
                     permissionHours: permissionHours,
+                    calculationStart: calcStart || undefined,
+                    calculationEnd: calcEnd || undefined,
                 },
                 note: dailyNote?.note,
             });
@@ -399,3 +411,5 @@ export const processMonthlyData = (
         dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
+
+    
