@@ -216,7 +216,7 @@ const DailySummaryPage = () => {
                                             const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
                                             if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                                         }
-                                        return `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${originalTime} ${referenceTime}`.trim();
+                                        return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
                                     }).join(' | ');
                                 }
 
@@ -272,5 +272,3 @@ const DailySummaryPage = () => {
 };
 
 export default DailySummaryPage;
-
-    

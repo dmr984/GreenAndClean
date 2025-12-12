@@ -140,116 +140,52 @@ const PrintPageContent = () => {
         }
     };
     
-    const handlePrint = () => {
-        window.print();
-    };
-    
     const generatePdf = async (): Promise<{ blob: Blob; fileName: string } | null> => {
-        if (!selectedDate || operators.length === 0) return null;
         setIsGenerating(true);
-    
-        const doc = new jsPDF('p', 'mm', 'a4');
-        const pageHeight = doc.internal.pageSize.height;
-        const pageWidth = doc.internal.pageSize.width;
-        const margin = 15;
-        let y = 20;
-    
-        // Header
-        try {
-            const img = new Image();
-            img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-            img.crossOrigin = "Anonymous";
-            await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
-            doc.addImage(img, 'PNG', margin, y - 10, 15, 15);
-        } catch (e) {
-            console.error("Could not load image for PDF header", e);
+        const pdfContainer = document.getElementById('print-content');
+        if (!pdfContainer || !selectedDate) {
+            setIsGenerating(false);
+            return null;
         }
-    
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Report Giornaliero', pageWidth - margin, y, { align: 'right' });
-        y += 7;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100);
-        doc.text(format(selectedDate, 'eeee, dd MMMM yyyy', { locale: it }), pageWidth - margin, y, { align: 'right', 'charSpace': 0.1, 'lineHeightFactor': 1.5});
-        y += 15;
-    
-        // Content
-        operators
-            .filter(op => {
-                const detail = dailyData.get(op.id);
-                return detail?.status !== 'mancata_timbratura' && detail?.status !== 'riposo';
-            })
-            .forEach(op => {
-                if (y > pageHeight - 40) { // Check for page break
-                    doc.addPage();
-                    y = 20;
-                }
-    
-                const detail = dailyData.get(op.id);
-                const cumulative = monthlyCumulative.get(op.id);
-                const status = renderStatus(detail);
-                
-                let timbratureStr = 'Nessuna';
-                if (detail?.shift) {
-                    const events = detail.shift.events || [];
-                     timbratureStr = events.map(e => {
-                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                        let referenceTime = '';
 
-                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                        }
-                        return `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${originalTime} ${referenceTime}`.trim();
-                    }).join(' | ');
-                }
+        const { jsPDF } = await import('jspdf');
+        const html2canvas = (await import('html2canvas')).default;
 
-    
-                // Operator Name and Status
-                doc.setFontSize(12);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(0);
-                doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.text(status.text, pageWidth - margin, y, { align: 'right' });
-                y += 6;
-    
-                // Timbrature
-                doc.setFontSize(8);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(50, 50, 50);
-                doc.text(`Timbrature: ${timbratureStr}`, margin, y);
-                y += 5;
-    
-                // Day and Month Details on one line
-                const detailDayStr = `Dettaglio Giorno: Ore Ordinarie: ${detail?.shift?.ordinaryHours || 0}h, Straordinari: ${detail?.shift?.overtimeHours || 0}h, Permessi: ${detail?.shift?.permissionHours || 0}h`;
-                const detailMonthStr = `Stato Mensile: Cum. Ordinarie: ${cumulative?.ordinary || 0}h, Cum. Straordinari: ${cumulative?.overtime || 0}h, Cum. Permessi: ${cumulative?.leave || 0}h`;
-                
-                doc.setFontSize(8);
-                doc.setFont('helvetica', 'bold');
-                doc.text(detailDayStr, margin, y);
-                y += 4;
-                doc.setFont('helvetica', 'normal');
-                doc.text(detailMonthStr, margin, y);
-                y += 6;
-    
-                // Separator line
-                doc.setDrawColor(200);
-                doc.setLineWidth(0.2);
-                doc.line(margin, y, pageWidth - margin, y);
-                y += 8;
-            });
+        const canvas = await html2canvas(pdfContainer, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
         
+        const doc = new jsPDF({
+            orientation: 'p',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const pdfWidth = doc.internal.pageSize.getWidth();
+        const pdfHeight = doc.internal.pageSize.getHeight();
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const ratio = canvasWidth / canvasHeight;
+        
+        let imgWidth = pdfWidth;
+        let imgHeight = pdfWidth / ratio;
+        
+        // If the calculated height is greater than the page height, it means we need to scale by height instead.
+        if (imgHeight > pdfHeight) {
+            imgHeight = pdfHeight;
+            imgWidth = pdfHeight * ratio;
+        }
+
+        doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
         const blob = doc.output('blob');
         const fileName = `Report_Giornaliero_${format(selectedDate, 'yyyy-MM-dd')}.pdf`;
         setIsGenerating(false);
         return { blob, fileName };
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
 
     const handleDownload = async () => {
         const pdf = await generatePdf();
@@ -349,7 +285,7 @@ const PrintPageContent = () => {
                                         const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
                                         if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                                     }
-                                    return `${e.type.charAt(0).toUpperCase() + e.type.slice(1)}: ${originalTime} ${referenceTime}`.trim();
+                                    return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
                             }
 
@@ -387,16 +323,27 @@ const PrintPageContent = () => {
     );
 };
 
+const PrintPageWrapper = () => (
+    <Suspense fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    }>
+        <PrintPageContent />
+    </Suspense>
+);
+
+// We need to conditionally import html2canvas only on the client
+// to avoid "window is not defined" error during server-side rendering.
 export default function PrintPage() {
-    return (
-        <Suspense fallback={
-            <div className="flex h-screen w-full items-center justify-center bg-background">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            </div>
-        }>
-            <PrintPageContent />
-        </Suspense>
+    const [isClient, setIsClient] = useState(false);
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
+
+    return isClient ? <PrintPageWrapper /> : (
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
     );
 }
-
-    
