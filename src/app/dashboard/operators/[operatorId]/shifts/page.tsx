@@ -23,10 +23,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isPublicHoliday } from '@/lib/holidays';
 import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours } from '@/lib/calculations';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const weekDayLabels: Record<DayOfWeek, string> = { monday: 'Lunedì', tuesday: 'Martedì', wednesday: 'Mercoledì', thursday: 'Giovedì', friday: 'Venerdì', saturday: 'Sabato', sunday: 'Domenica' };
+
 
 type DailySchedule = {
     totalHours?: number;
@@ -59,6 +62,7 @@ type Timbratura = {
     isAuto?: boolean;
     shiftId?: string;
     ignoreContractualStart?: boolean;
+    makeupOfDay?: DayOfWeek;
 };
 
 type Shift = {
@@ -148,6 +152,8 @@ export default function ShiftApprovalPage() {
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
+    const [newShiftIsMakeup, setNewShiftIsMakeup] = useState(false);
+    const [newShiftMakeupDay, setNewShiftMakeupDay] = useState<DayOfWeek | ''>('');
     const [currentPage, setCurrentPage] = useState(0);
     const [overtimeShiftForBreak, setOvertimeShiftForBreak] = useState<StraordinarioShift | null>(null);
     const [isOvertimeMissingBreakConfirmOpen, setIsOvertimeMissingBreakConfirmOpen] = useState(false);
@@ -221,8 +227,9 @@ export default function ShiftApprovalPage() {
         
         const shiftDateStr = format(startTime.toDate(), 'yyyy-MM-dd');
         const isOnLeaveDay = leaveDays.has(shiftDateStr);
-        const isOvertime = events.find(e => e.type === 'entrata')?.isOvertime ?? false;
-        const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart ?? false;
+        const clockInEvent = events.find(e => e.type === 'entrata');
+        const isOvertime = clockInEvent?.isOvertime ?? false;
+        const ignoreContractualStart = clockInEvent?.ignoreContractualStart ?? false;
 
         return { date: startTime.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart };
     };
@@ -371,6 +378,11 @@ export default function ShiftApprovalPage() {
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
+    const handleConfirmApprove = async () => {
+        setIsConfirmingNoLeave(false);
+        await proceedWithApproval();
+    };
+
     const proceedWithApproval = async () => {
         if (!approvalContext || !firestore || !operator) return;
         const { shift, isOvertimeShift } = approvalContext;
@@ -392,12 +404,6 @@ export default function ShiftApprovalPage() {
         } else {
             proceedWithApproval();
         }
-    };
-
-
-    const handleConfirmApprove = async () => {
-        setIsConfirmingNoLeave(false);
-        await proceedWithApproval();
     };
     
     const handleRegularShiftApproval = async () => {
@@ -713,11 +719,13 @@ export default function ShiftApprovalPage() {
     
     const getContractualHoursForShift = (shift: Shift | null): number => {
         if (!shift || !operator?.workSchedule) return 0;
-        const shiftDate = shift.events[0]?.timestamp.toDate();
-        if (!shiftDate) return 0;
-        const dayOfWeek = getDayFns(shiftDate);
-        const dayName = dayIndexToName[dayOfWeek];
-        return operator.workSchedule[dayName]?.totalHours || 0;
+        
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        if(!clockInEvent) return 0;
+
+        const dayToUse = clockInEvent.makeupOfDay || dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
+
+        return operator.workSchedule[dayToUse]?.totalHours || 0;
     };
     
     
@@ -725,8 +733,10 @@ export default function ShiftApprovalPage() {
         if (!operator || !shift.events[0]) return;
 
         const hasBreak = shift.events.some(e => e.type === 'pausa');
-        const dayName = dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())];
-        const dailySchedule = operator.workSchedule[dayName];
+        
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(shift.events[0].timestamp.toDate())];
+        const dailySchedule = operator.workSchedule[dayToUse];
         const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
 
         if (isSameDay(shift.events[0].timestamp.toDate(), new Date()) && !shift.events.some(e=> e.type === 'uscita')){
@@ -754,8 +764,9 @@ export default function ShiftApprovalPage() {
         if (!shiftForBreak || !operator) return;
 
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
-        const dayName = dayIndexToName[getDayFns(shiftDate)];
-        const mandatoryBreakMinutes = operator.workSchedule[dayName]?.breakMinutes || 0;
+        const clockInEvent = shiftForBreak.events.find(e => e.type === 'entrata');
+        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(shiftDate)];
+        const mandatoryBreakMinutes = operator.workSchedule[dayToUse]?.breakMinutes || 0;
 
         const existingBreakStart = shiftForBreak.events.find(e => e.type === 'pausa');
         
@@ -838,8 +849,9 @@ export default function ShiftApprovalPage() {
             overtime = roundOvertimeHours(workedMinutes, operator?.overtimeCalculation);
         } else {
             const regularShift = shift as Shift;
-            const dayName = dayIndexToName[getDayFns(regularShift.date)];
-            const schedule = operator.workSchedule[dayName];
+            const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
+            const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(regularShift.date)];
+            const schedule = operator.workSchedule[dayToUse];
             const ignoreContractualStart = regularShift.ignoreContractualStart || false;
             
             const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
@@ -854,7 +866,7 @@ export default function ShiftApprovalPage() {
             overtimeHours: String(overtime),
             leaveHours: String(leave),
             manualBreak: manualBreak,
-            createLeaveRequest: false, // Default to false as per user request
+            createLeaveRequest: false, // Default to false
             isOvertimeShift: isOvertimeShift
         });
         setIsApproveDialogOpen(true);
@@ -961,7 +973,7 @@ export default function ShiftApprovalPage() {
         };
         
         const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(newShiftDate);
-        const isOvertime = !isWorkDay;
+        const isOvertime = !isWorkDay && !newShiftIsMakeup;
         
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
@@ -989,6 +1001,9 @@ export default function ShiftApprovalPage() {
                 };
                 if (event.type === 'entrata') {
                     eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
+                    if(newShiftIsMakeup && newShiftMakeupDay) {
+                        eventPayload.makeupOfDay = newShiftMakeupDay;
+                    }
                 }
                 batch.set(newDocRef, eventPayload);
             }
@@ -1003,6 +1018,8 @@ export default function ShiftApprovalPage() {
         setIsAddShiftOpen(false);
         setNewShiftTimes({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
         setNewShiftIgnoreContractual(false);
+        setNewShiftIsMakeup(false);
+        setNewShiftMakeupDay('');
     };
     
     
@@ -1219,8 +1236,8 @@ export default function ShiftApprovalPage() {
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
         
-        const dayName = dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
-        const schedule = operator.workSchedule[dayName];
+        const dayToUse = clockInEvent.makeupOfDay || dayIndexToName[getDayFns(clockInEvent.timestamp.toDate())];
+        const schedule = operator.workSchedule[dayToUse];
         const ignoreContractualStart = shift.ignoreContractualStart || false;
         
         const { calculationStart } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
@@ -1241,8 +1258,9 @@ export default function ShiftApprovalPage() {
     
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
-        const dayName = dayIndexToName[getDayFns(shift.date)];
-        const schedule = operator.workSchedule[dayName];
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(shift.date)];
+        const schedule = operator.workSchedule[dayToUse];
         const ignoreContractualStart = shift.ignoreContractualStart || false;
         
         const { ordinary, overtime } = calculateHours(shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
@@ -1547,12 +1565,34 @@ export default function ShiftApprovalPage() {
                                 <Input id="manual-fine-pausa" type="time" value={newShiftTimes.fine_pausa} onChange={e => setNewShiftTimes(p => ({...p, fine_pausa: e.target.value}))} />
                             </div>
                         </div>
+                        <Separator/>
                          <div className="flex items-center space-x-2">
                             <Checkbox id="add-ignore-contractual" checked={newShiftIgnoreContractual} onCheckedChange={(checked) => setNewShiftIgnoreContractual(!!checked)} />
                             <Label htmlFor="add-ignore-contractual" className="text-sm font-normal">
                                 Ignora orario di inizio contrattuale
                             </Label>
                         </div>
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="add-is-makeup" checked={newShiftIsMakeup} onCheckedChange={(checked) => setNewShiftIsMakeup(!!checked)} />
+                            <Label htmlFor="add-is-makeup" className="text-sm font-normal">
+                                Questo turno è un recupero
+                            </Label>
+                        </div>
+                        {newShiftIsMakeup && (
+                            <div className="space-y-2">
+                                <Label>Recupero di:</Label>
+                                 <Select value={newShiftMakeupDay} onValueChange={v => setNewShiftMakeupDay(v as DayOfWeek)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleziona il giorno da recuperare" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.entries(weekDayLabels).map(([value, label]) => (
+                                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                     </div>
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsAddShiftOpen(false)}>Annulla</Button>
@@ -1603,8 +1643,9 @@ export default function ShiftApprovalPage() {
                     </ResponsiveDialogHeader>
 
                      {detailShift && operator && (() => {
-                        const dayName = dayIndexToName[getDayFns(detailShift.date)];
-                        const schedule = operator.workSchedule[dayName];
+                        const clockInEvent = detailShift.events.find(e => e.type === 'entrata');
+                        const dayToUse = clockInEvent?.makeupOfDay || dayIndexToName[getDayFns(detailShift.date)];
+                        const schedule = operator.workSchedule[dayToUse];
                         const ignoreContractualStart = detailShift.ignoreContractualStart || false;
                         
                         const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
@@ -2013,4 +2054,3 @@ export default function ShiftApprovalPage() {
         </div>
     );
 };
-
