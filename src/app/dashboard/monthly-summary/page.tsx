@@ -255,7 +255,7 @@ const MonthlySummaryContent = () => {
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                 {detail.shift.events.map(e => {
+                                                 {detail.shift.events.map((e, index) => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
                                                      let referenceTime = '';
 
@@ -271,7 +271,7 @@ const MonthlySummaryContent = () => {
                                                     return (
                                                         <span key={e.id} className={cn('mr-2')}>
                                                             {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
-                                                            {` | `}
+                                                             {index < detail.shift.events.length - 1 && ` | `}
                                                         </span>
                                                     )
                                                 })}

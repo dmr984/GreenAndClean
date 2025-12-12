@@ -258,29 +258,48 @@ export const processMonthlyData = (
         if (isHoliday && !workedEventsRaw) {
              details.push({ date: day, status: 'festa', request: null, shift: null });
         } else if (workedEventsRaw) {
-            const events = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-            
-            const clockInTime = events.find(e => e.type === 'entrata')?.timestamp.toDate();
-            const clockOutTime = events.find(e => e.type === 'uscita')?.timestamp.toDate();
+            // New logic: Group events into multiple shifts if necessary
+            const dayShifts: Shift[] = [];
+            let currentShiftEvents: Timbratura[] = [];
+            const sortedEvents = [...workedEventsRaw].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
-            if (!clockInTime || !clockOutTime) {
+            for (const event of sortedEvents) {
+                currentShiftEvents.push(event);
+                if (event.type === 'uscita') {
+                    const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
+                    if(clockInTime) {
+                        dayShifts.push({
+                            date: day,
+                            events: currentShiftEvents,
+                            contractualHours,
+                            isPureOvertime: !isWorkDay,
+                            // temp values, will be recalculated
+                            workedMinutes: 0, ordinaryMinutes: 0, overtimeMinutes: 0 
+                        });
+                    }
+                    currentShiftEvents = []; // Reset for the next potential shift
+                }
+            }
+            
+            if (dayShifts.length === 0) {
                  if (isWorkDay) details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null });
                  else details.push({ date: day, status: 'riposo', request: null, shift: null });
                  continue;
             }
-            
-            const ignoreContractualStart = events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-            
-            const shiftForCalc: Shift = {
-                date: day,
-                events: events,
-                contractualHours: contractualHours,
-                workedMinutes: 0, ordinaryMinutes: 0, overtimeMinutes: 0, // temp values
-                isPureOvertime: !isWorkDay
-            };
 
-            const { ordinary, overtime } = calculateHours(shiftForCalc, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+            // Sum up hours from all shifts in the day
+            let totalOrdinary = 0;
+            let totalOvertime = 0;
+            const allDayEvents: Timbratura[] = [];
 
+            dayShifts.forEach(shift => {
+                 const ignoreContractualStart = shift.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
+                 const { ordinary, overtime } = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                 totalOrdinary += ordinary;
+                 totalOvertime += overtime;
+                 allDayEvents.push(...shift.events);
+            });
+            
             const permissionHours = monthlyData.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -290,10 +309,10 @@ export const processMonthlyData = (
                 status: 'lavorato',
                 request: null,
                 shift: {
-                    events,
+                    events: allDayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()),
                     contractualHours,
-                    ordinaryHours: ordinary,
-                    overtimeHours: overtime, 
+                    ordinaryHours: totalOrdinary,
+                    overtimeHours: totalOvertime, 
                     permissionHours: permissionHours,
                 },
             });
