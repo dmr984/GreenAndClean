@@ -11,7 +11,6 @@ import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails } from '@/lib/calculations';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -154,65 +153,79 @@ const PrintPageContent = () => {
     const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
         if (!operator) return null;
         setIsGenerating(true);
-    
-        const doc = new jsPDF();
+
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pageHeight = doc.internal.pageSize.height;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 15;
+        let y = 20;
+
+        // Add custom font if needed, assuming it's available or use standard
+        // doc.addFont("Helvetica", "Helvetica", "normal");
+        
+        // 1. Header
         const img = new Image();
         img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
         img.crossOrigin = "Anonymous";
-        
         await new Promise(resolve => { img.onload = resolve; });
-    
-        // 1. Header
-        doc.addImage(img, 'PNG', 15, 10, 20, 20);
+        doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
+
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text(`${operator.firstName} ${operator.lastName}`, 195, 20, { align: 'right' });
+        doc.text(`${operator.firstName} ${operator.lastName}`, pageWidth - margin, y, { align: 'right' });
+        y += 7;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100);
-        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, 195, 26, { align: 'right' });
-        
-        // 2. Summary Table
+        doc.text(`Riepilogo di ${format(currentMonth, 'MMMM yyyy', { locale: it })}`, pageWidth - margin, y, { align: 'right' });
+        y += 15;
+
+        // 2. Summary Section
         const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
         const totalDue = ordinaryCost + overtimeCost;
-    
-        autoTable(doc, {
-            body: [
-                [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0).toLocaleString('it-IT')}`, `FERIE: ${(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}`],
-                [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)} €/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-                [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate)} €/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-                [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}`]
-            ],
-            startY: 40,
-            theme: 'plain',
-            styles: { fontSize: 9 },
-            didParseCell: function (data) { data.cell.styles.fontStyle = 'bold'; },
-            columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right' } }
-        });
-    
-        let finalY = (doc as any).lastAutoTable.finalY + 5;
-        
+        const col1_x = margin;
+        const col2_x = pageWidth - margin;
+
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, 195, finalY, { align: 'right' });
+        doc.setTextColor(0);
 
-        // 3. Daily Details Header
-        let detailY = finalY + 15;
-        doc.setFontSize(12);
+        doc.text(`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, col1_x, y);
+        doc.text(`FERIE: ${(monthlySummary.ferieDays || 0)}`, col2_x, y, { align: 'right' });
+        y += 7;
+
+        doc.text(`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0)}`, col1_x, y);
+        doc.text(`COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, col2_x, y, { align: 'right' });
+        y += 7;
+
+        doc.text(`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, col1_x, y);
+        doc.text(`COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, col2_x, y, { align: 'right' });
+        y += 7;
+
+        doc.text(`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, col1_x, y);
+        doc.text(`GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`, col2_x, y, { align: 'right' });
+        y += 7;
+
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 8;
+        
         doc.setFont('helvetica', 'bold');
-        doc.text("Dettaglio Giornaliero", 15, detailY);
-        detailY += 5;
+        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
+        y += 15;
+
+        // 3. Daily Details
+        doc.setFontSize(12);
+        doc.text("Dettaglio Giornaliero", margin, y);
+        y += 10;
         
         doc.setLineWidth(0.2);
-        doc.line(15, detailY, 195, detailY); // Top border
-        detailY += 5;
-
-        // 4. Manually draw daily details
+        
         dailyDetails.filter(d => d.status !== 'riposo').forEach(detail => {
-            if (detailY > 270) {
+            if (y > pageHeight - 30) {
                 doc.addPage();
-                detailY = 20;
+                y = 20;
             }
 
             let line1 = '';
@@ -226,7 +239,7 @@ const PrintPageContent = () => {
                 line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             } else {
-                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
+                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
                  if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
                  line1 = `${dateStr} - ${statusText}`;
@@ -234,22 +247,23 @@ const PrintPageContent = () => {
 
             doc.setFontSize(9);
             doc.setFont('helvetica', 'bold');
-            doc.text(line1, 15, detailY);
-            detailY += 5;
+            const splitLine1 = doc.splitTextToSize(line1, pageWidth - margin * 2);
+            doc.text(splitLine1, margin, y);
+            y += splitLine1.length * 5;
             
             if(line2) {
                 doc.setFontSize(8);
                 doc.setFont('helvetica', 'normal');
-                doc.text(line2, 18, detailY);
-                detailY += 5;
+                const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3); // Indent
+                doc.text(splitLine2, margin + 3, y);
+                y += splitLine2.length * 4;
             }
 
-            doc.setLineWidth(0.1);
-            doc.setDrawColor(200);
-            doc.line(15, detailY, 195, detailY);
-            detailY += 5;
+            y += 3;
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 7;
         });
-        
+
         const blob = doc.output('blob');
         const fileName = `Riepilogo_${operator.username}_${format(currentMonth, 'MM-yyyy')}.pdf`;
     
@@ -263,10 +277,27 @@ const PrintPageContent = () => {
 
         const url = URL.createObjectURL(pdf.blob);
         const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
+        iframe.style.position = 'fixed';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
         iframe.src = url;
+        
+        iframe.onload = function() {
+            try {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+            } catch (e) {
+                console.error("Printing failed", e);
+                toast({ title: 'Stampa Fallita', description: 'Impossibile aprire il dialogo di stampa.', variant: 'destructive'});
+            }
+             setTimeout(() => {
+                document.body.removeChild(iframe);
+                URL.revokeObjectURL(url);
+            }, 1000);
+        };
+        
         document.body.appendChild(iframe);
-        iframe.contentWindow?.print();
     };
 
     const handleDownload = async () => {
@@ -316,8 +347,8 @@ const PrintPageContent = () => {
     const totalDue = ordinaryCost + overtimeCost;
     
     return (
-        <div className="bg-white text-black min-h-screen">
-             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-white px-4 no-print">
+        <div className="bg-background text-foreground min-h-screen">
+             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
                      <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}>
@@ -337,13 +368,13 @@ const PrintPageContent = () => {
                 </div>
             </header>
 
-            <main className="flex justify-center p-4 sm:p-8">
-                <div className="w-full max-w-4xl bg-white p-6 sm:p-8 print-area" style={{ width: '210mm', minHeight: '297mm' }}>
+            <main className="flex justify-center p-4 sm:p-8 bg-gray-300">
+                <div className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
                     {/* Header */}
                      <table className="w-full mb-6">
                         <tbody>
                             <tr>
-                                <td style={{ width: '25%' }}>
+                                <td style={{ width: '25%', verticalAlign: 'top' }}>
                                     <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
                                 </td>
                                 <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
@@ -355,36 +386,36 @@ const PrintPageContent = () => {
                     </table>
 
                     {/* Summary Table */}
-                    <div className="mb-4">
-                        <table className="w-full text-xs">
-                            <tbody>
+                    <div className="mb-4 text-xs">
+                        <table className="w-full">
+                           <tbody>
                                 <tr>
-                                    <td className="py-1.5"><span className="font-bold">GIORNI LAVORATI:</span> <span className="font-mono font-bold">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1.5 text-right"><span className="font-bold">FERIE:</span> <span className="font-mono font-bold">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1"><span className="font-bold">GIORNI LAVORATI:</span> <span className="font-mono font-bold">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right"><span className="font-bold">FERIE:</span> <span className="font-mono font-bold">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1.5"><span className="font-bold">ORE ORDINARIE:</span> <span className="font-mono font-bold">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1.5 text-right"><span className="font-bold">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}):</span> <span className="font-mono font-bold">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1"><span className="font-bold">ORE ORDINARIE:</span> <span className="font-mono font-bold">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right"><span className="font-bold">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}):</span> <span className="font-mono font-bold">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1.5"><span className="font-bold">ORE STRAORDINARIE:</span> <span className="font-mono font-bold">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1.5 text-right"><span className="font-bold">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate)}€/h`}):</span> <span className="font-mono font-bold">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    <td className="py-1"><span className="font-bold">ORE STRAORDINARIE:</span> <span className="font-mono font-bold">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right"><span className="font-bold">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate)}€/h`}):</span> <span className="font-mono font-bold">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                  <tr>
-                                    <td className="py-1.5"><span className="font-bold">ORE PERMESSI:</span> <span className="font-mono font-bold">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1.5 text-right"><span className="font-bold">GIORNI DI MALATTIA:</span> <span className="font-mono font-bold">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1"><span className="font-bold">ORE PERMESSI:</span> <span className="font-mono font-bold">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right"><span className="font-bold">GIORNI DI MALATTIA:</span> <span className="font-mono font-bold">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
                                 </tr>
-                            </tbody>
+                           </tbody>
                         </table>
-                         <div className="text-right font-bold text-sm mt-2 border-t border-black pt-1">
+                         <div className="text-right font-bold text-sm mt-2 border-t-2 border-black pt-1">
                              <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                         </div>
                     </div>
 
 
                     {/* Daily Details */}
-                    <h3 className="text-md font-bold mb-2 border-b border-black pb-1">Dettaglio Giornaliero</h3>
-                    <div className="space-y-2 text-xs">
+                    <h3 className="text-md font-bold mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
+                    <div className="space-y-2.5 text-xs">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
                             let line1 = '';
                             let line2 = '';
@@ -397,18 +428,18 @@ const PrintPageContent = () => {
                                 line1 = `${dateStr} - Lavorato | Timbrature: ${timbratureStr}`;
                                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
                             } else {
-                                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace('_', ' ');
+                                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
                                  if(detail.status === 'mancata_timbratura') statusText = 'Mancata Timbratura';
                                  line1 = `${dateStr} - ${statusText}`;
                             }
 
                             return (
-                                <div key={detail.date.toISOString()} className="border-b border-gray-200 pb-1.5 mb-1.5">
-                                    <p className="font-bold text-[9px] capitalize">
+                                <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-1.5 mb-1.5">
+                                    <p className="font-bold text-[9px] capitalize leading-tight">
                                         {line1}
                                     </p>
-                                    {line2 && <p className="text-gray-600 text-[8px] pl-1">{line2}</p>}
+                                    {line2 && <p className="text-gray-600 text-[8px] pl-1 leading-tight">{line2}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
