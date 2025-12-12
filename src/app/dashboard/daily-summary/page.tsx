@@ -11,7 +11,7 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 
@@ -174,6 +174,12 @@ const DailySummaryPage = () => {
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="w-auto">
+                            <DialogHeader>
+                                <DialogTitle>Seleziona una data</DialogTitle>
+                                <DialogDescription>
+                                    Scegli il giorno per cui visualizzare il riepilogo.
+                                </DialogDescription>
+                            </DialogHeader>
                             <Calendar
                                 mode="single"
                                 selected={selectedDate}
