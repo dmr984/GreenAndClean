@@ -384,7 +384,7 @@ export default function EndOfMonthPage() {
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                {detail.shift.events.map(e => {
+                                                {detail.shift.events.map((e, index) => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
                                                     let referenceTime = '';
 
@@ -399,11 +399,12 @@ export default function EndOfMonthPage() {
                                                             referenceTime = `(${calcEnd})`;
                                                         }
                                                     }
+                                                    const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
 
                                                     return (
                                                         <span key={e.id} className={cn('mr-2')}>
-                                                            {`${e.type.replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim()}
-                                                            {` | `}
+                                                            {`${formattedType}: ${originalTime} ${referenceTime}`.trim()}
+                                                            {(index < detail.shift.events.length - 1) && ` | `}
                                                         </span>
                                                     );
                                                 })}
@@ -424,14 +425,14 @@ export default function EndOfMonthPage() {
                                     ) : detail.status === 'mancata_timbratura' ? (
                                         <div className="flex items-center gap-2 mt-1">
                                             <p className="text-yellow-600 font-semibold">
-                                                {monthlyData.dailyNotes.find(n => n.date === format(detail.date, 'yyyy-MM-dd'))?.note || 'Nessuna timbratura registrata in un giorno lavorativo.'}
+                                                {detail.note || 'Nessuna timbratura registrata in un giorno lavorativo.'}
                                             </p>
                                             <Button 
                                                 variant="ghost" 
                                                 size="icon" 
                                                 className="h-6 w-6"
                                                 onClick={() => {
-                                                    const currentNote = monthlyData.dailyNotes.find(n => n.date === format(detail.date, 'yyyy-MM-dd'))?.note || '';
+                                                    const currentNote = detail.note || '';
                                                     setEditingNote({ date: detail.date, currentNote });
                                                     setNoteContent(currentNote);
                                                 }}
