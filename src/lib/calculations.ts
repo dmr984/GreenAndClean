@@ -1,4 +1,3 @@
-
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -105,23 +104,24 @@ export const roundOrdinaryHours = (minutes: number): number => {
 };
 
 
-export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
-    if (minutes <= 0) return 0;
-    
-    let hours = 0;
-    let clock = new Date(0);
-    const clockInTime = new Date(0);
+export const roundOvertimeHours = (
+  startTime: Date,
+  endTime: Date
+): number => {
+  if (endTime <= startTime) {
+    return 0;
+  }
 
-    const clockOutTime = new Date(minutes * 60 * 1000);
+  let hours = 0;
+  let nextMilestone = new Date(startTime);
+  nextMilestone.setMinutes(nextMilestone.getMinutes() + 50);
 
-    clock.setHours(clockInTime.getHours(), 50, 0, 0);
+  while (endTime >= nextMilestone) {
+    hours++;
+    nextMilestone.setHours(nextMilestone.getHours() + 1);
+  }
 
-    while(clock < clockOutTime) {
-        hours++;
-        clock.setHours(clock.getHours() + 1);
-    }
-    
-    return hours;
+  return hours;
 };
 
 export const calculatePureOvertime = (
@@ -139,17 +139,16 @@ export const calculatePureOvertime = (
     const schedule = operator.workSchedule[dayName];
 
     let referenceStartTime = clockInTime;
+    // For non-workdays (overtime), if there's a start time set, ALWAYS use it if clock-in is before it.
     if (schedule?.startTime) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-        if (clockInTime <= contractualStart) {
+        if (clockInTime < contractualStart) {
             referenceStartTime = contractualStart;
         }
     }
     
     const clockOutTime = clockOutEvent.timestamp.toDate();
-
-    let totalMillis = clockOutTime.getTime() - referenceStartTime.getTime();
     
     let breakDurationMillis = 0;
     if (manualBreak) {
@@ -169,11 +168,9 @@ export const calculatePureOvertime = (
             }
         }
     }
+    const effectiveEndTime = new Date(clockOutTime.getTime() - breakDurationMillis);
 
-    const workedMillis = Math.max(0, totalMillis - breakDurationMillis);
-    const workedMinutes = Math.floor(workedMillis / 60000);
-    
-    return roundOvertimeHours(workedMinutes, operator.overtimeCalculation);
+    return roundOvertimeHours(referenceStartTime, effectiveEndTime);
 }
 
 
@@ -259,7 +256,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 
 export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
     
-    const { workedMinutes, breakMinutes, calculationStart } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd: rawCalculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
@@ -270,8 +267,15 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const isWorkDay = isMakeupShift || (contractualHours > 0 && !isPublicHoliday(shift.date));
     
     if (!isWorkDay) {
-        const overtime = calculatePureOvertime({ events: shift.events }, { workSchedule: {}, overtimeCalculation }, undefined);
-        const calcEnd = calculationStart ? new Date(calculationStart.getTime() + (overtime * 60 + breakMinutes) * 60000) : null;
+        // Since it's not a workday, all time is calculated as pure overtime
+        const clockOutTime = shift.events.find(e => e.type === 'uscita')?.timestamp.toDate();
+        const clockInTimeToUse = calculationStart || clockInEvent?.timestamp.toDate();
+        if (!clockOutTime || !clockInTimeToUse) {
+             return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0, calculationStart: null, calculationEnd: null };
+        }
+        const overtime = roundOvertimeHours(clockInTimeToUse, clockOutTime);
+        const finalCalculationEnd = new Date(clockInTimeToUse.getTime() + overtime * 3600000);
+        
         return {
             ordinary: 0,
             overtime,
@@ -279,7 +283,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
             worked: workedMinutes,
             break: breakMinutes,
             calculationStart,
-            calculationEnd: calcEnd,
+            calculationEnd: finalCalculationEnd
         };
     }
 
@@ -287,12 +291,14 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
 
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-    const overtimeHours = roundOvertimeHours(overtimeMinutes, overtimeCalculation);
+    // Overtime on a regular day still uses the total minutes logic
+    const overtimeHours = roundOvertimeHours(calculationStart || shift.date, new Date((calculationStart || shift.date).getTime() + overtimeMinutes * 60000));
 
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
 
-    const totalCalculatedMinutes = (ordinaryHours + overtimeHours) * 60;
-    const calculationEnd = calculationStart ? new Date(calculationStart.getTime() + totalCalculatedMinutes * 60000 + breakMinutes * 60000) : null;
+    // Correct calculation for reference end time
+    const totalCalculatedHours = ordinaryHours + overtimeHours;
+    const calculationEnd = calculationStart ? new Date(calculationStart.getTime() + totalCalculatedHours * 3600000 + breakMinutes * 60000) : null;
 
     return { 
         ordinary: ordinaryHours, 
@@ -401,15 +407,10 @@ export const processMonthlyData = (
             dayShifts.forEach(shift => {
                  const ignoreContractualStart = shift.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
                  
-                 let hoursResult;
-                 if (isWorkDay) {
-                    hoursResult = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
-                    totalOrdinary += hoursResult.ordinary;
-                    totalOvertime += hoursResult.overtime;
-                 } else {
-                     totalOvertime += calculatePureOvertime({ events: shift.events }, operator);
-                     hoursResult = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation); // to get calc times
-                 }
+                 const hoursResult = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                 totalOrdinary += hoursResult.ordinary;
+                 totalOvertime += hoursResult.overtime;
+                 
                  allDayEvents.push(...shift.events);
                  if (hoursResult.calculationStart) finalCalcStart = hoursResult.calculationStart;
                  if (hoursResult.calculationEnd) finalCalcEnd = hoursResult.calculationEnd;

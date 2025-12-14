@@ -459,7 +459,7 @@ const PrintPageContent = () => {
                                     }
                                      const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                      const isModified = referenceTime !== '';
-                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime} ${isModified ? '(modificato)' : ''}`.trim();
+                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                 }).join(' | ');
                                 line1 = `${dateStr} | ${timbratureStr}`;
                                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
@@ -493,7 +493,7 @@ const PrintPageContent = () => {
                                                 }
                                             }
                                             const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                            return `${eventTypeFormatted}: ${originalTime} ${referenceTime} ${isModified ? '(modificato)' : ''}`.trim();
+                                            return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                         }).join(' | ')}`}
                                         {!detail.shift && ` - ${line1.split(' - ')[1]}`}
                                     </p>
