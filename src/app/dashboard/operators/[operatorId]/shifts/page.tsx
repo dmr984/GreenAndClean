@@ -1239,20 +1239,21 @@ export default function ShiftApprovalPage() {
     };
 
 
-    const getAdjustedStartTime = (shift: Shift): { display: string; calculationStart: Date | null } => {
+    const getAdjustedStartTime = (shift: Shift | StraordinarioShift): { display: string; calculationStart: Date | null } => {
         if (!operator || !shift?.events?.length) return { display: '--:--', calculationStart: null };
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
         
-        const dayToUseDate = clockInEvent.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shift.date;
+        const clockInTime = clockInEvent.timestamp.toDate();
+        const dayToUseDate = (clockInEvent as Timbratura).makeupOfDay ? parse((clockInEvent as Timbratura).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInTime;
         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
-        const ignoreContractualStart = shift.ignoreContractualStart || false;
+        const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
         
-        const { calculationStart } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
-        const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
+        const { calculationStart } = calculateShiftDetails(shift.events as Timbratura[], schedule, ignoreContractualStart);
+        const originalTime = format(clockInTime, 'HH:mm:ss');
         
-        if (calculationStart && Math.abs(calculationStart.getTime() - clockInEvent.timestamp.toDate().getTime()) > 1000) {
+        if (calculationStart && Math.abs(calculationStart.getTime() - clockInTime.getTime()) > 1000) {
            return { display: `${originalTime} (${format(calculationStart, 'HH:mm')})`, calculationStart };
         }
 

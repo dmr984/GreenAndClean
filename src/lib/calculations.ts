@@ -129,22 +129,26 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
 
-        const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-
-        if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
-            calculationStartTime = contractualStartDateTime;
-        } else {
-            const minutes = clockInTime.getMinutes();
-            const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
-
-            if (minutes > 15 && minutes <= 45) {
-                roundedTime.setMinutes(30);
-            } else if (minutes > 45) {
-                roundedTime.setHours(roundedTime.getHours() + 1, 0);
-            } else { // minutes <= 15
-                roundedTime.setMinutes(0);
+        const isWorkDay = (schedule.totalHours || 0) > 0;
+        
+        if (isWorkDay) {
+            const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+            if (minutesLate <= 15) { 
+                calculationStartTime = contractualStartDateTime;
+            } else {
+                const minutes = clockInTime.getMinutes();
+                const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+                if (minutes > 15 && minutes <= 45) {
+                    roundedTime.setMinutes(30);
+                } else if (minutes > 45) {
+                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
+                } else {
+                    roundedTime.setMinutes(0);
+                }
+                calculationStartTime = roundedTime;
             }
-            calculationStartTime = roundedTime;
+        } else { // It's an overtime day (e.g. Sunday)
+             calculationStartTime = contractualStartDateTime;
         }
     }
     
@@ -417,5 +421,3 @@ export const processMonthlyData = (
         dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
-
-    
