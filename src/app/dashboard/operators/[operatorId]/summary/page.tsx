@@ -440,10 +440,12 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                             {selectedDay.shift.events.map((t, index) => {
                                                  const originalTime = format(t.timestamp.toDate(), 'HH:mm');
                                                  let referenceTime = '';
+                                                 let isModified = false;
                                                  
                                                   if (t.type === 'entrata') {
                                                         if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                            isModified = true;
                                                         }
                                                   } else if (t.type === 'uscita') {
                                                         const breakDuration = selectedDay.shift!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
@@ -456,13 +458,17 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                                             const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
                                                             if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
                                                                 referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                                isModified = true;
                                                             }
                                                         }
                                                   }
 
                                                 return (
                                                     <TableRow key={t.id || `auto-${index}`}>
-                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>
+                                                            {`${originalTime} ${referenceTime}`.trim()}
+                                                            {isModified && <span className="text-xs text-muted-foreground ml-1">(modificato)</span>}
+                                                        </TableCell>
                                                         <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                                     </TableRow>
                                                 )
@@ -1234,10 +1240,12 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                             {shiftForDetail.events.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map(t => {
                                                 const originalTime = format(t.timestamp.toDate(), 'HH:mm');
                                                  let referenceTime = '';
+                                                 let isModified = false;
                                                  
                                                   if (t.type === 'entrata') {
                                                         if (calculationStart && Math.abs(calculationStart.getTime() - t.timestamp.toDate().getTime()) > 60000) {
                                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                            isModified = true;
                                                         }
                                                   } else if (t.type === 'uscita') {
                                                         const breakDuration = shiftForDetail!.events.filter(ev => ev.type === 'pausa').reduce((acc, current) => {
@@ -1250,13 +1258,17 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                                                             const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes * 60000) + breakDuration);
                                                             if (Math.abs(calculatedEndTime.getTime() - t.timestamp.toDate().getTime()) > 60000) {
                                                                 referenceTime = `(${format(calculatedEndTime, 'HH:mm')})`;
+                                                                isModified = true;
                                                             }
                                                         }
                                                   }
 
                                                 return (
                                                     <TableRow key={t.id}>
-                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>{`${originalTime} ${referenceTime}`.trim()}</TableCell>
+                                                        <TableCell className={cn(t.isAuto && "text-red-500")}>
+                                                            {`${originalTime} ${referenceTime}`.trim()}
+                                                            {isModified && <span className="text-xs text-muted-foreground ml-1">(modificato)</span>}
+                                                        </TableCell>
                                                         <TableCell className={cn("capitalize", t.isAuto && "text-red-500")}>{t.type.replace('_', ' ')}</TableCell>
                                                     </TableRow>
                                                 )

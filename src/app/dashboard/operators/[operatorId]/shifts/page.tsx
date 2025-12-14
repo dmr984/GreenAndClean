@@ -22,7 +22,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isPublicHoliday } from '@/lib/holidays';
-import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours } from '@/lib/calculations';
+import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours, calculatePureOvertime } from '@/lib/calculations';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
@@ -408,92 +408,117 @@ export default function ShiftApprovalPage() {
         }
     };
     
-    const handleRegularShiftApproval = async () => {
-        if (!approvalContext || approvalContext.isOvertimeShift || !firestore || !operator) return;
-    
-        const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak } = approvalContext;
-        const regularShift = shift as Shift;
-        const approvedOvertime = parseFloat(overtimeHours) || 0;
-        const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
-    
-        const batch = writeBatch(firestore);
-        const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
-        
-        regularShift.events.forEach(event => {
-            if (event.status === 'sospesa') {
-                const docRef = doc(timbratureRef, event.id);
-                batch.update(docRef, { status: 'confermata', viewedByOperator: false });
+const handleRegularShiftApproval = async () => {
+    if (!approvalContext || approvalContext.isOvertimeShift || !firestore || !operator) return;
+
+    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak } = approvalContext;
+    const regularShift = shift as Shift;
+    const approvedOvertime = parseFloat(overtimeHours) || 0;
+    const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
+
+    const batch = writeBatch(firestore);
+    const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+    const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
+
+    // Logic to modify clock-in time for early birds on non-working days
+    let newClockInTimestamp: Timestamp | null = null;
+    if (clockInEvent) {
+        const shiftDate = clockInEvent.timestamp.toDate();
+        const dayName = dayIndexToName[getDayFns(shiftDate)];
+        const schedule = operator.workSchedule[dayName];
+        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(shiftDate);
+
+        if (!isWorkDay && schedule?.startTime) {
+            const [h, m] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(shiftDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+            if (clockInEvent.timestamp.toDate() < contractualStart) {
+                newClockInTimestamp = Timestamp.fromDate(contractualStart);
             }
-        });
-        
-        if (manualBreak && manualBreak.start && manualBreak.end) {
-            const shiftId = regularShift.events[0]?.shiftId || regularShift.id;
-            const shiftDate = regularShift.events[0].timestamp.toDate();
-
-            const createTimestamp = (time: string): Timestamp => {
-                const [hours, minutes] = time.split(':').map(Number);
-                return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
-            };
-
-            const breakStartRef = doc(timbratureRef);
-            batch.set(breakStartRef, {
-                userId: operator.id, type: 'pausa', timestamp: createTimestamp(manualBreak.start),
-                status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
-            });
-            const breakEndRef = doc(timbratureRef);
-            batch.set(breakEndRef, {
-                userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end),
-                status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
-            });
         }
+    }
     
+    regularShift.events.forEach(event => {
+        if (event.status === 'sospesa') {
+            const docRef = doc(timbratureRef, event.id);
+            const updateData: { status: string; viewedByOperator: boolean; timestamp?: Timestamp } = {
+                status: 'confermata',
+                viewedByOperator: false
+            };
+            if (event.type === 'entrata' && newClockInTimestamp) {
+                updateData.timestamp = newClockInTimestamp;
+            }
+            batch.update(docRef, updateData);
+        }
+    });
+    
+    if (manualBreak && manualBreak.start && manualBreak.end) {
+        const shiftId = regularShift.events[0]?.shiftId || regularShift.id;
         const shiftDate = regularShift.events[0].timestamp.toDate();
-    
-        if (approvedOvertime > 0) {
-            const overtimeRequest = {
-                userId: operator.id,
-                type: 'straordinario' as const,
-                status: 'approvato' as const,
-                startDate: Timestamp.fromDate(shiftDate),
-                endDate: Timestamp.fromDate(shiftDate),
-                hours: approvedOvertime,
-                reason: 'Straordinario approvato da turno',
-                createdAt: serverTimestamp(),
-                viewedByOperator: false,
-                associatedShiftId: regularShift.id,
-            };
-            const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
-            batch.set(newRequestRef, overtimeRequest);
-        }
-    
-        if (approvedLeave > 0) {
-            const leaveRequest = {
-                userId: operator.id,
-                type: 'permesso' as const,
-                status: 'approvato' as const,
-                startDate: Timestamp.fromDate(shiftDate),
-                endDate: Timestamp.fromDate(shiftDate),
-                hours: approvedLeave,
-                reason: 'Permesso generato da ammanco ore',
-                createdAt: serverTimestamp(),
-                viewedByOperator: false,
-            };
-            const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
-            batch.set(newRequestRef, leaveRequest);
-        }
-    
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: 'Turno approvato e richieste registrate.' });
-        } catch (err) {
-            console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
-        } finally {
-            setIsApproveDialogOpen(false);
-            setApprovalContext(null);
-            setIsDetailOpen(false);
-        }
-    };
+
+        const createTimestamp = (time: string): Timestamp => {
+            const [hours, minutes] = time.split(':').map(Number);
+            return Timestamp.fromDate(set(shiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+        };
+
+        const breakStartRef = doc(timbratureRef);
+        batch.set(breakStartRef, {
+            userId: operator.id, type: 'pausa', timestamp: createTimestamp(manualBreak.start),
+            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+        });
+        const breakEndRef = doc(timbratureRef);
+        batch.set(breakEndRef, {
+            userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end),
+            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+        });
+    }
+
+    const shiftDate = regularShift.events[0].timestamp.toDate();
+
+    if (approvedOvertime > 0) {
+        const overtimeRequest = {
+            userId: operator.id,
+            type: 'straordinario' as const,
+            status: 'approvato' as const,
+            startDate: Timestamp.fromDate(shiftDate),
+            endDate: Timestamp.fromDate(shiftDate),
+            hours: approvedOvertime,
+            reason: 'Straordinario approvato da turno',
+            createdAt: serverTimestamp(),
+            viewedByOperator: false,
+            associatedShiftId: regularShift.id,
+        };
+        const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
+        batch.set(newRequestRef, overtimeRequest);
+    }
+
+    if (approvedLeave > 0) {
+        const leaveRequest = {
+            userId: operator.id,
+            type: 'permesso' as const,
+            status: 'approvato' as const,
+            startDate: Timestamp.fromDate(shiftDate),
+            endDate: Timestamp.fromDate(shiftDate),
+            hours: approvedLeave,
+            reason: 'Permesso generato da ammanco ore',
+            createdAt: serverTimestamp(),
+            viewedByOperator: false,
+        };
+        const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
+        batch.set(newRequestRef, leaveRequest);
+    }
+
+    try {
+        await batch.commit();
+        toast({ title: 'Successo', description: 'Turno approvato e richieste registrate.' });
+    } catch (err) {
+        console.error(err);
+        toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
+    } finally {
+        setIsApproveDialogOpen(false);
+        setApprovalContext(null);
+        setIsDetailOpen(false);
+    }
+};
     
      const handleRejectShift = async (shiftToReject: Shift | null) => {
         if (!firestore || !operator || !shiftToReject) return;
@@ -852,17 +877,26 @@ export default function ShiftApprovalPage() {
     
         if (isOvertimeShift) {
             const overtimeShift = shift as StraordinarioShift;
-            const workedMinutes = calculateOvertimeShiftMinutes(overtimeShift, manualBreak);
-            overtime = roundOvertimeHours(workedMinutes, operator?.overtimeCalculation);
+            overtime = calculatePureOvertime(overtimeShift, operator, manualBreak);
         } else {
             const regularShift = shift as Shift;
             const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
             const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
             const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
             const schedule = operator.workSchedule[dayToUse];
+            
+            let eventsForCalc = regularShift.events;
+            if (manualBreak) {
+                 const createTimestamp = (time: string): Timestamp => {
+                    const [h,m] = time.split(':').map(Number);
+                    return Timestamp.fromDate(set(regularShift.date, { hours: h, minutes: m}));
+                 }
+                 eventsForCalc.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start) } as Timbratura, { type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end)} as Timbratura);
+            }
+
             const ignoreContractualStart = regularShift.ignoreContractualStart || false;
             
-            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
+            const hoursResult = calculateHours({ date: regularShift.date, events: eventsForCalc }, schedule, ignoreContractualStart, operator.overtimeCalculation);
             ordinary = hoursResult.ordinary;
             overtime = hoursResult.overtime;
             leave = hoursResult.leave;
@@ -1131,8 +1165,7 @@ export default function ShiftApprovalPage() {
     };
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
-        const workMinutes = calculateOvertimeShiftMinutes(shift, manualBreak);
-        return roundOvertimeHours(workMinutes, operator?.overtimeCalculation);
+        return calculatePureOvertime(shift, operator, manualBreak);
     }
     
     const handleDeleteOvertimeShift = async () => {
@@ -1235,9 +1268,23 @@ export default function ShiftApprovalPage() {
         const dayToUseDate = (shift as Shift).makeupOfDay ? parse((shift as Shift).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInTime;
         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
-        const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
-        
-        const { calculationStart } = calculateShiftDetails(shift.events as Timbratura[], schedule, ignoreContractualStart);
+        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
+
+        let calculationStart: Date | null = clockInTime;
+
+        if (schedule?.startTime) {
+            const [h,m] = schedule.startTime.split(':').map(Number);
+            const contractualStart = set(dayToUseDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+            
+            if (isWorkDay) { // Regular day logic
+                const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
+                 const details = calculateShiftDetails(shift.events as Timbratura[], schedule, ignoreContractualStart);
+                 calculationStart = details.calculationStart;
+            } else { // Non-working day (overtime)
+                calculationStart = contractualStart;
+            }
+        }
+
         const originalTime = format(clockInTime, 'HH:mm:ss');
         
         if (calculationStart && Math.abs(calculationStart.getTime() - clockInTime.getTime()) > 1000) {
@@ -1261,12 +1308,24 @@ export default function ShiftApprovalPage() {
         const dayToUseDate = (shift as Shift).makeupOfDay ? parse((shift as Shift).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInEvent.timestamp.toDate();
         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
-        const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
+        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
+
+        if (!isWorkDay) { // Pure overtime shift
+            const { calculationStart } = getAdjustedStartTime(shift);
+            if (!calculationStart) return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
+            const hours = calculatePureOvertime(shift as StraordinarioShift, operator);
+            const breakMinutes = calculateShiftDetails(shift.events as Timbratura[], schedule, true).breakMinutes;
+            const calculationEnd = new Date(calculationStart.getTime() + (hours * 60 + breakMinutes) * 60000);
+            if (Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+                 return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
+            }
+        } else { // Regular shift
+            const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
+            const { calculationEnd } = calculateHours(shift as Shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
         
-        const { calculationEnd } = calculateHours(shift as Shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
-    
-        if (calculationEnd && Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
-             return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
+            if (calculationEnd && Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+                 return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
+            }
         }
         
         return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
@@ -1640,9 +1699,32 @@ export default function ShiftApprovalPage() {
                         const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : detailShift.date;
                         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                         const schedule = operator.workSchedule[dayToUse];
-                        const ignoreContractualStart = detailShift.ignoreContractualStart || false;
+                        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
                         
-                        const { ordinary, overtime, leave, worked, break: breakDuration } = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
+                        let ordinary = 0, overtime = 0, leave = 0, worked = 0, breakDuration = 0;
+                        let calculationStart: Date | null = null;
+                        let calculationEnd: Date | null = null;
+                        
+                        if (!isWorkDay) {
+                           overtime = calculatePureOvertime(detailShift, operator);
+                           const details = calculateShiftDetails(detailShift.events, schedule, true);
+                           worked = details.workedMinutes;
+                           breakDuration = details.breakMinutes;
+                           calculationStart = details.calculationStart;
+                           if (calculationStart) {
+                             calculationEnd = new Date(calculationStart.getTime() + (overtime * 60 + breakDuration) * 60000);
+                           }
+                        } else {
+                            const ignoreContractualStart = detailShift.ignoreContractualStart || false;
+                            const hoursResult = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
+                            ordinary = hoursResult.ordinary;
+                            overtime = hoursResult.overtime;
+                            leave = hoursResult.leave;
+                            worked = hoursResult.worked;
+                            breakDuration = hoursResult.break;
+                            calculationStart = hoursResult.calculationStart;
+                            calculationEnd = hoursResult.calculationEnd;
+                        }
                         
                         let mainResultLabel = 'Straordinari';
                         let mainResultValue = `${overtime}h`;

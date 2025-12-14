@@ -458,7 +458,8 @@ const PrintPageContent = () => {
                                          if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                                     }
                                      const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                     const isModified = referenceTime !== '';
+                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime} ${isModified ? '(modificato)' : ''}`.trim();
                                 }).join(' | ');
                                 line1 = `${dateStr} | ${timbratureStr}`;
                                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
@@ -476,16 +477,23 @@ const PrintPageContent = () => {
                                         {detail.shift && ` | ${detail.shift.events.map(e => {
                                             const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                             let referenceTime = '';
+                                            let isModified = false;
 
                                             if (e.type === 'entrata' && detail.shift?.calculationStart) {
                                                 const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                                if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                if(calcStart !== originalTime) {
+                                                    referenceTime = `(${calcStart})`;
+                                                    isModified = true;
+                                                }
                                             } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
                                                 const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                                if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                if(calcEnd !== originalTime) {
+                                                    referenceTime = `(${calcEnd})`;
+                                                    isModified = true;
+                                                }
                                             }
                                             const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                            return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                            return `${eventTypeFormatted}: ${originalTime} ${referenceTime} ${isModified ? '(modificato)' : ''}`.trim();
                                         }).join(' | ')}`}
                                         {!detail.shift && ` - ${line1.split(' - ')[1]}`}
                                     </p>
