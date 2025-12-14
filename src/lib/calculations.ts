@@ -106,12 +106,14 @@ export const roundOrdinaryHours = (minutes: number): number => {
 
 export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
     if (minutes <= 0) return 0;
-    
-    // Default hourly logic (triggers at 50 mins)
+
     const totalHours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    const additionalHours = remainingMinutes >= 50 ? 1 : 0;
-    return totalHours + additionalHours;
+    
+    if (remainingMinutes >= 50) {
+        return totalHours + 1;
+    }
+    return totalHours;
 };
 
 
@@ -131,7 +133,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 
         const isWorkDay = (schedule.totalHours || 0) > 0;
         
-        if (isWorkDay) {
+        if (isWorkDay) { // Logic for regular workdays
             const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
             if (minutesLate <= 15) { 
                 calculationStartTime = contractualStartDateTime;
@@ -147,7 +149,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
                 }
                 calculationStartTime = roundedTime;
             }
-        } else { // It's an overtime day (e.g. Sunday)
+        } else { // Logic for non-workdays (like Sunday) where a start time is still provided
              calculationStartTime = contractualStartDateTime;
         }
     }
@@ -166,7 +168,6 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
 
-
     // 3. Calculate Break Duration
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
@@ -179,7 +180,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
 
-    // 4. Calculate Total Worked Milliseconds
+    // 4. Calculate Total Worked Milliseconds from the correct start time
     const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
@@ -229,7 +230,6 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
 
     const totalCalculatedMinutes = (ordinaryHours + overtimeHours) * 60;
     const calculationEnd = calculationStart ? new Date(calculationStart.getTime() + totalCalculatedMinutes * 60000 + breakMinutes * 60000) : null;
-
 
     return { 
         ordinary: ordinaryHours, 

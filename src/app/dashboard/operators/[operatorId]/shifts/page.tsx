@@ -1126,21 +1126,8 @@ export default function ShiftApprovalPage() {
     };
     
     const calculateOvertimeShiftMinutes = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
-        let { workDuration } = getShiftDurations(shift.events);
-
-        if (manualBreak && manualBreak.start && manualBreak.end) {
-             const startTime = shift.events.find(e => e.type === 'entrata')?.timestamp;
-             const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-
-             if (startTime && endTime) {
-                let totalMillis = endTime.toMillis() - startTime.toMillis();
-                const breakStart = parse(manualBreak.start, 'HH:mm', new Date());
-                const breakEnd = parse(manualBreak.end, 'HH:mm', new Date());
-                totalMillis -= (breakEnd.getTime() - breakStart.getTime());
-                workDuration = totalMillis > 0 ? totalMillis / (1000 * 60) : 0;
-            }
-        }
-        return workDuration;
+        let { workedMinutes } = calculateShiftDetails(shift.events as Timbratura[], undefined, true);
+        return workedMinutes;
     };
     
     const calculateOvertimeShiftHours = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
@@ -1274,8 +1261,8 @@ export default function ShiftApprovalPage() {
         const schedule = operator.workSchedule[dayToUse];
         const ignoreContractualStart = shift.ignoreContractualStart || false;
         
-        const { ordinary, overtime } = calculateHours(shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
-        const { calculationStart, breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+        const { ordinary, overtime, calculationStart } = calculateHours(shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
+        const { breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
     
         if (!calculationStart) {
             return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
@@ -1295,6 +1282,7 @@ export default function ShiftApprovalPage() {
     };
     
     const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
+        if (!operator) return { start: '--:--', end: '--:--' };
         const startTimeEvent = shift.events.find(e => e.type === 'entrata');
         if (!startTimeEvent) return { start: '--:--', end: '--:--' };
         
@@ -1307,13 +1295,23 @@ export default function ShiftApprovalPage() {
         const startDisplay = calculationStart && Math.abs(calculationStart.getTime() - startTimeEvent.timestamp.toDate().getTime()) > 1000
             ? `${originalStartTime} (${format(calculationStart, 'HH:mm')})`
             : originalStartTime;
-
+    
         const endTimeEvent = shift.events.find(e => e.type === 'uscita');
         if (!endTimeEvent) return { start: startDisplay, end: '--:--'};
         
         const originalEndTime = format(endTimeEvent.timestamp.toDate(), 'HH:mm:ss');
-        const endDisplay = calculationEnd && Math.abs(calculationEnd.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000
-            ? `${originalEndTime} (${format(calculationEnd, 'HH:mm')})`
+        
+        if (!calculationStart) {
+             return { start: startDisplay, end: originalEndTime };
+        }
+        const { overtime } = calculateHours({date: shift.date.toDate(), events: shift.events as Timbratura[]}, schedule, true, operator.overtimeCalculation);
+        const { breakMinutes } = calculateShiftDetails(shift.events as Timbratura[], schedule, true);
+        
+        const totalCalculatedMinutes = overtime * 60;
+        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes + breakMinutes) * 60000);
+        
+        const endDisplay = calculatedEndTime && Math.abs(calculatedEndTime.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000
+            ? `${originalEndTime} (${format(calculatedEndTime, 'HH:mm')})`
             : originalEndTime;
 
         return {
