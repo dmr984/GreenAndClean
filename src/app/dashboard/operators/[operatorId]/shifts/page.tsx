@@ -896,7 +896,7 @@ const handleRegularShiftApproval = async () => {
 
             const ignoreContractualStart = regularShift.ignoreContractualStart || false;
             
-            const hoursResult = calculateHours({ date: regularShift.date, events: eventsForCalc }, schedule, ignoreContractualStart, operator.overtimeCalculation);
+            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
             ordinary = hoursResult.ordinary;
             overtime = hoursResult.overtime;
             leave = hoursResult.leave;
@@ -1273,7 +1273,7 @@ const handleRegularShiftApproval = async () => {
         let calculationStart: Date | null = clockInTime;
 
         if (schedule?.startTime) {
-            const [h,m] = schedule.startTime.split(':').map(Number);
+            const [h, m] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(dayToUseDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
             
             if (isWorkDay) { // Regular day logic
@@ -1281,7 +1281,8 @@ const handleRegularShiftApproval = async () => {
                  const details = calculateShiftDetails(shift.events as Timbratura[], schedule, ignoreContractualStart);
                  calculationStart = details.calculationStart;
             } else { // Non-working day (overtime)
-                calculationStart = contractualStart;
+                const { calculationStart: overtimeCalcStart } = calculateShiftDetails(shift.events as Timbratura[], schedule, false);
+                calculationStart = overtimeCalcStart;
             }
         }
 
@@ -1311,11 +1312,13 @@ const handleRegularShiftApproval = async () => {
         const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
 
         if (!isWorkDay) { // Pure overtime shift
-            const { calculationStart } = getAdjustedStartTime(shift);
+            const { calculationStart } = calculateShiftDetails(shift.events as Timbratura[], schedule, false);
             if (!calculationStart) return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
+            
             const hours = calculatePureOvertime(shift as StraordinarioShift, operator);
-            const breakMinutes = calculateShiftDetails(shift.events as Timbratura[], schedule, true).breakMinutes;
+            const { breakMinutes } = calculateShiftDetails(shift.events as Timbratura[], schedule, true);
             const calculationEnd = new Date(calculationStart.getTime() + (hours * 60 + breakMinutes) * 60000);
+
             if (Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
                  return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
             }
@@ -1333,32 +1336,17 @@ const handleRegularShiftApproval = async () => {
     
     const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
         if (!operator) return { start: '--:--', end: '--:--' };
-        const startTimeEvent = shift.events.find(e => e.type === 'entrata');
-        if (!startTimeEvent) return { start: '--:--', end: '--:--' };
         
-        const dayName = dayIndexToName[getDayFns(startTimeEvent.timestamp.toDate())];
-        const schedule = operator?.workSchedule[dayName];
-        
-        const { calculationStart, calculationEnd } = calculateHours({date: shift.date.toDate(), events: shift.events as Timbratura[]}, schedule, true, operator.overtimeCalculation);
-        const originalStartTime = format(startTimeEvent.timestamp.toDate(), 'HH:mm:ss');
-        
-        const startDisplay = calculationStart && Math.abs(calculationStart.getTime() - startTimeEvent.timestamp.toDate().getTime()) > 1000
-            ? `${originalStartTime} (${format(calculationStart, 'HH:mm')})`
-            : originalStartTime;
-    
+        const { display: startDisplay, calculationStart } = getAdjustedStartTime(shift);
+
         const endTimeEvent = shift.events.find(e => e.type === 'uscita');
-        if (!endTimeEvent) return { start: startDisplay, end: '--:--'};
-        
-        const originalEndTime = format(endTimeEvent.timestamp.toDate(), 'HH:mm:ss');
-        
-        if (calculationEnd && Math.abs(calculationEnd.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000) {
-            const endDisplay = `${originalEndTime} (${format(calculationEnd, 'HH:mm')})`;
-            return { start: startDisplay, end: endDisplay };
-        }
+        if (!endTimeEvent) return { start: startDisplay, end: '--:--' };
+
+        const { display: endDisplay } = getAdjustedEndTime(shift);
 
         return {
             start: startDisplay,
-            end: originalEndTime
+            end: endDisplay,
         };
     };
 
@@ -2136,3 +2124,5 @@ const handleRegularShiftApproval = async () => {
         </div>
     );
 };
+
+    
