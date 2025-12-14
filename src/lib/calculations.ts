@@ -1,3 +1,4 @@
+
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -107,17 +108,20 @@ export const roundOrdinaryHours = (minutes: number): number => {
 export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
     if (minutes <= 0) return 0;
     
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
+    let hours = 0;
+    let clock = new Date(0);
+    const clockInTime = new Date(0);
 
-    if (calculationType === 'half_hourly') {
-        if (remainingMinutes >= 55) return hours + 1;
-        if (remainingMinutes >= 25) return hours + 0.5;
-        return hours;
+    const clockOutTime = new Date(minutes * 60 * 1000);
+
+    clock.setHours(clockInTime.getHours(), 50, 0, 0);
+
+    while(clock < clockOutTime) {
+        hours++;
+        clock.setHours(clock.getHours() + 1);
     }
     
-    // Default 'hourly' calculation
-    return hours + (remainingMinutes >= 50 ? 1 : 0);
+    return hours;
 };
 
 export const calculatePureOvertime = (
@@ -129,23 +133,24 @@ export const calculatePureOvertime = (
     const clockOutEvent = shift.events.find(e => e.type === 'uscita');
 
     if (!clockInEvent || !clockOutEvent) return 0;
-
+    
     const clockInTime = clockInEvent.timestamp.toDate();
     const dayName = dayIndexToName[getDay(clockInTime)];
     const schedule = operator.workSchedule[dayName];
-    
+
     let referenceStartTime = clockInTime;
     if (schedule?.startTime) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStart = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-        // Use contractual start time if the operator clocks in early or within tolerance
         if (clockInTime <= contractualStart) {
             referenceStartTime = contractualStart;
         }
     }
     
-    let totalMillis = clockOutEvent.timestamp.toMillis() - referenceStartTime.getTime();
+    const clockOutTime = clockOutEvent.timestamp.toDate();
 
+    let totalMillis = clockOutTime.getTime() - referenceStartTime.getTime();
+    
     let breakDurationMillis = 0;
     if (manualBreak) {
         const createTimestamp = (time: string): Date => {
