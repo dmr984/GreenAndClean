@@ -106,7 +106,6 @@ export const roundOrdinaryHours = (minutes: number): number => {
 
 export const roundOvertimeHours = (minutes: number, calculationType: 'hourly' | 'half_hourly' = 'hourly'): number => {
     if (minutes <= 0) return 0;
-
     const totalHours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     
@@ -130,27 +129,20 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     if (schedule?.startTime && !ignoreContractualStart) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-
-        const isWorkDay = (schedule.totalHours || 0) > 0;
-        
-        if (isWorkDay) { // Logic for regular workdays
-            const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-            if (minutesLate <= 15) { 
-                calculationStartTime = contractualStartDateTime;
+        const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+        if (minutesLate <= 15) { 
+            calculationStartTime = contractualStartDateTime;
+        } else {
+            const minutes = clockInTime.getMinutes();
+            const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+            if (minutes > 15 && minutes <= 45) {
+                roundedTime.setMinutes(30);
+            } else if (minutes > 45) {
+                roundedTime.setHours(roundedTime.getHours() + 1, 0);
             } else {
-                const minutes = clockInTime.getMinutes();
-                const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
-                if (minutes > 15 && minutes <= 45) {
-                    roundedTime.setMinutes(30);
-                } else if (minutes > 45) {
-                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
-                } else {
-                    roundedTime.setMinutes(0);
-                }
-                calculationStartTime = roundedTime;
+                roundedTime.setMinutes(0);
             }
-        } else { // Logic for non-workdays (like Sunday) where a start time is still provided
-             calculationStartTime = contractualStartDateTime;
+            calculationStartTime = roundedTime;
         }
     }
     

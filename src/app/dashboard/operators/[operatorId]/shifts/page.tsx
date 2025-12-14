@@ -1232,7 +1232,7 @@ export default function ShiftApprovalPage() {
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
         
         const clockInTime = clockInEvent.timestamp.toDate();
-        const dayToUseDate = (clockInEvent as Timbratura).makeupOfDay ? parse((clockInEvent as Timbratura).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInTime;
+        const dayToUseDate = (shift as Shift).makeupOfDay ? parse((shift as Shift).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInTime;
         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
         const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
@@ -1247,7 +1247,7 @@ export default function ShiftApprovalPage() {
         return { display: originalTime, calculationStart };
     }
     
-    const getAdjustedEndTime = (shift: Shift): { display: string; calculationEnd: Date | null } => {
+    const getAdjustedEndTime = (shift: Shift | StraordinarioShift): { display: string; calculationEnd: Date | null } => {
         if (!operator || !shift?.events?.length) return { display: '--:--', calculationEnd: null };
     
         const clockOutEvent = shift.events.find(e => e.type === 'uscita');
@@ -1256,26 +1256,17 @@ export default function ShiftApprovalPage() {
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shift.date;
+        if (!clockInEvent) return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
+
+        const dayToUseDate = (shift as Shift).makeupOfDay ? parse((shift as Shift).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInEvent.timestamp.toDate();
         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const schedule = operator.workSchedule[dayToUse];
-        const ignoreContractualStart = shift.ignoreContractualStart || false;
+        const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
         
-        const { ordinary, overtime, calculationStart } = calculateHours(shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
-        const { breakMinutes } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+        const { calculationEnd } = calculateHours(shift as Shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
     
-        if (!calculationStart) {
-            return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
-        }
-    
-        const totalCalculatedMinutes = (ordinary + overtime) * 60;
-        const totalCalculatedMillis = totalCalculatedMinutes * 60000;
-        const breakMillis = breakMinutes * 60000;
-    
-        const calculatedEndTime = new Date(calculationStart.getTime() + totalCalculatedMillis + breakMillis);
-    
-        if (Math.abs(calculatedEndTime.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
-             return { display: `${originalTime} (${format(calculatedEndTime, 'HH:mm')})`, calculationEnd: calculatedEndTime };
+        if (calculationEnd && Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+             return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
         }
         
         return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
@@ -1289,7 +1280,7 @@ export default function ShiftApprovalPage() {
         const dayName = dayIndexToName[getDayFns(startTimeEvent.timestamp.toDate())];
         const schedule = operator?.workSchedule[dayName];
         
-        const { calculationStart, calculationEnd } = calculateShiftDetails(shift.events as Timbratura[], schedule, true);
+        const { calculationStart, calculationEnd } = calculateHours({date: shift.date.toDate(), events: shift.events as Timbratura[]}, schedule, true, operator.overtimeCalculation);
         const originalStartTime = format(startTimeEvent.timestamp.toDate(), 'HH:mm:ss');
         
         const startDisplay = calculationStart && Math.abs(calculationStart.getTime() - startTimeEvent.timestamp.toDate().getTime()) > 1000
@@ -1301,22 +1292,14 @@ export default function ShiftApprovalPage() {
         
         const originalEndTime = format(endTimeEvent.timestamp.toDate(), 'HH:mm:ss');
         
-        if (!calculationStart) {
-             return { start: startDisplay, end: originalEndTime };
+        if (calculationEnd && Math.abs(calculationEnd.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000) {
+            const endDisplay = `${originalEndTime} (${format(calculationEnd, 'HH:mm')})`;
+            return { start: startDisplay, end: endDisplay };
         }
-        const { overtime } = calculateHours({date: shift.date.toDate(), events: shift.events as Timbratura[]}, schedule, true, operator.overtimeCalculation);
-        const { breakMinutes } = calculateShiftDetails(shift.events as Timbratura[], schedule, true);
-        
-        const totalCalculatedMinutes = overtime * 60;
-        const calculatedEndTime = new Date(calculationStart.getTime() + (totalCalculatedMinutes + breakMinutes) * 60000);
-        
-        const endDisplay = calculatedEndTime && Math.abs(calculatedEndTime.getTime() - endTimeEvent.timestamp.toDate().getTime()) > 60000
-            ? `${originalEndTime} (${format(calculatedEndTime, 'HH:mm')})`
-            : originalEndTime;
 
         return {
             start: startDisplay,
-            end: endDisplay
+            end: originalEndTime
         };
     };
 
@@ -1710,10 +1693,10 @@ export default function ShiftApprovalPage() {
                                     if (!detailShift) return null;
                                     
                                     const displayEvents = [...detailShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                                    const { display: displayStart } = getAdjustedStartTime(detailShift);
+                                    const { display: displayEnd } = getAdjustedEndTime(detailShift);
 
                                     return displayEvents.map(t => {
-                                        const { display: displayStart } = getAdjustedStartTime(detailShift);
-                                        const { display: displayEnd } = getAdjustedEndTime(detailShift);
                                         const isEntrata = t.type === 'entrata';
                                         const isUscita = t.type === 'uscita';
                                         
