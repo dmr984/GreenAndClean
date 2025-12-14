@@ -9,14 +9,14 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours } from '@/lib/calculations';
+import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours, calculatePureOvertime } from '@/lib/calculations';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
