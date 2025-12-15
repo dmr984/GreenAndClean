@@ -26,7 +26,7 @@ type Timbratura = {
 
 type Shift = {
     id: string;
-    status: 'in_sospeso' | 'in_corso' | 'confermato';
+    status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
     events: Timbratura[];
 }
 
@@ -52,7 +52,8 @@ export function AdminDashboard() {
 
             // For each operator, set up listeners for pending items
             usersData.forEach(op => {
-                const shiftsQuery = collection(firestore, `app-users/${op.id}/timbrature`);
+                // Pending Shifts (Timbrature)
+                 const shiftsQuery = collection(firestore, `app-users/${op.id}/timbrature`);
                  onSnapshot(shiftsQuery, (shiftSnapshot) => {
                     const allTimbrature = shiftSnapshot.docs.map(d => ({id: d.id, ...d.data() as Timbratura}));
 
@@ -72,14 +73,21 @@ export function AdminDashboard() {
 
                     const groupedShifts: Shift[] = [];
                     const processEvents = (events: Timbratura[], id: string) => {
-                        const isComplete = events.some(e => e.type === 'uscita');
-                        const hasPending = events.some(e => e.status === 'sospesa');
-                        
-                        let status: Shift['status'];
-                        if (hasPending && isComplete) status = 'in_sospeso';
-                        else if (!isComplete) status = 'in_corso';
-                        else status = 'confermato';
+                         const isComplete = events.some(e => e.type === 'uscita');
+                         const allConfirmed = events.every(e => e.status === 'confermata');
+                         const hasPending = events.some(e => e.status === 'sospesa');
 
+                        let status: Shift['status'];
+                        if (allConfirmed) {
+                            status = 'confermato';
+                        } else if (hasPending && isComplete) {
+                            status = 'in_sospeso';
+                        } else if (!isComplete) {
+                            status = 'in_corso';
+                        } else { // hasPending is true but not isComplete, or other cases
+                            status = 'in_sospeso';
+                        }
+                        
                         groupedShifts.push({ id, status, events });
                     }
                     

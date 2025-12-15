@@ -2,12 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
-import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, Timestamp } from 'firebase/firestore';
 import { Loader2, User, ClipboardList, ListChecks, Calculator } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useParams, useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -29,6 +30,21 @@ type Operator = {
     lastName: string;
     workSchedule: WorkSchedule;
 };
+
+type Timbratura = {
+    id: string;
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+    status: 'sospesa' | 'confermata' | 'rifiutata';
+    shiftId?: string;
+};
+
+type Shift = {
+    id: string;
+    status: 'in_sospeso' | 'in_corso' | 'confermato' | 'rifiutato';
+    events: Timbratura[];
+}
+
 
 export default function OperatorDetailPage() {
     const params = useParams();
@@ -64,10 +80,67 @@ export default function OperatorDetailPage() {
         if (!firestore || !operatorId) return;
 
         // Pending Shifts
-        const shiftsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('status', '==', 'sospesa'));
-        const unsubShifts = onSnapshot(shiftsQuery, snapshot => {
-             const pendingDays = new Set(snapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
-             setPendingShiftsCount(pendingDays.size);
+        const shiftsQuery = collection(firestore, `app-users/${operatorId}/timbrature`);
+        const unsubShifts = onSnapshot(shiftsQuery, shiftSnapshot => {
+             const allTimbrature = shiftSnapshot.docs.map(d => ({id: d.id, ...d.data() as Timbratura}));
+
+            const shiftsByDay: { [key: string]: Timbratura[] } = {};
+            const shiftsByManualId: { [key: string]: Timbratura[] } = {};
+            
+            for (const event of allTimbrature) {
+                if (event.shiftId) {
+                    if (!shiftsByManualId[event.shiftId]) shiftsByManualId[event.shiftId] = [];
+                    shiftsByManualId[event.shiftId].push(event);
+                } else {
+                    const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                    if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
+                    shiftsByDay[dayString].push(event);
+                }
+            }
+
+            const groupedShifts: Shift[] = [];
+            const processEvents = (events: Timbratura[], id: string) => {
+                 const isComplete = events.some(e => e.type === 'uscita');
+                 const allConfirmed = events.every(e => e.status === 'confermata');
+                 const hasPending = events.some(e => e.status === 'sospesa');
+
+                let status: Shift['status'];
+                if (allConfirmed) {
+                    status = 'confermato';
+                } else if (hasPending && isComplete) {
+                    status = 'in_sospeso';
+                } else if (!isComplete) {
+                    status = 'in_corso';
+                } else {
+                    status = 'in_sospeso';
+                }
+                
+                groupedShifts.push({ id, status, events });
+            }
+            
+            for (const shiftId in shiftsByManualId) {
+                processEvents(shiftsByManualId[shiftId], shiftId);
+            }
+
+            for (const day in shiftsByDay) {
+                let currentShiftEvents: Timbratura[] = [];
+                const sortedEvents = shiftsByDay[day].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                for (const event of sortedEvents) {
+                    currentShiftEvents.push(event);
+                    if (event.type === 'uscita') {
+                        const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                        processEvents(currentShiftEvents, shiftId);
+                        currentShiftEvents = [];
+                    }
+                }
+                if (currentShiftEvents.length > 0) {
+                    const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                    processEvents(currentShiftEvents, shiftId);
+                }
+            }
+            
+            const pendingCount = groupedShifts.filter(s => s.status === 'in_sospeso').length;
+            setPendingShiftsCount(pendingCount);
         });
 
         // Pending Leave Requests
