@@ -473,6 +473,30 @@ const handleRegularShiftApproval = async () => {
     }
 
     const shiftDate = regularShift.events[0].timestamp.toDate();
+    const dayStart = startOfDay(shiftDate);
+    const dayEnd = endOfDay(shiftDate);
+
+    // Get all timbrature for the day to find orphans
+    const q = query(
+        timbratureRef,
+        where('timestamp', '>=', dayStart),
+        where('timestamp', '<=', dayEnd)
+    );
+    const snapshot = await getDocs(q);
+    const allDayEvents = snapshot.docs.map(d => ({...d.data(), id: d.id} as Timbratura));
+
+    // Find orphan clock-outs on the same day
+    const orphanClockOuts = allDayEvents.filter(event => 
+        event.type === 'uscita' &&
+        event.status === 'sospesa' &&
+        !regularShift.events.some(se => se.id === event.id)
+    );
+    
+    // Delete orphan clock-outs
+    orphanClockOuts.forEach(orphan => {
+        const orphanRef = doc(timbratureRef, orphan.id);
+        batch.delete(orphanRef);
+    });
 
     if (approvedOvertime > 0) {
         const overtimeRequest = {
@@ -523,12 +547,36 @@ const handleRegularShiftApproval = async () => {
      const handleRejectShift = async (shiftToReject: Shift | null) => {
         if (!firestore || !operator || !shiftToReject) return;
         const batch = writeBatch(firestore);
+        const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+
         shiftToReject.events.forEach(event => {
              if (event.status === 'sospesa') {
-                const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+                const docRef = doc(timbratureCollectionRef, event.id);
                 batch.update(docRef, { status: 'rifiutata', viewedByOperator: false });
             }
         });
+         
+        const shiftDate = shiftToReject.events[0].timestamp.toDate();
+        const dayStart = startOfDay(shiftDate);
+        const dayEnd = endOfDay(shiftDate);
+        const q = query(
+            timbratureCollectionRef,
+            where('timestamp', '>=', dayStart),
+            where('timestamp', '<=', dayEnd)
+        );
+        const snapshot = await getDocs(q);
+        const allDayEvents = snapshot.docs.map(d => ({...d.data(), id: d.id} as Timbratura));
+        const orphanClockOuts = allDayEvents.filter(event => 
+            event.type === 'uscita' &&
+            event.status === 'sospesa' &&
+            !shiftToReject.events.some(se => se.id === event.id)
+        );
+        orphanClockOuts.forEach(orphan => {
+            const orphanRef = doc(timbratureCollectionRef, orphan.id);
+            batch.delete(orphanRef);
+        });
+
+
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno rifiutato.' });
             setIsDetailOpen(false);
@@ -1024,10 +1072,17 @@ const handleRegularShiftApproval = async () => {
     
         const events: { type: Timbratura['type'], time: string }[] = [
             { type: 'entrata', time: newShiftTimes.entrata },
-            { type: 'uscita', time: newShiftTimes.uscita },
-            { type: 'pausa', time: newShiftTimes.pausa },
-            { type: 'fine_pausa', time: newShiftTimes.fine_pausa },
         ];
+        
+        if (newShiftTimes.uscita) {
+            events.push({ type: 'uscita', time: newShiftTimes.uscita });
+        }
+        if (newShiftTimes.pausa) {
+             events.push({ type: 'pausa', time: newShiftTimes.pausa });
+        }
+        if (newShiftTimes.fine_pausa) {
+             events.push({ type: 'fine_pausa', time: newShiftTimes.fine_pausa });
+        }
     
         for (const event of events) {
             if (event.time) {
@@ -1044,7 +1099,8 @@ const handleRegularShiftApproval = async () => {
                 if (event.type === 'entrata') {
                     eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
                     if(newShiftIsMakeup && newShiftMakeupDay) {
-                        eventPayload.makeupOfDay = format(newShiftMakeupDay, 'yyyy-MM-dd');
+                        const makeupDate = parse(newShiftMakeupDay, 'EEEE', new Date(), { locale: it });
+                        eventPayload.makeupOfDay = format(makeupDate, 'yyyy-MM-dd');
                     }
                 }
                 batch.set(newDocRef, eventPayload);
