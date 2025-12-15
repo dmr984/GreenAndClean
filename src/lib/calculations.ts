@@ -291,12 +291,10 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
 
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-    // Overtime on a regular day still uses the total minutes logic
     const overtimeHours = roundOvertimeHours(calculationStart || shift.date, new Date((calculationStart || shift.date).getTime() + overtimeMinutes * 60000));
 
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
-
-    // Correct calculation for reference end time
+    
     const totalCalculatedHours = ordinaryHours + overtimeHours;
     const calculationEnd = calculationStart ? new Date(calculationStart.getTime() + totalCalculatedHours * 3600000 + breakMinutes * 60000) : null;
 
