@@ -981,8 +981,8 @@ const handleRegularShiftApproval = async () => {
     };
 
     const handleAddManualShift = async () => {
-        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !newShiftTimes.uscita || !operator) {
-            toast({ title: 'Dati mancanti', description: 'Data, Entrata e Uscita sono obbligatorie.', variant: 'destructive'});
+        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !operator) {
+            toast({ title: 'Dati mancanti', description: 'Data e Entrata sono obbligatorie.', variant: 'destructive'});
             return;
         }
 
@@ -1591,8 +1591,8 @@ const handleRegularShiftApproval = async () => {
                                 <Input id="manual-entrata" type="time" value={newShiftTimes.entrata} onChange={e => setNewShiftTimes(p => ({...p, entrata: e.target.value}))} required />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="manual-uscita">Uscita*</Label>
-                                <Input id="manual-uscita" type="time" value={newShiftTimes.uscita} onChange={e => setNewShiftTimes(p => ({...p, uscita: e.target.value}))} required />
+                                <Label htmlFor="manual-uscita">Uscita</Label>
+                                <Input id="manual-uscita" type="time" value={newShiftTimes.uscita} onChange={e => setNewShiftTimes(p => ({...p, uscita: e.target.value}))} />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -1913,8 +1913,8 @@ const handleRegularShiftApproval = async () => {
                                 <Input id="edit-entrata" type="time" value={editShiftTimes.entrata} onChange={e => setEditShiftTimes(p => ({...p, entrata: e.target.value}))} required />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="edit-uscita">Uscita*</Label>
-                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} required={isEditOvertimeOpen} />
+                                <Label htmlFor="edit-uscita">Uscita</Label>
+                                <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -2124,5 +2124,3 @@ const handleRegularShiftApproval = async () => {
         </div>
     );
 };
-
-    

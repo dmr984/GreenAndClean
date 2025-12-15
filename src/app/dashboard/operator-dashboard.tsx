@@ -48,6 +48,7 @@ type ClockingEvent = {
     status: 'sospesa' | 'confermata' | 'rifiutata';
     viewedByOperator?: boolean;
     makeupOfDay?: string; // Changed to ISO date string 'YYYY-MM-DD'
+    shiftId?: string;
 };
 
 type Shift = {
@@ -430,6 +431,31 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         const currentLoc = await getLocation();
         
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+
+        let shiftIdToUpdate: string | undefined = undefined;
+        if (type === 'uscita') {
+            const todayStart = startOfDay(new Date());
+            const todayEnd = endOfDay(new Date());
+
+            const q = query(
+                collection(firestore, `app-users/${operator.id}/timbrature`),
+                where('timestamp', '>=', todayStart),
+                where('timestamp', '<=', todayEnd)
+            );
+            const snapshot = await getDocs(q);
+            const todayEvents = snapshot.docs.map(d => ({id: d.id, ...d.data() as ClockingEvent}));
+            
+            const lastClockIn = [...todayEvents]
+                .filter(e => e.type === 'entrata')
+                .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0];
+
+            const hasClockOut = todayEvents.some(e => e.type === 'uscita' && e.timestamp.toMillis() > (lastClockIn?.timestamp.toMillis() || 0));
+
+            if (lastClockIn && !hasClockOut) {
+                shiftIdToUpdate = lastClockIn.shiftId;
+            }
+        }
+
         const newTimbratura: Omit<ClockingEvent, 'id'> = {
             userId: operator.id,
             type,
@@ -438,6 +464,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             latitude: currentLoc.latitude,
             longitude: currentLoc.longitude,
             viewedByOperator: true,
+            ...(shiftIdToUpdate && { shiftId: shiftIdToUpdate })
         };
         
         if (type === 'entrata' && makeupDayInfo) {
