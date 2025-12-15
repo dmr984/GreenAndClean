@@ -2,11 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { Loader2, Users, User, Circle, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
 
 type Operator = {
     id: string;
@@ -14,6 +15,21 @@ type Operator = {
     firstName: string;
     lastName: string;
 };
+
+type Timbratura = {
+    id: string;
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+    status: 'sospesa' | 'confermata' | 'rifiutata';
+    shiftId?: string;
+};
+
+type Shift = {
+    id: string;
+    status: 'in_sospeso' | 'in_corso' | 'confermato';
+    events: Timbratura[];
+}
+
 
 export function AdminDashboard() {
     const firestore = useFirestore();
@@ -27,7 +43,6 @@ export function AdminDashboard() {
             return;
         }
 
-        // Listener for operators
         const operatorsQuery = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
         const unsubscribeOperators = onSnapshot(operatorsQuery, (snapshot) => {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
@@ -37,13 +52,64 @@ export function AdminDashboard() {
 
             // For each operator, set up listeners for pending items
             usersData.forEach(op => {
-                // Pending Shifts (Timbrature)
-                const shiftsQuery = query(collection(firestore, `app-users/${op.id}/timbrature`), where('status', '==', 'sospesa'));
+                const shiftsQuery = collection(firestore, `app-users/${op.id}/timbrature`);
                  onSnapshot(shiftsQuery, (shiftSnapshot) => {
-                    const pendingDays = new Set(shiftSnapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
+                    const allTimbrature = shiftSnapshot.docs.map(d => ({id: d.id, ...d.data() as Timbratura}));
+
+                    const shiftsByDay: { [key: string]: Timbratura[] } = {};
+                    const shiftsByManualId: { [key: string]: Timbratura[] } = {};
+                    
+                    for (const event of allTimbrature) {
+                        if (event.shiftId) {
+                            if (!shiftsByManualId[event.shiftId]) shiftsByManualId[event.shiftId] = [];
+                            shiftsByManualId[event.shiftId].push(event);
+                        } else {
+                            const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                            if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
+                            shiftsByDay[dayString].push(event);
+                        }
+                    }
+
+                    const groupedShifts: Shift[] = [];
+                    const processEvents = (events: Timbratura[], id: string) => {
+                        const isComplete = events.some(e => e.type === 'uscita');
+                        const hasPending = events.some(e => e.status === 'sospesa');
+                        
+                        let status: Shift['status'];
+                        if (hasPending && isComplete) status = 'in_sospeso';
+                        else if (!isComplete) status = 'in_corso';
+                        else status = 'confermato';
+
+                        groupedShifts.push({ id, status, events });
+                    }
+                    
+                    // Process manual shifts
+                    for (const shiftId in shiftsByManualId) {
+                        processEvents(shiftsByManualId[shiftId], shiftId);
+                    }
+
+                    // Process automatic shifts
+                    for (const day in shiftsByDay) {
+                        let currentShiftEvents: Timbratura[] = [];
+                        const sortedEvents = shiftsByDay[day].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                        for (const event of sortedEvents) {
+                            currentShiftEvents.push(event);
+                            if (event.type === 'uscita') {
+                                const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                                processEvents(currentShiftEvents, shiftId);
+                                currentShiftEvents = [];
+                            }
+                        }
+                        if (currentShiftEvents.length > 0) {
+                            const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                            processEvents(currentShiftEvents, shiftId);
+                        }
+                    }
+                    
+                    const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso').length;
                      setPendingCounts(prev => ({
                         ...prev,
-                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingDays.size }
+                        [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingShiftsCount }
                     }));
                 });
 
