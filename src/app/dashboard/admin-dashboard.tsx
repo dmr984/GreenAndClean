@@ -114,7 +114,7 @@ export function AdminDashboard() {
                         }
                     }
                     
-                    const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso').length;
+                    const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
                      setPendingCounts(prev => ({
                         ...prev,
                         [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingShiftsCount }

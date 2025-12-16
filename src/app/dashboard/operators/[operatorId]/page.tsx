@@ -139,7 +139,7 @@ export default function OperatorDetailPage() {
                 }
             }
             
-            const pendingCount = groupedShifts.filter(s => s.status === 'in_sospeso').length;
+            const pendingCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
             setPendingShiftsCount(pendingCount);
         });
 
