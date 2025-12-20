@@ -672,7 +672,8 @@ const handleRegularShiftApproval = async () => {
                 const updatePayload: any = { 
                     timestamp: newEventDetails.timestamp, 
                     viewedByOperator: false, 
-                    shiftId: shiftId 
+                    shiftId: shiftId,
+                    status: isApprovedShift ? 'sospesa' : existingEvent.status
                 };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -682,7 +683,7 @@ const handleRegularShiftApproval = async () => {
     
             } else if (newEventDetails && !existingEvent) { 
                 const newDocRef = doc(timbratureCollectionRef);
-                const finalStatus = isApprovedShift ? 'confermata' : 'sospesa';
+                const finalStatus = isApprovedShift ? 'sospesa' : 'sospesa';
                  const newEventPayload: Omit<Timbratura, 'id'> = {
                     userId: operator.id,
                     type: type,
@@ -1271,12 +1272,22 @@ const handleRegularShiftApproval = async () => {
         newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
         
         const docRef = doc(firestore, `app-users/${operator.id}/straordinari`, editingOvertimeShift.id);
-        await updateDoc(docRef, { events: newEvents }).then(() => {
+        const updatePayload: { events: StraordinarioEvent[], status: StraordinarioShift['status'] } = { 
+            events: newEvents,
+            status: editingOvertimeShift.status
+        };
+
+        // If an approved shift is edited, it must be re-approved.
+        if (editingOvertimeShift.status === 'approvato') {
+            updatePayload.status = 'in_attesa_di_approvazione';
+        }
+        
+        await updateDoc(docRef, updatePayload).then(() => {
             toast({ title: 'Successo', description: 'Turno straordinario aggiornato.' });
             setIsEditOvertimeOpen(false);
             setEditingOvertimeShift(null);
             
-            setDetailOvertimeShift(prev => prev ? ({ ...prev, events: newEvents }) : null);
+            setDetailOvertimeShift(prev => prev ? ({ ...prev, events: newEvents, status: updatePayload.status }) : null);
 
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
