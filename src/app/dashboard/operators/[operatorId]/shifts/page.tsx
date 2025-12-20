@@ -114,6 +114,10 @@ type ApprovalContext = {
     ignoreContractualStart: boolean;
 } | null;
 
+type Request = {
+    hours?: number;
+    associatedShiftId?: string;
+}
 
 const ITEMS_PER_PAGE = 5;
 
@@ -126,6 +130,7 @@ export default function ShiftApprovalPage() {
     const [operator, setOperator] = useState<Operator | null>(null);
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
     const [overtimeShifts, setOvertimeShifts] = useState<StraordinarioShift[]>([]);
+    const [approvedRequests, setApprovedRequests] = useState<Request[]>([]);
     const [bookedShiftDays, setBookedShiftDays] = useState<Date[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
@@ -264,6 +269,8 @@ export default function ShiftApprovalPage() {
             const requestSnapshot = await getDocs(requestsQuery);
             const leaveDays = new Set<string>();
             
+            setApprovedRequests(requestSnapshot.docs.map(d => ({id: d.id, ...d.data() as Request})));
+
             requestSnapshot.forEach(doc => {
                 const req = doc.data();
                 if (req.type === 'ferie' || req.type === 'malattia' && req.status === 'approvato') {
@@ -386,7 +393,7 @@ export default function ShiftApprovalPage() {
         if (!approvalContext) return;
     
         if (approvalContext.isOvertimeShift) {
-             handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve', parseFloat(approvalContext.overtimeHours) || 0, approvalContext.manualBreak);
+             handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve');
         } else {
             await handleRegularShiftApproval();
         }
@@ -396,7 +403,7 @@ export default function ShiftApprovalPage() {
         if (!approvalContext) return;
     
         if (approvalContext.isOvertimeShift) {
-             await handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve', parseFloat(approvalContext.overtimeHours) || 0, approvalContext.manualBreak);
+             await handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve');
         } else {
             await handleRegularShiftApproval();
         }
@@ -407,7 +414,7 @@ export default function ShiftApprovalPage() {
         const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
     
         if (isOvertimeShift) {
-            handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve', parseFloat(context.overtimeHours) || 0, context.manualBreak);
+            handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve');
         } else {
             const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
             if (hasLeaveHours && !createLeaveRequest) {
@@ -431,12 +438,14 @@ const handleRegularShiftApproval = async () => {
     const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
     
     regularShift.events.forEach(event => {
+        // Only update status if it's currently suspended.
         if (event.status === 'sospesa') {
             const docRef = doc(timbratureRef, event.id);
             const updateData: { status: string; viewedByOperator: boolean; ignoreContractualStart?: boolean } = {
                 status: 'confermata',
                 viewedByOperator: false
             };
+            // Only add ignoreContractualStart to the clock-in event
             if (event.type === 'entrata') {
                 updateData.ignoreContractualStart = ignoreContractualStart;
             }
@@ -1162,9 +1171,10 @@ const handleRegularShiftApproval = async () => {
         handleOpenApproveDialog(shift, true);
     };
 
-    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', approvedOvertime: number) => {
-        if (!firestore || !operatorId || !operator) return;
-    
+    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
+        if (!firestore || !operatorId || !operator || !approvalContext) return;
+        
+        const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
     
         if (action === 'reject') {
@@ -1751,9 +1761,13 @@ const handleRegularShiftApproval = async () => {
                         let ordinary = 0, overtime = 0, leave = 0, worked = 0, breakDuration = 0;
                         let calculationStart: Date | null = null;
                         let calculationEnd: Date | null = null;
+
+                        const associatedOvertimeRequest = detailShift.status === 'confermato' 
+                            ? approvedRequests.find(r => r.associatedShiftId === detailShift.id)
+                            : null;
                         
                         if (!isWorkDay) {
-                           overtime = calculatePureOvertime(detailShift, operator);
+                           overtime = associatedOvertimeRequest?.hours ?? calculatePureOvertime(detailShift, operator);
                            const details = calculateShiftDetails(detailShift.events, schedule, true);
                            worked = details.workedMinutes;
                            breakDuration = details.breakMinutes;
@@ -1765,7 +1779,7 @@ const handleRegularShiftApproval = async () => {
                             const ignoreContractualStart = detailShift.ignoreContractualStart || false;
                             const hoursResult = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
                             ordinary = hoursResult.ordinary;
-                            overtime = hoursResult.overtime;
+                            overtime = associatedOvertimeRequest?.hours ?? hoursResult.overtime;
                             leave = hoursResult.leave;
                             worked = hoursResult.worked;
                             breakDuration = hoursResult.break;
@@ -1944,7 +1958,7 @@ const handleRegularShiftApproval = async () => {
                         <Button className="w-full" variant="outline" onClick={() => setIsDetailOvertimeOpen(false)}>Chiudi</Button>
                          {detailOvertimeShift && detailOvertimeShift.status === 'in_attesa_di_approvazione' && (
                             <>
-                               <Button variant="destructive" className="w-full" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject', 0)}>
+                               <Button variant="destructive" className="w-full" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject')}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                                </Button>
                                <Button className="w-full" onClick={() => handleOvertimeShiftApprovalProcess(detailOvertimeShift)}>
