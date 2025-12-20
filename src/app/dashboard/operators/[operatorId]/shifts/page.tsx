@@ -1167,11 +1167,20 @@ const handleRegularShiftApproval = async () => {
         }
 
         const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
+        
+        if (approvedOvertime <= 0) {
+            toast({ title: 'Nessun straordinario', description: `Nessuna ora di straordinario da registrare. Il turno verrà eliminato.`, variant: 'default' });
+            await deleteDoc(shiftRef);
+            setIsApproveDialogOpen(false);
+            setApprovalContext(null);
+            setIsDetailOvertimeOpen(false);
+            return;
+        }
+
         const batch = writeBatch(firestore);
         
-        batch.delete(shiftRef); // Delete the original 'straordinari' document
+        batch.delete(shiftRef);
         
-        // Create a new request in the 'requests' subcollection instead
         const newRequestData = {
             userId: operator.id,
             type: 'straordinario' as const,
