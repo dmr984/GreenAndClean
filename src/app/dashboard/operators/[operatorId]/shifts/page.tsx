@@ -1029,15 +1029,26 @@ const handleRegularShiftApproval = async () => {
     };
 
     const handleAddManualShift = async () => {
-        if (!firestore || !operatorId || !newShiftDate || !newShiftTimes.entrata || !operator) {
-            toast({ title: 'Dati mancanti', description: 'Data e Entrata sono obbligatorie.', variant: 'destructive'});
+        if (!firestore || !operatorId || !newShiftDate || !operator) {
+            toast({ title: 'Dati mancanti', description: 'La data è obbligatoria.', variant: 'destructive'});
             return;
         }
+
+        // Only require 'entrata' if 'uscita' is also provided or if it's the only one
+        if (!newShiftTimes.entrata && newShiftTimes.uscita) {
+            toast({ title: 'Dati mancanti', description: 'L\'orario di entrata è obbligatorio se inserisci un\'uscita.', variant: 'destructive'});
+            return;
+        }
+         if (!newShiftTimes.entrata && !newShiftTimes.uscita) {
+            toast({ title: 'Dati mancanti', description: 'Devi inserire almeno un orario di entrata o uscita.', variant: 'destructive'});
+            return;
+        }
+
 
         const dayName = dayIndexToName[getDayFns(newShiftDate)];
         const schedule = operator.workSchedule[dayName];
         
-        if (!newShiftIgnoreContractual && schedule?.startTime) {
+        if (!newShiftIgnoreContractual && schedule?.startTime && newShiftTimes.entrata) {
             const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
             const contractualStart = set(newShiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
             
@@ -1144,7 +1155,7 @@ const handleRegularShiftApproval = async () => {
     };
     
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', manualBreak?: ManualBreak) => {
-        if (!firestore || !operatorId || !operator) return;
+        if (!firestore || !operatorId || !operator || !approvalContext) return;
 
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
 
@@ -1155,57 +1166,29 @@ const handleRegularShiftApproval = async () => {
             return;
         }
 
-        if (!approvalContext) return;
-
         const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
         const batch = writeBatch(firestore);
-        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
         
-        let eventsToProcess = [...shift.events];
-        if (manualBreak && manualBreak.start && manualBreak.end) {
-             const createTimestamp = (time: string): Timestamp => {
-                const [hours, minutes] = time.split(':').map(Number);
-                return Timestamp.fromDate(set(shift.date.toDate(), { hours, minutes, seconds: 0, milliseconds: 0 }));
-            };
-            eventsToProcess.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start), latitude: 0, longitude: 0 });
-            eventsToProcess.push({ type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end), latitude: 0, longitude: 0 });
-        }
+        batch.delete(shiftRef); // Delete the original 'straordinari' document
         
-        eventsToProcess.forEach(event => {
-            const newTimbraturaRef = doc(timbratureCollectionRef);
-            batch.set(newTimbraturaRef, {
-                userId: operatorId,
-                type: event.type,
-                timestamp: event.timestamp,
-                status: 'confermata',
-                viewedByOperator: false,
-                latitude: event.latitude ?? null,
-                longitude: event.longitude ?? null,
-                isOvertime: true
-            });
-        });
-    
-        if (approvedOvertime > 0) {
-             const overtimeRequest = {
-                userId: operator.id,
-                type: 'straordinario' as const,
-                status: 'approvato' as const,
-                startDate: shift.date,
-                endDate: shift.date,
-                hours: approvedOvertime,
-                reason: 'Straordinario da giorno non lavorativo approvato',
-                createdAt: serverTimestamp(),
-                viewedByOperator: false,
-            };
-            const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
-            batch.set(newRequestRef, overtimeRequest);
-        }
-    
-        batch.delete(shiftRef);
+        // Create a new request in the 'requests' subcollection instead
+        const newRequestData = {
+            userId: operator.id,
+            type: 'straordinario' as const,
+            status: 'approvato' as const,
+            startDate: shift.date,
+            endDate: shift.date,
+            hours: approvedOvertime,
+            reason: 'Straordinario da giorno non lavorativo (approvato)',
+            createdAt: serverTimestamp(),
+            viewedByOperator: false,
+        };
+        const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
+        batch.set(newRequestRef, newRequestData);
     
         try {
             await batch.commit();
-            toast({ title: 'Successo', description: `Turno straordinario approvato e registrato.` });
+            toast({ title: 'Successo', description: `Turno straordinario approvato e registrato come richiesta.` });
         } catch (error) {
              toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
         } finally {
@@ -1643,8 +1626,8 @@ const handleRegularShiftApproval = async () => {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="manual-entrata">Entrata*</Label>
-                                <Input id="manual-entrata" type="time" value={newShiftTimes.entrata} onChange={e => setNewShiftTimes(p => ({...p, entrata: e.target.value}))} required />
+                                <Label htmlFor="manual-entrata">Entrata</Label>
+                                <Input id="manual-entrata" type="time" value={newShiftTimes.entrata} onChange={e => setNewShiftTimes(p => ({...p, entrata: e.target.value}))} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="manual-uscita">Uscita</Label>
