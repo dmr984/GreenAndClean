@@ -382,15 +382,18 @@ export default function ShiftApprovalPage() {
     
     const handleConfirmApprove = async () => {
         setIsConfirmingNoLeave(false);
-        await proceedWithApproval();
+        if (approvalContext?.isOvertimeShift) {
+             handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve', parseFloat(approvalContext.overtimeHours) || 0, approvalContext.manualBreak);
+        } else {
+            await handleRegularShiftApproval();
+        }
     };
 
     const proceedWithApproval = async () => {
-        if (!approvalContext || !firestore || !operator) return;
-        const { shift, isOvertimeShift } = approvalContext;
+        if (!approvalContext) return;
     
-        if (isOvertimeShift) {
-            await handleOvertimeShiftAction(shift as StraordinarioShift, 'approve', approvalContext.manualBreak);
+        if (approvalContext.isOvertimeShift) {
+             await handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve', parseFloat(approvalContext.overtimeHours) || 0, approvalContext.manualBreak);
         } else {
             await handleRegularShiftApproval();
         }
@@ -398,13 +401,17 @@ export default function ShiftApprovalPage() {
     
     const handleApprovalClick = () => {
         if (!approvalContext) return;
-        const { leaveHours, createLeaveRequest } = approvalContext;
-        const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
+        const { leaveHours, createLeaveRequest, isOvertimeShift } = approvalContext;
 
-        if (hasLeaveHours && !createLeaveRequest) {
-            setIsConfirmingNoLeave(true);
+        if (!isOvertimeShift) {
+            const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
+            if (hasLeaveHours && !createLeaveRequest) {
+                setIsConfirmingNoLeave(true);
+            } else {
+                 handleRegularShiftApproval();
+            }
         } else {
-            proceedWithApproval();
+             handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve', parseFloat(approvalContext.overtimeHours) || 0, approvalContext.manualBreak);
         }
     };
     
@@ -673,7 +680,7 @@ const handleRegularShiftApproval = async () => {
                     timestamp: newEventDetails.timestamp, 
                     viewedByOperator: false, 
                     shiftId: shiftId,
-                    status: isApprovedShift ? 'sospesa' : existingEvent.status
+                    status: isApprovedShift ? 'sospesa' : 'sospesa'
                 };
                 if (type === 'entrata') {
                     updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -683,7 +690,7 @@ const handleRegularShiftApproval = async () => {
     
             } else if (newEventDetails && !existingEvent) { 
                 const newDocRef = doc(timbratureCollectionRef);
-                const finalStatus = isApprovedShift ? 'sospesa' : 'sospesa';
+                const finalStatus = 'sospesa';
                  const newEventPayload: Omit<Timbratura, 'id'> = {
                     userId: operator.id,
                     type: type,
@@ -706,14 +713,14 @@ const handleRegularShiftApproval = async () => {
         }
         
         await batch.commit().then(() => {
-            toast({ title: 'Successo', description: 'Turno aggiornato con successo.' });
+            toast({ title: 'Successo', description: 'Turno aggiornato con successo. Il turno è ora in attesa di approvazione.' });
             setIsEditShiftOpen(false);
             setEditingShift(null);
             
             if (detailShift) {
                 const newProcessedShift = processShift(newEventsForState, new Set());
                 if (newProcessedShift) {
-                  setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState }) : null);
+                  setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState, status: 'in_sospeso' }) : null);
                 } else {
                   setIsDetailOpen(false);
                 }
@@ -1155,58 +1162,57 @@ const handleRegularShiftApproval = async () => {
         handleOpenApproveDialog(shift, true);
     };
     
-    const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', manualBreak?: ManualBreak) => {
-        if (!firestore || !operatorId || !operator || !approvalContext) return;
+const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject', approvedOvertime: number, manualBreak?: ManualBreak) => {
+    if (!firestore || !operatorId || !operator) return;
 
-        const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
+    const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
 
-        if (action === 'reject') {
-            await updateDoc(shiftRef, { status: 'rifiutato' });
-            toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
-            setIsDetailOvertimeOpen(false);
-            return;
-        }
-
-        const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
-        
-        if (approvedOvertime <= 0) {
-            toast({ title: 'Nessun straordinario', description: `Nessuna ora di straordinario da registrare. Il turno verrà eliminato.`, variant: 'default' });
-            await deleteDoc(shiftRef);
-            setIsApproveDialogOpen(false);
-            setApprovalContext(null);
-            setIsDetailOvertimeOpen(false);
-            return;
-        }
-
-        const batch = writeBatch(firestore);
-        
-        batch.delete(shiftRef);
-        
-        const newRequestData = {
-            userId: operator.id,
-            type: 'straordinario' as const,
-            status: 'approvato' as const,
-            startDate: shift.date,
-            endDate: shift.date,
-            hours: approvedOvertime,
-            reason: 'Straordinario da giorno non lavorativo (approvato)',
-            createdAt: serverTimestamp(),
-            viewedByOperator: false,
-        };
-        const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
-        batch.set(newRequestRef, newRequestData);
+    if (action === 'reject') {
+        await updateDoc(shiftRef, { status: 'rifiutato' });
+        toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
+        setIsDetailOvertimeOpen(false);
+        return;
+    }
     
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: `Turno straordinario approvato e registrato come richiesta.` });
-        } catch (error) {
-             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
-        } finally {
-            setIsApproveDialogOpen(false);
-            setApprovalContext(null);
-            setIsDetailOvertimeOpen(false);
-        }
+    if (approvedOvertime <= 0) {
+        toast({ title: 'Nessun straordinario', description: `Nessuna ora di straordinario da registrare. Il turno verrà eliminato.`, variant: 'default' });
+        await deleteDoc(shiftRef);
+        setIsApproveDialogOpen(false);
+        setApprovalContext(null);
+        setIsDetailOvertimeOpen(false);
+        return;
+    }
+
+    const batch = writeBatch(firestore);
+    
+    batch.delete(shiftRef);
+    
+    const newRequestData = {
+        userId: operator.id,
+        type: 'straordinario' as const,
+        status: 'approvato' as const,
+        startDate: shift.date,
+        endDate: shift.date,
+        hours: approvedOvertime,
+        reason: 'Straordinario da giorno non lavorativo (approvato)',
+        createdAt: serverTimestamp(),
+        viewedByOperator: false,
     };
+    const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
+    batch.set(newRequestRef, newRequestData);
+
+    try {
+        await batch.commit();
+        toast({ title: 'Successo', description: `Turno straordinario approvato e registrato come richiesta.` });
+    } catch (error) {
+         toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
+    } finally {
+        setIsApproveDialogOpen(false);
+        setApprovalContext(null);
+        setIsDetailOvertimeOpen(false);
+    }
+};
+
     
     const calculateOvertimeShiftMinutes = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
         let { workedMinutes } = calculateShiftDetails(shift.events as Timbratura[], undefined, true);
@@ -1944,7 +1950,7 @@ const handleRegularShiftApproval = async () => {
                         <Button className="w-full" variant="outline" onClick={() => setIsDetailOvertimeOpen(false)}>Chiudi</Button>
                          {detailOvertimeShift && detailOvertimeShift.status === 'in_attesa_di_approvazione' && (
                             <>
-                               <Button variant="destructive" className="w-full" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject')}>
+                               <Button variant="destructive" className="w-full" onClick={() => handleOvertimeShiftAction(detailOvertimeShift, 'reject', 0)}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
                                </Button>
                                <Button className="w-full" onClick={() => handleOvertimeShiftApprovalProcess(detailOvertimeShift)}>
