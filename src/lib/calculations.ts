@@ -186,7 +186,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(clockInTime);
     
     // 1. Determine Calculation Start Time
-    if (schedule?.startTime && (isWorkDay || ignoreContractualStart === false) && !ignoreContractualStart) {
+    if (schedule?.startTime && !ignoreContractualStart) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         
@@ -273,8 +273,8 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
         if (!clockOutTime || !clockInTimeToUse) {
              return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0, calculationStart: null, calculationEnd: null };
         }
-        const overtime = roundOvertimeHours(clockInTimeToUse, clockOutTime);
-        const finalCalculationEnd = new Date(clockInTimeToUse.getTime() + overtime * 3600000);
+        const overtime = roundOvertimeHours(clockInTimeToUse, new Date(clockOutTime.getTime() - breakMinutes * 60000));
+        const finalCalculationEnd = new Date(clockInTimeToUse.getTime() + (overtime * 60 + breakMinutes) * 60000);
         
         return {
             ordinary: 0,
@@ -291,7 +291,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
 
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-    const overtimeHours = roundOvertimeHours(calculationStart || shift.date, new Date((calculationStart || shift.date).getTime() + overtimeMinutes * 60000));
+    const overtimeHours = calculationStart ? roundOvertimeHours(calculationStart, new Date(calculationStart.getTime() + overtimeMinutes * 60000)) : 0;
 
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
     

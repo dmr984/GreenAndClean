@@ -120,6 +120,10 @@
         "viewedByOperator": {
           "type": "boolean",
           "description": "Indicates if the operator has seen the status change made by an admin."
+        },
+        "ignoreContractualStart": {
+            "type": "boolean",
+            "description": "If true, the calculation will start from the actual clock-in time, not the contractual one."
         }
       },
       "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
