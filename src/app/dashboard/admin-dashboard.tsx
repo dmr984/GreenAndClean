@@ -48,7 +48,7 @@ export function AdminDashboard() {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
             usersData.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName, undefined, { numeric: true }));
             setOperators(usersData);
-            setIsLoading(false);
+setIsLoading(false);
 
             // For each operator, set up listeners for pending items
             usersData.forEach(op => {
@@ -132,7 +132,7 @@ export function AdminDashboard() {
                 });
 
                 // Pending Overtime Shifts
-                const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', '==', 'in_attesa_di_approvazione'));
+                const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
                 onSnapshot(overtimeQuery, (overtimeSnapshot) => {
                     setPendingCounts(prev => ({
                         ...prev,
