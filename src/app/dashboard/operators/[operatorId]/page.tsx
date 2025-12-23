@@ -107,12 +107,12 @@ export default function OperatorDetailPage() {
                 let status: Shift['status'];
                 if (allConfirmed) {
                     status = 'confermato';
-                } else if (hasPending && isComplete) {
-                    status = 'in_sospeso';
                 } else if (!isComplete) {
                     status = 'in_corso';
-                } else {
+                } else if (hasPending) {
                     status = 'in_sospeso';
+                } else {
+                    status = 'rifiutato'; 
                 }
                 
                 groupedShifts.push({ id, status, events });
@@ -139,8 +139,8 @@ export default function OperatorDetailPage() {
                 }
             }
             
-            const pendingCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
-            setPendingShiftsCount(pendingCount);
+            const count = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
+            setPendingShiftsCount(count);
         });
 
         // Pending Leave Requests
@@ -150,9 +150,9 @@ export default function OperatorDetailPage() {
         });
 
         // Pending Overtime Shifts
-        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', '==', 'in_attesa_di_approvazione'));
+        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
         const unsubOvertime = onSnapshot(overtimeQuery, snapshot => {
-            setPendingOvertimeCount(snapshot.size);
+             setPendingOvertimeCount(snapshot.size);
         });
 
 
