@@ -63,6 +63,8 @@ type Timbratura = {
     shiftId?: string;
     ignoreContractualStart?: boolean;
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
+    approvedOrdinaryHours?: number;
+    approvedOvertimeHours?: number;
 };
 
 type Shift = {
@@ -430,6 +432,7 @@ const handleRegularShiftApproval = async () => {
 
     const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak, ignoreContractualStart } = approvalContext;
     const regularShift = shift as Shift;
+    const approvedOrdinary = parseFloat(ordinaryHours) || 0;
     const approvedOvertime = parseFloat(overtimeHours) || 0;
     const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
 
@@ -437,6 +440,14 @@ const handleRegularShiftApproval = async () => {
     const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
     const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
     
+    if (clockInEvent) {
+        const clockInRef = doc(timbratureRef, clockInEvent.id);
+        batch.update(clockInRef, { 
+            approvedOrdinaryHours: approvedOrdinary, 
+            approvedOvertimeHours: approvedOvertime 
+        });
+    }
+
     regularShift.events.forEach(event => {
         // Only update status if it's currently suspended.
         if (event.status === 'sospesa') {
@@ -936,7 +947,7 @@ const handleRegularShiftApproval = async () => {
             if (manualBreak) {
                  const createTimestamp = (time: string): Timestamp => {
                     const [h,m] = time.split(':').map(Number);
-                    return Timestamp.fromDate(set(regularShift.date, { hours: h, minutes: m}));
+                    return Timestamp.fromDate(set(regularShift.date, { hours: h, minutes: m }));
                  }
                  eventsForCalc.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start) } as Timbratura, { type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end)} as Timbratura);
             }

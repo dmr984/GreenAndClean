@@ -35,6 +35,8 @@ type Timbratura = {
     isAuto?: boolean;
     ignoreContractualStart?: boolean;
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
+    approvedOrdinaryHours?: number; // Manually approved hours
+    approvedOvertimeHours?: number;  // Manually approved hours
 };
 
 type Request = {
@@ -256,12 +258,31 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 
 export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
     
+    const clockInEvent = shift.events.find(e => e.type === 'entrata');
+    
+    // If the shift is already approved and has manual hours, use them. This is the LAW.
+    if (clockInEvent?.status === 'confermata' && typeof clockInEvent.approvedOrdinaryHours === 'number') {
+        const approvedOrdinary = clockInEvent.approvedOrdinaryHours || 0;
+        const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
+        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+
+        return {
+            ordinary: approvedOrdinary,
+            overtime: approvedOvertime,
+            leave: 0, // Leave is calculated separately now based on requests
+            worked: workedMinutes,
+            break: breakMinutes,
+            calculationStart,
+            calculationEnd,
+        };
+    }
+
+    // --- If not approved, proceed with automatic calculation as a suggestion ---
     const { workedMinutes, breakMinutes, calculationStart, calculationEnd: rawCalculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
     
-    const clockInEvent = shift.events.find(e => e.type === 'entrata');
     const isMakeupShift = !!clockInEvent?.makeupOfDay;
 
     const isWorkDay = isMakeupShift || (contractualHours > 0 && !isPublicHoliday(shift.date));
