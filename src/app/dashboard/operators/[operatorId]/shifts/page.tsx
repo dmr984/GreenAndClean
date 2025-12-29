@@ -162,7 +162,7 @@ export default function ShiftApprovalPage() {
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
     const [newShiftIsMakeup, setNewShiftIsMakeup] = useState(false);
-    const [newShiftMakeupDay, setNewShiftMakeupDay] = useState<DayOfWeek | ''>('');
+    const [newShiftMakeupDay, setNewShiftMakeupDay] = useState<string>('');
     const [currentPage, setCurrentPage] = useState(0);
     const [overtimeShiftForBreak, setOvertimeShiftForBreak] = useState<StraordinarioShift | null>(null);
     const [isOvertimeMissingBreakConfirmOpen, setIsOvertimeMissingBreakConfirmOpen] = useState(false);
@@ -449,19 +449,15 @@ const handleRegularShiftApproval = async () => {
     }
 
     regularShift.events.forEach(event => {
-        // Only update status if it's currently suspended.
-        if (event.status === 'sospesa') {
-            const docRef = doc(timbratureRef, event.id);
-            const updateData: { status: string; viewedByOperator: boolean; ignoreContractualStart?: boolean } = {
-                status: 'confermata',
-                viewedByOperator: false
-            };
-            // Only add ignoreContractualStart to the clock-in event
-            if (event.type === 'entrata') {
-                updateData.ignoreContractualStart = ignoreContractualStart;
-            }
-            batch.update(docRef, updateData);
+        const docRef = doc(timbratureRef, event.id);
+        const updateData: { status: string; viewedByOperator: boolean; ignoreContractualStart?: boolean } = {
+            status: 'confermata',
+            viewedByOperator: false
+        };
+        if (event.type === 'entrata') {
+            updateData.ignoreContractualStart = ignoreContractualStart;
         }
+        batch.update(docRef, updateData);
     });
     
     if (manualBreak && manualBreak.start && manualBreak.end) {
@@ -1142,8 +1138,7 @@ const handleRegularShiftApproval = async () => {
                 if (event.type === 'entrata') {
                     eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
                     if(newShiftIsMakeup && newShiftMakeupDay) {
-                        const makeupDate = parse(newShiftMakeupDay, 'EEEE', new Date(), { locale: it });
-                        eventPayload.makeupOfDay = format(makeupDate, 'yyyy-MM-dd');
+                        eventPayload.makeupOfDay = newShiftMakeupDay;
                     }
                 }
                 batch.set(newDocRef, eventPayload);
@@ -1701,13 +1696,13 @@ const handleRegularShiftApproval = async () => {
                         {newShiftIsMakeup && (
                             <div className="space-y-2">
                                 <Label>Recupero di:</Label>
-                                 <Select value={newShiftMakeupDay} onValueChange={v => setNewShiftMakeupDay(v as DayOfWeek)}>
+                                 <Select value={newShiftMakeupDay} onValueChange={v => setNewShiftMakeupDay(v as string)}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Seleziona il giorno da recuperare" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(weekDayLabels).map(([value, label]) => (
-                                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                                            <SelectItem key={value} value={format(parse(label, 'EEEE', new Date(), {locale: it}), 'yyyy-MM-dd')}>{label}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
