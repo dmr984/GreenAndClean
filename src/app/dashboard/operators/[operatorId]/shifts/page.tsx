@@ -395,7 +395,7 @@ export default function ShiftApprovalPage() {
         if (!approvalContext) return;
     
         if (approvalContext.isOvertimeShift) {
-             handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve');
+            // This logic is now simplified as we won't handle overtime shifts separately for approval.
         } else {
             await handleRegularShiftApproval();
         }
@@ -405,7 +405,7 @@ export default function ShiftApprovalPage() {
         if (!approvalContext) return;
     
         if (approvalContext.isOvertimeShift) {
-             await handleOvertimeShiftAction(approvalContext.shift as StraordinarioShift, 'approve');
+            // This logic is now simplified
         } else {
             await handleRegularShiftApproval();
         }
@@ -416,7 +416,7 @@ export default function ShiftApprovalPage() {
         const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
     
         if (isOvertimeShift) {
-            handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve');
+             // Logic for overtime shift approval is simplified/removed
         } else {
             const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
             if (hasLeaveHours && !createLeaveRequest) {
@@ -506,23 +506,6 @@ const handleRegularShiftApproval = async () => {
         const orphanRef = doc(timbratureRef, orphan.id);
         batch.delete(orphanRef);
     });
-
-    if (approvedOvertime > 0) {
-        const overtimeRequest = {
-            userId: operator.id,
-            type: 'straordinario' as const,
-            status: 'approvato' as const,
-            startDate: Timestamp.fromDate(shiftDate),
-            endDate: Timestamp.fromDate(shiftDate),
-            hours: approvedOvertime,
-            reason: 'Straordinario approvato da turno',
-            createdAt: serverTimestamp(),
-            viewedByOperator: false,
-            associatedShiftId: regularShift.id,
-        };
-        const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
-        batch.set(newRequestRef, overtimeRequest);
-    }
 
     if (approvedLeave > 0) {
         const leaveRequest = {
@@ -1178,55 +1161,27 @@ const handleRegularShiftApproval = async () => {
     };
 
     const handleOvertimeShiftAction = async (shift: StraordinarioShift, action: 'approve' | 'reject') => {
-        if (!firestore || !operatorId || !operator || !approvalContext) return;
-        
-        const approvedOvertime = parseFloat(approvalContext.overtimeHours) || 0;
+        if (!firestore || !operatorId || !operator) return;
+    
         const shiftRef = doc(firestore, `app-users/${operatorId}/straordinari`, shift.id);
     
         if (action === 'reject') {
             await updateDoc(shiftRef, { status: 'rifiutato' });
-            toast({ title: 'Successo', description: `Turno straordinario rifiutato.` });
-            setIsDetailOvertimeOpen(false);
-            return;
+            toast({ title: 'Successo', description: 'Turno straordinario rifiutato.' });
+        } else { // approve
+             const approvedOvertime = approvalContext ? parseFloat(approvalContext.overtimeHours) : 0;
+            if (approvedOvertime > 0) {
+                 await updateDoc(shiftRef, { status: 'approvato' });
+                 toast({ title: 'Successo', description: 'Turno straordinario approvato.' });
+            } else {
+                 toast({ title: 'Nessun straordinario', description: 'Nessuna ora di straordinario da registrare. Il turno verrà eliminato.', variant: 'default' });
+                 await deleteDoc(shiftRef);
+            }
         }
         
-        if (approvedOvertime <= 0) {
-            toast({ title: 'Nessun straordinario', description: `Nessuna ora di straordinario da registrare. Il turno verrà eliminato.`, variant: 'default' });
-            await deleteDoc(shiftRef);
-            setIsApproveDialogOpen(false);
-            setApprovalContext(null);
-            setIsDetailOvertimeOpen(false);
-            return;
-        }
-    
-        const batch = writeBatch(firestore);
-        
-        batch.delete(shiftRef);
-        
-        const newRequestData = {
-            userId: operator.id,
-            type: 'straordinario' as const,
-            status: 'approvato' as const,
-            startDate: shift.date,
-            endDate: shift.date,
-            hours: approvedOvertime,
-            reason: 'Straordinario da giorno non lavorativo (approvato)',
-            createdAt: serverTimestamp(),
-            viewedByOperator: false,
-        };
-        const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
-        batch.set(newRequestRef, newRequestData);
-    
-        try {
-            await batch.commit();
-            toast({ title: 'Successo', description: `Turno straordinario approvato e registrato come richiesta.` });
-        } catch (error) {
-             toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
-        } finally {
-            setIsApproveDialogOpen(false);
-            setApprovalContext(null);
-            setIsDetailOvertimeOpen(false);
-        }
+        setApprovalContext(null);
+        setIsApproveDialogOpen(false);
+        setIsDetailOvertimeOpen(false);
     };
     
     const calculateOvertimeShiftMinutes = (shift: StraordinarioShift, manualBreak?: ManualBreak) => {
@@ -1557,7 +1512,6 @@ const handleRegularShiftApproval = async () => {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="whitespace-nowrap">Data</TableHead>
-                                        <TableHead className="whitespace-nowrap">Tipo</TableHead>
                                         <TableHead className="whitespace-nowrap">Inizio</TableHead>
                                         <TableHead className="whitespace-nowrap">Fine</TableHead>
                                         <TableHead className="whitespace-nowrap">Durata</TableHead>
@@ -1579,9 +1533,6 @@ const handleRegularShiftApproval = async () => {
                                         return (
                                             <TableRow key={`${shift.id}-${index}`}>
                                                 <TableCell className="whitespace-nowrap">{formatDate(date)}</TableCell>
-                                                <TableCell className='whitespace-nowrap'>
-                                                    {isRegular ? <Badge variant="secondary">Ordinario</Badge> : <Badge className="bg-amber-500 text-white">Straordinario</Badge>}
-                                                </TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatMinutes(duration)}</TableCell>
