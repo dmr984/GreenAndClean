@@ -73,7 +73,7 @@ export default function OperatorDetailPage() {
              setPendingCounts(prev => ({ ...prev, requests: snapshot.size }));
         });
 
-        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
+        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione']));
         const unsubOvertime = onSnapshot(overtimeQuery, (snapshot) => {
             setPendingCounts(prev => ({ ...prev, overtime: snapshot.size }));
         });

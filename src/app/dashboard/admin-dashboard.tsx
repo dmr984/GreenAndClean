@@ -114,7 +114,7 @@ export function AdminDashboard() {
                     groupedShifts.push({ id: dayString, status, events });
                 }
                 
-                const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
+                const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso').length;
 
                 setPendingCounts(prev => ({
                     ...prev,
@@ -134,7 +134,7 @@ export function AdminDashboard() {
             unsubscribers.push(unsubLeaves);
 
             // --- Listener for Overtime Shifts ---
-            const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
+            const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione']));
             const unsubOvertime = onSnapshot(overtimeQuery, (overtimeSnapshot) => {
                 setPendingCounts(prev => ({
                     ...prev,
