@@ -9,7 +9,7 @@ import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'fireb
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, parse } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, parse, isAfter } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -180,6 +180,20 @@ const MonthlySummaryContent = () => {
         setCurrentMonth(prev => prev ? new Date(prev.getFullYear(), prev.getMonth() + offset, 1) : new Date());
     };
 
+    const canGoBack = useMemo(() => {
+        if (!currentMonth) return false;
+        const realCurrentMonth = startOfMonth(new Date());
+        const previousMonth = startOfMonth(new Date(realCurrentMonth.setMonth(realCurrentMonth.getMonth() - 1)));
+        return isAfter(startOfMonth(currentMonth), previousMonth);
+    }, [currentMonth]);
+    
+    const canGoForward = useMemo(() => {
+        if (!currentMonth) return false;
+        const realCurrentMonth = startOfMonth(new Date());
+        return isAfter(realCurrentMonth, startOfMonth(currentMonth));
+    }, [currentMonth]);
+
+
     if (isUserLoading || isLoadingOperator || !currentMonth) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
@@ -201,7 +215,7 @@ const MonthlySummaryContent = () => {
             </CardHeader>
             <CardContent className="space-y-8">
                  <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
-                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)}>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)} disabled={!canGoBack}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex items-center gap-2">
@@ -210,7 +224,7 @@ const MonthlySummaryContent = () => {
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
                         </Button>
                     </div>
-                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)}>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)} disabled={!canGoForward}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -314,5 +328,3 @@ export default function MonthlySummaryPage() {
         </Suspense>
     );
 }
-
-    
