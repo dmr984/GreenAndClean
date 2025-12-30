@@ -215,7 +215,7 @@ const PrintPageContent = () => {
                 } else if(detail) {
                      let statusText = '';
                     switch (detail.status) {
-                        case 'mancata_timbratura': statusText = 'Mancata Timbratura'; break;
+                        case 'mancata_timbratura': statusText = 'Assente'; break;
                         case 'ferie': statusText = 'Giorno di Ferie'; break;
                         case 'malattia': statusText = 'Giorno di Malattia'; break;
                         case 'riposo': statusText = 'Giorno non lavorativo'; break;
@@ -358,7 +358,7 @@ const PrintPageContent = () => {
                                             </>
                                         ) : (
                                             <p>
-                                                {detail.status === 'mancata_timbratura' && 'Mancata Timbratura'}
+                                                {detail.status === 'mancata_timbratura' && 'Assente'}
                                                 {detail.status === 'ferie' && 'Giorno di Ferie'}
                                                 {detail.status === 'malattia' && 'Giorno di Malattia'}
                                                 {detail.status === 'riposo' && 'Giorno non lavorativo'}

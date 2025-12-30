@@ -304,7 +304,7 @@ const MonthlySummaryContent = () => {
                                     ) : detail.status === 'festa' ? (
                                         <p className="text-muted-foreground mt-1">Giorno festivo.</p>
                                     ) : detail.status === 'mancata_timbratura' ? (
-                                        <p className="text-yellow-600 font-semibold mt-1">Nessuna timbratura registrata in un giorno lavorativo.</p>
+                                        <p className="text-yellow-600 font-semibold mt-1">Assenza.</p>
                                     ) : null}
 
                                 </div>

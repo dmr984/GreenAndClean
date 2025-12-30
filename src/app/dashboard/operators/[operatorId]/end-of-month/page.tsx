@@ -425,7 +425,7 @@ export default function EndOfMonthPage() {
                                     ) : detail.status === 'mancata_timbratura' ? (
                                         <div className="flex items-center gap-2 mt-1">
                                             <p className="text-yellow-600 font-semibold">
-                                                {detail.note || 'Nessuna timbratura registrata in un giorno lavorativo.'}
+                                                {detail.note || 'Assenza'}
                                             </p>
                                             <Button 
                                                 variant="ghost" 

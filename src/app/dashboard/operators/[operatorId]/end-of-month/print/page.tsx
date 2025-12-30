@@ -287,7 +287,7 @@ const PrintPageContent = () => {
             } else {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Mancata Timbratura';
+                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Assenza';
                  
                  doc.setFontSize(12);
                  doc.setFont('helvetica', 'bold');
@@ -466,7 +466,7 @@ const PrintPageContent = () => {
                             } else {
                                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Mancata Timbratura';
+                                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Assenza';
                                  line1 = `${dateStr} - ${statusText}`;
                             }
 
