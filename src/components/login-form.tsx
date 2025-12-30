@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import React, { useState } from 'react';
@@ -19,7 +18,6 @@ type User = {
 };
 
 export default function LoginForm() {
-  const router = useRouter();
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
