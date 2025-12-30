@@ -80,13 +80,6 @@ type Shift = {
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
 };
 
-type StraordinarioEvent = {
-    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
-    timestamp: Timestamp;
-    latitude?: number;
-    longitude?: number;
-};
-
 type StraordinarioShift = {
     id: string;
     events: StraordinarioEvent[];
@@ -518,6 +511,7 @@ const handleRegularShiftApproval = async () => {
             reason: 'Permesso generato da ammanco ore',
             createdAt: serverTimestamp(),
             viewedByOperator: false,
+            associatedShiftId: regularShift.id,
         };
         const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
         batch.set(newRequestRef, leaveRequest);
