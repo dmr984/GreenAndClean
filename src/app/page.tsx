@@ -15,7 +15,7 @@ export default function LoginPage() {
             className="h-80 w-80 mx-auto rounded-full"
             priority
           />
-          <p className="text-balance text-muted-foreground">
+          <p className="text-balance text-foreground">
             Inserisci il tuo codice operatore per accedere.
           </p>
         </div>

@@ -31,6 +31,12 @@ type Operator = {
     workSchedule: WorkSchedule;
 };
 
+type PendingCounts = {
+    shifts: number;
+    requests: number;
+    overtime: number;
+};
+
 export default function OperatorDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -39,22 +45,46 @@ export default function OperatorDetailPage() {
     const firestore = useFirestore();
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ shifts: 0, requests: 0, overtime: 0 });
 
-    const operatorDocRef = useMemo(() => {
-        if (!firestore || !operatorId) return null;
-        return doc(firestore, 'app-users', operatorId);
-    }, [firestore, operatorId]);
-    
+
     useEffect(() => {
-        if (!operatorDocRef) return;
-        const unsubscribe = onSnapshot(operatorDocRef, (docSnap) => {
+        if (!firestore || !operatorId) {
+             setIsLoading(false);
+            return;
+        }
+
+        const operatorDocRef = doc(firestore, 'app-users', operatorId);
+        const unsubOperator = onSnapshot(operatorDocRef, (docSnap) => {
             if (docSnap.exists()) {
                 setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
             }
-            setIsLoading(false);
+             setIsLoading(false);
         });
-        return () => unsubscribe();
-    }, [operatorDocRef]);
+
+        const shiftsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('status', '==', 'sospesa'));
+        const unsubShifts = onSnapshot(shiftsQuery, (snapshot) => {
+            const pendingDays = new Set(snapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
+            setPendingCounts(prev => ({ ...prev, shifts: pendingDays.size }));
+        });
+        
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('status', '==', 'in_attesa'));
+        const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
+             setPendingCounts(prev => ({ ...prev, requests: snapshot.size }));
+        });
+
+        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
+        const unsubOvertime = onSnapshot(overtimeQuery, (snapshot) => {
+            setPendingCounts(prev => ({ ...prev, overtime: snapshot.size }));
+        });
+
+        return () => {
+            unsubOperator();
+            unsubShifts();
+            unsubRequests();
+            unsubOvertime();
+        };
+    }, [firestore, operatorId]);
 
 
     if (isLoading || isUserLoading) {
@@ -94,7 +124,7 @@ export default function OperatorDetailPage() {
         return scheduleString || 'Nessun giorno lavorativo impostato.';
     };
     
-    const NavCard = ({ title, description, icon: Icon, link }: { title: string, description: string, icon: React.ElementType, link: string }) => (
+    const NavCard = ({ title, description, icon: Icon, link, notificationCount }: { title: string, description: string, icon: React.ElementType, link: string, notificationCount?: number }) => (
         <Card onClick={() => router.push(link)} className="cursor-pointer hover:bg-muted/50 transition-colors">
             <CardHeader className="flex flex-row items-start justify-between">
                 <div>
@@ -103,6 +133,11 @@ export default function OperatorDetailPage() {
                 </div>
                 <div className="relative">
                     <Icon className="h-8 w-8 text-muted-foreground" />
+                     {notificationCount && notificationCount > 0 && (
+                        <Badge variant="destructive" className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full p-0">
+                            {notificationCount > 9 ? '9+' : notificationCount}
+                        </Badge>
+                    )}
                 </div>
             </CardHeader>
         </Card>
@@ -127,12 +162,14 @@ export default function OperatorDetailPage() {
                     description="Approva turni e straordinari." 
                     icon={ListChecks} 
                     link={`/dashboard/operators/${operatorId}/shifts`} 
+                    notificationCount={(pendingCounts.shifts || 0) + (pendingCounts.overtime || 0)}
                 />
                  <NavCard 
                     title="Gestione Richieste" 
                     description="Approva ferie e permessi." 
                     icon={ClipboardList} 
                     link={`/dashboard/operators/${operatorId}/requests`} 
+                    notificationCount={pendingCounts.requests || 0}
                 />
                  <NavCard
                     title="Calcolo Fine Mese"

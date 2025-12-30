@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Loader2, CheckCircle, XCircle, Trash2, Pencil, PlusCircle, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -169,6 +169,7 @@ export default function LeaveRequestsPage() {
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
+    const [isCleanHistoryConfirmOpen, setIsCleanHistoryConfirmOpen] = useState(false);
     
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -233,6 +234,33 @@ export default function LeaveRequestsPage() {
         }).catch(err => {
             toast({title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive'});
         });
+    };
+
+    const handleCleanHistory = async () => {
+        if (!firestore || !operatorId) return;
+        
+        const historicalRequests = requests.filter(r => r.status !== 'in_attesa');
+        if (historicalRequests.length === 0) {
+            toast({ title: "Nessuna richiesta da eliminare", description: "Lo storico è già vuoto."});
+            setIsCleanHistoryConfirmOpen(false);
+            return;
+        }
+
+        const batch = writeBatch(firestore);
+        historicalRequests.forEach(req => {
+            const docRef = doc(firestore, `app-users/${operatorId}/requests`, req.id);
+            batch.delete(docRef);
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: "Successo!", description: "Lo storico delle richieste è stato pulito."});
+        } catch (error) {
+            console.error("Error cleaning request history:", error);
+            toast({ title: "Errore", description: "Impossibile pulire lo storico.", variant: "destructive"});
+        } finally {
+            setIsCleanHistoryConfirmOpen(false);
+        }
     };
     
     const pendingRequests = requests.filter(r => r.status === 'in_attesa');
@@ -313,8 +341,11 @@ export default function LeaveRequestsPage() {
             </Card>
 
             <Card>
-                <CardHeader>
+                <CardHeader className="flex items-center justify-between">
                     <CardTitle>Storico Richieste</CardTitle>
+                    <Button variant="destructive" size="sm" onClick={() => setIsCleanHistoryConfirmOpen(true)}>
+                        <Trash2 className="mr-2 h-4 w-4"/> Pulisci Storico
+                    </Button>
                 </CardHeader>
                 <CardContent>
                     {renderTable(historicalRequests, true)}
@@ -332,6 +363,21 @@ export default function LeaveRequestsPage() {
                     <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDelete}>Elimina</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            
+            <AlertDialog open={isCleanHistoryConfirmOpen} onOpenChange={setIsCleanHistoryConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confermi di voler pulire lo storico?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione eliminerà in modo permanente tutte le richieste approvate e rifiutate per questo operatore. L'azione non può essere annullata.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCleanHistory}>Conferma e Pulisci</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
