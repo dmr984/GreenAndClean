@@ -7,7 +7,7 @@ import { Loader2, Users, User, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
+import { format, startOfDay } from 'date-fns';
 
 type Operator = {
     id: string;
@@ -82,29 +82,36 @@ export function AdminDashboard() {
             const shiftsQuery = collection(firestore, `app-users/${op.id}/timbrature`);
             const unsubShifts = onSnapshot(shiftsQuery, (shiftSnapshot) => {
                 const allTimbrature = shiftSnapshot.docs.map(d => ({id: d.id, ...d.data() as Timbratura}));
-                const shiftsByManualId: { [key: string]: Timbratura[] } = {};
+                
+                const shiftsByDay: { [key: string]: Timbratura[] } = {};
                 
                 for (const event of allTimbrature) {
-                    if (event.shiftId) {
-                        if (!shiftsByManualId[event.shiftId]) shiftsByManualId[event.shiftId] = [];
-                        shiftsByManualId[event.shiftId].push(event);
-                    }
+                    const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                    if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
+                    shiftsByDay[dayString].push(event);
                 }
 
                 const groupedShifts: Shift[] = [];
-                for (const shiftId in shiftsByManualId) {
-                    const events = shiftsByManualId[shiftId];
-                    const isComplete = events.some(e => e.type === 'uscita');
-                    const hasPending = events.some(e => e.status === 'sospesa');
+                for (const dayString in shiftsByDay) {
+                    const events = shiftsByDay[dayString];
+                    if (events.length === 0) continue;
 
                     let status: Shift['status'] = 'in_corso';
-                    if (isComplete && hasPending) {
-                        status = 'in_sospeso';
-                    } else if (events.every(e => e.status === 'confermata')) {
+                    const isComplete = events.some(e => e.type === 'uscita');
+                    const hasPending = events.some(e => e.status === 'sospesa');
+                    const allConfirmed = events.every(e => e.status === 'confermata');
+                    
+                    if(allConfirmed) {
                         status = 'confermato';
+                    } else if (isComplete && hasPending) {
+                        status = 'in_sospeso';
+                    } else if (hasPending && !isComplete) {
+                        status = 'in_corso';
+                    } else {
+                        status = 'in_sospeso'; // Fallback for other cases
                     }
                     
-                    groupedShifts.push({ id: shiftId, status, events });
+                    groupedShifts.push({ id: dayString, status, events });
                 }
                 
                 const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
