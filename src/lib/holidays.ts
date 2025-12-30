@@ -47,7 +47,7 @@ const generateHolidaysForYear = (year: number): Date[] => {
 };
 
 // Generate holidays for a range of years
-const years = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+const years = Array.from({ length: 17 }, (_, i) => 2024 + i); // 2024 to 2040
 const allHolidays = years.flatMap(year => generateHolidaysForYear(year));
 
 // Combine and export a set of date strings for efficient lookup
