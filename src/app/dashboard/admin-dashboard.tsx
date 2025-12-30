@@ -106,9 +106,12 @@ export function AdminDashboard() {
                     } else if (isComplete && hasPending) {
                         status = 'in_sospeso';
                     } else if (hasPending && !isComplete) {
-                        status = 'in_corso';
+                        status = 'in_corso'; // This is a correct state, but doesn't require notification
+                    } else if (!isComplete && !hasPending && events.length > 0) {
+                        status = 'in_corso'; // This is a correct state, but doesn't require notification
                     } else {
-                        status = 'in_sospeso'; // Fallback for other cases
+                         // Default to in_corso for any other partial state
+                        status = 'in_corso';
                     }
                     
                     groupedShifts.push({ id: dayString, status, events });
