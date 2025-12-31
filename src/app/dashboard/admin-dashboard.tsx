@@ -103,14 +103,11 @@ export function AdminDashboard() {
                     
                     if(allConfirmed) {
                         status = 'confermato';
-                    } else if (isComplete && hasPending) {
+                    } else if (hasPending) {
+                        // Any shift with a pending event requires attention
                         status = 'in_sospeso';
-                    } else if (hasPending && !isComplete) {
-                        status = 'in_corso'; // This is a correct state, but doesn't require notification
-                    } else if (!isComplete && !hasPending && events.length > 0) {
-                        status = 'in_corso'; // This is a correct state, but doesn't require notification
                     } else {
-                         // Default to in_corso for any other partial state
+                         // Default to in_corso if no pending events but not yet fully confirmed (e.g., just started)
                         status = 'in_corso';
                     }
                     
