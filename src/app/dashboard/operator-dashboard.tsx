@@ -79,6 +79,7 @@ type Operator = {
     id: string;
     username: string;
     role: 'admin' | 'operator';
+    requireGps?: boolean;
     workSchedule?: WorkSchedule;
 };
 
@@ -428,7 +429,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     if (!firestore || !operator || isProcessing) return;
     
     try {
-        const currentLoc = await getLocation();
+        let currentLoc = { latitude: 0, longitude: 0 };
+        // If requireGps is explicitly false, we skip geolocation.
+        // If it's true or undefined (defaulting to true for safety), we get location.
+        if (operator.requireGps !== false) {
+            currentLoc = await getLocation();
+        }
         
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
 
@@ -496,11 +502,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             });
 
     } catch (error: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Errore di Geolocalizzazione',
-            description: error.message || "Non è stato possibile ottenere la posizione.",
-        });
+        // This will catch errors from getLocation() if GPS is required
+        if (operator.requireGps !== false) {
+            toast({
+                variant: 'destructive',
+                title: 'Errore di Geolocalizzazione',
+                description: error.message || "Non è stato possibile ottenere la posizione.",
+            });
+        }
     } finally {
         setIsProcessing(false);
         setIsMakeupShiftDialogOpen(false);
@@ -557,7 +566,11 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         if (!firestore || !operator) return;
         
         try {
-            const currentLoc = await getLocation();
+            let currentLoc = { latitude: 0, longitude: 0 };
+            if (operator.requireGps !== false) {
+                currentLoc = await getLocation();
+            }
+
             const newEvent: StraordinarioEvent = { 
                 type, 
                 timestamp: Timestamp.now(),

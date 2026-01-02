@@ -4,7 +4,7 @@ import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
@@ -66,6 +67,7 @@ type Operator = {
     firstName: string;
     lastName: string;
     role: 'operator';
+    requireGps?: boolean;
     workSchedule: WorkSchedule;
     overtimeCalculation?: 'hourly' | 'half_hourly';
     hourlyRate?: number;
@@ -90,6 +92,7 @@ export default function ManageOperatorsPage() {
     const [newOperatorCode, setNewOperatorCode] = useState("");
     const [newFirstName, setNewFirstName] = useState("");
     const [newLastName, setNewLastName] = useState("");
+    const [newRequireGps, setNewRequireGps] = useState(true);
     const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
     const [newOvertimeCalculation, setNewOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
     const [newHourlyRate, setNewHourlyRate] = useState<number | string>('');
@@ -99,6 +102,7 @@ export default function ManageOperatorsPage() {
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
     const [editingFirstName, setEditingFirstName] = useState("");
     const [editingLastName, setEditingLastName] = useState("");
+    const [editingRequireGps, setEditingRequireGps] = useState(true);
     const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
     const [editingOvertimeCalculation, setEditingOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
     const [editingHourlyRate, setEditingHourlyRate] = useState<number | string>('');
@@ -208,6 +212,7 @@ export default function ManageOperatorsPage() {
         const operatorCode = action === 'add' ? newOperatorCode : editingOperatorCode;
         const firstName = action === 'add' ? newFirstName : editingFirstName;
         const lastName = action === 'add' ? newLastName : editingLastName;
+        const requireGps = action === 'add' ? newRequireGps : editingRequireGps;
         const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
         const overtimeCalculation = action === 'add' ? newOvertimeCalculation : editingOvertimeCalculation;
         const hourlyRate = action === 'add' ? newHourlyRate : editingHourlyRate;
@@ -255,6 +260,7 @@ export default function ManageOperatorsPage() {
             role: 'operator' as const,
             firstName,
             lastName,
+            requireGps,
             workSchedule: finalWorkSchedule,
             overtimeCalculation: overtimeCalculation,
             hourlyRate: parseFloat(String(hourlyRate)) || 0,
@@ -269,6 +275,7 @@ export default function ManageOperatorsPage() {
                 setNewOperatorCode("");
                 setNewFirstName("");
                 setNewLastName("");
+                setNewRequireGps(true);
                 setNewWorkSchedule({});
                 setNewOvertimeCalculation('hourly');
                 setNewHourlyRate('');
@@ -469,6 +476,10 @@ export default function ManageOperatorsPage() {
                                                 </Select>
                                             </div>
                                         </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Switch id="new-gps" checked={newRequireGps} onCheckedChange={setNewRequireGps} />
+                                            <Label htmlFor="new-gps">Richiedi Geolocalizzazione (GPS)</Label>
+                                        </div>
                                         <div>
                                             <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
                                              <Separator className="my-2" />
@@ -498,9 +509,10 @@ export default function ManageOperatorsPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Codice Operatore</TableHead>
+                                        <TableHead>Codice</TableHead>
                                         <TableHead>Nome</TableHead>
-                                        <TableHead>Programma Lavorativo</TableHead>
+                                        <TableHead>GPS</TableHead>
+                                        <TableHead>Programma</TableHead>
                                         <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -517,9 +529,12 @@ export default function ManageOperatorsPage() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{`${operator.firstName} ${operator.lastName}`}</TableCell>
+                                                <TableCell>
+                                                    {operator.requireGps ?? true ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />}
+                                                </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -581,6 +596,10 @@ export default function ManageOperatorsPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Switch id="edit-gps" checked={editingRequireGps} onCheckedChange={setEditingRequireGps} />
+                                <Label htmlFor="edit-gps">Richiedi Geolocalizzazione (GPS)</Label>
                             </div>
                             <div>
                                 <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>

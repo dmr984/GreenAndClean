@@ -13,7 +13,7 @@
         },
         "username": {
           "type": "string",
-          "description": "The username of the operator."
+          "description": "The unique operator code used for login."
         },
         "firstName": {
           "type": "string",
@@ -23,22 +23,36 @@
           "type": "string",
           "description": "The last name of the cleaning operator."
         },
-        "visibleInLogin": {
+        "requireGps": {
             "type": "boolean",
-            "description": "Determines if the operator is visible in the login dropdown."
+            "description": "If true, the operator must provide GPS location when clocking in/out."
         },
         "workSchedule": {
             "type": "object",
-            "description": "The contractual work schedule for the operator, mapping days to hours.",
-            "properties": {
-                "monday": { "type": "number" },
-                "tuesday": { "type": "number" },
-                "wednesday": { "type": "number" },
-                "thursday": { "type": "number" },
-                "friday": { "type": "number" },
-                "saturday": { "type": "number" },
-                "sunday": { "type": "number" }
+            "description": "The contractual work schedule for the operator. Start time is optional.",
+            "patternProperties": {
+                "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$": {
+                    "type": "object",
+                    "properties": {
+                        "totalHours": { "type": "number", "description": "Total contractual hours for the day." },
+                        "startTime": { "type": "string", "format": "time", "description": "Optional: The specific start time for the shift (e.g., '08:00'). Used for lateness calculations." },
+                        "breakMinutes": { "type": "number", "description": "Mandatory break duration in minutes." }
+                    }
+                }
             }
+        },
+        "overtimeCalculation": {
+            "type": "string",
+            "enum": ["hourly", "half_hourly"],
+            "description": "Determines how overtime is calculated. 'hourly' triggers at 50 minutes, 'half_hourly' triggers at 25/55 minutes."
+        },
+        "hourlyRate": {
+          "type": "number",
+          "description": "The standard hourly pay rate for the operator."
+        },
+        "overtimeRate": {
+            "type": "number",
+            "description": "The hourly pay rate for overtime work."
         }
       },
       "required": [
@@ -46,7 +60,6 @@
         "username",
         "firstName",
         "lastName",
-        "visibleInLogin",
         "workSchedule"
       ]
     },
@@ -79,7 +92,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Timbratura",
       "type": "object",
-      "description": "Represents a single clock-in/out event.",
+      "description": "Represents a single clock-in/out event. Break start/end events are now typically added by an admin.",
       "properties": {
         "userId": {
           "type": "string",
@@ -111,6 +124,10 @@
         "viewedByOperator": {
           "type": "boolean",
           "description": "Indicates if the operator has seen the status change made by an admin."
+        },
+        "ignoreContractualStart": {
+            "type": "boolean",
+            "description": "If true, the calculation will start from the actual clock-in time, not the contractual one."
         }
       },
       "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
@@ -130,7 +147,9 @@
                     "type": "object",
                     "properties": {
                         "type": { "type": "string", "enum": ["entrata", "pausa", "fine_pausa", "uscita"] },
-                        "timestamp": { "type": "string", "format": "date-time" }
+                        "timestamp": { "type": "string", "format": "date-time" },
+                        "latitude": { "type": "number" },
+                        "longitude": { "type": "number" }
                     },
                     "required": ["type", "timestamp"]
                 }
@@ -187,6 +206,83 @@
         }
       },
       "required": ["userId", "type", "status", "startDate", "endDate", "createdAt"]
+    },
+    "Product": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Product",
+      "type": "object",
+      "description": "Represents a product in the warehouse.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the product."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The available quantity in stock."
+        }
+      },
+      "required": ["name", "quantity"]
+    },
+    "SupplyRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SupplyRequest",
+      "type": "object",
+      "description": "Represents a supply request from an operator.",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the operator making the request."
+        },
+        "username": {
+          "type": "string",
+          "description": "The username of the operator (denormalized)."
+        },
+        "productId": {
+          "type": "string",
+          "description": "The ID of the requested product."
+        },
+        "productName": {
+          "type": "string",
+          "description": "The name of the requested product (denormalized)."
+        },
+        "requestedQuantity": {
+          "type": "number",
+          "description": "The quantity requested by the operator."
+        },
+        "approvedQuantity": {
+          "type": "number",
+          "description": "The quantity approved by the admin."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in_attesa", "approvata", "rifiutata"],
+          "description": "The status of the supply request."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the request was created."
+        },
+        "viewedByOperator": {
+          "type": "boolean",
+          "description": "Indicates if the operator has seen the status change made by an admin."
+        }
+      },
+      "required": ["userId", "username", "productId", "productName", "requestedQuantity", "status", "createdAt"]
+    },
+    "DailyNote": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Daily Note",
+      "type": "object",
+      "description": "An admin-only note for a specific user on a specific day, typically for justifying a missed clock-in.",
+      "properties": {
+        "userId": { "type": "string", "description": "The ID of the user this note pertains to." },
+        "date": { "type": "string", "format": "date", "description": "The date for which the note is relevant (YYYY-MM-DD)." },
+        "note": { "type": "string", "description": "The content of the note." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "The last time the note was updated." }
+      },
+      "required": ["userId", "date", "note", "updatedAt"]
     }
   },
   "auth": {
@@ -261,8 +357,42 @@
             { "name": "requestId", "description": "The request's unique ID." }
           ]
         }
+      },
+      {
+        "path": "/products/{productId}",
+        "definition": {
+          "entityName": "Product",
+          "schema": { "$ref": "#/backend/entities/Product" },
+          "description": "Stores all available products for the warehouse.",
+          "params": [
+            { "name": "productId", "description": "The product's unique ID." }
+          ]
+        }
+      },
+      {
+        "path": "/supply-requests/{supplyRequestId}",
+        "definition": {
+          "entityName": "SupplyRequest",
+          "schema": { "$ref": "#/backend/entities/SupplyRequest" },
+          "description": "Stores all supply requests from all operators.",
+          "params": [
+            { "name": "supplyRequestId", "description": "The supply request's unique ID." }
+          ]
+        }
+      },
+      {
+        "path": "/app-users/{userId}/daily-notes/{date}",
+        "definition": {
+          "entityName": "DailyNote",
+          "schema": { "$ref": "#/backend/entities/DailyNote" },
+          "description": "Stores admin-only notes for a user on a specific day.",
+          "params": [
+            { "name": "userId", "description": "The user's unique ID." },
+            { "name": "date", "description": "The date of the note in YYYY-MM-DD format." }
+          ]
+        }
       }
     ],
-    "reasoning": "Updated the Operator entity to use a flexible workSchedule object, allowing different hours to be assigned to each day of the week. This replaces the previous workHours and workDays fields."
+    "reasoning": "Updated the Timbratura entity description to reflect that break start/end events are now primarily added by administrators, not clocked by operators."
   }
 }
