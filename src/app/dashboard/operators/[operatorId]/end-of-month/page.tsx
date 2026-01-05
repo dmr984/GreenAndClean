@@ -73,6 +73,12 @@ type DailyNote = {
     date: string;
 }
 
+type MonthlyOverride = {
+    ferieDays?: number;
+    permessoHours?: number;
+    malattiaDays?: number;
+}
+
 const SummaryCard = ({ title, value, icon: Icon, subtext, className, onEdit }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, onEdit?: () => void }) => (
     <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -107,6 +113,7 @@ export default function EndOfMonthPage() {
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
+    const [overrideData, setOverrideData] = useState<MonthlyOverride | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
@@ -114,7 +121,7 @@ export default function EndOfMonthPage() {
     const [editingNote, setEditingNote] = useState<{ date: Date, currentNote: string } | null>(null);
     const [noteContent, setNoteContent] = useState('');
 
-    const [editingTotal, setEditingTotal] = useState<{ type: 'ferie' | 'permesso' | 'malattia' | 'lavorati' | 'ordinarie' | 'straordinarie', currentValue: number } | null>(null);
+    const [editingTotal, setEditingTotal] = useState<{ type: 'ferie' | 'permesso' | 'malattia', currentValue: number } | null>(null);
     const [totalContent, setTotalContent] = useState('');
 
 
@@ -144,6 +151,7 @@ export default function EndOfMonthPage() {
 
         const monthStart = startOfMonth(currentMonth);
         const monthEnd = endOfMonth(currentMonth);
+        const monthId = format(currentMonth, 'yyyy-MM');
 
         try {
             const timbratureQuery = query(
@@ -161,17 +169,21 @@ export default function EndOfMonthPage() {
                  where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
                  where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
             );
+            
+            const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
     
-            const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, notesSnapshot, overrideSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
-                getDocs(notesQuery)
+                getDocs(notesQuery),
+                getDoc(overrideDocRef)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
             const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
-
+            
+            setOverrideData(overrideSnapshot.exists() ? overrideSnapshot.data() as MonthlyOverride : null);
             setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
         } catch (error) {
             console.error("Error fetching monthly data:", error);
@@ -193,23 +205,6 @@ export default function EndOfMonthPage() {
         }
         return processMonthlyData(currentMonth, operator, monthlyData);
     }, [operator, currentMonth, monthlyData, isLoading]);
-    
-    // State for editable totals
-    const [editableFerie, setEditableFerie] = useState<number | null>(null);
-    const [editablePermessi, setEditablePermessi] = useState<number | null>(null);
-    const [editableMalattia, setEditableMalattia] = useState<number | null>(null);
-    const [editableLavorati, setEditableLavorati] = useState<number | null>(null);
-    const [editableOrdinarie, setEditableOrdinarie] = useState<number | null>(null);
-    const [editableStraordinarie, setEditableStraordinarie] = useState<number | null>(null);
-
-    useEffect(() => {
-        setEditableFerie(monthlySummary.ferieDays ?? null);
-        setEditablePermessi(monthlySummary.permessoHours ?? null);
-        setEditableMalattia(monthlySummary.malattiaDays ?? null);
-        setEditableLavorati(monthlySummary.workedDays ?? null);
-        setEditableOrdinarie(monthlySummary.ordinaryHours ?? null);
-        setEditableStraordinarie(monthlySummary.overtimeHours ?? null);
-    }, [monthlySummary]);
 
 
     const handleMonthChange = (offset: number) => {
@@ -305,9 +300,12 @@ export default function EndOfMonthPage() {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
     
-    const finalOrdinaryHours = editableOrdinarie ?? monthlySummary.ordinaryHours ?? 0;
-    const finalOvertimeHours = editableStraordinarie ?? monthlySummary.overtimeHours ?? 0;
-    
+    const finalOrdinaryHours = monthlySummary.ordinaryHours ?? 0;
+    const finalOvertimeHours = monthlySummary.overtimeHours ?? 0;
+    const finalFerieDays = overrideData?.ferieDays ?? monthlySummary.ferieDays ?? 0;
+    const finalPermessoHours = overrideData?.permessoHours ?? monthlySummary.permessoHours ?? 0;
+    const finalMalattiaDays = overrideData?.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
+
     const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
     const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
     const totalDue = ordinaryCost + overtimeCost;
@@ -332,21 +330,18 @@ export default function EndOfMonthPage() {
         setNoteContent(currentNote);
     };
 
-    const handleEditTotal = (type: 'ferie' | 'permesso' | 'malattia' | 'lavorati' | 'ordinarie' | 'straordinarie') => {
+    const handleEditTotal = (type: 'ferie' | 'permesso' | 'malattia') => {
         let currentValue = 0;
-        if(type === 'ferie') currentValue = editableFerie ?? 0;
-        else if(type === 'permesso') currentValue = editablePermessi ?? 0;
-        else if(type === 'malattia') currentValue = editableMalattia ?? 0;
-        else if(type === 'lavorati') currentValue = editableLavorati ?? 0;
-        else if(type === 'ordinarie') currentValue = editableOrdinarie ?? 0;
-        else if(type === 'straordinarie') currentValue = editableStraordinarie ?? 0;
+        if(type === 'ferie') currentValue = finalFerieDays;
+        else if(type === 'permesso') currentValue = finalPermessoHours;
+        else if(type === 'malattia') currentValue = finalMalattiaDays;
         
         setEditingTotal({ type, currentValue });
         setTotalContent(String(currentValue));
     };
 
-    const handleSaveTotal = () => {
-        if (!editingTotal) return;
+    const handleSaveTotal = async () => {
+        if (!editingTotal || !firestore || !currentMonth) return;
 
         const newValue = parseFloat(totalContent);
         if (isNaN(newValue)) {
@@ -354,25 +349,30 @@ export default function EndOfMonthPage() {
             return;
         }
 
-        if (editingTotal.type === 'ferie') setEditableFerie(newValue);
-        else if (editingTotal.type === 'permesso') setEditablePermessi(newValue);
-        else if (editingTotal.type === 'malattia') setEditableMalattia(newValue);
-        else if (editingTotal.type === 'lavorati') setEditableLavorati(newValue);
-        else if (editingTotal.type === 'ordinarie') setEditableOrdinarie(newValue);
-        else if (editingTotal.type === 'straordinarie') setEditableStraordinarie(newValue);
+        const monthId = format(currentMonth, 'yyyy-MM');
+        const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
+        
+        const key = editingTotal.type === 'ferie' ? 'ferieDays' : editingTotal.type === 'permesso' ? 'permessoHours' : 'malattiaDays';
+        const dataToSave = { [key]: newValue };
+
+        try {
+            await setDoc(overrideDocRef, dataToSave, { merge: true });
+            toast({ title: 'Totale salvato'});
+            setOverrideData(prev => ({ ...prev, ...dataToSave }));
+        } catch(err) {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile salvare il totale.', variant: 'destructive'});
+        }
 
         setEditingTotal(null);
         setTotalContent('');
     }
 
-    const getDialogTitleForType = (type?: 'ferie' | 'permesso' | 'malattia' | 'lavorati' | 'ordinarie' | 'straordinarie') => {
+    const getDialogTitleForType = (type?: 'ferie' | 'permesso' | 'malattia') => {
         switch (type) {
             case 'ferie': return 'Modifica Totale Ferie (giorni)';
             case 'permesso': return 'Modifica Totale Permessi (ore)';
             case 'malattia': return 'Modifica Totale Malattia (giorni)';
-            case 'lavorati': return 'Modifica Totale Giorni Lavorati';
-            case 'ordinarie': return 'Modifica Totale Ore Ordinarie';
-            case 'straordinarie': return 'Modifica Totale Ore Straordinarie';
             default: return 'Modifica Totale';
         }
     }
@@ -422,15 +422,13 @@ export default function EndOfMonthPage() {
                     />
                     <SummaryCard 
                         title="Giorni Lavorati" 
-                        value={editableLavorati ?? '...'}
+                        value={monthlySummary.workedDays ?? '...'}
                         icon={Briefcase} 
-                        onEdit={() => handleEditTotal('lavorati')}
                     />
                     <SummaryCard 
                         title="Ore Ordinarie" 
                         value={finalOrdinaryHours.toLocaleString('it-IT')} 
                         icon={Clock}
-                        onEdit={() => handleEditTotal('ordinarie')}
                     />
                      <SummaryCard 
                         title="Costo Ore Ordinarie" 
@@ -442,7 +440,6 @@ export default function EndOfMonthPage() {
                         title="Ore Straordinarie" 
                         value={finalOvertimeHours.toLocaleString('it-IT')} 
                         icon={Plus}
-                        onEdit={() => handleEditTotal('straordinarie')}
                     />
                      <SummaryCard 
                         title="Costo Ore Straordinarie" 
@@ -452,19 +449,19 @@ export default function EndOfMonthPage() {
                     />
                     <SummaryCard 
                         title="Ferie (giorni)" 
-                        value={editableFerie ?? '...'}
+                        value={finalFerieDays}
                         icon={Plane}
                         onEdit={() => handleEditTotal('ferie')}
                     />
                     <SummaryCard 
                         title="Permessi (ore)" 
-                        value={editablePermessi ?? '...'} 
+                        value={finalPermessoHours} 
                         icon={UserCheck}
                         onEdit={() => handleEditTotal('permesso')}
                     />
                      <SummaryCard 
                         title="Malattia (giorni)" 
-                        value={editableMalattia ?? '...'}
+                        value={finalMalattiaDays}
                         icon={Stethoscope}
                         onEdit={() => handleEditTotal('malattia')}
                     />
@@ -499,7 +496,7 @@ export default function EndOfMonthPage() {
 
                                     <div className="border-b my-2"></div>
 
-                                    {detail.status === 'lavorato' && detail.shift ? (
+                                    {detail.shift ? (
                                         <>
                                             {detail.note && <p className="text-muted-foreground italic mb-2">"{detail.note}"</p>}
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">

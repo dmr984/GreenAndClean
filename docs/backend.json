@@ -283,6 +283,17 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "The last time the note was updated." }
       },
       "required": ["userId", "date", "note", "updatedAt"]
+    },
+    "MonthlyOverride": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Monthly Override",
+      "type": "object",
+      "description": "Stores manually overridden monthly totals for an operator.",
+      "properties": {
+        "ferieDays": { "type": "number" },
+        "permessoHours": { "type": "number" },
+        "malattiaDays": { "type": "number" }
+      }
     }
   },
   "auth": {
@@ -389,6 +400,18 @@
           "params": [
             { "name": "userId", "description": "The user's unique ID." },
             { "name": "date", "description": "The date of the note in YYYY-MM-DD format." }
+          ]
+        }
+      },
+      {
+        "path": "/app-users/{userId}/monthly-overrides/{monthId}",
+        "definition": {
+          "entityName": "MonthlyOverride",
+          "schema": { "$ref": "#/backend/entities/MonthlyOverride" },
+          "description": "Stores manually overridden monthly totals for an operator. The monthId is in YYYY-MM format.",
+          "params": [
+            { "name": "userId", "description": "The user's unique ID." },
+            { "name": "monthId", "description": "The month identifier in YYYY-MM format." }
           ]
         }
       }

@@ -66,6 +66,12 @@ type DailyNote = {
     date: string;
 }
 
+type MonthlyOverride = {
+    ferieDays?: number;
+    permessoHours?: number;
+    malattiaDays?: number;
+}
+
 const PrintPageContent = () => {
     const firestore = useFirestore();
     const params = useParams();
@@ -76,6 +82,7 @@ const PrintPageContent = () => {
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
+    const [overrideData, setOverrideData] = useState<MonthlyOverride | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -109,6 +116,8 @@ const PrintPageContent = () => {
                 // Fetch Timbrature and Requests
                 const monthStart = startOfMonth(currentMonth);
                 const monthEnd = endOfMonth(currentMonth);
+                const monthId = format(currentMonth, 'yyyy-MM');
+
 
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${operatorId}/timbrature`),
@@ -125,17 +134,20 @@ const PrintPageContent = () => {
                      where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
                      where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
                 );
+                const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
 
-                const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
+                const [timbratureSnapshot, requestsSnapshot, notesSnapshot, overrideSnapshot] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
-                    getDocs(notesQuery)
+                    getDocs(notesQuery),
+                    getDoc(overrideDocRef)
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
                 const requestsData = requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
                 const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
-
+                
+                setOverrideData(overrideSnapshot.exists() ? overrideSnapshot.data() as MonthlyOverride : null);
                 setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
 
             } catch (error) {
@@ -163,6 +175,12 @@ const PrintPageContent = () => {
             maximumFractionDigits: 4,
         });
     };
+    
+    const finalOrdinaryHours = monthlySummary.ordinaryHours ?? 0;
+    const finalOvertimeHours = monthlySummary.overtimeHours ?? 0;
+    const finalFerieDays = overrideData?.ferieDays ?? monthlySummary.ferieDays ?? 0;
+    const finalPermessoHours = overrideData?.permessoHours ?? monthlySummary.permessoHours ?? 0;
+    const finalMalattiaDays = overrideData?.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
 
     const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
         if (!operator) return null;
@@ -203,18 +221,18 @@ const PrintPageContent = () => {
         await addHeader();
         y += 15;
     
-        const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
-        const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+        const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
+        const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
         const totalDue = ordinaryCost + overtimeCost;
         
         (doc as any).autoTable({
             startY: y,
             theme: 'plain',
             body: [
-                [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${(monthlySummary.ferieDays || 0)}`],
-                [`ORE ORDINARIE: ${(monthlySummary.ordinaryHours || 0)}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-                [`ORE STRAORDINARIE: ${(monthlySummary.overtimeHours || 0)}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-                [`ORE PERMESSI: ${(monthlySummary.permessoHours || 0)}`, `GIORNI DI MALATTIA: ${(monthlySummary.malattiaDays || 0)}`],
+                [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${finalFerieDays}`],
+                [`ORE ORDINARIE: ${finalOrdinaryHours}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE STRAORDINARIE: ${finalOvertimeHours}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE PERMESSI: ${finalPermessoHours}`, `GIORNI DI MALATTIA: ${finalMalattiaDays}`],
             ],
             styles: { fontSize: 14, textColor: [0, 0, 0], fontStyle: 'bold' },
             columnStyles: {
@@ -379,8 +397,8 @@ const PrintPageContent = () => {
         );
     }
     
-    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
-    const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+    const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
+    const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
     const totalDue = ordinaryCost + overtimeCost;
     
     return (
@@ -428,19 +446,19 @@ const PrintPageContent = () => {
                            <tbody className="text-black font-bold text-lg">
                                 <tr>
                                     <td className="py-1">GIORNI LAVORATI: <span className="font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right">FERIE: <span className="font-mono">{(monthlySummary.ferieDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right">FERIE: <span className="font-mono">{finalFerieDays.toLocaleString('it-IT')}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1">ORE ORDINARIE: <span className="font-mono">{(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1">ORE ORDINARIE: <span className="font-mono">{finalOrdinaryHours.toLocaleString('it-IT')}</span></td>
                                     <td className="py-1 text-right">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}): <span className="font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                 <tr>
-                                    <td className="py-1">ORE STRAORDINARIE: <span className="font-mono">{(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1">ORE STRAORDINARIE: <span className="font-mono">{finalOvertimeHours.toLocaleString('it-IT')}</span></td>
                                     <td className="py-1 text-right">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate || 0)}€/h`}): <span className="font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
                                  <tr>
-                                    <td className="py-1">ORE PERMESSI: <span className="font-mono">{(monthlySummary.permessoHours || 0).toLocaleString('it-IT')}</span></td>
-                                    <td className="py-1 text-right">GIORNI DI MALATTIA: <span className="font-mono">{(monthlySummary.malattiaDays || 0).toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1">ORE PERMESSI: <span className="font-mono">{finalPermessoHours.toLocaleString('it-IT')}</span></td>
+                                    <td className="py-1 text-right">GIORNI DI MALATTIA: <span className="font-mono">{finalMalattiaDays.toLocaleString('it-IT')}</span></td>
                                 </tr>
                            </tbody>
                         </table>
