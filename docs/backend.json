@@ -57,7 +57,7 @@
         },
         "overtimeRate": {
             "type": "number",
-            "description": "The hourly pay rate for overtime work. Applies if salaryType is 'hourly'."
+            "description": "The hourly pay rate for overtime work. Applies to both hourly and fixed salary types."
         },
         "fixedSalary": {
             "type": "number",

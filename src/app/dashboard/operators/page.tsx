@@ -273,7 +273,7 @@ export default function ManageOperatorsPage() {
             overtimeCalculation: overtimeCalculation,
             salaryType,
             hourlyRate: salaryType === 'hourly' ? parseFloat(String(hourlyRate)) || 0 : 0,
-            overtimeRate: salaryType === 'hourly' ? parseFloat(String(overtimeRate)) || 0 : 0,
+            overtimeRate: parseFloat(String(overtimeRate)) || 0,
             fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary)) || 0 : 0,
         };
 
@@ -438,7 +438,9 @@ export default function ManageOperatorsPage() {
       overtimeRate: string | number,
       setOvertimeRate: (val: string | number) => void,
       fixedSalary: string | number,
-      setFixedSalary: (val: string | number) => void
+      setFixedSalary: (val: string | number) => void,
+      overtimeCalculation: 'hourly' | 'half_hourly',
+      setOvertimeCalculation: (val: 'hourly' | 'half_hourly') => void
     ) => (
       <>
         <div className='md:col-span-3'>
@@ -461,12 +463,8 @@ export default function ManageOperatorsPage() {
               <Input id={`${type}-hourlyRate`} type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
             </div>
             <div>
-              <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€)</Label>
-              <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
-            </div>
-            <div>
               <Label htmlFor={`${type}-overtime`}>Calcolo Straordinario</Label>
-              <Select value={editingOvertimeCalculation} onValueChange={(v) => setEditingOvertimeCalculation(v as any)}>
+              <Select value={overtimeCalculation} onValueChange={(v) => setOvertimeCalculation(v as any)}>
                 <SelectTrigger id={`${type}-overtime`}>
                   <SelectValue />
                 </SelectTrigger>
@@ -483,6 +481,11 @@ export default function ManageOperatorsPage() {
             <Input id={`${type}-fixedSalary`} type="number" value={fixedSalary} onChange={(e) => setFixedSalary(e.target.value)} min="0" step="0.01" placeholder="Es: 1500.00" />
           </div>
         )}
+        
+        <div className={salaryType === 'hourly' ? '' : 'md:col-span-3'}>
+            <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€)</Label>
+            <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
+        </div>
       </>
     );
 
@@ -530,7 +533,8 @@ export default function ManageOperatorsPage() {
                                             newSalaryType, setNewSalaryType,
                                             newHourlyRate, setNewHourlyRate,
                                             newOvertimeRate, setNewOvertimeRate,
-                                            newFixedSalary, setNewFixedSalary
+                                            newFixedSalary, setNewFixedSalary,
+                                            newOvertimeCalculation, setNewOvertimeCalculation
                                           )}
                                         </div>
                                         <div className="flex items-center space-x-2">
@@ -638,7 +642,8 @@ export default function ManageOperatorsPage() {
                                     editingSalaryType, setEditingSalaryType,
                                     editingHourlyRate, setEditingHourlyRate,
                                     editingOvertimeRate, setEditingOvertimeRate,
-                                    editingFixedSalary, setEditingFixedSalary
+                                    editingFixedSalary, setEditingFixedSalary,
+                                    editingOvertimeCalculation, setEditingOvertimeCalculation
                                   )}
                             </div>
                             <div className="flex items-center space-x-2">
