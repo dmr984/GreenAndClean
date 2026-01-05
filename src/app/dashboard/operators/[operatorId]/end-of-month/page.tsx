@@ -327,7 +327,7 @@ export default function EndOfMonthPage() {
             malattia: 'Giorno di Malattia',
             festa: 'Giorno Festivo',
         };
-        const currentNote = detail.note || defaultTexts[detail.status] || '';
+        const currentNote = detail.note || (detail.shift ? '' : defaultTexts[detail.status] || '');
         setEditingNote({ date: detail.date, currentNote });
         setNoteContent(currentNote);
     };
@@ -483,18 +483,24 @@ export default function EndOfMonthPage() {
 
                                 return (
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
-                                    <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
-                                        {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
-                                        {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
-                                        {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
-                                        {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
-                                        {detail.status === 'festa' && <Briefcase className="h-5 w-5 text-purple-500" />}
-
-                                        {format(detail.date, 'eeee dd MMMM', { locale: it })}
-                                    </h4>
+                                    <div className="flex justify-between items-start">
+                                        <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
+                                            {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
+                                            {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
+                                            {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                                            {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
+                                            {detail.status === 'festa' && <Briefcase className="h-5 w-5 text-purple-500" />}
+                                            {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                        </h4>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                    </div>
 
                                     <div className="border-b my-2"></div>
                                     
+                                    {detail.note && <p className="text-muted-foreground italic mb-2">"{detail.note}"</p>}
+
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
@@ -531,19 +537,15 @@ export default function EndOfMonthPage() {
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <p className="text-muted-foreground font-semibold">
-                                                { detail.note ? <em>{detail.note}</em> : 
-                                                  detail.status === 'mancata_timbratura' ? 'Assenza' :
+                                       !detail.note && (
+                                            <p className="text-muted-foreground font-semibold mt-1">
+                                                { detail.status === 'mancata_timbratura' ? 'Assenza' :
                                                   detail.status === 'ferie' ? 'Giorno di Ferie' :
                                                   detail.status === 'malattia' ? 'Giorno di Malattia' :
                                                   detail.status === 'festa' ? 'Giorno Festivo' : ''
                                                 }
                                             </p>
-                                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
-                                        </div>
+                                       )
                                     )}
 
                                 </div>

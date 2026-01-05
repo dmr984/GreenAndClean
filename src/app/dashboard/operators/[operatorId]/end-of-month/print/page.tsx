@@ -6,7 +6,7 @@ import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'fireb
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useParams, useSearchParams } from 'next/navigation';
-import { format, isValid, getDay } from 'date-fns';
+import { format, isValid, getDay, startOfMonth, endOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails, calculateHours } from '@/lib/calculations';
@@ -107,7 +107,6 @@ const PrintPageContent = () => {
                 }
 
                 // Fetch Timbrature and Requests
-                const { startOfMonth, endOfMonth } = await import('date-fns');
                 const monthStart = startOfMonth(currentMonth);
                 const monthEnd = endOfMonth(currentMonth);
 
@@ -256,6 +255,20 @@ const PrintPageContent = () => {
             let timbratureStr = '';
             let line2 = '';
     
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(dateStr, margin, y);
+            y += 5;
+            
+            if (detail.note) {
+                 doc.setFontSize(11);
+                 doc.setFont('helvetica', 'italic');
+                 doc.setTextColor(80, 80, 80);
+                 const splitNote = doc.splitTextToSize(`"${detail.note}"`, pageWidth - margin * 2);
+                 doc.text(splitNote, margin, y);
+                 y += (splitNote.length * 5);
+            }
+
             if (detail.shift) {
                 timbratureStr = detail.shift.events.map(e => {
                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -274,24 +287,22 @@ const PrintPageContent = () => {
                 
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             
-                 doc.setFontSize(12);
-                doc.setFont('helvetica', 'bold');
-                doc.text(dateStr, margin, y);
-                
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
-                const timbratureText = `| ${timbratureStr}`;
-                doc.text(timbratureText, margin + doc.getTextWidth(dateStr) + 1, y);
+                doc.setTextColor(0,0,0);
+                const splitTimbrature = doc.splitTextToSize(timbratureStr, pageWidth - margin * 2);
+                doc.text(splitTimbrature, margin, y);
+                y += (splitTimbrature.length * 5);
 
-                y += 5;
-
-            } else {
+            } else if (!detail.note) {
                  let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
                  if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Assenza';
+                 if(detail.status === 'mancata_timbratura') statusText = 'Assenza';
                  
-                 doc.setFontSize(12);
-                 doc.setFont('helvetica', 'bold');
-                 doc.text(`${dateStr} - ${statusText}`, margin, y);
+                 doc.setFontSize(11);
+                 doc.setFont('helvetica', 'normal');
+                 doc.setTextColor(0,0,0);
+                 doc.text(statusText, margin, y);
                  y += 5;
             }
                 
@@ -300,7 +311,7 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0, 0, 0); // Black text
                 const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
-                doc.text(splitLine2, margin + 3, y);
+                doc.text(splitLine2, margin, y);
                 y += (splitLine2.length * 5);
             }
     
@@ -445,36 +456,18 @@ const PrintPageContent = () => {
                              const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
                              const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
 
-                            if (detail.shift) {
-                                const timbratureStr = detail.shift.events.map(e => {
-                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                     let referenceTime = '';
-
-                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                        if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                         if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                                    }
-                                     const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                     const isModified = referenceTime !== '';
-                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                }).join(' | ');
-                                line1 = `${dateStr} | ${timbratureStr}`;
-                                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
-                            } else {
-                                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
-                                 if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                                 if(detail.status === 'mancata_timbratura') statusText = detail.note || 'Assenza';
-                                 line1 = `${dateStr} - ${statusText}`;
-                            }
+                             let statusText = '';
+                             if (!detail.shift) {
+                                statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
+                                if (detail.status === 'festa') statusText = 'Giorno Festivo';
+                                if (detail.status === 'mancata_timbratura') statusText = detail.note || 'Assenza';
+                             }
 
                             return (
                                 <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-2 mb-2 print:break-inside-avoid">
                                     <p className="text-black text-sm capitalize leading-tight">
                                         <span className="font-bold">{dateStr}</span>
-                                        {detail.shift && ` | ${detail.shift.events.map(e => {
+                                        {detail.shift ? ` | ${detail.shift.events.map(e => {
                                             const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                             let referenceTime = '';
                                             let isModified = false;
@@ -494,10 +487,10 @@ const PrintPageContent = () => {
                                             }
                                             const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                             return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                        }).join(' | ')}`}
-                                        {!detail.shift && ` - ${line1.split(' - ')[1]}`}
+                                        }).join(' | ')}` : (detail.note ? '' : ` - ${statusText}`)}
                                     </p>
-                                    {line2 && <p className="text-black text-sm pl-1 leading-tight">{line2}</p>}
+                                    {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
+                                    {detail.shift && <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
