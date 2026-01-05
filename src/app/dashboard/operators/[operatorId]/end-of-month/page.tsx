@@ -114,7 +114,7 @@ export default function EndOfMonthPage() {
     const [editingNote, setEditingNote] = useState<{ date: Date, currentNote: string } | null>(null);
     const [noteContent, setNoteContent] = useState('');
 
-    const [editingTotal, setEditingTotal] = useState<{ type: 'ferie' | 'permesso' | 'malattia', currentValue: number } | null>(null);
+    const [editingTotal, setEditingTotal] = useState<{ type: 'ferie' | 'permesso' | 'malattia' | 'lavorati' | 'ordinarie' | 'straordinarie', currentValue: number } | null>(null);
     const [totalContent, setTotalContent] = useState('');
 
 
@@ -198,11 +198,17 @@ export default function EndOfMonthPage() {
     const [editableFerie, setEditableFerie] = useState<number | null>(null);
     const [editablePermessi, setEditablePermessi] = useState<number | null>(null);
     const [editableMalattia, setEditableMalattia] = useState<number | null>(null);
+    const [editableLavorati, setEditableLavorati] = useState<number | null>(null);
+    const [editableOrdinarie, setEditableOrdinarie] = useState<number | null>(null);
+    const [editableStraordinarie, setEditableStraordinarie] = useState<number | null>(null);
 
     useEffect(() => {
         setEditableFerie(monthlySummary.ferieDays ?? null);
         setEditablePermessi(monthlySummary.permessoHours ?? null);
         setEditableMalattia(monthlySummary.malattiaDays ?? null);
+        setEditableLavorati(monthlySummary.workedDays ?? null);
+        setEditableOrdinarie(monthlySummary.ordinaryHours ?? null);
+        setEditableStraordinarie(monthlySummary.overtimeHours ?? null);
     }, [monthlySummary]);
 
 
@@ -299,8 +305,11 @@ export default function EndOfMonthPage() {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
     
-    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
-    const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+    const finalOrdinaryHours = editableOrdinarie ?? monthlySummary.ordinaryHours ?? 0;
+    const finalOvertimeHours = editableStraordinarie ?? monthlySummary.overtimeHours ?? 0;
+    
+    const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
+    const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
     const totalDue = ordinaryCost + overtimeCost;
     
     const formatFullRate = (rate?: number) => {
@@ -323,11 +332,14 @@ export default function EndOfMonthPage() {
         setNoteContent(currentNote);
     };
 
-    const handleEditTotal = (type: 'ferie' | 'permesso' | 'malattia') => {
+    const handleEditTotal = (type: 'ferie' | 'permesso' | 'malattia' | 'lavorati' | 'ordinarie' | 'straordinarie') => {
         let currentValue = 0;
         if(type === 'ferie') currentValue = editableFerie ?? 0;
-        if(type === 'permesso') currentValue = editablePermessi ?? 0;
-        if(type === 'malattia') currentValue = editableMalattia ?? 0;
+        else if(type === 'permesso') currentValue = editablePermessi ?? 0;
+        else if(type === 'malattia') currentValue = editableMalattia ?? 0;
+        else if(type === 'lavorati') currentValue = editableLavorati ?? 0;
+        else if(type === 'ordinarie') currentValue = editableOrdinarie ?? 0;
+        else if(type === 'straordinarie') currentValue = editableStraordinarie ?? 0;
         
         setEditingTotal({ type, currentValue });
         setTotalContent(String(currentValue));
@@ -343,11 +355,26 @@ export default function EndOfMonthPage() {
         }
 
         if (editingTotal.type === 'ferie') setEditableFerie(newValue);
-        if (editingTotal.type === 'permesso') setEditablePermessi(newValue);
-        if (editingTotal.type === 'malattia') setEditableMalattia(newValue);
+        else if (editingTotal.type === 'permesso') setEditablePermessi(newValue);
+        else if (editingTotal.type === 'malattia') setEditableMalattia(newValue);
+        else if (editingTotal.type === 'lavorati') setEditableLavorati(newValue);
+        else if (editingTotal.type === 'ordinarie') setEditableOrdinarie(newValue);
+        else if (editingTotal.type === 'straordinarie') setEditableStraordinarie(newValue);
 
         setEditingTotal(null);
         setTotalContent('');
+    }
+
+    const getDialogTitleForType = (type?: 'ferie' | 'permesso' | 'malattia' | 'lavorati' | 'ordinarie' | 'straordinarie') => {
+        switch (type) {
+            case 'ferie': return 'Modifica Totale Ferie (giorni)';
+            case 'permesso': return 'Modifica Totale Permessi (ore)';
+            case 'malattia': return 'Modifica Totale Malattia (giorni)';
+            case 'lavorati': return 'Modifica Totale Giorni Lavorati';
+            case 'ordinarie': return 'Modifica Totale Ore Ordinarie';
+            case 'straordinarie': return 'Modifica Totale Ore Straordinarie';
+            default: return 'Modifica Totale';
+        }
     }
 
     return (
@@ -386,27 +413,42 @@ export default function EndOfMonthPage() {
                      <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
                 <>
-                 <div className="space-y-2">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                      <SummaryCard 
                         title="Totale Dovuto" 
                         value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
                         className="bg-accent/20 border-accent"
                     />
-                    <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
-                    <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
+                    <SummaryCard 
+                        title="Giorni Lavorati" 
+                        value={editableLavorati ?? '...'}
+                        icon={Briefcase} 
+                        onEdit={() => handleEditTotal('lavorati')}
+                    />
+                    <SummaryCard 
+                        title="Ore Ordinarie" 
+                        value={finalOrdinaryHours.toLocaleString('it-IT')} 
+                        icon={Clock}
+                        onEdit={() => handleEditTotal('ordinarie')}
+                    />
                      <SummaryCard 
                         title="Costo Ore Ordinarie" 
                         value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
-                        subtext={`${monthlySummary.ordinaryHours || 0}h x ${formatFullRate(operator.hourlyRate)} €/h`}
+                        subtext={`${finalOrdinaryHours}h x ${formatFullRate(operator.hourlyRate)} €/h`}
                     />
-                    <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
+                    <SummaryCard 
+                        title="Ore Straordinarie" 
+                        value={finalOvertimeHours.toLocaleString('it-IT')} 
+                        icon={Plus}
+                        onEdit={() => handleEditTotal('straordinarie')}
+                    />
                      <SummaryCard 
                         title="Costo Ore Straordinarie" 
                         value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
-                        subtext={`${monthlySummary.overtimeHours || 0}h x ${formatFullRate(operator.overtimeRate)} €/h`}
+                        subtext={`${finalOvertimeHours}h x ${formatFullRate(operator.overtimeRate)} €/h`}
                     />
                     <SummaryCard 
                         title="Ferie (giorni)" 
@@ -563,7 +605,7 @@ export default function EndOfMonthPage() {
         <Dialog open={!!editingTotal} onOpenChange={(open) => !open && setEditingTotal(null)}>
             <DialogContent>
                  <DialogHeader>
-                    <DialogTitle className='capitalize'>Modifica Totale {editingTotal?.type}</DialogTitle>
+                    <DialogTitle className='capitalize'>{getDialogTitleForType(editingTotal?.type)}</DialogTitle>
                      <DialogDescription>
                         Inserisci il valore totale che vuoi assegnare per questo mese.
                     </DialogDescription>
