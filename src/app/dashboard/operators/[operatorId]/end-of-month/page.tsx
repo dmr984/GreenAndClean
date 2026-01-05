@@ -309,16 +309,17 @@ export default function EndOfMonthPage() {
     const finalPermessoHours = manualTotals.permessoHours ?? monthlySummary.permessoHours ?? 0;
     const finalMalattiaDays = manualTotals.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
 
+    const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     let totalDue: number;
+    let ordinaryCost: number;
+
     if (operator.salaryType === 'fixed') {
-        totalDue = operator.fixedSalary || 0;
+        totalDue = (operator.fixedSalary || 0) + overtimeCost;
+        ordinaryCost = operator.fixedSalary || 0; // For display purposes
     } else {
-        const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
-        const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+        ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
         totalDue = ordinaryCost + overtimeCost;
     }
-    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
-    const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
 
     
     const formatFullRate = (rate?: number) => {
@@ -330,13 +331,18 @@ export default function EndOfMonthPage() {
     };
 
     const handleEditNoteClick = (detail: DailyDetail) => {
-        const defaultTexts: Record<string, string> = {
-            mancata_timbratura: 'Assenza',
-            ferie: 'Giorno di Ferie',
-            malattia: 'Giorno di Malattia',
-            festa: 'Giorno Festivo',
-        };
-        const currentNote = detail.note || (detail.shift ? '' : defaultTexts[detail.status] || '');
+        let defaultText = '';
+        if (!detail.shift && !detail.note) {
+            const defaultTexts: Record<string, string> = {
+                mancata_timbratura: 'Assenza',
+                ferie: 'Giorno di Ferie',
+                malattia: 'Giorno di Malattia',
+                festa: 'Giorno Festivo',
+                riposo: 'Giorno di Riposo'
+            };
+            defaultText = defaultTexts[detail.status] || '';
+        }
+        const currentNote = detail.note || defaultText;
         setEditingNote({ date: detail.date, currentNote });
         setNoteContent(currentNote);
     };
@@ -430,32 +436,39 @@ export default function EndOfMonthPage() {
                         value={monthlySummary.workedDays ?? '...'}
                         icon={Briefcase} 
                     />
-                    {operator.salaryType !== 'fixed' && (
-                        <>
-                            <SummaryCard 
-                                title="Ore Ordinarie" 
-                                value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
-                                icon={Clock}
-                            />
-                            <SummaryCard 
-                                title="Costo Ore Ordinarie" 
-                                value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                                icon={Euro}
-                                subtext={`${(monthlySummary.ordinaryHours || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
-                            />
-                            <SummaryCard 
-                                title="Ore Straordinarie" 
-                                value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} 
-                                icon={Plus}
-                            />
-                            <SummaryCard 
-                                title="Costo Ore Straordinarie" 
-                                value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                                icon={Euro}
-                                subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
-                            />
-                        </>
+                    <SummaryCard 
+                        title="Ore Ordinarie" 
+                        value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
+                        icon={Clock}
+                    />
+
+                    {operator.salaryType === 'fixed' ? (
+                         <SummaryCard 
+                            title="Fisso Mensile" 
+                            value={`${(operator.fixedSalary || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                        />
+                    ) : (
+                        <SummaryCard 
+                            title="Costo Ore Ordinarie" 
+                            value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext={`${(monthlySummary.ordinaryHours || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
+                        />
                     )}
+                    
+                    <SummaryCard 
+                        title="Ore Straordinarie" 
+                        value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} 
+                        icon={Plus}
+                    />
+                    <SummaryCard 
+                        title="Costo Ore Straordinarie" 
+                        value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                        icon={Euro}
+                        subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
+                    />
+                    
                     <SummaryCard 
                         title="Ferie (giorni)" 
                         value={finalFerieDays}
@@ -491,11 +504,6 @@ export default function EndOfMonthPage() {
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
                                     <div className="flex justify-between items-start">
                                         <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
-                                            {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
-                                            {detail.status === 'malattia' && <Stethoscope className="h-5 w-5 text-red-500" />}
-                                            {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
-                                            {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
-                                            {detail.status === 'festa' && <Briefcase className="h-5 w-5 text-purple-500" />}
                                             {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                         </h4>
                                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
@@ -505,7 +513,7 @@ export default function EndOfMonthPage() {
 
                                     <div className="border-b my-2"></div>
                                     
-                                     {detail.note ? (
+                                    {detail.note ? (
                                         <p className="text-muted-foreground font-semibold italic">"{detail.note}"</p>
                                      ) : detail.status === 'riposo' ? (
                                         <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
@@ -595,7 +603,7 @@ export default function EndOfMonthPage() {
                     <DialogTitle>Modifica Nota Giornaliera</DialogTitle>
                     <DialogDescription>
                         Aggiungi o modifica la nota per il giorno {editingNote ? format(editingNote.date, 'PPP', { locale: it }) : ''}.
-                        Questa nota sarà visibile solo agli amministratori e sostituirà lo stato di default.
+                        Questa nota sostituirà lo stato di default nel report.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -604,7 +612,7 @@ export default function EndOfMonthPage() {
                         id="note-content"
                         value={noteContent}
                         onChange={(e) => setNoteContent(e.target.value)}
-                        placeholder="Es: Assenza giustificata verbalmente"
+                        placeholder="Es: Assenza giustificata"
                     />
                 </div>
                 <DialogFooter>
