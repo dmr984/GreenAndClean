@@ -46,13 +46,22 @@
             "enum": ["hourly", "half_hourly"],
             "description": "Determines how overtime is calculated. 'hourly' triggers at 50 minutes, 'half_hourly' triggers at 25/55 minutes."
         },
+        "salaryType": {
+          "type": "string",
+          "enum": ["hourly", "fixed"],
+          "description": "Determines if the salary is calculated per hour or is a fixed monthly amount."
+        },
         "hourlyRate": {
           "type": "number",
-          "description": "The standard hourly pay rate for the operator."
+          "description": "The standard hourly pay rate for the operator. Applies if salaryType is 'hourly'."
         },
         "overtimeRate": {
             "type": "number",
-            "description": "The hourly pay rate for overtime work."
+            "description": "The hourly pay rate for overtime work. Applies if salaryType is 'hourly'."
+        },
+        "fixedSalary": {
+            "type": "number",
+            "description": "The fixed monthly salary amount. Applies if salaryType is 'fixed'."
         }
       },
       "required": [

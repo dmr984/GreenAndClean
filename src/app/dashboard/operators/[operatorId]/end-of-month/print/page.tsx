@@ -37,8 +37,10 @@ type Operator = {
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;
+    fixedSalary?: number;
 };
 
 type Request = {
@@ -224,19 +226,34 @@ const PrintPageContent = () => {
         await addHeader();
         y += 15;
     
+        let totalDue: number;
+        if (operator.salaryType === 'fixed') {
+            totalDue = operator.fixedSalary || 0;
+        } else {
+            const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
+            const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
+            totalDue = ordinaryCost + overtimeCost;
+        }
+
         const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
         const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
-        const totalDue = ordinaryCost + overtimeCost;
+        
+        let summaryBody = [
+            [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${finalFerieDays}`],
+            [`ORE PERMESSI: ${finalPermessoHours}`, `GIORNI DI MALATTIA: ${finalMalattiaDays}`],
+        ];
+
+        if (operator.salaryType !== 'fixed') {
+            summaryBody.splice(1, 0, 
+                [`ORE ORDINARIE: ${finalOrdinaryHours}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
+                [`ORE STRAORDINARIE: ${finalOvertimeHours}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`]
+            );
+        }
         
         (doc as any).autoTable({
             startY: y,
             theme: 'plain',
-            body: [
-                [`GIORNI LAVORATI: ${(monthlySummary.workedDays || 0)}`, `FERIE: ${finalFerieDays}`],
-                [`ORE ORDINARIE: ${finalOrdinaryHours}`, `COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-                [`ORE STRAORDINARIE: ${finalOvertimeHours}`, `COSTO STRAORDINARIE (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`],
-                [`ORE PERMESSI: ${finalPermessoHours}`, `GIORNI DI MALATTIA: ${finalMalattiaDays}`],
-            ],
+            body: summaryBody,
             styles: { fontSize: 14, textColor: [0, 0, 0], fontStyle: 'bold' },
             columnStyles: {
                 0: { halign: 'left' },
@@ -395,9 +412,16 @@ const PrintPageContent = () => {
         );
     }
     
+    let totalDue: number;
+    if (operator.salaryType === 'fixed') {
+        totalDue = operator.fixedSalary || 0;
+    } else {
+        const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+        const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+        totalDue = ordinaryCost + overtimeCost;
+    }
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
-    const totalDue = ordinaryCost + overtimeCost;
     
     return (
         <div className="bg-background text-foreground min-h-screen">
@@ -446,6 +470,7 @@ const PrintPageContent = () => {
                                     <td className="py-1">GIORNI LAVORATI: <span className="font-mono">{(monthlySummary.workedDays || 0).toLocaleString('it-IT')}</span></td>
                                     <td className="py-1 text-right">FERIE: <span className="font-mono">{finalFerieDays.toLocaleString('it-IT')}</span></td>
                                 </tr>
+                                {operator.salaryType !== 'fixed' && <>
                                 <tr>
                                     <td className="py-1">ORE ORDINARIE: <span className="font-mono">{finalOrdinaryHours.toLocaleString('it-IT')}</span></td>
                                     <td className="py-1 text-right">COSTO ORDINARIE ({`${formatFullRate(operator.hourlyRate)}€/h`}): <span className="font-mono">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
@@ -454,6 +479,7 @@ const PrintPageContent = () => {
                                     <td className="py-1">ORE STRAORDINARIE: <span className="font-mono">{finalOvertimeHours.toLocaleString('it-IT')}</span></td>
                                     <td className="py-1 text-right">COSTO STRAORDINARIE ({`${formatFullRate(operator.overtimeRate || 0)}€/h`}): <span className="font-mono">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
+                                </>}
                                  <tr>
                                     <td className="py-1">ORE PERMESSI: <span className="font-mono">{finalPermessoHours.toLocaleString('it-IT')}</span></td>
                                     <td className="py-1 text-right">GIORNI DI MALATTIA: <span className="font-mono">{finalMalattiaDays.toLocaleString('it-IT')}</span></td>

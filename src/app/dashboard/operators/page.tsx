@@ -70,8 +70,10 @@ type Operator = {
     requireGps?: boolean;
     workSchedule: WorkSchedule;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;
+    fixedSalary?: number;
 };
 
 export default function ManageOperatorsPage() {
@@ -95,8 +97,10 @@ export default function ManageOperatorsPage() {
     const [newRequireGps, setNewRequireGps] = useState(true);
     const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
     const [newOvertimeCalculation, setNewOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+    const [newSalaryType, setNewSalaryType] = useState<'hourly' | 'fixed'>('hourly');
     const [newHourlyRate, setNewHourlyRate] = useState<number | string>('');
     const [newOvertimeRate, setNewOvertimeRate] = useState<number | string>('');
+    const [newFixedSalary, setNewFixedSalary] = useState<number | string>('');
 
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
@@ -105,8 +109,10 @@ export default function ManageOperatorsPage() {
     const [editingRequireGps, setEditingRequireGps] = useState(true);
     const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
     const [editingOvertimeCalculation, setEditingOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+    const [editingSalaryType, setEditingSalaryType] = useState<'hourly' | 'fixed'>('hourly');
     const [editingHourlyRate, setEditingHourlyRate] = useState<number | string>('');
     const [editingOvertimeRate, setEditingOvertimeRate] = useState<number | string>('');
+    const [editingFixedSalary, setEditingFixedSalary] = useState<number | string>('');
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -215,8 +221,10 @@ export default function ManageOperatorsPage() {
         const requireGps = action === 'add' ? newRequireGps : editingRequireGps;
         const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
         const overtimeCalculation = action === 'add' ? newOvertimeCalculation : editingOvertimeCalculation;
+        const salaryType = action === 'add' ? newSalaryType : editingSalaryType;
         const hourlyRate = action === 'add' ? newHourlyRate : editingHourlyRate;
         const overtimeRate = action === 'add' ? newOvertimeRate : editingOvertimeRate;
+        const fixedSalary = action === 'add' ? newFixedSalary : editingFixedSalary;
 
         if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
@@ -255,7 +263,7 @@ export default function ManageOperatorsPage() {
             }
         }
         
-        const operatorData = {
+        const operatorData: Omit<Operator, 'id'> = {
             username: operatorCode.trim(),
             role: 'operator' as const,
             firstName,
@@ -263,8 +271,10 @@ export default function ManageOperatorsPage() {
             requireGps,
             workSchedule: finalWorkSchedule,
             overtimeCalculation: overtimeCalculation,
-            hourlyRate: parseFloat(String(hourlyRate)) || 0,
-            overtimeRate: parseFloat(String(overtimeRate)) || 0,
+            salaryType,
+            hourlyRate: salaryType === 'hourly' ? parseFloat(String(hourlyRate)) || 0 : 0,
+            overtimeRate: salaryType === 'hourly' ? parseFloat(String(overtimeRate)) || 0 : 0,
+            fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary)) || 0 : 0,
         };
 
         if (action === 'add') {
@@ -272,14 +282,17 @@ export default function ManageOperatorsPage() {
               .then(() => {
                 toast({ title: "Successo", description: `Operatore con codice "${operatorCode}" aggiunto.` });
                 setIsAddDialogOpen(false);
+                // Reset form fields
                 setNewOperatorCode("");
                 setNewFirstName("");
                 setNewLastName("");
                 setNewRequireGps(true);
                 setNewWorkSchedule({});
                 setNewOvertimeCalculation('hourly');
+                setNewSalaryType('hourly');
                 setNewHourlyRate('');
                 setNewOvertimeRate('');
+                setNewFixedSalary('');
               }).catch((error: any) => {
                 if (error.code === 'permission-denied') {
                      errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'create', path: 'app-users', requestResourceData: operatorData }));
@@ -416,6 +429,63 @@ export default function ManageOperatorsPage() {
         </div>
     );
 
+    const renderSalaryFields = (
+      type: 'new' | 'edit',
+      salaryType: 'hourly' | 'fixed',
+      setSalaryType: (val: 'hourly' | 'fixed') => void,
+      hourlyRate: string | number,
+      setHourlyRate: (val: string | number) => void,
+      overtimeRate: string | number,
+      setOvertimeRate: (val: string | number) => void,
+      fixedSalary: string | number,
+      setFixedSalary: (val: string | number) => void
+    ) => (
+      <>
+        <div className='md:col-span-3'>
+          <Label htmlFor={`${type}-salaryType`}>Tipo di Contratto</Label>
+          <Select value={salaryType} onValueChange={v => setSalaryType(v as 'hourly' | 'fixed')}>
+            <SelectTrigger id={`${type}-salaryType`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hourly">Orario</SelectItem>
+              <SelectItem value="fixed">Fisso Mensile</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {salaryType === 'hourly' ? (
+          <>
+            <div>
+              <Label htmlFor={`${type}-hourlyRate`}>Tariffa Oraria (€)</Label>
+              <Input id={`${type}-hourlyRate`} type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
+            </div>
+            <div>
+              <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€)</Label>
+              <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
+            </div>
+            <div>
+              <Label htmlFor={`${type}-overtime`}>Calcolo Straordinario</Label>
+              <Select value={editingOvertimeCalculation} onValueChange={(v) => setEditingOvertimeCalculation(v as any)}>
+                <SelectTrigger id={`${type}-overtime`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hourly">Orario (scatto al 50° min)</SelectItem>
+                  <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        ) : (
+          <div className="md:col-span-3">
+            <Label htmlFor={`${type}-fixedSalary`}>Importo Fisso Mensile (€)</Label>
+            <Input id={`${type}-fixedSalary`} type="number" value={fixedSalary} onChange={(e) => setFixedSalary(e.target.value)} min="0" step="0.01" placeholder="Es: 1500.00" />
+          </div>
+        )}
+      </>
+    );
+
     return (
         <>
             <Card>
@@ -455,26 +525,13 @@ export default function ManageOperatorsPage() {
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div>
-                                                <Label htmlFor="new-hourlyRate">Tariffa Oraria (€)</Label>
-                                                <Input id="new-hourlyRate" type="number" value={newHourlyRate} onChange={(e) => setNewHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="new-overtimeRate">Tariffa Straordinari (€)</Label>
-                                                <Input id="new-overtimeRate" type="number" value={newOvertimeRate} onChange={(e) => setNewOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="new-overtime">Calcolo Straordinario</Label>
-                                                <Select value={newOvertimeCalculation} onValueChange={(v) => setNewOvertimeCalculation(v as any)}>
-                                                    <SelectTrigger id="new-overtime">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="hourly">Orario (scatto al 50° min)</SelectItem>
-                                                        <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                                          {renderSalaryFields(
+                                            'new',
+                                            newSalaryType, setNewSalaryType,
+                                            newHourlyRate, setNewHourlyRate,
+                                            newOvertimeRate, setNewOvertimeRate,
+                                            newFixedSalary, setNewFixedSalary
+                                          )}
                                         </div>
                                         <div className="flex items-center space-x-2">
                                             <Switch id="new-gps" checked={newRequireGps} onCheckedChange={setNewRequireGps} />
@@ -534,7 +591,7 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -576,26 +633,13 @@ export default function ManageOperatorsPage() {
                                 </div>
                             </div>
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <Label htmlFor="editing-hourlyRate">Tariffa Oraria (€)</Label>
-                                    <Input id="editing-hourlyRate" type="number" value={editingHourlyRate} onChange={(e) => setEditingHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
-                                </div>
-                                 <div>
-                                    <Label htmlFor="editing-overtimeRate">Tariffa Straordinari (€)</Label>
-                                    <Input id="editing-overtimeRate" type="number" value={editingOvertimeRate} onChange={(e) => setEditingOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
-                                </div>
-                                <div>
-                                    <Label htmlFor="editing-overtime">Calcolo Straordinario</Label>
-                                    <Select value={editingOvertimeCalculation} onValueChange={(v) => setEditingOvertimeCalculation(v as any)}>
-                                        <SelectTrigger id="editing-overtime">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="hourly">Orario (scatto al 50° min)</SelectItem>
-                                            <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                {renderSalaryFields(
+                                    'edit',
+                                    editingSalaryType, setEditingSalaryType,
+                                    editingHourlyRate, setEditingHourlyRate,
+                                    editingOvertimeRate, setEditingOvertimeRate,
+                                    editingFixedSalary, setEditingFixedSalary
+                                  )}
                             </div>
                             <div className="flex items-center space-x-2">
                                 <Switch id="edit-gps" checked={editingRequireGps} onCheckedChange={setEditingRequireGps} />

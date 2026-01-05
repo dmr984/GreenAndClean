@@ -45,8 +45,10 @@ type Operator = {
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;
+    fixedSalary?: number;
 };
 
 type Request = {
@@ -307,9 +309,17 @@ export default function EndOfMonthPage() {
     const finalPermessoHours = manualTotals.permessoHours ?? monthlySummary.permessoHours ?? 0;
     const finalMalattiaDays = manualTotals.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
 
+    let totalDue: number;
+    if (operator.salaryType === 'fixed') {
+        totalDue = operator.fixedSalary || 0;
+    } else {
+        const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+        const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+        totalDue = ordinaryCost + overtimeCost;
+    }
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
-    const totalDue = ordinaryCost + overtimeCost;
+
     
     const formatFullRate = (rate?: number) => {
         if (typeof rate !== 'number') return '0,00';
@@ -420,28 +430,32 @@ export default function EndOfMonthPage() {
                         value={monthlySummary.workedDays ?? '...'}
                         icon={Briefcase} 
                     />
-                    <SummaryCard 
-                        title="Ore Ordinarie" 
-                        value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
-                        icon={Clock}
-                    />
-                     <SummaryCard 
-                        title="Costo Ore Ordinarie" 
-                        value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                        icon={Euro}
-                        subtext={`${(monthlySummary.ordinaryHours || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
-                    />
-                    <SummaryCard 
-                        title="Ore Straordinarie" 
-                        value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} 
-                        icon={Plus}
-                    />
-                     <SummaryCard 
-                        title="Costo Ore Straordinarie" 
-                        value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                        icon={Euro}
-                        subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
-                    />
+                    {operator.salaryType !== 'fixed' && (
+                        <>
+                            <SummaryCard 
+                                title="Ore Ordinarie" 
+                                value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
+                                icon={Clock}
+                            />
+                            <SummaryCard 
+                                title="Costo Ore Ordinarie" 
+                                value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                icon={Euro}
+                                subtext={`${(monthlySummary.ordinaryHours || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
+                            />
+                            <SummaryCard 
+                                title="Ore Straordinarie" 
+                                value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} 
+                                icon={Plus}
+                            />
+                            <SummaryCard 
+                                title="Costo Ore Straordinarie" 
+                                value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                icon={Euro}
+                                subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
+                            />
+                        </>
+                    )}
                     <SummaryCard 
                         title="Ferie (giorni)" 
                         value={finalFerieDays}
