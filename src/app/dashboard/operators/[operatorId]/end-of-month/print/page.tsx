@@ -260,16 +260,16 @@ const PrintPageContent = () => {
             doc.text(dateStr, margin, y);
             y += 5;
             
-            if (detail.note) {
-                 doc.setFontSize(11);
-                 doc.setFont('helvetica', 'italic');
-                 doc.setTextColor(80, 80, 80);
-                 const splitNote = doc.splitTextToSize(`"${detail.note}"`, pageWidth - margin * 2);
-                 doc.text(splitNote, margin, y);
-                 y += (splitNote.length * 5);
-            }
-
+            doc.setFontSize(11);
             if (detail.shift) {
+                if (detail.note) {
+                    doc.setFont('helvetica', 'italic');
+                    doc.setTextColor(80, 80, 80);
+                    const splitNote = doc.splitTextToSize(`"${detail.note}"`, pageWidth - margin * 2);
+                    doc.text(splitNote, margin, y);
+                    y += (splitNote.length * 5);
+                }
+
                 timbratureStr = detail.shift.events.map(e => {
                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                      let referenceTime = '';
@@ -287,19 +287,23 @@ const PrintPageContent = () => {
                 
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             
-                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0,0,0);
                 const splitTimbrature = doc.splitTextToSize(timbratureStr, pageWidth - margin * 2);
                 doc.text(splitTimbrature, margin, y);
                 y += (splitTimbrature.length * 5);
 
-            } else if (!detail.note) {
-                 let statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
-                 if(detail.status === 'festa') statusText = 'Giorno Festivo';
-                 if(detail.status === 'mancata_timbratura') statusText = 'Assenza';
+            } else {
+                 let statusText = detail.note || '';
+                 if (!statusText) {
+                    switch (detail.status) {
+                        case 'mancata_timbratura': statusText = 'Assenza'; break;
+                        case 'ferie': statusText = 'Giorno di Ferie'; break;
+                        case 'malattia': statusText = 'Giorno di Malattia'; break;
+                        case 'festa': statusText = 'Giorno Festivo'; break;
+                    }
+                 }
                  
-                 doc.setFontSize(11);
                  doc.setFont('helvetica', 'normal');
                  doc.setTextColor(0,0,0);
                  doc.text(statusText, margin, y);
@@ -450,44 +454,38 @@ const PrintPageContent = () => {
                     <h3 className="text-lg font-bold text-black mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
                     <div className="space-y-3">
                         {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
-                             let line1 = '';
-                             let line2 = '';
                              const dayOfWeek = format(detail.date, 'eeee', { locale: it });
                              const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
                              const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
-
-                             let statusText = '';
-                             if (!detail.shift) {
-                                statusText = detail.status.charAt(0).toUpperCase() + detail.status.slice(1).replace(/_/g, ' ');
-                                if (detail.status === 'festa') statusText = 'Giorno Festivo';
-                                if (detail.status === 'mancata_timbratura') statusText = detail.note || 'Assenza';
-                             }
 
                             return (
                                 <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-2 mb-2 print:break-inside-avoid">
                                     <p className="text-black text-sm capitalize leading-tight">
                                         <span className="font-bold">{dateStr}</span>
-                                        {detail.shift ? ` | ${detail.shift.events.map(e => {
-                                            const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                            let referenceTime = '';
-                                            let isModified = false;
-
-                                            if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                                const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                                if(calcStart !== originalTime) {
-                                                    referenceTime = `(${calcStart})`;
-                                                    isModified = true;
-                                                }
-                                            } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                                const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                                if(calcEnd !== originalTime) {
-                                                    referenceTime = `(${calcEnd})`;
-                                                    isModified = true;
-                                                }
-                                            }
-                                            const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                            return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                        }).join(' | ')}` : (detail.note ? '' : ` - ${statusText}`)}
+                                        {detail.shift ? (
+                                            <>
+                                                {` | ${detail.shift.events.map(e => {
+                                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                    let referenceTime = '';
+                                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
+                                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
+                                                        if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
+                                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
+                                                        if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                    }
+                                                    const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                }).join(' | ')}`}
+                                            </>
+                                        ) : (
+                                            detail.note ? '' : ` - ${
+                                                detail.status === 'mancata_timbratura' ? 'Assenza' :
+                                                detail.status === 'ferie' ? 'Giorno di Ferie' :
+                                                detail.status === 'malattia' ? 'Giorno di Malattia' :
+                                                detail.status === 'festa' ? 'Giorno Festivo' : ''
+                                            }`
+                                        )}
                                     </p>
                                     {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
                                     {detail.shift && <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>}

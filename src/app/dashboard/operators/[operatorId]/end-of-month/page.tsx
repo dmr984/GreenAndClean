@@ -498,11 +498,10 @@ export default function EndOfMonthPage() {
                                     </div>
 
                                     <div className="border-b my-2"></div>
-                                    
-                                    {detail.note && <p className="text-muted-foreground italic mb-2">"{detail.note}"</p>}
 
                                     {detail.status === 'lavorato' && detail.shift ? (
                                         <>
+                                            {detail.note && <p className="text-muted-foreground italic mb-2">"{detail.note}"</p>}
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
                                                 {detail.shift.events.map((e, index) => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
@@ -537,15 +536,14 @@ export default function EndOfMonthPage() {
                                             </div>
                                         </>
                                     ) : (
-                                       !detail.note && (
-                                            <p className="text-muted-foreground font-semibold mt-1">
-                                                { detail.status === 'mancata_timbratura' ? 'Assenza' :
-                                                  detail.status === 'ferie' ? 'Giorno di Ferie' :
-                                                  detail.status === 'malattia' ? 'Giorno di Malattia' :
-                                                  detail.status === 'festa' ? 'Giorno Festivo' : ''
-                                                }
-                                            </p>
-                                       )
+                                       <p className="text-muted-foreground font-semibold mt-1">
+                                            { detail.note ? `"${detail.note}"` :
+                                              detail.status === 'mancata_timbratura' ? 'Assenza' :
+                                              detail.status === 'ferie' ? 'Giorno di Ferie' :
+                                              detail.status === 'malattia' ? 'Giorno di Malattia' :
+                                              detail.status === 'festa' ? 'Giorno Festivo' : ''
+                                            }
+                                        </p>
                                     )}
 
                                 </div>
@@ -585,7 +583,7 @@ export default function EndOfMonthPage() {
                     <DialogTitle>Modifica Nota Giornaliera</DialogTitle>
                     <DialogDescription>
                         Aggiungi o modifica la nota per il giorno {editingNote ? format(editingNote.date, 'PPP', { locale: it }) : ''}.
-                        Questa nota sarà visibile solo agli amministratori.
+                        Questa nota sarà visibile solo agli amministratori e sostituirà lo stato di default.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
