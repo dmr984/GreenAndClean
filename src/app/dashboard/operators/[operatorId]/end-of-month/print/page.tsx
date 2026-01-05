@@ -66,12 +66,6 @@ type DailyNote = {
     date: string;
 }
 
-type MonthlyOverride = {
-    ferieDays?: number;
-    permessoHours?: number;
-    malattiaDays?: number;
-}
-
 const PrintPageContent = () => {
     const firestore = useFirestore();
     const params = useParams();
@@ -82,7 +76,8 @@ const PrintPageContent = () => {
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
-    const [overrideData, setOverrideData] = useState<MonthlyOverride | null>(null);
+    const [manualTotals, setManualTotals] = useState({ ferie: -1, permessi: -1, malattia: -1 });
+
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -95,6 +90,17 @@ const PrintPageContent = () => {
                 setCurrentMonth(date);
             }
         }
+        
+        const ferie = searchParams.get('ferie');
+        const permessi = searchParams.get('permessi');
+        const malattia = searchParams.get('malattia');
+
+        setManualTotals({
+            ferie: ferie ? parseFloat(ferie) : -1,
+            permessi: permessi ? parseFloat(permessi) : -1,
+            malattia: malattia ? parseFloat(malattia) : -1,
+        });
+
     }, [searchParams]);
 
     useEffect(() => {
@@ -134,20 +140,17 @@ const PrintPageContent = () => {
                      where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
                      where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
                 );
-                const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
 
-                const [timbratureSnapshot, requestsSnapshot, notesSnapshot, overrideSnapshot] = await Promise.all([
+                const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
                     getDocs(notesQuery),
-                    getDoc(overrideDocRef)
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
                 const requestsData = requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
                 const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
                 
-                setOverrideData(overrideSnapshot.exists() ? overrideSnapshot.data() as MonthlyOverride : null);
                 setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
 
             } catch (error) {
@@ -178,9 +181,9 @@ const PrintPageContent = () => {
     
     const finalOrdinaryHours = monthlySummary.ordinaryHours ?? 0;
     const finalOvertimeHours = monthlySummary.overtimeHours ?? 0;
-    const finalFerieDays = overrideData?.ferieDays ?? monthlySummary.ferieDays ?? 0;
-    const finalPermessoHours = overrideData?.permessoHours ?? monthlySummary.permessoHours ?? 0;
-    const finalMalattiaDays = overrideData?.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
+    const finalFerieDays = manualTotals.ferie !== -1 ? manualTotals.ferie : (monthlySummary.ferieDays ?? 0);
+    const finalPermessoHours = manualTotals.permessi !== -1 ? manualTotals.permessi : (monthlySummary.permessoHours ?? 0);
+    const finalMalattiaDays = manualTotals.malattia !== -1 ? manualTotals.malattia : (monthlySummary.malattiaDays ?? 0);
 
     const generatePdf = async (): Promise<{ blob: Blob, fileName: string } | null> => {
         if (!operator) return null;
@@ -261,7 +264,7 @@ const PrintPageContent = () => {
         doc.line(margin, y, pageWidth - margin, y);
         y += 8;
     
-        dailyDetails.filter(d => d.status !== 'riposo').forEach(detail => {
+        dailyDetails.filter(d => !(d.status === 'riposo' && !d.note)).forEach(detail => {
             if (y > pageHeight - 30) {
                 doc.addPage();
                 y = 20;
@@ -270,7 +273,6 @@ const PrintPageContent = () => {
             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
             const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
-            let timbratureStr = '';
             let line2 = '';
     
             doc.setFontSize(12);
@@ -279,16 +281,18 @@ const PrintPageContent = () => {
             y += 5;
             
             doc.setFontSize(11);
-            if (detail.shift) {
-                if (detail.note) {
-                    doc.setFont('helvetica', 'italic');
-                    doc.setTextColor(80, 80, 80);
-                    const splitNote = doc.splitTextToSize(`"${detail.note}"`, pageWidth - margin * 2);
-                    doc.text(splitNote, margin, y);
-                    y += (splitNote.length * 5);
-                }
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(0,0,0);
 
-                timbratureStr = detail.shift.events.map(e => {
+            if (detail.note) {
+                doc.setFont('helvetica', 'italic');
+                const splitNote = doc.splitTextToSize(`"${detail.note}"`, pageWidth - margin * 2);
+                doc.text(splitNote, margin, y);
+                y += (splitNote.length * 5);
+            }
+
+            if (detail.shift) {
+                const timbratureStr = detail.shift.events.map(e => {
                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                      let referenceTime = '';
 
@@ -306,24 +310,19 @@ const PrintPageContent = () => {
                 line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
             
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(0,0,0);
                 const splitTimbrature = doc.splitTextToSize(timbratureStr, pageWidth - margin * 2);
                 doc.text(splitTimbrature, margin, y);
                 y += (splitTimbrature.length * 5);
 
-            } else {
-                 let statusText = detail.note || '';
-                 if (!statusText) {
-                    switch (detail.status) {
-                        case 'mancata_timbratura': statusText = 'Assenza'; break;
-                        case 'ferie': statusText = 'Giorno di Ferie'; break;
-                        case 'malattia': statusText = 'Giorno di Malattia'; break;
-                        case 'festa': statusText = 'Giorno Festivo'; break;
-                    }
+            } else if (!detail.note) {
+                 let statusText = '';
+                 switch (detail.status) {
+                    case 'mancata_timbratura': statusText = 'Assenza'; break;
+                    case 'ferie': statusText = 'Giorno di Ferie'; break;
+                    case 'malattia': statusText = 'Giorno di Malattia'; break;
+                    case 'festa': statusText = 'Giorno Festivo'; break;
                  }
                  
-                 doc.setFont('helvetica', 'normal');
-                 doc.setTextColor(0,0,0);
                  doc.text(statusText, margin, y);
                  y += 5;
             }
@@ -331,7 +330,6 @@ const PrintPageContent = () => {
             if(line2) {
                 doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(0, 0, 0); // Black text
                 const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
                 doc.text(splitLine2, margin, y);
                 y += (splitLine2.length * 5);
@@ -397,8 +395,8 @@ const PrintPageContent = () => {
         );
     }
     
-    const ordinaryCost = finalOrdinaryHours * (operator.hourlyRate || 0);
-    const overtimeCost = finalOvertimeHours * (operator.overtimeRate || 0);
+    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+    const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     const totalDue = ordinaryCost + overtimeCost;
     
     return (
@@ -471,7 +469,7 @@ const PrintPageContent = () => {
                     {/* Daily Details */}
                     <h3 className="text-lg font-bold text-black mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
                     <div className="space-y-3">
-                        {dailyDetails.length > 0 ? dailyDetails.filter(d => d.status !== 'riposo').map(detail => {
+                        {dailyDetails.length > 0 ? dailyDetails.filter(d => !(d.status === 'riposo' && !d.note)).map(detail => {
                              const dayOfWeek = format(detail.date, 'eeee', { locale: it });
                              const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
                              const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
@@ -480,9 +478,13 @@ const PrintPageContent = () => {
                                 <div key={detail.date.toISOString()} className="border-b border-gray-300 pb-2 mb-2 print:break-inside-avoid">
                                     <p className="text-black text-sm capitalize leading-tight">
                                         <span className="font-bold">{dateStr}</span>
-                                        {detail.shift ? (
-                                            <>
-                                                {` | ${detail.shift.events.map(e => {
+                                    </p>
+                                    {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
+
+                                    {detail.shift ? (
+                                        <>
+                                            <p className="text-black text-sm pl-1 leading-tight">
+                                                {`${detail.shift.events.map(e => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
                                                     if (e.type === 'entrata' && detail.shift?.calculationStart) {
@@ -495,18 +497,19 @@ const PrintPageContent = () => {
                                                     const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                                     return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                                 }).join(' | ')}`}
-                                            </>
-                                        ) : (
-                                            detail.note ? '' : ` - ${
-                                                detail.status === 'mancata_timbratura' ? 'Assenza' :
-                                                detail.status === 'ferie' ? 'Giorno di Ferie' :
-                                                detail.status === 'malattia' ? 'Giorno di Malattia' :
-                                                detail.status === 'festa' ? 'Giorno Festivo' : ''
-                                            }`
-                                        )}
-                                    </p>
-                                    {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
-                                    {detail.shift && <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>}
+                                            </p>
+                                            <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>
+                                        </>
+                                    ) : (
+                                       !detail.note && (
+                                            <p className="text-black text-sm pl-1 leading-tight">
+                                                {detail.status === 'mancata_timbratura' && 'Assenza'}
+                                                {detail.status === 'ferie' && 'Giorno di Ferie'}
+                                                {detail.status === 'malattia' && 'Giorno di Malattia'}
+                                                {detail.status === 'festa' && 'Giorno Festivo'}
+                                            </p>
+                                        )
+                                    )}
                                 </div>
                             )
                         }) : <p className="text-center text-gray-500 py-4">Nessun dato da mostrare.</p>}
