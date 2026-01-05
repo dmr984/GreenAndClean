@@ -73,11 +73,14 @@ type DailyNote = {
     date: string;
 }
 
-const SummaryCard = ({ title, value, icon: Icon, subtext, className }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string }) => (
+const SummaryCard = ({ title, value, icon: Icon, subtext, className, onEdit }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, onEdit?: () => void }) => (
     <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">{title}</CardTitle>
-            <Icon className="h-4 w-4 text-muted-foreground" />
+            <div className='flex items-center gap-1'>
+                 {onEdit && <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>}
+                <Icon className="h-4 w-4 text-muted-foreground" />
+            </div>
         </CardHeader>
         <CardContent>
             <div className="text-2xl font-bold">{value}</div>
@@ -110,6 +113,9 @@ export default function EndOfMonthPage() {
     
     const [editingNote, setEditingNote] = useState<{ date: Date, currentNote: string } | null>(null);
     const [noteContent, setNoteContent] = useState('');
+
+    const [editingTotal, setEditingTotal] = useState<{ type: 'ferie' | 'permesso' | 'malattia', currentValue: number } | null>(null);
+    const [totalContent, setTotalContent] = useState('');
 
 
     useEffect(() => {
@@ -187,6 +193,18 @@ export default function EndOfMonthPage() {
         }
         return processMonthlyData(currentMonth, operator, monthlyData);
     }, [operator, currentMonth, monthlyData, isLoading]);
+    
+    // State for editable totals
+    const [editableFerie, setEditableFerie] = useState<number | null>(null);
+    const [editablePermessi, setEditablePermessi] = useState<number | null>(null);
+    const [editableMalattia, setEditableMalattia] = useState<number | null>(null);
+
+    useEffect(() => {
+        setEditableFerie(monthlySummary.ferieDays ?? null);
+        setEditablePermessi(monthlySummary.permessoHours ?? null);
+        setEditableMalattia(monthlySummary.malattiaDays ?? null);
+    }, [monthlySummary]);
+
 
     const handleMonthChange = (offset: number) => {
         setCurrentMonth(prev => prev ? new Date(prev.getFullYear(), prev.getMonth() + offset, 1) : new Date());
@@ -305,6 +323,33 @@ export default function EndOfMonthPage() {
         setNoteContent(currentNote);
     };
 
+    const handleEditTotal = (type: 'ferie' | 'permesso' | 'malattia') => {
+        let currentValue = 0;
+        if(type === 'ferie') currentValue = editableFerie ?? 0;
+        if(type === 'permesso') currentValue = editablePermessi ?? 0;
+        if(type === 'malattia') currentValue = editableMalattia ?? 0;
+        
+        setEditingTotal({ type, currentValue });
+        setTotalContent(String(currentValue));
+    };
+
+    const handleSaveTotal = () => {
+        if (!editingTotal) return;
+
+        const newValue = parseFloat(totalContent);
+        if (isNaN(newValue)) {
+            toast({ title: 'Valore non valido', variant: 'destructive'});
+            return;
+        }
+
+        if (editingTotal.type === 'ferie') setEditableFerie(newValue);
+        if (editingTotal.type === 'permesso') setEditablePermessi(newValue);
+        if (editingTotal.type === 'malattia') setEditableMalattia(newValue);
+
+        setEditingTotal(null);
+        setTotalContent('');
+    }
+
     return (
         <>
         <Card className="p-4 sm:p-6">
@@ -362,6 +407,24 @@ export default function EndOfMonthPage() {
                         value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                         icon={Euro}
                         subtext={`${monthlySummary.overtimeHours || 0}h x ${formatFullRate(operator.overtimeRate)} €/h`}
+                    />
+                    <SummaryCard 
+                        title="Ferie (giorni)" 
+                        value={editableFerie ?? '...'}
+                        icon={Plane}
+                        onEdit={() => handleEditTotal('ferie')}
+                    />
+                    <SummaryCard 
+                        title="Permessi (ore)" 
+                        value={editablePermessi ?? '...'} 
+                        icon={UserCheck}
+                        onEdit={() => handleEditTotal('permesso')}
+                    />
+                     <SummaryCard 
+                        title="Malattia (giorni)" 
+                        value={editableMalattia ?? '...'}
+                        icon={Stethoscope}
+                        onEdit={() => handleEditTotal('malattia')}
                     />
                 </div>
 
@@ -493,6 +556,31 @@ export default function EndOfMonthPage() {
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setEditingNote(null)}>Annulla</Button>
                     <Button onClick={handleSaveNote}>Salva Nota</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        
+        <Dialog open={!!editingTotal} onOpenChange={(open) => !open && setEditingTotal(null)}>
+            <DialogContent>
+                 <DialogHeader>
+                    <DialogTitle className='capitalize'>Modifica Totale {editingTotal?.type}</DialogTitle>
+                     <DialogDescription>
+                        Inserisci il valore totale che vuoi assegnare per questo mese.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="total-content" className="capitalize">{`Totale ${editingTotal?.type}`}</Label>
+                    <Input
+                        id="total-content"
+                        type="number"
+                        value={totalContent}
+                        onChange={(e) => setTotalContent(e.target.value)}
+                        placeholder="Es: 10"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditingTotal(null)}>Annulla</Button>
+                    <Button onClick={handleSaveTotal}>Salva Totale</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
