@@ -293,6 +293,18 @@ export default function EndOfMonthPage() {
         });
     };
 
+    const handleEditNoteClick = (detail: DailyDetail) => {
+        const defaultTexts: Record<string, string> = {
+            mancata_timbratura: 'Assenza',
+            ferie: 'Giorno di Ferie',
+            malattia: 'Giorno di Malattia',
+            festa: 'Giorno Festivo',
+        };
+        const currentNote = detail.note || defaultTexts[detail.status] || '';
+        setEditingNote({ date: detail.date, currentNote });
+        setNoteContent(currentNote);
+    };
+
     return (
         <>
         <Card className="p-4 sm:p-6">
@@ -351,9 +363,6 @@ export default function EndOfMonthPage() {
                         icon={Euro}
                         subtext={`${monthlySummary.overtimeHours || 0}h x ${formatFullRate(operator.overtimeRate)} €/h`}
                     />
-                    <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
-                    <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
-                    <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
                 </div>
 
                 <Separator />
@@ -416,31 +425,21 @@ export default function EndOfMonthPage() {
                                                 <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
                                             </div>
                                         </>
-                                    ) : detail.status === 'ferie' ? (
-                                        <p className="text-muted-foreground mt-1">Giorno di ferie approvato.</p>
-                                    ) : detail.status === 'malattia' ? (
-                                        <p className="text-muted-foreground mt-1">Giorno di malattia approvato.</p>
-                                    ) : detail.status === 'festa' ? (
-                                        <p className="text-muted-foreground mt-1">Giorno festivo.</p>
-                                    ) : detail.status === 'mancata_timbratura' ? (
+                                    ) : (
                                         <div className="flex items-center gap-2 mt-1">
-                                            <p className="text-yellow-600 font-semibold">
-                                                {detail.note || 'Assenza'}
+                                            <p className="text-muted-foreground font-semibold">
+                                                { detail.note ? <em>{detail.note}</em> : 
+                                                  detail.status === 'mancata_timbratura' ? 'Assenza' :
+                                                  detail.status === 'ferie' ? 'Giorno di Ferie' :
+                                                  detail.status === 'malattia' ? 'Giorno di Malattia' :
+                                                  detail.status === 'festa' ? 'Giorno Festivo' : ''
+                                                }
                                             </p>
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                className="h-6 w-6"
-                                                onClick={() => {
-                                                    const currentNote = detail.note || '';
-                                                    setEditingNote({ date: detail.date, currentNote });
-                                                    setNoteContent(currentNote);
-                                                }}
-                                            >
+                                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
                                                 <Pencil className="h-4 w-4" />
                                             </Button>
                                         </div>
-                                    ) : null}
+                                    )}
 
                                 </div>
                             )})}
