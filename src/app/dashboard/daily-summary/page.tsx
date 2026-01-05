@@ -201,25 +201,6 @@ const DailySummaryPage = () => {
                             {operators.map(op => {
                                 const detail = dailyData.get(op.id);
                                 const cumulative = monthlyCumulative.get(op.id);
-                                
-                                let timbratureString = '';
-                                if (detail?.shift) {
-                                    const events = detail.shift.events || [];
-                                    timbratureString = events.map(e => {
-                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                        let referenceTime = '';
-
-                                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                                        }
-                                        return `${e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ')}: ${originalTime} ${referenceTime}`.trim();
-                                    }).join(' | ');
-                                }
-
 
                                 return (
                                     <Card key={op.id} className={cn(detail?.status === 'mancata_timbratura' && 'bg-red-500/5 border-red-500/20')}>
@@ -236,9 +217,29 @@ const DailySummaryPage = () => {
                                             {detail?.shift && (
                                                 <div className='text-sm'>
                                                     <p className='font-semibold'>Timbrature del giorno:</p>
-                                                    <p className='text-muted-foreground'>
-                                                         {timbratureString}
-                                                    </p>
+                                                    <div className='text-muted-foreground'>
+                                                        {(detail.shift.allShifts || []).map((shiftBlock, idx) => (
+                                                            <div key={idx} className="mb-1">
+                                                                <span className="font-medium mr-2">{`Turno ${idx + 1}:`}</span>
+                                                                <span>
+                                                                    {shiftBlock.events.map(e => {
+                                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                                        let referenceTime = '';
+
+                                                                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                                                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                                                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                                        }
+                                                                        const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                                        return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
+                                                                    }).join(' | ')}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             )}
                                              <div className='grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2'>

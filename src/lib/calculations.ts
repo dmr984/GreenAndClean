@@ -65,10 +65,17 @@ type Shift = {
 };
 
 
+type SingleShiftBlock = {
+    events: Timbratura[];
+    calculationStart?: Date;
+    calculationEnd?: Date;
+};
+
 export type DailyDetail = {
     date: Date;
     status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa';
     shift: {
+        allShifts?: SingleShiftBlock[];
         events: Timbratura[];
         contractualHours: number;
         ordinaryHours: number;
@@ -80,6 +87,7 @@ export type DailyDetail = {
     request: Request | null;
     note?: string;
 };
+
 
 export type MonthlySummary = {
     workedDays: number;
@@ -340,13 +348,6 @@ export const processMonthlyData = (
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
 
-    const dailyTimbrature = monthlyData.timbrature.reduce((acc, t) => {
-        const dayString = t.timestamp.toDate().toDateString();
-        if (!acc[dayString]) acc[dayString] = [];
-        acc[dayString].push(t);
-        return acc;
-    }, {} as Record<string, Timbratura[]>);
-
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
     const details: DailyDetail[] = [];
     
@@ -356,10 +357,11 @@ export const processMonthlyData = (
 
         const dayName = dayIndexToName[getDay(day)];
         let dailySchedule = operator.workSchedule[dayName];
-        const dayString = day.toDateString();
+        
         const isHoliday = isPublicHoliday(day);
         
-        const workedEventsRaw = dailyTimbrature[dayString];
+        const workedEventsRaw = monthlyData.timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
+        
         const makeupShiftInfo = workedEventsRaw?.find(e => e.type === 'entrata' && e.makeupOfDay);
         
         // If it's a makeup shift, use the schedule of the day being made up
@@ -389,10 +391,10 @@ export const processMonthlyData = (
         const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
 
         
-        if (isHoliday && !workedEventsRaw) {
+        if (isHoliday && !workedEventsRaw.length) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
-        } else if (workedEventsRaw) {
-            const dayShifts: { date: Date, events: Timbratura[] }[] = [];
+        } else if (workedEventsRaw.length > 0) {
+            const dayShifts: SingleShiftBlock[] = [];
             let currentShiftEvents: Timbratura[] = [];
             const sortedEvents = [...workedEventsRaw].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
@@ -401,9 +403,13 @@ export const processMonthlyData = (
                 if (event.type === 'uscita') {
                     const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
                     if(clockInTime) {
+                        const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
+                        const hoursResult = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                        
                         dayShifts.push({
-                            date: day,
                             events: currentShiftEvents,
+                            calculationStart: hoursResult.calculationStart || undefined,
+                            calculationEnd: hoursResult.calculationEnd || undefined
                         });
                     }
                     currentShiftEvents = []; 
@@ -419,20 +425,13 @@ export const processMonthlyData = (
             let totalOrdinary = 0;
             let totalOvertime = 0;
             const allDayEvents: Timbratura[] = [];
-            let finalCalcStart: Date | undefined = undefined;
-            let finalCalcEnd: Date | undefined = undefined;
-
-
-            dayShifts.forEach(shift => {
-                 const ignoreContractualStart = shift.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                 
-                 const hoursResult = calculateHours(shift, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+            
+            dayShifts.forEach(shiftBlock => {
+                 const ignoreContractualStart = shiftBlock.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
+                 const hoursResult = calculateHours({ date: day, events: shiftBlock.events }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
                  totalOrdinary += hoursResult.ordinary;
                  totalOvertime += hoursResult.overtime;
-                 
-                 allDayEvents.push(...shift.events);
-                 if (hoursResult.calculationStart) finalCalcStart = hoursResult.calculationStart;
-                 if (hoursResult.calculationEnd) finalCalcEnd = hoursResult.calculationEnd;
+                 allDayEvents.push(...shiftBlock.events);
             });
             
             const permissionHours = monthlyData.requests
@@ -444,13 +443,12 @@ export const processMonthlyData = (
                 status: 'lavorato',
                 request: null,
                 shift: {
+                    allShifts: dayShifts,
                     events: allDayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()),
                     contractualHours,
                     ordinaryHours: totalOrdinary,
                     overtimeHours: totalOvertime, 
                     permissionHours: permissionHours,
-                    calculationStart: finalCalcStart,
-                    calculationEnd: finalCalcEnd,
                 },
                 note: dailyNote?.note,
             });

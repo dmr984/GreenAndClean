@@ -192,22 +192,25 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
 
                 if (detail.shift) {
-                     const timbratureString = detail.shift.events.map(e => {
-                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                        let referenceTime = '';
-                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                        }
-                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                    }).join(' | ');
+                    (detail.shift.allShifts || []).forEach((shiftBlock, idx) => {
+                        const timbratureString = shiftBlock.events.map(e => {
+                            const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                            let referenceTime = '';
+                            if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                                if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                            } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                                if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                            }
+                            const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                            return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                        }).join(' | ');
 
-                    doc.text(`Timbrature: ${timbratureString}`, margin, y);
-                    y += 6;
+                        doc.text(`Turno ${idx + 1}: ${timbratureString}`, margin, y);
+                        y += 6;
+                    });
+
 
                     const detailGiorno = `Dettaglio Giorno: Ore Ordinarie: ${detail.shift.ordinaryHours || 0}h, Straordinari: ${detail.shift.overtimeHours || 0}h, Permessi: ${detail.shift.permissionHours || 0}h`;
                      doc.text(detailGiorno, margin, y);
@@ -339,21 +342,23 @@ const PrintPageContent = () => {
                                     <div className="text-sm space-y-1 pl-1 mt-1 text-black">
                                         {detail.shift ? (
                                              <>
-                                                <p>
-                                                    {`Timbrature: ${detail.shift.events.map(e => {
-                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                        let referenceTime = '';
-                                                        if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                                            const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                                        } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                                            const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                                                        }
-                                                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                                    }).join(' | ')}`}
-                                                </p>
+                                                {(detail.shift.allShifts || []).map((shiftBlock, idx) => (
+                                                    <p key={idx}>
+                                                        {`Turno ${idx + 1}: ${shiftBlock.events.map(e => {
+                                                            const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                            let referenceTime = '';
+                                                            if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                                const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                                                                if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                            } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                                const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                                                                if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                            }
+                                                            const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                            return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                        }).join(' | ')}`}
+                                                    </p>
+                                                ))}
                                                 <p>Dettaglio Giorno: Ore Ordinarie: {detail.shift.ordinaryHours || 0}h, Straordinari: {detail.shift.overtimeHours || 0}h, Permessi: {detail.shift.permissionHours || 0}h</p>
                                             </>
                                         ) : (
