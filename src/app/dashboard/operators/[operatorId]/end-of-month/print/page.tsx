@@ -518,9 +518,9 @@ const PrintPageContent = () => {
                                     </p>
                                     {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
 
-                                    {detail.shift ? (
+                                    {detail.shift && detail.shift.allShifts ? (
                                         <>
-                                            {(detail.shift.allShifts || []).map((shiftBlock, idx) => {
+                                            {detail.shift.allShifts.map((shiftBlock, idx) => {
                                                 const timbratureString = shiftBlock.events.map(e => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';

@@ -519,10 +519,10 @@ export default function EndOfMonthPage() {
                                         <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
                                      ) : null}
 
-                                    {detail.shift ? (
+                                    {detail.shift && detail.shift.allShifts ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                 {(detail.shift.allShifts || []).map((shiftBlock, idx) => {
+                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {
                                                     const timbratureString = shiftBlock.events.map(e => {
                                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                         let referenceTime = '';

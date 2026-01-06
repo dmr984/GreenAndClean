@@ -258,7 +258,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     return { 
         workedMinutes,
         calculationStart: calculationStartTime,
-        calculationEnd: clockOutTime,
+        calculationEnd: clockOutTime, // Keep this as the raw clock-out for other calculations
         breakMinutes: Math.floor(breakDurationMillis / 60000),
         contractualEndTime: contractualEndTime
     };

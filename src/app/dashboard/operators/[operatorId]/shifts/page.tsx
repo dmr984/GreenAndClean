@@ -1231,35 +1231,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const clockInEvent = shift.events.find(e => e.type === 'entrata');
         if (!clockInEvent) return { display: '--:--', calculationStart: null };
         
-        const clockInTime = clockInEvent.timestamp.toDate();
-        const dayToUseDate = (shift as Shift).makeupOfDay ? parse((shift as Shift).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInTime;
-        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
-        const schedule = operator.workSchedule[dayToUse];
-        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
+        const { calculationStart } = calculateHours(shift as Shift, (shift as Shift).isOvertime ? undefined : operator.workSchedule[dayIndexToName[getDayFns((shift as Shift).date)]], (shift as Shift).ignoreContractualStart);
 
-        let calculationStart: Date | null = clockInTime;
-
-        if (schedule?.startTime) {
-            const [h, m] = schedule.startTime.split(':').map(Number);
-            const contractualStart = set(dayToUseDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-            
-            if (isWorkDay) { // Regular day logic
-                const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
-                 const details = calculateShiftDetails(shift.events as Timbratura[], schedule, ignoreContractualStart);
-                 calculationStart = details.calculationStart;
-            } else { // Non-working day (overtime)
-                const { calculationStart: overtimeCalcStart } = calculateShiftDetails(shift.events as Timbratura[], schedule, false);
-                calculationStart = overtimeCalcStart;
-            }
-        }
-
-        const originalTime = format(clockInTime, 'HH:mm:ss');
+        const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
         
         if (calculationStart) {
            return { display: `${originalTime} (${format(calculationStart, 'HH:mm')})`, calculationStart };
         }
 
-        return { display: originalTime, calculationStart: clockInTime };
+        return { display: originalTime, calculationStart: clockInEvent.timestamp.toDate() };
     }
     
     const getAdjustedEndTime = (shift: Shift | StraordinarioShift): { display: string; calculationEnd: Date | null } => {
@@ -1270,32 +1250,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     
         const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
         
-        const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        if (!clockInEvent) return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
-
-        const dayToUseDate = (shift as Shift).makeupOfDay ? parse((shift as Shift).makeupOfDay!, 'yyyy-MM-dd', new Date()) : clockInEvent.timestamp.toDate();
-        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
-        const schedule = operator.workSchedule[dayToUse];
-        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
-
-        if (!isWorkDay) { // Pure overtime shift
-            const { calculationStart } = calculateShiftDetails(shift.events as Timbratura[], schedule, false);
-            if (!calculationStart) return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
-            
-            const hours = calculatePureOvertime(shift as StraordinarioShift, operator);
-            const { breakMinutes } = calculateShiftDetails(shift.events as Timbratura[], schedule, true);
-            const calculationEnd = new Date(calculationStart.getTime() + (hours * 60 + breakMinutes) * 60000);
-
-            if (calculationEnd) {
-                 return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
-            }
-        } else { // Regular shift
-            const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
-            const { calculationEnd } = calculateHours(shift as Shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
-        
-            if (calculationEnd) {
-                 return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
-            }
+        const { calculationEnd } = calculateHours(shift as Shift, (shift as Shift).isOvertime ? undefined : operator.workSchedule[dayIndexToName[getDayFns((shift as Shift).date)]], (shift as Shift).ignoreContractualStart, operator.overtimeCalculation);
+    
+        if (calculationEnd) {
+            return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
         }
         
         return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
@@ -1652,43 +1610,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         const schedule = operator.workSchedule[dayToUse];
                         const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
                         
-                        let ordinary = 0, overtime = 0, leave = 0, worked = 0, breakDuration = 0;
-                        let calculationStart: Date | null = null;
-                        let calculationEnd: Date | null = null;
+                        const { ordinary, overtime, leave, worked, break: breakDuration, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeCalculation);
 
                         const associatedOvertimeRequest = detailShift.status === 'confermato' 
                             ? approvedRequests.find(r => r.associatedShiftId === detailShift.id)
                             : null;
                         
-                        if (!isWorkDay) {
-                           overtime = associatedOvertimeRequest?.hours ?? calculatePureOvertime(detailShift, operator);
-                           const details = calculateShiftDetails(detailShift.events, schedule, true);
-                           worked = details.workedMinutes;
-                           breakDuration = details.breakMinutes;
-                           calculationStart = details.calculationStart;
-                           if (calculationStart) {
-                             calculationEnd = new Date(calculationStart.getTime() + (overtime * 60 + breakDuration) * 60000);
-                           }
-                        } else {
-                            const ignoreContractualStart = detailShift.ignoreContractualStart || false;
-                            const hoursResult = calculateHours(detailShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
-                            ordinary = hoursResult.ordinary;
-                            overtime = associatedOvertimeRequest?.hours ?? hoursResult.overtime;
-                            leave = hoursResult.leave;
-                            worked = hoursResult.worked;
-                            breakDuration = hoursResult.break;
-                            calculationStart = hoursResult.calculationStart;
-                            calculationEnd = hoursResult.calculationEnd;
-                        }
-                        
-                        let mainResultLabel = 'Straordinari';
-                        let mainResultValue = `${overtime}h`;
+                        const finalOvertime = associatedOvertimeRequest?.hours ?? overtime;
 
-                        if (overtime === 0 && leave > 0) {
+                        let mainResultLabel = 'Straordinari';
+                        let mainResultValue = `${finalOvertime}h`;
+
+                        if (finalOvertime === 0 && leave > 0) {
                             mainResultLabel = 'Permessi';
                             mainResultValue = `${leave}h`;
-                        } else if (overtime > 0 && leave > 0) {
-                             mainResultValue = `${overtime}h (Perm: ${leave}h)`;
+                        } else if (finalOvertime > 0 && leave > 0) {
+                             mainResultValue = `${finalOvertime}h (Perm: ${leave}h)`;
                         }
 
                         return (
@@ -1730,19 +1667,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     if (!detailShift) return null;
                                     
                                     const displayEvents = [...detailShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                                    const { display: displayStart } = getAdjustedStartTime(detailShift);
-                                    const { display: displayEnd } = getAdjustedEndTime(detailShift);
+                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, operator.workSchedule[dayIndexToName[getDayFns(detailShift.date)]], detailShift.ignoreContractualStart, operator.overtimeCalculation);
 
                                     return displayEvents.map(t => {
-                                        const isEntrata = t.type === 'entrata';
-                                        const isUscita = t.type === 'uscita';
+                                        const originalTime = format(t.timestamp.toDate(), 'HH:mm:ss');
+                                        let referenceTime = '';
+
+                                        if (t.type === 'entrata' && calculationStart) {
+                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                        } else if (t.type === 'uscita' && calculationEnd) {
+                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                        }
                                         
                                         return (
                                         <TableRow key={t.id}>
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>
                                                <div className='flex flex-col'>
                                                   <span>
-                                                     {isEntrata ? displayStart : (isUscita ? displayEnd : format(t.timestamp.toDate(), 'HH:mm:ss'))}
+                                                     {`${originalTime} ${referenceTime}`.trim()}
                                                   </span>
                                                </div>
                                             </TableCell>
@@ -1826,13 +1768,18 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </TableHeader>
                             <TableBody>
                                 {detailOvertimeShift?.events.map((e, i) => {
-                                      const adjustedTimes = getAdjustedOvertimeTimes(detailOvertimeShift);
-                                      const isEntrata = e.type === 'entrata';
-                                      const isUscita = e.type === 'uscita';
-                                      const displayTime = isEntrata ? adjustedTimes.start : (isUscita ? adjustedTimes.end : formatTime(e.timestamp));
+                                      const { calculationStart, calculationEnd } = calculateHours({ date: detailOvertimeShift.date.toDate(), events: detailOvertimeShift.events as Timbratura[] }, undefined, false, operator.overtimeCalculation);
+                                      const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
+                                      let referenceTime = '';
+
+                                       if (e.type === 'entrata' && calculationStart) {
+                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                        } else if (e.type === 'uscita' && calculationEnd) {
+                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                        }
                                     return (
                                     <TableRow key={i}>
-                                        <TableCell><span className='italic'>{displayTime}</span></TableCell>
+                                        <TableCell><span className='italic'>{`${originalTime} ${referenceTime}`.trim()}</span></TableCell>
                                         <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
                                         <TableCell className="whitespace-nowrap">
                                            {e.latitude && e.longitude ? (

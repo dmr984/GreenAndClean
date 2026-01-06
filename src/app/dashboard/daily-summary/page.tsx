@@ -214,11 +214,11 @@ const DailySummaryPage = () => {
                                             </div>
                                         </CardHeader>
                                         <CardContent className="space-y-3">
-                                            {detail?.shift && (
+                                            {detail?.shift && detail.shift.allShifts ? (
                                                 <div className='text-sm'>
                                                     <p className='font-semibold'>Timbrature del giorno:</p>
                                                     <div className='text-muted-foreground'>
-                                                        {(detail.shift.allShifts || []).map((shiftBlock, idx) => (
+                                                        {detail.shift.allShifts.map((shiftBlock, idx) => (
                                                             <div key={idx} className="mb-1">
                                                                 <span className="font-medium mr-2">{`Turno ${idx + 1}:`}</span>
                                                                 <span>
@@ -241,7 +241,7 @@ const DailySummaryPage = () => {
                                                         ))}
                                                     </div>
                                                 </div>
-                                            )}
+                                            ) : null}
                                              <div className='grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2'>
                                                 <div className="p-3 border rounded-md">
                                                     <p className="text-sm font-semibold">Dettaglio Giorno</p>
