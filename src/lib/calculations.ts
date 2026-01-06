@@ -186,10 +186,10 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 
     const clockInTime = clockInEvent.timestamp.toDate();
     let calculationStartTime = clockInTime;
-    const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(clockInTime);
     
     // 1. Determine Calculation Start Time
     if (schedule?.startTime && !ignoreContractualStart) {
+        // --- Logic for operators WITH a contractual start time ---
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
 
@@ -198,18 +198,28 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
             calculationStartTime = contractualStartDateTime;
         } else {
-            const minutes = clockInTime.getMinutes();
+            // If more than 15 mins late, round to the next half hour
             const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
-
-            if (minutes > 0 && minutes <= 30) {
-                roundedTime.setMinutes(30);
-            } else if (minutes > 30) {
+            if (roundedTime.getMinutes() > 30) {
                 roundedTime.setHours(roundedTime.getHours() + 1, 0);
-            } else { // minutes === 0
-                 roundedTime.setMinutes(0);
+            } else {
+                roundedTime.setMinutes(30);
             }
             calculationStartTime = roundedTime;
         }
+    } else if (!ignoreContractualStart) {
+        // --- Universal rounding logic for operators WITHOUT a contractual start time ---
+        const minutes = clockInTime.getMinutes();
+        const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+
+        if (minutes > 0 && minutes <= 15) {
+            roundedTime.setMinutes(0);
+        } else if (minutes > 15 && minutes <= 45) {
+            roundedTime.setMinutes(30);
+        } else if (minutes > 45) {
+            roundedTime.setHours(roundedTime.getHours() + 1, 0);
+        }
+        calculationStartTime = roundedTime;
     }
     
     const clockOutTime = clockOutEvent.timestamp.toDate();
