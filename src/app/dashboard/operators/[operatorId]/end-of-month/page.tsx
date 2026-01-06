@@ -522,24 +522,28 @@ export default function EndOfMonthPage() {
                                     {detail.shift ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                 {(detail.shift.allShifts || []).map((shiftBlock, idx) => (
-                                                    <span key={idx} className="mr-2 inline-block mb-1 border-b pb-1">
-                                                        {`T${idx + 1}: ${shiftBlock.events.map(e => {
-                                                            const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                            let referenceTime = '';
+                                                 {(detail.shift.allShifts || []).map((shiftBlock, idx) => {
+                                                    const timbratureString = shiftBlock.events.map(e => {
+                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                        let referenceTime = '';
 
-                                                            if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                                const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                                                if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                                            } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                                const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                                                if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                                                            }
-                                                            const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                            return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
-                                                        }).join(' | ')}`}
-                                                    </span>
-                                                ))}
+                                                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                        }
+                                                        const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                        return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
+                                                    }).join(' | ');
+
+                                                    return (
+                                                        <span key={idx} className="mr-2 inline-block mb-1 border-b pb-1">
+                                                            {`T${idx + 1}: ${timbratureString}`}
+                                                        </span>
+                                                    )
+                                                })}
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />

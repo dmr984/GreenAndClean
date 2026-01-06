@@ -342,23 +342,25 @@ const PrintPageContent = () => {
                                     <div className="text-sm space-y-1 pl-1 mt-1 text-black">
                                         {detail.shift ? (
                                              <>
-                                                {(detail.shift.allShifts || []).map((shiftBlock, idx) => (
-                                                    <p key={idx}>
-                                                        {`Turno ${idx + 1}: ${shiftBlock.events.map(e => {
-                                                            const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                            let referenceTime = '';
-                                                            if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                                const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                                                if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                                            } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                                const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                                                if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                                                            }
-                                                            const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                            return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                                        }).join(' | ')}`}
-                                                    </p>
-                                                ))}
+                                                {(detail.shift.allShifts || []).map((shiftBlock, idx) => {
+                                                     const timbratureString = shiftBlock.events.map(e => {
+                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                        let referenceTime = '';
+                                                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                        }
+                                                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                    }).join(' | ');
+
+                                                    return (
+                                                        <p key={idx}>{`Turno ${idx + 1}: ${timbratureString}`}</p>
+                                                    )
+                                                })}
                                                 <p>Dettaglio Giorno: Ore Ordinarie: {detail.shift.ordinaryHours || 0}h, Straordinari: {detail.shift.overtimeHours || 0}h, Permessi: {detail.shift.permissionHours || 0}h</p>
                                             </>
                                         ) : (

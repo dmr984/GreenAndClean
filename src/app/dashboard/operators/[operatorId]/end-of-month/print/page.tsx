@@ -308,7 +308,7 @@ const PrintPageContent = () => {
             const dayOfWeek = format(detail.date, 'eeee', { locale: it });
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
             const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
-            let line2 = '';
+            
     
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
@@ -327,27 +327,29 @@ const PrintPageContent = () => {
             }
 
             if (detail.shift) {
-                const timbratureStr = detail.shift.events.map(e => {
-                    const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                     let referenceTime = '';
+                (detail.shift.allShifts || []).forEach((shiftBlock, idx) => {
+                     const timbratureString = shiftBlock.events.map(e => {
+                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                        let referenceTime = '';
+                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                        }
+                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                    }).join(' | ');
 
-                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                        if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                         if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
-                    }
-                     const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                }).join(' | ');
+                    doc.text(`Turno ${idx + 1}: ${timbratureString}`, margin, y);
+                    y+= 5;
+                });
                 
-                line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
-            
-                doc.setFont('helvetica', 'normal');
-                const splitTimbrature = doc.splitTextToSize(timbratureStr, pageWidth - margin * 2);
-                doc.text(splitTimbrature, margin, y);
-                y += (splitTimbrature.length * 5);
+                const line2 = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
+                doc.text(splitLine2, margin, y);
+                y += (splitLine2.length * 5);
 
             } else if (!detail.note) {
                  let statusText = '';
@@ -360,14 +362,6 @@ const PrintPageContent = () => {
                  
                  doc.text(statusText, margin, y);
                  y += 5;
-            }
-                
-            if(line2) {
-                doc.setFontSize(11);
-                doc.setFont('helvetica', 'normal');
-                const splitLine2 = doc.splitTextToSize(line2, pageWidth - margin * 2 - 3);
-                doc.text(splitLine2, margin, y);
-                y += (splitLine2.length * 5);
             }
     
             y += 2;
@@ -526,27 +520,31 @@ const PrintPageContent = () => {
 
                                     {detail.shift ? (
                                         <>
-                                            <p className="text-black text-sm pl-1 leading-tight">
-                                                {`${detail.shift.events.map(e => {
+                                            {(detail.shift.allShifts || []).map((shiftBlock, idx) => {
+                                                const timbratureString = shiftBlock.events.map(e => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
-                                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                                        if(calcStart !== originalTime) referenceTime = `(${calcStart})`;
-                                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                                        if(calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                    if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                        const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
+                                                        if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                    } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                        const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
+                                                        if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
                                                     }
-                                                    const eventTypeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                    return `${eventTypeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                                }).join(' | ')}`}
-                                            </p>
+                                                    const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                    return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                }).join(' | ');
+
+                                                return (
+                                                    <p key={idx} className="text-black text-sm pl-1 leading-tight">{`Turno ${idx + 1}: ${timbratureString}`}</p>
+                                                )
+                                            })}
                                             <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>
                                         </>
                                     ) : (
                                        !detail.note && (
                                             <p className="text-black text-sm pl-1 leading-tight">
-                                                {detail.status === 'mancata_timbratura' && 'Assenza'}
+                                                {detail.status === 'mancata_timbratura' && 'Assente'}
                                                 {detail.status === 'ferie' && 'Giorno di Ferie'}
                                                 {detail.status === 'malattia' && 'Giorno di Malattia'}
                                                 {detail.status === 'festa' && 'Giorno Festivo'}

@@ -73,7 +73,7 @@ const DailySummaryPage = () => {
 
                 const [timbratureSnap, requestsSnap] = await Promise.all([
                     getDocs(timbratureQuery),
-                    getDocs(requestsQuery),
+                    getDocs(requestsSnap),
                 ]);
 
                 const timbratureData = timbratureSnap.docs.map(d => ({...d.data(), id: d.id} as any));
