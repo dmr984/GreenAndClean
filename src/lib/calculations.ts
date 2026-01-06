@@ -178,7 +178,7 @@ export const calculatePureOvertime = (
 
 
 
-export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null } => {
+export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -192,28 +192,23 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     if (schedule?.startTime && !ignoreContractualStart) {
         const [h, m] = schedule.startTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
-        
-        // For non-workdays (overtime), if there's a start time set, ALWAYS use it if clock-in is before it.
-        if (!isWorkDay) {
-            if (clockInTime < contractualStartDateTime) {
-                calculationStartTime = contractualStartDateTime;
+
+        const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
+
+        if (minutesLate <= 15) { // Includes clocking in early, up to 15 mins late
+            calculationStartTime = contractualStartDateTime;
+        } else {
+            const minutes = clockInTime.getMinutes();
+            const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
+
+            if (minutes > 0 && minutes <= 30) {
+                roundedTime.setMinutes(30);
+            } else if (minutes > 30) {
+                roundedTime.setHours(roundedTime.getHours() + 1, 0);
+            } else { // minutes === 0
+                 roundedTime.setMinutes(0);
             }
-        } else { // For regular workdays, apply the tolerance rule
-            const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
-            if (minutesLate <= 15) { 
-                calculationStartTime = contractualStartDateTime;
-            } else {
-                const minutes = clockInTime.getMinutes();
-                const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
-                if (minutes > 15 && minutes <= 45) {
-                    roundedTime.setMinutes(30);
-                } else if (minutes > 45) {
-                    roundedTime.setHours(roundedTime.getHours() + 1, 0);
-                } else {
-                    roundedTime.setMinutes(0);
-                }
-                calculationStartTime = roundedTime;
-            }
+            calculationStartTime = roundedTime;
         }
     }
     
@@ -221,15 +216,25 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 
     // 2. Determine Calculation End Time
     const clockOutMinutes = clockOutTime.getMinutes();
-    const roundedClockOut = set(clockOutTime, { seconds: 0, milliseconds: 0 });
-    if(clockOutMinutes > 45) {
-        roundedClockOut.setHours(roundedClockOut.getHours() + 1, 0);
-    } else if (clockOutMinutes > 15) {
-        roundedClockOut.setMinutes(30);
-    } else {
-        roundedClockOut.setMinutes(0);
+    let calculationEndTime = set(clockOutTime, { seconds: 0, milliseconds: 0 });
+
+    if(overtimeCalculation === 'half_hourly') {
+        if(clockOutMinutes >= 25 && clockOutMinutes < 55) {
+            calculationEndTime.setMinutes(30);
+        } else if (clockOutMinutes >= 55) {
+            calculationEndTime.setHours(calculationEndTime.getHours() + 1, 0);
+        } else {
+            calculationEndTime.setMinutes(0);
+        }
+    } else { // 'hourly' or undefined
+        if (clockOutMinutes >= 50) {
+            calculationEndTime.setHours(calculationEndTime.getHours() + 1, 0);
+        } else if (clockOutMinutes >= 25) {
+             calculationEndTime.setMinutes(30);
+        } else {
+            calculationEndTime.setMinutes(0);
+        }
     }
-    const calculationEndTime = roundedClockOut;
 
     // 3. Determine Contractual End Time
     let contractualEndTime: Date | null = null;
@@ -277,7 +282,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     if (clockInEvent?.status === 'confermata' && typeof clockInEvent.approvedOrdinaryHours === 'number') {
         const approvedOrdinary = clockInEvent.approvedOrdinaryHours || 0;
         const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
-        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
 
         return {
             ordinary: approvedOrdinary,
@@ -291,7 +296,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     }
 
     // --- If not approved, proceed with automatic calculation as a suggestion ---
-    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
