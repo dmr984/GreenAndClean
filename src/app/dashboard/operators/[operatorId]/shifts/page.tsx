@@ -384,26 +384,14 @@ export default function ShiftApprovalPage() {
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
     const handleConfirmApprove = async () => {
-        setIsConfirmingNoLeave(false);
         if (!approvalContext) return;
-    
-        if (approvalContext.isOvertimeShift) {
-            // This logic is now simplified as we won't handle overtime shifts separately for approval.
-        } else {
-            await handleRegularShiftApproval();
-        }
+        // If user confirms not to create leave request, set hours to 0 and proceed.
+        const newContext = { ...approvalContext, leaveHours: '0', createLeaveRequest: false };
+        setApprovalContext(newContext); // Visually update the dialog
+        await handleRegularShiftApproval(newContext); // Proceed with the updated context
+        setIsConfirmingNoLeave(false);
     };
 
-    const proceedWithApproval = async () => {
-        if (!approvalContext) return;
-    
-        if (approvalContext.isOvertimeShift) {
-            // This logic is now simplified
-        } else {
-            await handleRegularShiftApproval();
-        }
-    };
-    
     const handleApprovalClick = async (context: ApprovalContext) => {
         if (!context) return;
         const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
@@ -413,17 +401,19 @@ export default function ShiftApprovalPage() {
         } else {
             const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
             if (hasLeaveHours && !createLeaveRequest) {
-                setIsConfirmingNoLeave(true);
-            } else {
-                await handleRegularShiftApproval();
+                 setApprovalContext(context);
+                 setIsConfirmingNoLeave(true); // Ask for confirmation
+                 return;
             }
         }
+        // If no leave hours or if checkbox is checked, approve directly
+        await handleRegularShiftApproval(context);
     };
     
-const handleRegularShiftApproval = async () => {
-    if (!approvalContext || approvalContext.isOvertimeShift || !firestore || !operator) return;
+const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
+    if (!currentContext || currentContext.isOvertimeShift || !firestore || !operator) return;
 
-    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak, ignoreContractualStart } = approvalContext;
+    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak, ignoreContractualStart } = currentContext;
     const regularShift = shift as Shift;
     const approvedOrdinary = parseFloat(ordinaryHours) || 0;
     const approvedOvertime = parseFloat(overtimeHours) || 0;
@@ -474,39 +464,13 @@ const handleRegularShiftApproval = async () => {
         });
     }
 
-    const shiftDate = regularShift.events[0].timestamp.toDate();
-    const dayStart = startOfDay(shiftDate);
-    const dayEnd = endOfDay(shiftDate);
-
-    // Get all timbrature for the day to find orphans
-    const q = query(
-        timbratureRef,
-        where('timestamp', '>=', dayStart),
-        where('timestamp', '<=', dayEnd)
-    );
-    const snapshot = await getDocs(q);
-    const allDayEvents = snapshot.docs.map(d => ({...d.data(), id: d.id} as Timbratura));
-
-    // Find orphan clock-outs on the same day
-    const orphanClockOuts = allDayEvents.filter(event => 
-        event.type === 'uscita' &&
-        event.status === 'sospesa' &&
-        !regularShift.events.some(se => se.id === event.id)
-    );
-    
-    // Delete orphan clock-outs
-    orphanClockOuts.forEach(orphan => {
-        const orphanRef = doc(timbratureRef, orphan.id);
-        batch.delete(orphanRef);
-    });
-
     if (approvedLeave > 0) {
         const leaveRequest = {
             userId: operator.id,
             type: 'permesso' as const,
             status: 'approvato' as const,
-            startDate: Timestamp.fromDate(shiftDate),
-            endDate: Timestamp.fromDate(shiftDate),
+            startDate: Timestamp.fromDate(regularShift.date),
+            endDate: Timestamp.fromDate(regularShift.date),
             hours: approvedLeave,
             reason: 'Permesso generato da ammanco ore',
             createdAt: serverTimestamp(),
@@ -542,27 +506,6 @@ const handleRegularShiftApproval = async () => {
             }
         });
          
-        const shiftDate = shiftToReject.events[0].timestamp.toDate();
-        const dayStart = startOfDay(shiftDate);
-        const dayEnd = endOfDay(shiftDate);
-        const q = query(
-            timbratureCollectionRef,
-            where('timestamp', '>=', dayStart),
-            where('timestamp', '<=', dayEnd)
-        );
-        const snapshot = await getDocs(q);
-        const allDayEvents = snapshot.docs.map(d => ({...d.data(), id: d.id} as Timbratura));
-        const orphanClockOuts = allDayEvents.filter(event => 
-            event.type === 'uscita' &&
-            event.status === 'sospesa' &&
-            !shiftToReject.events.some(se => se.id === event.id)
-        );
-        orphanClockOuts.forEach(orphan => {
-            const orphanRef = doc(timbratureCollectionRef, orphan.id);
-            batch.delete(orphanRef);
-        });
-
-
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno rifiutato.' });
             setIsDetailOpen(false);
@@ -1312,11 +1255,11 @@ const handleRegularShiftApproval = async () => {
 
         const originalTime = format(clockInTime, 'HH:mm:ss');
         
-        if (calculationStart && Math.abs(calculationStart.getTime() - clockInTime.getTime()) > 1000) {
+        if (calculationStart) {
            return { display: `${originalTime} (${format(calculationStart, 'HH:mm')})`, calculationStart };
         }
 
-        return { display: originalTime, calculationStart };
+        return { display: originalTime, calculationStart: clockInTime };
     }
     
     const getAdjustedEndTime = (shift: Shift | StraordinarioShift): { display: string; calculationEnd: Date | null } => {
@@ -1343,14 +1286,14 @@ const handleRegularShiftApproval = async () => {
             const { breakMinutes } = calculateShiftDetails(shift.events as Timbratura[], schedule, true);
             const calculationEnd = new Date(calculationStart.getTime() + (hours * 60 + breakMinutes) * 60000);
 
-            if (Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+            if (calculationEnd) {
                  return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
             }
         } else { // Regular shift
             const ignoreContractualStart = (shift as Shift).ignoreContractualStart || false;
             const { calculationEnd } = calculateHours(shift as Shift, schedule, ignoreContractualStart, operator.overtimeCalculation);
         
-            if (calculationEnd && Math.abs(calculationEnd.getTime() - clockOutEvent.timestamp.toDate().getTime()) > 60000) {
+            if (calculationEnd) {
                  return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
             }
         }

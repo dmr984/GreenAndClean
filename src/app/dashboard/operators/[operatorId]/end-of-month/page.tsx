@@ -529,10 +529,10 @@ export default function EndOfMonthPage() {
 
                                                         if (e.type === 'entrata' && shiftBlock.calculationStart) {
                                                             const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                                            if (calcStart !== originalTime) referenceTime = `(${calcStart})`;
+                                                            referenceTime = `(${calcStart})`;
                                                         } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
                                                             const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                                            if (calcEnd !== originalTime) referenceTime = `(${calcEnd})`;
+                                                            referenceTime = `(${calcEnd})`;
                                                         }
                                                         const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                                         return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
