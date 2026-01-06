@@ -522,17 +522,15 @@ export default function EndOfMonthPage() {
                                     {detail.shift && detail.shift.allShifts ? (
                                         <>
                                             <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {
+                                                {detail.shift.allShifts.map((shiftBlock, idx) => {
                                                     const timbratureString = shiftBlock.events.map(e => {
                                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                         let referenceTime = '';
 
                                                         if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                                            referenceTime = `(${calcStart})`;
+                                                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
                                                         } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                                            referenceTime = `(${calcEnd})`;
+                                                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
                                                         }
                                                         const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                                         return `${formattedType}: ${originalTime} ${referenceTime}`.trim();

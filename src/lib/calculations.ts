@@ -101,16 +101,9 @@ export type MonthlySummary = {
 
 export const roundOrdinaryHours = (minutes: number): number => {
     if (minutes <= 0) return 0;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    
-    if (remainingMinutes > 45) {
-        return hours + 1;
-    }
-    if (remainingMinutes > 15) {
-        return hours + 0.5;
-    }
-    return hours;
+    const totalHalfHours = Math.floor(minutes / 30);
+    const remainingMinutes = minutes % 30;
+    return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
 };
 
 
@@ -205,7 +198,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
             if (clockInTime < contractualStartDateTime) {
                 calculationStartTime = contractualStartDateTime;
             }
-        } else { // For regular workdays, apply the 15-min tolerance rule
+        } else { // For regular workdays, apply the tolerance rule
             const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
             if (minutesLate <= 15) { 
                 calculationStartTime = contractualStartDateTime;
@@ -226,7 +219,19 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     
     const clockOutTime = clockOutEvent.timestamp.toDate();
 
-    // 2. Determine Contractual End Time
+    // 2. Determine Calculation End Time
+    const clockOutMinutes = clockOutTime.getMinutes();
+    const roundedClockOut = set(clockOutTime, { seconds: 0, milliseconds: 0 });
+    if(clockOutMinutes > 45) {
+        roundedClockOut.setHours(roundedClockOut.getHours() + 1, 0);
+    } else if (clockOutMinutes > 15) {
+        roundedClockOut.setMinutes(30);
+    } else {
+        roundedClockOut.setMinutes(0);
+    }
+    const calculationEndTime = roundedClockOut;
+
+    // 3. Determine Contractual End Time
     let contractualEndTime: Date | null = null;
     if (schedule) {
        const breakDuration = schedule.breakMinutes || 0;
@@ -238,7 +243,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
 
-    // 3. Calculate Break Duration
+    // 4. Calculate Break Duration
     let breakDurationMillis = 0;
     let breakStartTs: Timestamp | null = null;
     const sortedEvents = [...events].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -250,15 +255,15 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
         }
     }
 
-    // 4. Calculate Total Worked Milliseconds from the correct start time
-    const totalMillis = clockOutTime.getTime() - calculationStartTime.getTime();
+    // 5. Calculate Total Worked Milliseconds from the correct start time
+    const totalMillis = calculationEndTime.getTime() - calculationStartTime.getTime();
     const workedMillis = totalMillis > 0 ? totalMillis - breakDurationMillis : 0;
     const workedMinutes = workedMillis > 0 ? Math.floor(workedMillis / (1000 * 60)) : 0;
 
     return { 
         workedMinutes,
         calculationStart: calculationStartTime,
-        calculationEnd: clockOutTime, // Keep this as the raw clock-out for other calculations
+        calculationEnd: calculationEndTime,
         breakMinutes: Math.floor(breakDurationMillis / 60000),
         contractualEndTime: contractualEndTime
     };
@@ -286,7 +291,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     }
 
     // --- If not approved, proceed with automatic calculation as a suggestion ---
-    const { workedMinutes, breakMinutes, calculationStart, calculationEnd: rawCalculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart);
 
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
@@ -303,7 +308,6 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
              return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0, calculationStart: null, calculationEnd: null };
         }
         const overtime = roundOvertimeHours(clockInTimeToUse, new Date(clockOutTime.getTime() - breakMinutes * 60000));
-        const finalCalculationEnd = new Date(clockInTimeToUse.getTime() + (overtime * 60 + breakMinutes) * 60000);
         
         return {
             ordinary: 0,
@@ -312,7 +316,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
             worked: workedMinutes,
             break: breakMinutes,
             calculationStart,
-            calculationEnd: finalCalculationEnd
+            calculationEnd
         };
     }
 
@@ -323,9 +327,6 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const overtimeHours = calculationStart ? roundOvertimeHours(calculationStart, new Date(calculationStart.getTime() + overtimeMinutes * 60000)) : 0;
 
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
-    
-    const totalCalculatedHours = ordinaryHours + overtimeHours;
-    const calculationEnd = calculationStart ? new Date(calculationStart.getTime() + totalCalculatedHours * 3600000 + breakMinutes * 60000) : null;
 
     return { 
         ordinary: ordinaryHours, 
@@ -404,12 +405,12 @@ export const processMonthlyData = (
                     const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
                     if(clockInTime) {
                         const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                        const hoursResult = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                        const { calculationStart, calculationEnd } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
                         
                         dayShifts.push({
                             events: currentShiftEvents,
-                            calculationStart: hoursResult.calculationStart || undefined,
-                            calculationEnd: hoursResult.calculationEnd || undefined
+                            calculationStart: calculationStart || undefined,
+                            calculationEnd: calculationEnd || undefined
                         });
                     }
                     currentShiftEvents = []; 
@@ -438,6 +439,8 @@ export const processMonthlyData = (
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
+            const { calculationStart, calculationEnd } = calculateHours({ date: day, events: allDayEvents }, dailySchedule, allDayEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false, operator.overtimeCalculation);
+
             details.push({
                 date: day,
                 status: 'lavorato',
@@ -449,6 +452,8 @@ export const processMonthlyData = (
                     ordinaryHours: totalOrdinary,
                     overtimeHours: totalOvertime, 
                     permissionHours: permissionHours,
+                    calculationStart: calculationStart || undefined,
+                    calculationEnd: calculationEnd || undefined
                 },
                 note: dailyNote?.note,
             });

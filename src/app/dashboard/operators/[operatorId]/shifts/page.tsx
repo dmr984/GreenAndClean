@@ -385,10 +385,7 @@ export default function ShiftApprovalPage() {
     
     const handleConfirmApprove = async () => {
         if (!approvalContext) return;
-        // If user confirms not to create leave request, set hours to 0 and proceed.
-        const newContext = { ...approvalContext, leaveHours: '0', createLeaveRequest: false };
-        setApprovalContext(newContext); // Visually update the dialog
-        await handleRegularShiftApproval(newContext); // Proceed with the updated context
+        setApprovalContext(prev => prev ? { ...prev, leaveHours: '0', createLeaveRequest: false } : null);
         setIsConfirmingNoLeave(false);
     };
 
@@ -397,7 +394,8 @@ export default function ShiftApprovalPage() {
         const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
     
         if (isOvertimeShift) {
-             // Logic for overtime shift approval is simplified/removed
+             await handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve');
+             return;
         } else {
             const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
             if (hasLeaveHours && !createLeaveRequest) {
@@ -421,8 +419,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
     const batch = writeBatch(firestore);
     const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
-    const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
     
+    // Find the clock-in event to associate the approved hours
+    const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
     if (clockInEvent) {
         const clockInRef = doc(timbratureRef, clockInEvent.id);
         batch.update(clockInRef, { 
@@ -1608,7 +1607,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : detailShift.date;
                         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                         const schedule = operator.workSchedule[dayToUse];
-                        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(dayToUseDate);
                         
                         const { ordinary, overtime, leave, worked, break: breakDuration, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeCalculation);
 

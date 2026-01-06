@@ -197,11 +197,9 @@ const PrintPageContent = () => {
                             const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                             let referenceTime = '';
                             if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                referenceTime = `(${calcStart})`;
+                                referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
                             } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                referenceTime = `(${calcEnd})`;
+                                referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
                             }
                             const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                             return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
@@ -347,11 +345,9 @@ const PrintPageContent = () => {
                                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                         let referenceTime = '';
                                                         if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                                            referenceTime = `(${calcStart})`;
+                                                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
                                                         } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                                            referenceTime = `(${calcEnd})`;
+                                                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
                                                         }
                                                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();

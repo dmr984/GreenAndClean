@@ -326,17 +326,15 @@ const PrintPageContent = () => {
                 y += (splitNote.length * 5);
             }
 
-            if (detail.shift) {
-                (detail.shift.allShifts || []).forEach((shiftBlock, idx) => {
+            if (detail.shift && detail.shift.allShifts) {
+                detail.shift.allShifts.forEach((shiftBlock, idx) => {
                      const timbratureString = shiftBlock.events.map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                         let referenceTime = '';
                         if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                            const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                            referenceTime = `(${calcStart})`;
+                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
                         } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                            const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                            referenceTime = `(${calcEnd})`;
+                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
                         }
                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
@@ -354,7 +352,7 @@ const PrintPageContent = () => {
             } else if (!detail.note) {
                  let statusText = '';
                  switch (detail.status) {
-                    case 'mancata_timbratura': statusText = 'Assenza'; break;
+                    case 'mancata_timbratura': statusText = 'Assente'; break;
                     case 'ferie': statusText = 'Giorno di Ferie'; break;
                     case 'malattia': statusText = 'Giorno di Malattia'; break;
                     case 'festa': statusText = 'Giorno Festivo'; break;
@@ -525,11 +523,9 @@ const PrintPageContent = () => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
                                                     if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                        const calcStart = format(shiftBlock.calculationStart, 'HH:mm');
-                                                        referenceTime = `(${calcStart})`;
+                                                        referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
                                                     } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                        const calcEnd = format(shiftBlock.calculationEnd, 'HH:mm');
-                                                        referenceTime = `(${calcEnd})`;
+                                                        referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
                                                     }
                                                     const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                                     return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
