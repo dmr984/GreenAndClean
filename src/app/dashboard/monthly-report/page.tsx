@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 
 
 type Operator = {
@@ -52,6 +53,7 @@ const MonthlyReportPage = () => {
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
     const [totalContent, setTotalContent] = useState('');
+    const [absenceVisibility, setAbsenceVisibility] = useState<Record<string, boolean>>({});
 
     const fetchOverridesForMonth = useCallback(async (date: Date) => {
         if (!firestore || operators.length === 0) return;
@@ -90,8 +92,9 @@ const MonthlyReportPage = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
-            // Initially, select all operators
+            // Initially, select all operators and make absences visible
             setSelectedOperatorIds(new Set(ops.map(op => op.id)));
+            setAbsenceVisibility(ops.reduce((acc, op) => ({ ...acc, [op.id]: true }), {}));
         });
         return () => unsubscribe();
     }, [firestore]);
@@ -177,6 +180,11 @@ const MonthlyReportPage = () => {
             operators: operatorIdsString,
         });
 
+        // Add absence visibility to query params
+        for (const operatorId of selectedOperatorIds) {
+            queryParams.append(`absences_${operatorId}`, String(absenceVisibility[operatorId] ?? true));
+        }
+
         window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
@@ -245,16 +253,6 @@ const MonthlyReportPage = () => {
         const updateData = { [type]: newValue };
 
         setDoc(overrideDocRef, updateData, { merge: true })
-            .then(() => {
-                setManualOverrides(prev => ({
-                    ...prev,
-                    [operatorId]: {
-                        ...(prev[operatorId] || {}),
-                        [type]: newValue
-                    }
-                }));
-                 toast({ title: 'Totale Rettificato', description: 'Il nuovo valore è stato salvato in modo permanente.'});
-            })
             .catch(error => {
                 if (error.code === 'permission-denied') {
                     errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -271,6 +269,18 @@ const MonthlyReportPage = () => {
                 setEditingTotal(null);
                 setTotalContent('');
             });
+        
+         // Optimistic update
+        setManualOverrides(prev => ({
+            ...prev,
+            [operatorId]: {
+                ...(prev[operatorId] || {}),
+                [type]: newValue
+            }
+        }));
+        toast({ title: 'Totale Rettificato', description: 'Il nuovo valore è stato salvato in modo permanente.'});
+        setEditingTotal(null);
+        setTotalContent('');
     };
 
 
@@ -333,6 +343,7 @@ const MonthlyReportPage = () => {
                                 const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
                                 const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
                                 const finalMalattiaDays = override?.malattiaDays ?? summary?.malattiaDays ?? 0;
+                                const showAbsences = absenceVisibility[op.id] ?? true;
 
                                 return (
                                     <Card key={op.id}>
@@ -353,6 +364,7 @@ const MonthlyReportPage = () => {
                                             </div>
                                         </CardHeader>
                                         {summary && (
+                                            <>
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Giorni Lavorati</span><span className='font-bold'>{summary.workedDays}</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ore Ordinarie</span><span className='font-bold'>{summary.ordinaryHours}h</span></div>
@@ -373,8 +385,23 @@ const MonthlyReportPage = () => {
                                                     <span className={cn('font-bold', override?.malattiaDays !== undefined && 'text-primary')}>{finalMalattiaDays}</span>
                                                 </div>
 
-                                                <div className="flex flex-col p-2 border rounded-md text-destructive"><span className="text-xs">Assenze (g)</span><span className='font-bold'>{summary.absenceDays}</span></div>
+                                                {showAbsences && (
+                                                    <div className="flex flex-col p-2 border rounded-md"><span className="text-xs">Assenze (g)</span><span className='font-bold'>{summary.absenceDays}</span></div>
+                                                )}
                                             </CardContent>
+                                            <CardFooter className="pt-4">
+                                                <div className="flex items-center space-x-2">
+                                                    <Switch
+                                                        id={`absences-switch-${op.id}`}
+                                                        checked={showAbsences}
+                                                        onCheckedChange={(checked) => {
+                                                            setAbsenceVisibility(prev => ({ ...prev, [op.id]: checked }));
+                                                        }}
+                                                    />
+                                                    <Label htmlFor={`absences-switch-${op.id}`}>Visibilità Assenze</Label>
+                                                </div>
+                                            </CardFooter>
+                                            </>
                                         )}
                                     </Card>
                                 )

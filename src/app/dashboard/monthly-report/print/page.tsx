@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, Timestamp, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
@@ -43,6 +43,7 @@ const PrintPageContent = () => {
     const [filteredOperators, setFilteredOperators] = useState<Operator[]>([]);
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
+    const [absenceVisibility, setAbsenceVisibility] = useState<Record<string, boolean>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -59,16 +60,17 @@ const PrintPageContent = () => {
         }
 
         const overrides: Record<string, ManualTotals> = {};
+        const visibility: Record<string, boolean> = {};
+
         for (const [key, value] of searchParams.entries()) {
             if(key.includes('_')) {
-                const [opId, totalType] = key.split('_');
-                if (opId && totalType) {
-                    if (!overrides[opId]) overrides[opId] = {};
-                    (overrides[opId] as any)[totalType] = parseFloat(value);
+                const [prefix, opId] = key.split('_');
+                 if (prefix === 'absences') {
+                    visibility[opId] = value === 'true';
                 }
             }
         }
-        setManualOverrides(overrides);
+        setAbsenceVisibility(visibility);
 
     }, [searchParams]);
 
@@ -104,9 +106,18 @@ const PrintPageContent = () => {
 
             const monthStart = startOfMonth(date);
             const monthEnd = dfnsEndOfMonth(date);
+            const monthId = format(date, 'yyyy-MM');
+            const newOverrides: Record<string, ManualTotals> = {};
 
             try {
                 const promises = filteredOperators.map(async (op) => {
+                    // Fetch overrides for each operator
+                    const overrideDocRef = doc(firestore, `app-users/${op.id}/monthly-overrides`, monthId);
+                    const overrideSnap = await getDoc(overrideDocRef);
+                    if (overrideSnap.exists()) {
+                        newOverrides[op.id] = overrideSnap.data() as ManualTotals;
+                    }
+
                     const timbratureQuery = query(
                         collection(firestore, `app-users/${op.id}/timbrature`),
                         where('timestamp', '>=', monthStart),
@@ -133,6 +144,7 @@ const PrintPageContent = () => {
                     if (summary) newSummaries.set(opId, summary);
                 });
                 setSummaries(newSummaries);
+                setManualOverrides(newOverrides);
 
             } catch (error) {
                 console.error("Error fetching data for print:", error);
@@ -201,10 +213,11 @@ const PrintPageContent = () => {
                 const finalFerieDays = override.ferieDays ?? summary.ferieDays;
                 const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
                 const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
+                const showAbsences = absenceVisibility[op.id] ?? true;
 
                 const totalDue = calculateTotalDue(op, summary, override);
 
-                const blockHeight = 60; // Estimated height
+                const blockHeight = showAbsences ? 65 : 60; // Estimated height
                 if (y > pageHeight - blockHeight) {
                     doc.addPage();
                     y = 20;
@@ -227,8 +240,12 @@ const PrintPageContent = () => {
                     [`GIORNI LAVORATI: ${summary.workedDays}`, `FERIE: ${finalFerieDays}`],
                     [`ORE ORDINARIE: ${summary.ordinaryHours}`, `GIORNI DI MALATTIA: ${finalMalattiaDays}`],
                     [`ORE STRAORDINARIE: ${summary.overtimeHours}`, `ORE PERMESSI: ${finalPermessoHours}`],
-                     [`ASSENZE: ${summary.absenceDays}`, ` `],
                 ];
+                
+                if (showAbsences) {
+                    body.push([`ASSENZE: ${summary.absenceDays}`, ` `]);
+                }
+
 
                 (doc as any).autoTable({
                     startY: y,
@@ -261,7 +278,7 @@ const PrintPageContent = () => {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast]);
+    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast, absenceVisibility]);
 
     const handlePrint = () => {
         window.print();
@@ -337,6 +354,7 @@ const PrintPageContent = () => {
                             const finalFerieDays = override.ferieDays ?? summary.ferieDays;
                             const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
                             const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
+                            const showAbsences = absenceVisibility[op.id] ?? true;
 
                             const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
 
@@ -370,8 +388,8 @@ const PrintPageContent = () => {
                                                 <td className="pb-1 text-right">GIORNI DI MALATTIA: {finalMalattiaDays}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1 text-destructive font-semibold">ASSENZE: {summary.absenceDays}</td>
-                                                <td className="pb-1 text-right font-bold text-lg">TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                                {showAbsences && <td className="pb-1 font-semibold">ASSENZE: {summary.absenceDays}</td>}
+                                                <td className="pb-1 text-right font-bold text-lg" colSpan={showAbsences ? 1 : 2}>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                         </tbody>
                                     </table>
