@@ -362,10 +362,11 @@ export default function EndOfMonthPage() {
     let ordinaryCost: number;
 
     if (operator.salaryType === 'fixed') {
-        totalDue = (operator.fixedSalary || 0) + overtimeCost;
-        ordinaryCost = operator.fixedSalary || 0; // For display purposes
+        ordinaryCost = operator.fixedSalary || 0;
+        totalDue = ordinaryCost + overtimeCost;
     } else {
-        ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+        const payableOrdinaryHours = (monthlySummary.ordinaryHours || 0) + (monthlySummary.holidayHoursPayable || 0);
+        ordinaryCost = payableOrdinaryHours * (operator.hourlyRate || 0);
         totalDue = ordinaryCost + overtimeCost;
     }
 
