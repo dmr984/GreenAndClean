@@ -23,6 +23,10 @@
           "type": "string",
           "description": "The last name of the cleaning operator."
         },
+        "requireGps": {
+            "type": "boolean",
+            "description": "If true, the operator must provide GPS location when clocking in/out."
+        },
         "workSchedule": {
             "type": "object",
             "description": "The contractual work schedule for the operator. Start time is optional.",
@@ -42,13 +46,22 @@
             "enum": ["hourly", "half_hourly"],
             "description": "Determines how overtime is calculated. 'hourly' triggers at 50 minutes, 'half_hourly' triggers at 25/55 minutes."
         },
+        "salaryType": {
+          "type": "string",
+          "enum": ["hourly", "fixed"],
+          "description": "Determines if the salary is calculated per hour or is a fixed monthly amount."
+        },
         "hourlyRate": {
           "type": "number",
-          "description": "The standard hourly pay rate for the operator."
+          "description": "The standard hourly pay rate for the operator. Applies if salaryType is 'hourly'."
         },
         "overtimeRate": {
             "type": "number",
-            "description": "The hourly pay rate for overtime work."
+            "description": "The hourly pay rate for overtime work. Applies to both hourly and fixed salary types."
+        },
+        "fixedSalary": {
+            "type": "number",
+            "description": "The fixed monthly salary amount. Applies if salaryType is 'fixed'."
         }
       },
       "required": [
@@ -279,6 +292,17 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "The last time the note was updated." }
       },
       "required": ["userId", "date", "note", "updatedAt"]
+    },
+    "MonthlyOverride": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Monthly Override",
+      "type": "object",
+      "description": "Stores manually overridden monthly totals for an operator.",
+      "properties": {
+        "ferieDays": { "type": "number" },
+        "permessoHours": { "type": "number" },
+        "malattiaDays": { "type": "number" }
+      }
     }
   },
   "auth": {
@@ -385,6 +409,18 @@
           "params": [
             { "name": "userId", "description": "The user's unique ID." },
             { "name": "date", "description": "The date of the note in YYYY-MM-DD format." }
+          ]
+        }
+      },
+      {
+        "path": "/app-users/{userId}/monthly-overrides/{monthId}",
+        "definition": {
+          "entityName": "MonthlyOverride",
+          "schema": { "$ref": "#/backend/entities/MonthlyOverride" },
+          "description": "Stores manually overridden monthly totals for an operator. The monthId is in YYYY-MM format.",
+          "params": [
+            { "name": "userId", "description": "The user's unique ID." },
+            { "name": "monthId", "description": "The month identifier in YYYY-MM format." }
           ]
         }
       }
