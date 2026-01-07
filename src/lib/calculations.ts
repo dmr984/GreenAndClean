@@ -497,12 +497,14 @@ export const processMonthlyData = (
     let malattiaDays = 0;
 
     details.forEach(detail => {
-        if(detail.status === 'ferie') {
+        if (detail.status === 'ferie') {
             ferieDays++;
             const dayName = dayIndexToName[getDay(detail.date)];
-            ferieHours += operator.workSchedule[dayName]?.totalHours || 0;
+            // If the vacation day is on a non-working day, assign default hours (e.g., 8).
+            const contractualHours = operator.workSchedule[dayName]?.totalHours || 8;
+            ferieHours += contractualHours;
         }
-        if(detail.status === 'malattia') {
+        if (detail.status === 'malattia') {
             malattiaDays++;
         }
     });
