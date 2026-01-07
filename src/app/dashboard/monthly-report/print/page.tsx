@@ -297,25 +297,9 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
-                     <div id="pdf-header" className="w-full mb-6 print:break-after-avoid">
-                        <table className="w-full">
-                            <tbody>
-                                <tr>
-                                    <td style={{ width: '25%', verticalAlign: 'top' }}>
-                                        <img src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" style={{width: '60px', height: '60px'}} />
-                                    </td>
-                                    <td style={{ width: '75%', verticalAlign: 'top', textAlign: 'right' }}>
-                                        <h2 className="text-xl font-bold text-black">Report Mensile Operatori</h2>
-                                        <p className="text-base text-gray-700 capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div className="space-y-8">
-                         {operators.map(op => {
+                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-0" style={{ width: '210mm', minHeight: '297mm' }}>
+                    <div className="space-y-4">
+                         {operators.map((op, index) => {
                             const summary = summaries.get(op.id);
                             if (!summary) return null;
                             const totalDue = calculateTotalDue(op, summary);
@@ -329,11 +313,11 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="pt-4 pb-4 text-sm text-black print:break-inside-avoid border-t-2 border-gray-400 first:border-t-0">
+                                <div key={op.id} className="pt-4 pb-2 text-sm text-black print:break-inside-avoid" style={{ height: '99mm' }}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                    <p className='text-sm text-gray-600 mb-4'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
+                                    <p className='text-sm text-gray-600 mb-2'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base">
+                                    <table className="w-full text-base mb-2">
                                         <tbody>
                                             <tr>
                                                 <td className="pb-1">GIORNI LAVORATI: {summary.workedDays}</td>
@@ -358,9 +342,11 @@ const PrintPageContent = () => {
                                         </tbody>
                                     </table>
 
-                                    <div className='mt-8'>
+                                    <div className='mt-4'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
+                                    
+                                    {((index + 1) % 3 !== 0) && <div className="border-t border-dashed border-gray-400 mt-2"></div>}
                                 </div>
                             )
                         })}
