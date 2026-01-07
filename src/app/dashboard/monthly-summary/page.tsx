@@ -146,7 +146,7 @@ const MonthlySummaryContent = () => {
     
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery)
+                getDocs(requestsSnapshot)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
@@ -267,28 +267,31 @@ const MonthlySummaryContent = () => {
 
                                     <div className="border-b my-2"></div>
                                     
-                                    {detail.status === 'lavorato' && detail.shift ? (
+                                    {detail.status === 'lavorato' && detail.shift?.allShifts ? (
                                         <>
-                                            <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                 {detail.shift.events.map((e, index) => {
-                                                    const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                                                    let displayTime = originalTime;
+                                            <div className="text-sm text-muted-foreground mt-1 mb-3 space-y-2">
+                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {
+                                                    const timbratureString = shiftBlock.events.map(e => {
+                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
+                                                        let referenceTime = '';
+                                                        
+                                                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
+                                                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
+                                                        }
 
-                                                    if (e.type === 'entrata' && detail.shift?.calculationStart) {
-                                                        const calcStart = format(detail.shift.calculationStart, 'HH:mm');
-                                                        if(calcStart !== originalTime) displayTime = `${originalTime} (${calcStart})`;
-                                                    } else if (e.type === 'uscita' && detail.shift?.calculationEnd) {
-                                                        const calcEnd = format(detail.shift.calculationEnd, 'HH:mm');
-                                                        if(calcEnd !== originalTime) displayTime = `${originalTime} (${calcEnd})`;
-                                                    }
+                                                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                    }).join(' | ');
 
-                                                    return (
-                                                        <span key={(e as any).id || index} className={cn('mr-2')}>
-                                                            {`${e.type.replace('_', ' ')}: ${displayTime}`}
-                                                             {index < detail.shift.events.length - 1 && ` | `}
-                                                        </span>
-                                                    )
-                                                })}
+                                                     return (
+                                                        <div key={idx} className="border-b pb-1 last:border-b-0">
+                                                            <span className="font-medium mr-2 text-foreground">{`Turno ${idx + 1}:`}</span>
+                                                            <span className="text-muted-foreground">{timbratureString}</span>
+                                                        </div>
+                                                     )
+                                                 })}
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
