@@ -153,7 +153,7 @@ const PrintPageContent = () => {
                 const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
-                    getDocs(notesQuery),
+                    getDocs(notesSnapshot),
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
@@ -315,7 +315,7 @@ const PrintPageContent = () => {
         doc.line(margin, y, pageWidth - margin, y);
         y += 8;
     
-        dailyDetails.filter(d => !(d.status === 'riposo' && !d.note)).forEach(detail => {
+        dailyDetails.forEach(detail => {
             if (y > pageHeight - 30) {
                 doc.addPage();
                 y = 20;
@@ -372,6 +372,7 @@ const PrintPageContent = () => {
                     case 'ferie': statusText = 'Giorno di Ferie'; break;
                     case 'malattia': statusText = 'Giorno di Malattia'; break;
                     case 'festa': statusText = 'Giorno Festivo'; break;
+                    case 'riposo': statusText = 'Giorno di Riposo'; break;
                  }
                  
                  doc.text(statusText, margin, y);
@@ -520,7 +521,7 @@ const PrintPageContent = () => {
                     {/* Daily Details */}
                     <h3 className="text-lg font-bold text-black mt-8 mb-2 border-b-2 border-black pb-1">Dettaglio Giornaliero</h3>
                     <div className="space-y-3">
-                        {dailyDetails.length > 0 ? dailyDetails.filter(d => !(d.status === 'riposo' && !d.note)).map(detail => {
+                        {dailyDetails.length > 0 ? dailyDetails.map(detail => {
                              const dayOfWeek = format(detail.date, 'eeee', { locale: it });
                              const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
                              const dateStr = `${dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)} ${restOfDate}`;
@@ -560,6 +561,7 @@ const PrintPageContent = () => {
                                                 {detail.status === 'ferie' && 'Giorno di Ferie'}
                                                 {detail.status === 'malattia' && 'Giorno di Malattia'}
                                                 {detail.status === 'festa' && 'Giorno Festivo'}
+                                                {detail.status === 'riposo' && 'Giorno di Riposo'}
                                             </p>
                                         )
                                     )}
