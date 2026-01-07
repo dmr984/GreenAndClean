@@ -14,6 +14,7 @@ import { processMonthlyData, DailyDetail, MonthlySummary } from '@/lib/calculati
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import Link from 'next/link';
 
 type Operator = {
     id: string;
@@ -218,10 +219,10 @@ const MonthlyReportPage = () => {
                                                         checked={selectedOperatorIds.has(op.id)}
                                                         onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
                                                     />
-                                                    <div>
-                                                        <CardTitle>{op.firstName} {op.lastName}</CardTitle>
+                                                    <Link href={`/dashboard/operators/${op.id}/end-of-month`}>
+                                                        <CardTitle className="hover:underline">{op.firstName} {op.lastName}</CardTitle>
                                                         <CardDescription>Codice: {op.username}</CardDescription>
-                                                    </div>
+                                                    </Link>
                                                 </div>
                                                 <div className='font-semibold text-lg flex items-center gap-2'><Euro className="h-5 w-5" />{totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                             </div>
