@@ -91,12 +91,13 @@ type AddRequestContext = {
     reason?: string;
 } | null;
 
-const SummaryCard = ({ title, value, icon: Icon, subtext, className, onEdit }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, onEdit?: () => void }) => (
+const SummaryCard = ({ title, value, icon: Icon, subtext, className, onEdit, actionButton }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, onEdit?: () => void, actionButton?: React.ReactNode }) => (
     <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">{title}</CardTitle>
             <div className='flex items-center gap-1'>
                  {onEdit && <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>}
+                 {actionButton}
                 <Icon className="h-4 w-4 text-muted-foreground" />
             </div>
         </CardHeader>
@@ -478,30 +479,19 @@ export default function EndOfMonthPage() {
                 ) : (
                 <>
                  <div className="space-y-4">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <SummaryCard 
                             title="Totale Dovuto" 
                             value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
                             className="bg-accent/20 border-accent"
                         />
-                        <div className="flex items-center space-x-2 rounded-lg border p-4">
-                            <Switch id="include-holiday-pay" checked={includeHolidayPay} onCheckedChange={setIncludeHolidayPay} />
-                            <div className="space-y-0.5">
-                                <Label htmlFor="include-holiday-pay">Includi Pagamento Ferie</Label>
-                                <p className="text-xs text-muted-foreground">
-                                    Attiva per aggiungere il costo delle ferie al totale dovuto.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <SummaryCard 
+                         <SummaryCard 
                             title="Giorni Lavorati" 
                             value={monthlySummary.workedDays ?? '...'}
                             icon={Briefcase} 
                         />
-                        <SummaryCard 
+                         <SummaryCard 
                             title="Ore Ordinarie" 
                             value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
                             icon={Clock}
@@ -513,7 +503,7 @@ export default function EndOfMonthPage() {
                                 icon={Wallet}
                             />
                         ) : (
-                            <SummaryCard 
+                             <SummaryCard 
                                 title="Costo Ore Ordinarie" 
                                 value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                                 icon={Euro}
@@ -531,6 +521,22 @@ export default function EndOfMonthPage() {
                             icon={Euro}
                             subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
                         />
+                        <SummaryCard 
+                            title="Ferie (giorni)" 
+                            value={`${finalFerieDays} (${finalFerieHours}h)`}
+                            icon={Plane}
+                            onEdit={() => handleEditTotal('ferieDays')}
+                             actionButton={
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => setIncludeHolidayPay(prev => !prev)}
+                                >
+                                    <Wallet className={cn("h-4 w-4", includeHolidayPay ? 'text-green-500' : 'text-muted-foreground')} />
+                                </Button>
+                            }
+                        />
                          {operator.salaryType !== 'fixed' && (
                            <SummaryCard 
                                 title="Costo Ore Ferie" 
@@ -539,12 +545,6 @@ export default function EndOfMonthPage() {
                                 subtext={`${(monthlySummary.holidayHoursPayable || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
                             />
                          )}
-                        <SummaryCard 
-                            title="Ferie (giorni)" 
-                            value={`${finalFerieDays} (${finalFerieHours}h)`}
-                            icon={Plane}
-                            onEdit={() => handleEditTotal('ferieDays')}
-                        />
                         <SummaryCard 
                             title="Permessi (ore)" 
                             value={finalPermessoHours} 
