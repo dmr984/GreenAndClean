@@ -1,3 +1,4 @@
+
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -407,7 +408,9 @@ export const processMonthlyData = (
         const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
 
         
-        if (isHoliday && !workedEventsRaw.length) {
+        if (leaveRequest) {
+             details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
+        } else if (isHoliday && !workedEventsRaw.length) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (workedEventsRaw.length > 0) {
             const dayShifts: SingleShiftBlock[] = [];
@@ -472,8 +475,6 @@ export const processMonthlyData = (
                 },
                 note: dailyNote?.note,
             });
-        } else if (leaveRequest && isWorkDay) {
-            details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
         } else if (isWorkDay) {
              details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
         } else {
@@ -503,18 +504,18 @@ export const processMonthlyData = (
                  if (day > today) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
+                    // Check if it's a contractual day for the purpose of hour addition
                     const dayName = dayIndexToName[getDay(day)];
-                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
-                    if (contractualHours > 0 && !isPublicHoliday(day)) {
-                        if (req.type === 'ferie') {
-                            ferieDays++;
-                            totalOrdinaryHours += contractualHours; // Add paid leave to ordinary hours
-                        }
-                        if (req.type === 'malattia') {
-                            malattiaDays++;
-                        }
-                        processedLeaveDays.add(dayString);
+                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 8; // Default to 8 if not specified
+
+                    if (req.type === 'ferie') {
+                        ferieDays++;
+                        totalOrdinaryHours += contractualHours; // Add paid leave to ordinary hours
                     }
+                    if (req.type === 'malattia') {
+                        malattiaDays++;
+                    }
+                    processedLeaveDays.add(dayString);
                 }
             }
         }
