@@ -131,8 +131,6 @@ const PrintPageContent = () => {
                 // Fetch Timbrature and Requests
                 const monthStart = startOfMonth(currentMonth);
                 const monthEnd = endOfMonth(currentMonth);
-                const monthId = format(currentMonth, 'yyyy-MM');
-
 
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${operatorId}/timbrature`),
@@ -153,7 +151,7 @@ const PrintPageContent = () => {
                 const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
-                    getDocs(notesSnapshot),
+                    getDocs(notesQuery),
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
