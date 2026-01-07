@@ -61,9 +61,21 @@ const MonthlyReportPage = () => {
 
         for (const op of operators) {
             const overrideDocRef = doc(firestore, `app-users/${op.id}/monthly-overrides`, monthId);
-            const docSnap = await getDoc(overrideDocRef);
-            if (docSnap.exists()) {
-                newOverrides[op.id] = docSnap.data();
+            try {
+                const docSnap = await getDoc(overrideDocRef);
+                if (docSnap.exists()) {
+                    newOverrides[op.id] = docSnap.data();
+                }
+            } catch (error: any) {
+                 if (error.code === 'permission-denied') {
+                    errorEmitter.emit('permission-error', new FirestorePermissionError({
+                        operation: 'get',
+                        path: overrideDocRef.path
+                    }));
+                } else {
+                    console.error(`Error fetching override for operator ${op.id}:`, error);
+                    // Optionally show a toast for other errors
+                }
             }
         }
         setManualOverrides(newOverrides);
