@@ -1,4 +1,5 @@
 
+
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -506,11 +507,13 @@ export const processMonthlyData = (
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                     // Check if it's a contractual day for the purpose of hour addition
                     const dayName = dayIndexToName[getDay(day)];
-                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 8; // Default to 8 if not specified
+                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
 
                     if (req.type === 'ferie') {
                         ferieDays++;
-                        totalOrdinaryHours += contractualHours; // Add paid leave to ordinary hours
+                         if(contractualHours > 0) { // Only add hours if it was a workday
+                            totalOrdinaryHours += contractualHours;
+                        }
                     }
                     if (req.type === 'malattia') {
                         malattiaDays++;
