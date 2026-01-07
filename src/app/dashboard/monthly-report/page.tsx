@@ -1,8 +1,8 @@
 // src/app/dashboard/monthly-report/page.tsx
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useFirestore } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'firebase/firestore';
+import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,23 @@ const MonthlyReportPage = () => {
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
     const [totalContent, setTotalContent] = useState('');
+
+    const fetchOverridesForMonth = useCallback(async (date: Date) => {
+        if (!firestore || operators.length === 0) return;
+
+        const monthId = format(date, 'yyyy-MM');
+        const newOverrides: Record<string, ManualTotals> = {};
+
+        for (const op of operators) {
+            const overrideDocRef = doc(firestore, `app-users/${op.id}/monthly-overrides`, monthId);
+            const docSnap = await getDoc(overrideDocRef);
+            if (docSnap.exists()) {
+                newOverrides[op.id] = docSnap.data();
+            }
+        }
+        setManualOverrides(newOverrides);
+
+    }, [firestore, operators]);
 
 
     useEffect(() => {
@@ -109,6 +126,7 @@ const MonthlyReportPage = () => {
                 if (summary) newSummaries.set(opId, summary);
             });
             setSummaries(newSummaries);
+            await fetchOverridesForMonth(date);
 
         } catch (error) {
             console.error("Error fetching monthly report data:", error);
@@ -116,7 +134,7 @@ const MonthlyReportPage = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [firestore, operators, toast]);
+    }, [firestore, operators, toast, fetchOverridesForMonth]);
 
     useEffect(() => {
         if (operators.length > 0) {
@@ -132,7 +150,6 @@ const MonthlyReportPage = () => {
             newDate.setMonth(newDate.getMonth() + offset);
             return newDate;
         });
-        setManualOverrides({});
     };
     
     const handleOpenPrintPreview = () => {
@@ -146,18 +163,6 @@ const MonthlyReportPage = () => {
         const queryParams = new URLSearchParams({
             month: monthString,
             operators: operatorIdsString,
-        });
-
-        // Add manual overrides to query params
-        selectedOperatorIds.forEach(opId => {
-            const override = manualOverrides[opId];
-            if (override) {
-                Object.entries(override).forEach(([key, value]) => {
-                    if (value !== undefined) {
-                        queryParams.append(`${opId}_${key}`, String(value));
-                    }
-                });
-            }
         });
 
         window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
@@ -213,35 +218,56 @@ const MonthlyReportPage = () => {
         setTotalContent(String(currentValue));
     };
     
-    const handleSaveTotal = () => {
-        if (!editingTotal) return;
+    const handleSaveTotal = async () => {
+        if (!editingTotal || !firestore) return;
         const { operatorId, type } = editingTotal;
+        const monthId = format(currentMonth, 'yyyy-MM');
+        const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
 
         const newValue = parseFloat(totalContent);
         if (isNaN(newValue)) {
             toast({ title: 'Valore non valido', variant: 'destructive'});
             return;
         }
+        
+        const updateData = { [type]: newValue };
 
-        setManualOverrides(prev => ({
-            ...prev,
-            [operatorId]: {
-                ...(prev[operatorId] || {}),
-                [type]: newValue
-            }
-        }));
-
-        toast({ title: 'Totale modificato (in bozza)', description: 'Il nuovo valore sarà usato per la stampa in questa sessione.'});
-        setEditingTotal(null);
-        setTotalContent('');
+        setDoc(overrideDocRef, updateData, { merge: true })
+            .then(() => {
+                setManualOverrides(prev => ({
+                    ...prev,
+                    [operatorId]: {
+                        ...(prev[operatorId] || {}),
+                        [type]: newValue
+                    }
+                }));
+                 toast({ title: 'Totale Rettificato', description: 'Il nuovo valore è stato salvato in modo permanente.'});
+            })
+            .catch(error => {
+                if (error.code === 'permission-denied') {
+                    errorEmitter.emit('permission-error', new FirestorePermissionError({
+                        operation: 'write',
+                        path: overrideDocRef.path,
+                        requestResourceData: updateData
+                    }));
+                } else {
+                    console.error("Error saving override:", error);
+                    toast({ title: 'Errore', description: 'Impossibile salvare la rettifica.', variant: 'destructive' });
+                }
+            })
+            .finally(() => {
+                setEditingTotal(null);
+                setTotalContent('');
+            });
     };
+
 
     const getDialogTitleForType = (type?: keyof ManualTotals) => {
         switch (type) {
-            case 'ferieDays': return 'Modifica Ferie (giorni)';
-            case 'permessoHours': return 'Modifica Permessi (ore)';
-            case 'malattiaDays': return 'Modifica Malattia (giorni)';
-            default: return 'Modifica Totale';
+            case 'ferieDays': return 'Rettifica Ferie (giorni)';
+            case 'permessoHours': return 'Rettifica Permessi (ore)';
+            case 'malattiaDays': return 'Rettifica Malattia (giorni)';
+            default: return 'Rettifica Totale';
         }
     }
 
@@ -250,12 +276,12 @@ const MonthlyReportPage = () => {
         <>
         <div className="space-y-6">
             <Card>
-                <CardHeader className='flex-row items-center justify-between'>
+                <CardHeader className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
                     <div>
                         <CardTitle className="text-2xl">Report Mensile Aggregato</CardTitle>
                         <CardDescription>Visualizza i totali di tutti gli operatori per il mese selezionato.</CardDescription>
                     </div>
-                     <Button onClick={handleOpenPrintPreview} disabled={isLoading}>
+                     <Button onClick={handleOpenPrintPreview} disabled={isLoading} className="w-full sm:w-auto">
                         <Printer className="mr-2 h-4 w-4" /> Crea Report Stampabile
                     </Button>
                 </CardHeader>
@@ -353,7 +379,7 @@ const MonthlyReportPage = () => {
                  <DialogHeader>
                     <DialogTitle className='capitalize'>{getDialogTitleForType(editingTotal?.type)}</DialogTitle>
                      <DialogDescription>
-                        Inserisci il valore totale che vuoi assegnare per questo mese. Questa modifica è temporanea e valida solo per la stampa.
+                        Inserisci il valore totale che vuoi assegnare per questo mese. Questa modifica è permanente per questo mese.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -368,7 +394,7 @@ const MonthlyReportPage = () => {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setEditingTotal(null)}>Annulla</Button>
-                    <Button onClick={handleSaveTotal}>Salva Totale</Button>
+                    <Button onClick={handleSaveTotal}>Salva Rettifica</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
