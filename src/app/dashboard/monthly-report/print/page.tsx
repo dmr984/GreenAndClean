@@ -388,7 +388,7 @@ const PrintPageContent = () => {
                                                 <td className="pb-1 text-right">GIORNI DI MALATTIA: {finalMalattiaDays}</td>
                                             </tr>
                                             <tr>
-                                                {showAbsences && <td className="pb-1 font-semibold">ASSENZE: {summary.absenceDays}</td>}
+                                                {showAbsences && <td className="pb-1">ASSENZE: {summary.absenceDays}</td>}
                                                 <td className="pb-1 text-right font-bold text-lg" colSpan={showAbsences ? 1 : 2}>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                         </tbody>
