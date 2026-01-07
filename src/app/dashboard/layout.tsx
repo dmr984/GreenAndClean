@@ -14,6 +14,14 @@ import { OperatorDashboard } from './operator-dashboard';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { useFirestore } from '@/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+
+type Operator = {
+  id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode; }) {
   const { user, isLoading } = useUser();
@@ -22,6 +30,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [operators, setOperators] = useState<Operator[]>([]);
+
+  useEffect(() => {
+    if (user?.role === 'admin' && firestore) {
+      const operatorsQuery = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
+      const unsubscribe = onSnapshot(operatorsQuery, (snapshot) => {
+        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
+        usersData.sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName, undefined, { numeric: true }));
+        setOperators(usersData);
+      });
+      return () => unsubscribe();
+    }
+  }, [user, firestore]);
   
   const handleLogout = async () => {
     localStorage.removeItem('user');
@@ -113,6 +134,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <FileText className="h-5 w-5" /> Report del Mese
                             </Button>
                           </Link>
+                          
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="item-1" className="border-b-0">
+                              <AccordionTrigger className="py-2 px-3 text-base hover:bg-muted rounded-md hover:no-underline justify-start gap-2">
+                                  <Calculator className="h-5 w-5" />
+                                  <span>Calcolo per Operatore</span>
+                              </AccordionTrigger>
+                              <AccordionContent className="pl-8 pr-2">
+                                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                                {operators.map(op => (
+                                  <Link key={op.id} href={`/dashboard/operators/${op.id}/end-of-month`} passHref>
+                                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setIsSidebarOpen(false)}>
+                                      {op.firstName} {op.lastName}
+                                    </Button>
+                                  </Link>
+                                ))}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+
                           <a href="https://console.firebase.google.com/project/studio-9716245358-f94b8/usage" target="_blank" rel="noopener noreferrer" className="w-full">
                             <Button variant='ghost' className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <ExternalLink className="h-5 w-5" /> Utilizzo e Fatturazione
