@@ -79,6 +79,7 @@ const PrintPageContent = () => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
     const [manualTotals, setManualTotals] = useState({ ferie: -1, permessi: -1, malattia: -1 });
+    const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
 
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -96,12 +97,18 @@ const PrintPageContent = () => {
         const ferie = searchParams.get('ferie');
         const permessi = searchParams.get('permessi');
         const malattia = searchParams.get('malattia');
+        const holidayPay = searchParams.get('holidayPay');
 
         setManualTotals({
             ferie: ferie ? parseFloat(ferie) : -1,
             permessi: permessi ? parseFloat(permessi) : -1,
             malattia: malattia ? parseFloat(malattia) : -1,
         });
+
+        if (holidayPay !== null) {
+            setIncludeHolidayPay(holidayPay === 'true');
+        }
+
 
     }, [searchParams]);
 
@@ -188,6 +195,7 @@ const PrintPageContent = () => {
     const finalMalattiaDays = manualTotals.malattia !== -1 ? manualTotals.malattia : (monthlySummary.malattiaDays ?? 0);
     
     const overtimeCost = finalOvertimeHours * (operator?.overtimeRate || 0);
+    const holidayCost = (monthlySummary.holidayHoursPayable || 0) * (operator?.hourlyRate || 0);
     let totalDue: number;
     let ordinaryCost: number;
 
@@ -195,9 +203,11 @@ const PrintPageContent = () => {
         ordinaryCost = operator.fixedSalary || 0;
         totalDue = ordinaryCost + overtimeCost;
     } else {
-        const payableOrdinaryHours = finalOrdinaryHours + (monthlySummary.holidayHoursPayable || 0);
-        ordinaryCost = payableOrdinaryHours * (operator?.hourlyRate || 0);
+        ordinaryCost = finalOrdinaryHours * (operator?.hourlyRate || 0);
         totalDue = ordinaryCost + overtimeCost;
+         if (includeHolidayPay) {
+            totalDue += holidayCost;
+        }
     }
 
 
@@ -247,16 +257,21 @@ const PrintPageContent = () => {
         ];
 
         let financialSummary: (string | { content: string, styles: { halign: 'right' } })[][] = [];
+        
+        let costLabel = "COSTO ORDINARIE";
+        let costValue = ordinaryCost;
 
         if (operator.salaryType === 'fixed') {
-             financialSummary = [
-                [`FISSO MENSILE: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: `COSTO STRAORDINARI (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, styles: { halign: 'right' }}],
-             ];
-        } else {
-             financialSummary = [
-                [`COSTO ORDINARIE (${formatFullRate(operator.hourlyRate)}€/h): ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: `COSTO STRAORDINARI (${formatFullRate(operator.overtimeRate || 0)}€/h): ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, styles: { halign: 'right' }}],
-            ];
+            costLabel = "FISSO MENSILE";
+            costValue = operator.fixedSalary || 0;
         }
+
+        financialSummary.push([`${costLabel}: ${costValue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: `COSTO STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, styles: { halign: 'right' }}]);
+        
+        if (includeHolidayPay && holidayCost > 0) {
+            financialSummary.push([`COSTO FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
+        }
+
 
         (doc as any).autoTable({
             startY: y,
@@ -483,15 +498,15 @@ const PrintPageContent = () => {
                          <div className="border-t border-gray-300 mt-2 mb-2"></div>
                          <table className="w-full">
                            <tbody className="text-black">
-                                {operator.salaryType === 'fixed' ? (
-                                    <tr>
-                                        <td className="py-1 font-semibold">FISSO MENSILE: <span className="font-normal">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
-                                        <td className="py-1 text-right font-semibold">COSTO STRAORDINARI: <span className="font-normal">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
-                                    </tr>
-                                ) : (
+                                <tr>
+                                    <td className="py-1 font-semibold">
+                                        {operator.salaryType === 'fixed' ? 'FISSO MENSILE' : 'COSTO ORDINARIE'}: <span className="font-normal">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                    </td>
+                                    <td className="py-1 text-right font-semibold">COSTO STRAORDINARI: <span className="font-normal">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                </tr>
+                                {includeHolidayPay && holidayCost > 0 && (
                                      <tr>
-                                        <td className="py-1 font-semibold">COSTO ORDINARIE: <span className="font-normal">{ordinaryCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
-                                        <td className="py-1 text-right font-semibold">COSTO STRAORDINARI: <span className="font-normal">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                        <td className="py-1 font-semibold" colSpan={2}>COSTO FERIE: <span className="font-normal">{holidayCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                     </tr>
                                 )}
                            </tbody>
