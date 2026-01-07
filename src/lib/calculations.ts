@@ -405,7 +405,7 @@ export const processMonthlyData = (
 
         const leaveRequest = monthlyData.requests.find(r =>
             (r.type === 'ferie' || r.type === 'malattia') &&
-            isWithinInterval(day, { start: r.startDate.toDate(), end: r.endDate.toDate() })
+            isWithinInterval(day, { start: startOfDay(r.startDate.toDate()), end: endOfDay(r.endDate.toDate()) })
         );
 
         const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
@@ -413,9 +413,15 @@ export const processMonthlyData = (
         
         if (leaveRequest) {
              details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
-        } else if (isHoliday && !workedEventsRaw.length) {
+             continue; // A leave day cannot be anything else
+        } 
+        
+        if (isHoliday && !workedEventsRaw.length) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
-        } else if (workedEventsRaw.length > 0) {
+             continue; // A holiday cannot be anything else unless worked
+        }
+
+        if (workedEventsRaw.length > 0) {
             const dayShifts: SingleShiftBlock[] = [];
             let currentShiftEvents: Timbratura[] = [];
             const sortedEvents = [...workedEventsRaw].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -491,7 +497,7 @@ export const processMonthlyData = (
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    const workedDays = details.filter(d => d.status === 'lavorato' && d.shift && (d.shift.ordinaryHours > 0 || d.shift.overtimeHours > 0)).length;
+    const workedDays = details.filter(d => d.status === 'lavorato').length;
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -500,37 +506,25 @@ export const processMonthlyData = (
     let ferieDays = 0;
     let ferieHours = 0;
     let malattiaDays = 0;
-    let holidayHoursPayable = 0; 
 
-    const processedLeaveDays = new Set<string>();
-    monthlyData.requests.forEach(req => {
-        if (req.type === 'ferie' || req.type === 'malattia') {
-            for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                 if (day > today && !isSameDay(day, today)) continue;
-                const dayString = day.toDateString();
-                if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
-                    
-                    const dayName = dayIndexToName[getDay(day)];
-                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
-
-                    if (req.type === 'ferie') {
-                        ferieDays++;
-                        ferieHours += contractualHours;
-                    }
-                    if (req.type === 'malattia') {
-                        malattiaDays++;
-                    }
-                    processedLeaveDays.add(dayString);
-                }
-            }
+    details.forEach(detail => {
+        if(detail.status === 'ferie') {
+            ferieDays++;
+            const dayName = dayIndexToName[getDay(detail.date)];
+            ferieHours += operator.workSchedule[dayName]?.totalHours || 0;
+        }
+        if(detail.status === 'malattia') {
+            malattiaDays++;
         }
     });
+
+    const holidayHoursPayable = ferieHours; 
 
     const monthlySummary: MonthlySummary = {
         workedDays: workedDays,
         ordinaryHours: totalOrdinaryHours, 
         overtimeHours: totalOvertimeHours,
-        holidayHoursPayable: ferieHours, 
+        holidayHoursPayable, 
         ferieDays,
         ferieHours,
         permessoHours: totalPermesso,
