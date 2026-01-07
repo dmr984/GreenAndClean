@@ -527,7 +527,6 @@ export default function EndOfMonthPage() {
                             title="Assenze (giorni)"
                             value={finalAbsenceDays}
                             icon={AlertTriangle}
-                            className="text-destructive border-destructive/50"
                         />
                     </div>
                 </div>
