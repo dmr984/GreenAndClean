@@ -158,24 +158,15 @@ const PrintPageContent = () => {
 
             const addHeader = (isFirstPage: boolean) => {
                  if (isFirstPage) {
-                    try {
-                        const img = new Image();
-                        img.src = "https://i.postimg.cc/GhwM2hg1/1764199658760.png";
-                        img.crossOrigin = "Anonymous";
-                        doc.addImage(img, 'PNG', margin, y - 5, 20, 20);
-                    } catch (e) {
-                        console.error("Could not add image to PDF", e);
-                    }
-
                     doc.setFontSize(14);
                     doc.setFont('helvetica', 'bold');
-                    doc.text("Report Mensile Operatori", pageWidth - margin, y, { align: 'right' });
+                    doc.text("Report Mensile Operatori", pageWidth / 2, y, { align: 'center' });
                     y += 7;
                     doc.setFontSize(10);
                     doc.setFont('helvetica', 'normal');
                     doc.setTextColor(100);
                     const dateStr = format(currentMonth, 'MMMM yyyy', { locale: it });
-                    doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth - margin, y, { align: 'right' });
+                    doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth / 2, y, { align: 'center' });
                     y += 15;
                 }
             };
@@ -325,7 +316,7 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="pt-4 pb-2 text-sm text-black print:break-inside-avoid" style={{ height: '99mm' }}>
+                                <div key={op.id} className="pt-6 pb-2 text-sm text-black print:break-inside-avoid" style={{ minHeight: '99mm' }}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600 mb-2'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
@@ -354,7 +345,7 @@ const PrintPageContent = () => {
                                         </tbody>
                                     </table>
 
-                                    <div className='mt-4'>
+                                    <div className='mt-8 mb-4'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
                                     
