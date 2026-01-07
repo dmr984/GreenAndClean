@@ -358,7 +358,6 @@ const PrintPageContent = () => {
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
                                     
-                                    {((index + 1) % 3 !== 0) && <div className="border-t border-dashed border-gray-400 mt-2"></div>}
                                 </div>
                             )
                         })}
