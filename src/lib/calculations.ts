@@ -485,7 +485,7 @@ export const processMonthlyData = (
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    const workedDays = details.filter(d => d.status === 'lavorato').length;
+    const workedDays = details.filter(d => d.status === 'lavorato' && (d.shift?.ordinaryHours || 0) > 0).length;
     const absenceDays = details.filter(d => d.status === 'mancata_timbratura').length;
     
     const totalPermesso = monthlyData.requests
