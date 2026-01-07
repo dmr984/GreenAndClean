@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
@@ -15,6 +15,9 @@ import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+
 
 type Operator = {
     id: string;
@@ -31,6 +34,12 @@ type Operator = {
 type Request = { type: string; startDate: Timestamp; endDate: Timestamp; hours?: number; };
 type Timbratura = { type: string; timestamp: Timestamp; status: string; };
 
+type ManualTotals = {
+    ferieDays?: number;
+    permessoHours?: number;
+    malattiaDays?: number;
+};
+
 const MonthlyReportPage = () => {
     const firestore = useFirestore();
     const { toast } = useToast();
@@ -39,6 +48,11 @@ const MonthlyReportPage = () => {
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
     const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(new Set());
+
+    const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
+    const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
+    const [totalContent, setTotalContent] = useState('');
+
 
     useEffect(() => {
         if (!firestore) return;
@@ -118,6 +132,7 @@ const MonthlyReportPage = () => {
             newDate.setMonth(newDate.getMonth() + offset);
             return newDate;
         });
+        setManualOverrides({});
     };
     
     const handleOpenPrintPreview = () => {
@@ -127,17 +142,36 @@ const MonthlyReportPage = () => {
         }
         const monthString = format(currentMonth, 'yyyy-MM');
         const operatorIdsString = Array.from(selectedOperatorIds).join(',');
-        window.open(`/dashboard/monthly-report/print?month=${monthString}&operators=${operatorIdsString}`, '_blank');
+        
+        const queryParams = new URLSearchParams({
+            month: monthString,
+            operators: operatorIdsString,
+        });
+
+        // Add manual overrides to query params
+        selectedOperatorIds.forEach(opId => {
+            const override = manualOverrides[opId];
+            if (override) {
+                Object.entries(override).forEach(([key, value]) => {
+                    if (value !== undefined) {
+                        queryParams.append(`${opId}_${key}`, String(value));
+                    }
+                });
+            }
+        });
+
+        window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
-    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined) => {
+    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined, override?: ManualTotals) => {
         if (!summary) return 0;
-        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        
+        const finalOvertime = summary.overtimeHours || 0;
+        const overtimeCost = finalOvertime * (op.overtimeRate || 0);
 
         if (op.salaryType === 'fixed') {
             return (op.fixedSalary || 0) + overtimeCost;
         } else {
-            // Add holiday hours to ordinary hours ONLY for payment calculation
             const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
             const ordinaryCost = payableOrdinaryHours * (op.hourlyRate || 0);
             return ordinaryCost + overtimeCost;
@@ -164,8 +198,56 @@ const MonthlyReportPage = () => {
         });
     };
 
+    const handleEditTotal = (operatorId: string, type: keyof ManualTotals) => {
+        const summary = summaries.get(operatorId);
+        const override = manualOverrides[operatorId];
+        let currentValue = 0;
+
+        switch(type) {
+            case 'ferieDays': currentValue = override?.ferieDays ?? summary?.ferieDays ?? 0; break;
+            case 'permessoHours': currentValue = override?.permessoHours ?? summary?.permessoHours ?? 0; break;
+            case 'malattiaDays': currentValue = override?.malattiaDays ?? summary?.malattiaDays ?? 0; break;
+        }
+        
+        setEditingTotal({ operatorId, type, currentValue });
+        setTotalContent(String(currentValue));
+    };
+    
+    const handleSaveTotal = () => {
+        if (!editingTotal) return;
+        const { operatorId, type } = editingTotal;
+
+        const newValue = parseFloat(totalContent);
+        if (isNaN(newValue)) {
+            toast({ title: 'Valore non valido', variant: 'destructive'});
+            return;
+        }
+
+        setManualOverrides(prev => ({
+            ...prev,
+            [operatorId]: {
+                ...(prev[operatorId] || {}),
+                [type]: newValue
+            }
+        }));
+
+        toast({ title: 'Totale modificato (in bozza)', description: 'Il nuovo valore sarà usato per la stampa in questa sessione.'});
+        setEditingTotal(null);
+        setTotalContent('');
+    };
+
+    const getDialogTitleForType = (type?: keyof ManualTotals) => {
+        switch (type) {
+            case 'ferieDays': return 'Modifica Ferie (giorni)';
+            case 'permessoHours': return 'Modifica Permessi (ore)';
+            case 'malattiaDays': return 'Modifica Malattia (giorni)';
+            default: return 'Modifica Totale';
+        }
+    }
+
 
     return (
+        <>
         <div className="space-y-6">
             <Card>
                 <CardHeader className='flex-row items-center justify-between'>
@@ -207,7 +289,12 @@ const MonthlyReportPage = () => {
                         <div className="space-y-4">
                             {operators.map(op => {
                                 const summary = summaries.get(op.id);
-                                const totalDue = calculateTotalDue(op, summary);
+                                const override = manualOverrides[op.id];
+                                const totalDue = calculateTotalDue(op, summary, override);
+                                
+                                const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
+                                const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
+                                const finalMalattiaDays = override?.malattiaDays ?? summary?.malattiaDays ?? 0;
 
                                 return (
                                     <Card key={op.id}>
@@ -228,13 +315,26 @@ const MonthlyReportPage = () => {
                                             </div>
                                         </CardHeader>
                                         {summary && (
-                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
+                                            <CardContent className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Giorni Lavorati</span><span className='font-bold'>{summary.workedDays}</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ore Ordinarie</span><span className='font-bold'>{summary.ordinaryHours}h</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Straordinari</span><span className='font-bold'>{summary.overtimeHours}h</span></div>
-                                                <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ferie (g)</span><span className='font-bold'>{summary.ferieDays}</span></div>
-                                                <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Permessi (h)</span><span className='font-bold'>{summary.permessoHours}</span></div>
-                                                <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Malattia (g)</span><span className='font-bold'>{summary.malattiaDays}</span></div>
+                                                
+                                                <div className="flex flex-col p-2 border rounded-md">
+                                                    <span className="text-xs text-muted-foreground flex justify-between items-center">Ferie (g) <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditTotal(op.id, 'ferieDays')}><Pencil className="h-3 w-3"/></Button></span>
+                                                    <span className={cn('font-bold', override?.ferieDays !== undefined && 'text-primary')}>{finalFerieDays}</span>
+                                                </div>
+
+                                                 <div className="flex flex-col p-2 border rounded-md">
+                                                    <span className="text-xs text-muted-foreground flex justify-between items-center">Permessi (h) <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditTotal(op.id, 'permessoHours')}><Pencil className="h-3 w-3"/></Button></span>
+                                                    <span className={cn('font-bold', override?.permessoHours !== undefined && 'text-primary')}>{finalPermessoHours}</span>
+                                                </div>
+                                                
+                                                 <div className="flex flex-col p-2 border rounded-md">
+                                                    <span className="text-xs text-muted-foreground flex justify-between items-center">Malattia (g) <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditTotal(op.id, 'malattiaDays')}><Pencil className="h-3 w-3"/></Button></span>
+                                                    <span className={cn('font-bold', override?.malattiaDays !== undefined && 'text-primary')}>{finalMalattiaDays}</span>
+                                                </div>
+
                                                 <div className="flex flex-col p-2 border rounded-md text-destructive"><span className="text-xs">Assenze (g)</span><span className='font-bold'>{summary.absenceDays}</span></div>
                                             </CardContent>
                                         )}
@@ -247,6 +347,32 @@ const MonthlyReportPage = () => {
                 </CardContent>
             </Card>
         </div>
+
+        <Dialog open={!!editingTotal} onOpenChange={(open) => !open && setEditingTotal(null)}>
+            <DialogContent>
+                 <DialogHeader>
+                    <DialogTitle className='capitalize'>{getDialogTitleForType(editingTotal?.type)}</DialogTitle>
+                     <DialogDescription>
+                        Inserisci il valore totale che vuoi assegnare per questo mese. Questa modifica è temporanea e valida solo per la stampa.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="total-content" className="capitalize">{`Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}</Label>
+                    <Input
+                        id="total-content"
+                        type="number"
+                        value={totalContent}
+                        onChange={(e) => setTotalContent(e.target.value)}
+                        placeholder="Es: 10"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditingTotal(null)}>Annulla</Button>
+                    <Button onClick={handleSaveTotal}>Salva Totale</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 };
 

@@ -91,12 +91,11 @@ type AddRequestContext = {
     reason?: string;
 } | null;
 
-const SummaryCard = ({ title, value, icon: Icon, subtext, className, onEdit, actionButton }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, onEdit?: () => void, actionButton?: React.ReactNode }) => (
+const SummaryCard = ({ title, value, icon: Icon, subtext, className, actionButton }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, actionButton?: React.ReactNode }) => (
     <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">{title}</CardTitle>
             <div className='flex items-center gap-1'>
-                 {onEdit && <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>}
                  {actionButton}
                 <Icon className="h-4 w-4 text-muted-foreground" />
             </div>
@@ -133,10 +132,6 @@ export default function EndOfMonthPage() {
     const [editingNote, setEditingNote] = useState<{ date: Date, currentNote: string } | null>(null);
     const [noteContent, setNoteContent] = useState('');
     
-    const [manualTotals, setManualTotals] = useState<Partial<MonthlyTotals>>({});
-    const [editingTotal, setEditingTotal] = useState<{ type: keyof MonthlyTotals, currentValue: number } | null>(null);
-    const [totalContent, setTotalContent] = useState('');
-
     const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
     const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
     const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
@@ -209,7 +204,6 @@ export default function EndOfMonthPage() {
     useEffect(() => {
         if (currentMonth) {
             fetchDataForMonth();
-            setManualTotals({}); // Reset manual totals when month changes
         }
     }, [fetchDataForMonth, currentMonth]);
     
@@ -267,10 +261,7 @@ export default function EndOfMonthPage() {
         if (!currentMonth) return;
         const monthString = format(currentMonth, 'yyyy-MM');
         
-        const queryParams = new URLSearchParams({ month: monthString });
-        if (manualTotals.ferieDays !== undefined) queryParams.set('ferie', String(manualTotals.ferieDays));
-        if (manualTotals.permessoHours !== undefined) queryParams.set('permessi', String(manualTotals.permessoHours));
-        if (manualTotals.malattiaDays !== undefined) queryParams.set('malattia', String(manualTotals.malattiaDays));
+        const queryParams = new URLSearchParams({ month: monthString, holidayPay: String(includeHolidayPay) });
         
         window.open(`/dashboard/operators/${operatorId}/end-of-month/print?${queryParams.toString()}`, '_blank');
     };
@@ -374,10 +365,10 @@ export default function EndOfMonthPage() {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
     
-    const finalFerieDays = manualTotals.ferieDays ?? monthlySummary.ferieDays ?? 0;
-    const finalFerieHours = manualTotals.ferieDays !== undefined ? manualTotals.ferieDays * (operator.workSchedule['monday']?.totalHours || 8) : (monthlySummary.ferieHours ?? 0);
-    const finalPermessoHours = manualTotals.permessoHours ?? monthlySummary.permessoHours ?? 0;
-    const finalMalattiaDays = manualTotals.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
+    const finalFerieDays = monthlySummary.ferieDays ?? 0;
+    const finalFerieHours = monthlySummary.ferieHours ?? 0;
+    const finalPermessoHours = monthlySummary.permessoHours ?? 0;
+    const finalMalattiaDays = monthlySummary.malattiaDays ?? 0;
     const finalAbsenceDays = monthlySummary.absenceDays ?? 0;
 
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
@@ -419,47 +410,6 @@ export default function EndOfMonthPage() {
         setEditingNote({ date: detail.date, currentNote });
         setNoteContent(currentNote);
     };
-
-    const handleEditTotal = (type: keyof MonthlyTotals) => {
-        let currentValue = 0;
-        switch(type) {
-            case 'ferieDays': currentValue = finalFerieDays; break;
-            case 'permessoHours': currentValue = finalPermessoHours; break;
-            case 'malattiaDays': currentValue = finalMalattiaDays; break;
-        }
-        
-        setEditingTotal({ type, currentValue });
-        setTotalContent(String(currentValue));
-    };
-
-    const handleSaveTotal = async () => {
-        if (!editingTotal) return;
-
-        const newValue = parseFloat(totalContent);
-        if (isNaN(newValue)) {
-            toast({ title: 'Valore non valido', variant: 'destructive'});
-            return;
-        }
-        
-        setManualTotals(prev => ({
-            ...prev,
-            [editingTotal.type]: newValue
-        }));
-        
-        toast({ title: 'Totale aggiornato (temporaneamente)', description: 'Il nuovo valore sarà usato per la stampa in questa sessione.'});
-        
-        setEditingTotal(null);
-        setTotalContent('');
-    }
-
-    const getDialogTitleForType = (type?: keyof MonthlyTotals) => {
-        switch (type) {
-            case 'ferieDays': return 'Modifica Totale Ferie (giorni)';
-            case 'permessoHours': return 'Modifica Totale Permessi (ore)';
-            case 'malattiaDays': return 'Modifica Totale Malattia (giorni)';
-            default: return 'Modifica Totale';
-        }
-    }
 
     return (
         <>
@@ -544,7 +494,6 @@ export default function EndOfMonthPage() {
                             title="Ferie (giorni)" 
                             value={`${finalFerieDays} (${finalFerieHours}h)`}
                             icon={Plane}
-                            onEdit={() => handleEditTotal('ferieDays')}
                              actionButton={
                                 <Button
                                     variant="ghost"
@@ -568,13 +517,11 @@ export default function EndOfMonthPage() {
                             title="Permessi (ore)" 
                             value={finalPermessoHours} 
                             icon={UserCheck}
-                            onEdit={() => handleEditTotal('permessoHours')}
                         />
                          <SummaryCard 
                             title="Malattia (giorni)" 
                             value={finalMalattiaDays}
                             icon={Stethoscope}
-                            onEdit={() => handleEditTotal('malattiaDays')}
                         />
                         <SummaryCard
                             title="Assenze (giorni)"
@@ -726,31 +673,6 @@ export default function EndOfMonthPage() {
             </DialogContent>
         </Dialog>
         
-        <Dialog open={!!editingTotal} onOpenChange={(open) => !open && setEditingTotal(null)}>
-            <DialogContent>
-                 <DialogHeader>
-                    <DialogTitle className='capitalize'>{getDialogTitleForType(editingTotal?.type)}</DialogTitle>
-                     <DialogDescription>
-                        Inserisci il valore totale che vuoi assegnare per questo mese. Questa modifica è temporanea e valida solo per la stampa.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="total-content" className="capitalize">{`Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}</Label>
-                    <Input
-                        id="total-content"
-                        type="number"
-                        value={totalContent}
-                        onChange={(e) => setTotalContent(e.target.value)}
-                        placeholder="Es: 10"
-                    />
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setEditingTotal(null)}>Annulla</Button>
-                    <Button onClick={handleSaveTotal}>Salva Totale</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-
         <Dialog open={!!addRequestContext} onOpenChange={(open) => !open && setAddRequestContext(null)}>
             <DialogContent>
                  <DialogHeader>

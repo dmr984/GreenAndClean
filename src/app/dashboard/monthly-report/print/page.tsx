@@ -26,6 +26,13 @@ type Operator = {
     fixedSalary?: number;
 };
 
+type ManualTotals = {
+    ferieDays?: number;
+    permessoHours?: number;
+    malattiaDays?: number;
+};
+
+
 const PrintPageContent = () => {
     const firestore = useFirestore();
     const searchParams = useSearchParams();
@@ -35,6 +42,7 @@ const PrintPageContent = () => {
     const [allOperators, setAllOperators] = useState<Operator[]>([]);
     const [filteredOperators, setFilteredOperators] = useState<Operator[]>([]);
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
+    const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -49,6 +57,19 @@ const PrintPageContent = () => {
         } else {
             setCurrentMonth(new Date());
         }
+
+        const overrides: Record<string, ManualTotals> = {};
+        for (const [key, value] of searchParams.entries()) {
+            if(key.includes('_')) {
+                const [opId, totalType] = key.split('_');
+                if (opId && totalType) {
+                    if (!overrides[opId]) overrides[opId] = {};
+                    (overrides[opId] as any)[totalType] = parseFloat(value);
+                }
+            }
+        }
+        setManualOverrides(overrides);
+
     }, [searchParams]);
 
     useEffect(() => {
@@ -128,14 +149,13 @@ const PrintPageContent = () => {
         }
     }, [currentMonth, filteredOperators, firestore, toast]);
 
-    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined) => {
+    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined, override?: ManualTotals) => {
         if (!summary) return 0;
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
         if (op.salaryType === 'fixed') {
             return (op.fixedSalary || 0) + overtimeCost;
         } else {
-            // Add holiday hours to ordinary hours ONLY for payment calculation
             const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
             const ordinaryCost = payableOrdinaryHours * (op.hourlyRate || 0);
             return ordinaryCost + overtimeCost;
@@ -176,8 +196,13 @@ const PrintPageContent = () => {
             filteredOperators.forEach((op) => {
                 const summary = summaries.get(op.id);
                 if (!summary) return;
+                const override = manualOverrides[op.id] || {};
+                
+                const finalFerieDays = override.ferieDays ?? summary.ferieDays;
+                const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
+                const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
 
-                const totalDue = calculateTotalDue(op, summary);
+                const totalDue = calculateTotalDue(op, summary, override);
 
                 const blockHeight = 60; // Estimated height
                 if (y > pageHeight - blockHeight) {
@@ -199,9 +224,9 @@ const PrintPageContent = () => {
                 y += 8;
 
                 const body = [
-                    [`GIORNI LAVORATI: ${summary.workedDays}`, `FERIE: ${summary.ferieDays}`],
-                    [`ORE ORDINARIE: ${summary.ordinaryHours}`, `GIORNI DI MALATTIA: ${summary.malattiaDays}`],
-                    [`ORE STRAORDINARIE: ${summary.overtimeHours}`, `ORE PERMESSI: ${summary.permessoHours}`],
+                    [`GIORNI LAVORATI: ${summary.workedDays}`, `FERIE: ${finalFerieDays}`],
+                    [`ORE ORDINARIE: ${summary.ordinaryHours}`, `GIORNI DI MALATTIA: ${finalMalattiaDays}`],
+                    [`ORE STRAORDINARIE: ${summary.overtimeHours}`, `ORE PERMESSI: ${finalPermessoHours}`],
                      [`ASSENZE: ${summary.absenceDays}`, ` `],
                 ];
 
@@ -236,7 +261,7 @@ const PrintPageContent = () => {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, toast]);
+    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast]);
 
     const handlePrint = () => {
         window.print();
@@ -305,7 +330,13 @@ const PrintPageContent = () => {
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
                             if (!summary) return null;
-                            const totalDue = calculateTotalDue(op, summary);
+
+                            const override = manualOverrides[op.id] || {};
+                            const totalDue = calculateTotalDue(op, summary, override);
+                            
+                            const finalFerieDays = override.ferieDays ?? summary.ferieDays;
+                            const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
+                            const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
 
                             const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
 
@@ -324,7 +355,7 @@ const PrintPageContent = () => {
                                         <tbody>
                                             <tr>
                                                 <td className="pb-1">GIORNI LAVORATI: {summary.workedDays}</td>
-                                                <td className="pb-1 text-right">FERIE: {summary.ferieDays}</td>
+                                                <td className="pb-1 text-right">FERIE: {finalFerieDays}</td>
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">ORE ORDINARIE: {summary.ordinaryHours}</td>
@@ -335,8 +366,8 @@ const PrintPageContent = () => {
                                                 <td className="pb-1 text-right">TOTALE STRAORDINARIE: {overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                              <tr>
-                                                <td className="pb-1">ORE PERMESSI: {summary.permessoHours}</td>
-                                                <td className="pb-1 text-right">GIORNI DI MALATTIA: {summary.malattiaDays}</td>
+                                                <td className="pb-1">ORE PERMESSI: {finalPermessoHours}</td>
+                                                <td className="pb-1 text-right">GIORNI DI MALATTIA: {finalMalattiaDays}</td>
                                             </tr>
                                             <tr>
                                                 <td className="pb-1 text-destructive font-semibold">ASSENZE: {summary.absenceDays}</td>
