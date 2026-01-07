@@ -1,7 +1,7 @@
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, endOfDay, addDays, subDays, parse } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays, parse, endOfDay as dateFnsEndOfDay } from 'date-fns';
 import { isPublicHoliday } from '@/lib/holidays';
 
 // Type Definitions
@@ -375,56 +375,47 @@ export const processMonthlyData = (
     for (const day of allDaysOfMonth) {
         if (day > today && !isSameDay(day, today)) continue;
 
-        const dayName = dayIndexToName[getDay(day)];
-        let dailySchedule = operator.workSchedule[dayName];
-        
-        const isHoliday = isPublicHoliday(day);
+        let dailySchedule: DailySchedule | undefined;
+        let isMakeupShift = false;
         
         const workedEventsRaw = monthlyData.timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
-        
-        const makeupShiftInfo = workedEventsRaw?.find(e => e.type === 'entrata' && e.makeupOfDay);
-        
-        // If it's a makeup shift, use the schedule of the day being made up
+        const makeupShiftInfo = workedEventsRaw.find(e => e.type === 'entrata' && e.makeupOfDay);
+
         if (makeupShiftInfo?.makeupOfDay) {
+            isMakeupShift = true;
             const makeupDate = parse(makeupShiftInfo.makeupOfDay, 'yyyy-MM-dd', new Date());
             const makeupDayName = dayIndexToName[getDay(makeupDate)];
             dailySchedule = operator.workSchedule[makeupDayName];
+        } else {
+            const dayName = dayIndexToName[getDay(day)];
+            dailySchedule = operator.workSchedule[dayName];
         }
-        
+
         const contractualHours = dailySchedule?.totalHours || 0;
         let isWorkDay = contractualHours > 0;
-        if(makeupShiftInfo) isWorkDay = true;
-        
-        // Check if this day was a contractual day but was made up on another day
-        const isMadeUpElsewhere = monthlyData.timbrature.some(t => {
-             return t.makeupOfDay === format(day, 'yyyy-MM-dd');
-        });
+        if(isMakeupShift) isWorkDay = true;
+
+        const isMadeUpElsewhere = monthlyData.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
         if (isMadeUpElsewhere) {
-            isWorkDay = false; 
+            isWorkDay = false;
         }
 
         const leaveRequest = monthlyData.requests.find(r =>
             (r.type === 'ferie' || r.type === 'malattia') &&
-            isWithinInterval(day, { start: startOfDay(r.startDate.toDate()), end: endOfDay(r.endDate.toDate()) })
+            isWithinInterval(day, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) })
         );
-
+        
+        const isHoliday = isPublicHoliday(day);
         const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
 
-        
+        // --- Determine Daily Status with Priority ---
         if (leaveRequest) {
              details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
-             continue; // A leave day cannot be anything else
-        } 
-        
-        if (isHoliday && !workedEventsRaw.length) {
-             details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
-             continue; // A holiday cannot be anything else unless worked
-        }
-
-        if (workedEventsRaw.length > 0) {
+        } else if (workedEventsRaw.length > 0) {
+            // Day was worked, calculate details
             const dayShifts: SingleShiftBlock[] = [];
             let currentShiftEvents: Timbratura[] = [];
-            const sortedEvents = [...workedEventsRaw].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const sortedEvents = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
             for (const event of sortedEvents) {
                 currentShiftEvents.push(event);
@@ -442,12 +433,6 @@ export const processMonthlyData = (
                     }
                     currentShiftEvents = []; 
                 }
-            }
-            
-            if (dayShifts.length === 0) {
-                 if (isWorkDay) details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
-                 else details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
-                 continue;
             }
 
             let totalOrdinary = 0;
@@ -467,7 +452,7 @@ export const processMonthlyData = (
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
             const { calculationStart, calculationEnd } = calculateHours({ date: day, events: allDayEvents }, dailySchedule, allDayEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false, operator.overtimeCalculation);
-
+            
             details.push({
                 date: day,
                 status: 'lavorato',
@@ -484,6 +469,8 @@ export const processMonthlyData = (
                 },
                 note: dailyNote?.note,
             });
+        } else if (isHoliday) {
+            details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (isWorkDay) {
              details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
         } else {
@@ -497,7 +484,16 @@ export const processMonthlyData = (
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    const workedDays = details.filter(d => d.status === 'lavorato').length;
+    // Correctly count worked days: only days with actual work and non-zero ordinary hours, or pure overtime days.
+    const workedDays = details.filter(d => {
+        if (d.status === 'lavorato' && d.shift) {
+            // A day is "worked" if it's not a day of only overtime
+            // and has some ordinary hours, or if it has any worked events.
+            const isPureOvertime = !d.shift.contractualHours || d.shift.contractualHours === 0;
+            return !isPureOvertime;
+        }
+        return false;
+    }).length;
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -521,7 +517,7 @@ export const processMonthlyData = (
     const holidayHoursPayable = ferieHours; 
 
     const monthlySummary: MonthlySummary = {
-        workedDays: workedDays,
+        workedDays, // Use the new, corrected count
         ordinaryHours: totalOrdinaryHours, 
         overtimeHours: totalOvertimeHours,
         holidayHoursPayable, 
