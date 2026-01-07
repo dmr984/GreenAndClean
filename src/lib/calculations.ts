@@ -1,7 +1,7 @@
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays, parse } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, endOfDay, addDays, subDays, parse } from 'date-fns';
 import { isPublicHoliday } from '@/lib/holidays';
 
 // Type Definitions
