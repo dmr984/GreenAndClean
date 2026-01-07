@@ -97,7 +97,7 @@ const PrintPageContent = () => {
                     );
                     const [timbratureSnap, requestsSnap] = await Promise.all([
                         getDocs(timbratureQuery),
-                        getDocs(requestsSnap),
+                        getDocs(requestsQuery),
                     ]);
                     const timbratureData = timbratureSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
                     const requestsData = requestsSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
