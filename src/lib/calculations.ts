@@ -1,5 +1,3 @@
-
-
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -24,8 +22,10 @@ type WorkSchedule = {
 type Operator = {
     workSchedule: WorkSchedule;
     overtimeCalculation?: 'hourly' | 'half_hourly';
+    salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;
+    fixedSalary?: number;
 };
 
 type Timbratura = {
@@ -95,6 +95,7 @@ export type MonthlySummary = {
     workedDays: number;
     ordinaryHours: number;
     overtimeHours: number;
+    holidayHoursPayable: number; // New field for salary calculation
 
     ferieDays: number;
     permessoHours: number;
@@ -390,7 +391,7 @@ export const processMonthlyData = (
         }
         
         const contractualHours = dailySchedule?.totalHours || 0;
-        let isWorkDay = contractualHours > 0 && !isHoliday;
+        let isWorkDay = contractualHours > 0;
         if(makeupShiftInfo) isWorkDay = true;
         
         // Check if this day was a contractual day but was made up on another day
@@ -486,7 +487,7 @@ export const processMonthlyData = (
     // =================================================================
     // SUMMARIZE (Based on the daily details we just calculated)
     // =================================================================
-    let totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
+    const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
     const workedDays = details.filter(d => d.status === 'lavorato' && d.shift && d.shift.ordinaryHours > 0).length;
@@ -497,6 +498,7 @@ export const processMonthlyData = (
             
     let ferieDays = 0;
     let malattiaDays = 0;
+    let holidayHoursPayable = 0; // New accumulator for payable holiday hours
 
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
@@ -511,8 +513,8 @@ export const processMonthlyData = (
 
                     if (req.type === 'ferie') {
                         ferieDays++;
-                         if(contractualHours > 0) { // Only add hours if it was a workday
-                            totalOrdinaryHours += contractualHours;
+                         if(contractualHours > 0) {
+                            holidayHoursPayable += contractualHours;
                         }
                     }
                     if (req.type === 'malattia') {
@@ -526,8 +528,9 @@ export const processMonthlyData = (
 
     const monthlySummary: MonthlySummary = {
         workedDays: workedDays,
-        ordinaryHours: totalOrdinaryHours,
+        ordinaryHours: totalOrdinaryHours, // This now ONLY includes hours from actual work shifts
         overtimeHours: totalOvertimeHours,
+        holidayHoursPayable: holidayHoursPayable, // Store holiday hours separately for salary calculation
         ferieDays,
         permessoHours: totalPermesso,
         malattiaDays,

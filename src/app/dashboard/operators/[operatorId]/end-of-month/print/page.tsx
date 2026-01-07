@@ -186,7 +186,7 @@ const PrintPageContent = () => {
     const finalFerieDays = manualTotals.ferie !== -1 ? manualTotals.ferie : (monthlySummary.ferieDays ?? 0);
     const finalPermessoHours = manualTotals.permessi !== -1 ? manualTotals.permessi : (monthlySummary.permessoHours ?? 0);
     const finalMalattiaDays = manualTotals.malattia !== -1 ? manualTotals.malattia : (monthlySummary.malattiaDays ?? 0);
-
+    
     const overtimeCost = finalOvertimeHours * (operator?.overtimeRate || 0);
     let totalDue: number;
     let ordinaryCost: number;
@@ -195,7 +195,8 @@ const PrintPageContent = () => {
         ordinaryCost = operator.fixedSalary || 0;
         totalDue = ordinaryCost + overtimeCost;
     } else {
-        ordinaryCost = finalOrdinaryHours * (operator?.hourlyRate || 0);
+        const payableOrdinaryHours = finalOrdinaryHours + (monthlySummary.holidayHoursPayable || 0);
+        ordinaryCost = payableOrdinaryHours * (operator?.hourlyRate || 0);
         totalDue = ordinaryCost + overtimeCost;
     }
 

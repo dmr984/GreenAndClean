@@ -122,10 +122,13 @@ const MonthlyReportPage = () => {
     const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined) => {
         if (!summary) return 0;
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+
         if (op.salaryType === 'fixed') {
             return (op.fixedSalary || 0) + overtimeCost;
         } else {
-            const ordinaryCost = (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
+            // Add holiday hours to ordinary hours ONLY for payment calculation
+            const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
+            const ordinaryCost = payableOrdinaryHours * (op.hourlyRate || 0);
             return ordinaryCost + overtimeCost;
         }
     }
