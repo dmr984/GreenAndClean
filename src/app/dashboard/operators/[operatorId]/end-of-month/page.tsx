@@ -4,12 +4,12 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil } from 'lucide-react';
+import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc } from 'firebase/firestore';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil, PlusCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours, calculatePureOvertime } from '@/lib/calculations';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 
 // Type definitions are now in calculations.ts
@@ -81,6 +83,13 @@ type MonthlyTotals = {
     malattiaDays: number;
 }
 
+type AddRequestContext = {
+    date: Date;
+    type: 'ferie' | 'permesso' | 'malattia';
+    hours?: string;
+    reason?: string;
+} | null;
+
 const SummaryCard = ({ title, value, icon: Icon, subtext, className, onEdit }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, onEdit?: () => void }) => (
     <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -125,6 +134,8 @@ export default function EndOfMonthPage() {
     const [manualTotals, setManualTotals] = useState<Partial<MonthlyTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ type: keyof MonthlyTotals, currentValue: number } | null>(null);
     const [totalContent, setTotalContent] = useState('');
+
+    const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
 
 
     useEffect(() => {
@@ -300,6 +311,43 @@ export default function EndOfMonthPage() {
             setNoteContent('');
         });
     };
+
+    const handleAddRequest = async () => {
+        if (!firestore || !operatorId || !addRequestContext) return;
+
+        const { date, type, hours, reason } = addRequestContext;
+
+        const newRequestData: any = {
+            userId: operatorId,
+            type: type,
+            status: 'approvato', // Automatically approve admin-added requests
+            startDate: Timestamp.fromDate(startOfDay(date)),
+            endDate: Timestamp.fromDate(startOfDay(date)),
+            reason: reason || "",
+            createdAt: serverTimestamp(),
+            viewedByOperator: false,
+        };
+
+        if (type === 'permesso') {
+            if (!hours || parseFloat(hours) <= 0) {
+                toast({ title: 'Ore mancanti', description: 'Per un permesso, le ore sono obbligatorie.', variant: 'destructive'});
+                return;
+            }
+            newRequestData.hours = parseFloat(hours);
+        }
+
+        try {
+            await addDoc(collection(firestore, `app-users/${operatorId}/requests`), newRequestData);
+            toast({ title: 'Successo', description: 'Richiesta aggiunta e approvata.'});
+            fetchDataForMonth(); // Refresh data
+        } catch (error) {
+            console.error("Error adding request:", error);
+            toast({ title: 'Errore', description: 'Impossibile aggiungere la richiesta.', variant: 'destructive'});
+        } finally {
+            setAddRequestContext(null);
+        }
+    };
+
 
     if (!operator || !currentMonth) {
         return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -506,9 +554,16 @@ export default function EndOfMonthPage() {
                                         <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
                                             {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                         </h4>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                             {!detail.shift && !detail.request && (
+                                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setAddRequestContext({ date: detail.date, type: 'ferie' })}>
+                                                    <PlusCircle className="h-4 w-4 text-primary" />
+                                                </Button>
+                                            )}
+                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </div>
 
                                     <div className="border-b my-2"></div>
@@ -639,6 +694,64 @@ export default function EndOfMonthPage() {
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setEditingTotal(null)}>Annulla</Button>
                     <Button onClick={handleSaveTotal}>Salva Totale</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!addRequestContext} onOpenChange={(open) => !open && setAddRequestContext(null)}>
+            <DialogContent>
+                 <DialogHeader>
+                    <DialogTitle>Aggiungi Richiesta</DialogTitle>
+                    {addRequestContext && (
+                        <DialogDescription>
+                            Giustifica il giorno {format(addRequestContext.date, 'PPP', { locale: it })} aggiungendo una richiesta.
+                        </DialogDescription>
+                    )}
+                </DialogHeader>
+                {addRequestContext && (
+                     <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                             <Label htmlFor="request-type">Tipo di Richiesta</Label>
+                             <Select 
+                                value={addRequestContext.type} 
+                                onValueChange={(v) => setAddRequestContext(p => p ? {...p, type: v as any} : null)}
+                            >
+                                <SelectTrigger id="request-type">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ferie">Ferie</SelectItem>
+                                    <SelectItem value="malattia">Malattia</SelectItem>
+                                    <SelectItem value="permesso">Permesso</SelectItem>
+                                </SelectContent>
+                             </Select>
+                        </div>
+                        {addRequestContext.type === 'permesso' && (
+                             <div className="space-y-2">
+                                <Label htmlFor="request-hours">Ore di Permesso</Label>
+                                <Input 
+                                    id="request-hours"
+                                    type="number"
+                                    value={addRequestContext.hours || ''}
+                                    onChange={(e) => setAddRequestContext(p => p ? {...p, hours: e.target.value} : null)}
+                                    placeholder="Es. 4"
+                                />
+                             </div>
+                        )}
+                        <div className="space-y-2">
+                            <Label htmlFor="request-reason">Motivazione (opzionale)</Label>
+                            <Textarea
+                                id="request-reason"
+                                value={addRequestContext.reason || ''}
+                                onChange={(e) => setAddRequestContext(p => p ? {...p, reason: e.target.value} : null)}
+                                placeholder="Aggiungi una nota..."
+                            />
+                        </div>
+                    </div>
+                )}
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setAddRequestContext(null)}>Annulla</Button>
+                    <Button onClick={handleAddRequest}>Aggiungi e Approva</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
