@@ -154,12 +154,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               </AccordionContent>
                             </AccordionItem>
                           </Accordion>
-
-                          <a href="https://console.firebase.google.com/project/studio-9716245358-f94b8/usage" target="_blank" rel="noopener noreferrer" className="w-full">
-                            <Button variant='ghost' className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
-                                <ExternalLink className="h-5 w-5" /> Utilizzo e Fatturazione
-                            </Button>
-                           </a>
                         </>
                     )}
                  </nav>
@@ -168,6 +162,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                      <Button variant="ghost" className="justify-start gap-2 w-full" onClick={() => { setIsSettingsOpen(true); setIsSidebarOpen(false); } }>
                       <Settings className="h-5 w-5" /> Impostazioni
                    </Button>
+                    {user?.role === 'admin' && (
+                        <a href="https://console.firebase.google.com/project/studio-9716245358-f94b8/usage" target="_blank" rel="noopener noreferrer" className="w-full">
+                            <Button variant='ghost' className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <ExternalLink className="h-5 w-5" /> Utilizzo e Fatturazione
+                            </Button>
+                        </a>
+                    )}
                     <Button variant="ghost" className="justify-start gap-2 w-full" onClick={handleLogout}>
                       <LogOut className="h-5 w-5" /> Esci
                    </Button>
