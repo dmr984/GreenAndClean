@@ -32,7 +32,8 @@ const PrintPageContent = () => {
     const { toast } = useToast();
 
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
-    const [operators, setOperators] = useState<Operator[]>([]);
+    const [allOperators, setAllOperators] = useState<Operator[]>([]);
+    const [filteredOperators, setFilteredOperators] = useState<Operator[]>([]);
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -56,16 +57,26 @@ const PrintPageContent = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
-            setOperators(ops);
+            setAllOperators(ops);
         });
         return () => unsubscribe();
     }, [firestore]);
+    
+    useEffect(() => {
+        const operatorIds = searchParams.get('operators');
+        if (operatorIds) {
+            const idSet = new Set(operatorIds.split(','));
+            setFilteredOperators(allOperators.filter(op => idSet.has(op.id)));
+        } else {
+            setFilteredOperators(allOperators);
+        }
+    }, [searchParams, allOperators]);
 
 
     useEffect(() => {
         const fetchDataForMonth = async (date: Date) => {
-            if (!firestore || operators.length === 0) {
-                 if (operators.length > 0) setIsLoading(false);
+            if (!firestore || filteredOperators.length === 0) {
+                 if (filteredOperators.length > 0) setIsLoading(false);
                  return;
             };
             setIsLoading(true);
@@ -74,7 +85,7 @@ const PrintPageContent = () => {
             const monthEnd = dfnsEndOfMonth(date);
 
             try {
-                const promises = operators.map(async (op) => {
+                const promises = filteredOperators.map(async (op) => {
                     const timbratureQuery = query(
                         collection(firestore, `app-users/${op.id}/timbrature`),
                         where('timestamp', '>=', monthStart),
@@ -86,7 +97,7 @@ const PrintPageContent = () => {
                     );
                     const [timbratureSnap, requestsSnap] = await Promise.all([
                         getDocs(timbratureQuery),
-                        getDocs(requestsQuery),
+                        getDocs(requestsSnap),
                     ]);
                     const timbratureData = timbratureSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
                     const requestsData = requestsSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
@@ -110,12 +121,12 @@ const PrintPageContent = () => {
             }
         };
 
-        if (currentMonth && operators.length > 0) {
+        if (currentMonth && filteredOperators.length > 0) {
             fetchDataForMonth(currentMonth);
-        } else if (!currentMonth || operators.length === 0) {
+        } else if (!currentMonth || filteredOperators.length === 0) {
             setIsLoading(false);
         }
-    }, [currentMonth, operators, firestore, toast]);
+    }, [currentMonth, filteredOperators, firestore, toast]);
 
     const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined) => {
         if (!summary) return 0;
@@ -171,7 +182,7 @@ const PrintPageContent = () => {
 
             addHeader(true);
             
-            operators.forEach((op) => {
+            filteredOperators.forEach((op) => {
                 const summary = summaries.get(op.id);
                 if (!summary) return;
 
@@ -234,7 +245,7 @@ const PrintPageContent = () => {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, operators, summaries, calculateTotalDue, toast]);
+    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, toast]);
 
     const handlePrint = () => {
         window.print();
@@ -300,7 +311,7 @@ const PrintPageContent = () => {
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-0" style={{ width: '210mm', minHeight: '297mm' }}>
                     <div className="space-y-4">
-                         {operators.map((op, index) => {
+                         {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
                             if (!summary) return null;
                             const totalDue = calculateTotalDue(op, summary);

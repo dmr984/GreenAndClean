@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail, MonthlySummary } from '@/lib/calculations';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 type Operator = {
     id: string;
@@ -35,6 +37,7 @@ const MonthlyReportPage = () => {
     const [operators, setOperators] = useState<Operator[]>([]);
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
+    const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (!firestore) return;
@@ -43,6 +46,8 @@ const MonthlyReportPage = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
+            // Initially, select all operators
+            setSelectedOperatorIds(new Set(ops.map(op => op.id)));
         });
         return () => unsubscribe();
     }, [firestore]);
@@ -73,7 +78,7 @@ const MonthlyReportPage = () => {
 
                 const [timbratureSnap, requestsSnap] = await Promise.all([
                     getDocs(timbratureQuery),
-                    getDocs(requestsQuery),
+                    getDocs(requestsSnap),
                 ]);
 
                 const timbratureData = timbratureSnap.docs.map(d => ({...d.data(), id: d.id} as any));
@@ -115,8 +120,13 @@ const MonthlyReportPage = () => {
     };
     
     const handleOpenPrintPreview = () => {
+        if (selectedOperatorIds.size === 0) {
+            toast({ title: 'Nessun operatore selezionato', description: 'Seleziona almeno un operatore da includere nel report.', variant: 'destructive'});
+            return;
+        }
         const monthString = format(currentMonth, 'yyyy-MM');
-        window.open(`/dashboard/monthly-report/print?month=${monthString}`, '_blank');
+        const operatorIdsString = Array.from(selectedOperatorIds).join(',');
+        window.open(`/dashboard/monthly-report/print?month=${monthString}&operators=${operatorIdsString}`, '_blank');
     };
 
     const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined) => {
@@ -132,6 +142,27 @@ const MonthlyReportPage = () => {
             return ordinaryCost + overtimeCost;
         }
     }
+    
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedOperatorIds(new Set(operators.map(op => op.id)));
+        } else {
+            setSelectedOperatorIds(new Set());
+        }
+    };
+
+    const handleSelectOperator = (operatorId: string, checked: boolean) => {
+        setSelectedOperatorIds(prev => {
+            const newSet = new Set(prev);
+            if (checked) {
+                newSet.add(operatorId);
+            } else {
+                newSet.delete(operatorId);
+            }
+            return newSet;
+        });
+    };
+
 
     return (
         <div className="space-y-6">
@@ -163,6 +194,15 @@ const MonthlyReportPage = () => {
                     ) : operators.length === 0 ? (
                         <p className="text-center text-muted-foreground py-10">Nessun operatore trovato. Aggiungine uno dalla sezione "Gestione Operatori".</p>
                     ) : (
+                        <>
+                        <div className="flex items-center space-x-2 mb-4 p-2 border rounded-md">
+                           <Checkbox
+                                id="select-all"
+                                checked={selectedOperatorIds.size === operators.length}
+                                onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                            />
+                            <Label htmlFor="select-all" className="font-semibold">Seleziona/Deseleziona Tutto</Label>
+                        </div>
                         <div className="space-y-4">
                             {operators.map(op => {
                                 const summary = summaries.get(op.id);
@@ -172,9 +212,16 @@ const MonthlyReportPage = () => {
                                     <Card key={op.id}>
                                         <CardHeader>
                                             <div className='flex justify-between items-start'>
-                                                <div>
-                                                    <CardTitle>{op.firstName} {op.lastName}</CardTitle>
-                                                    <CardDescription>Codice: {op.username}</CardDescription>
+                                                <div className="flex items-center gap-4">
+                                                    <Checkbox
+                                                        id={`select-${op.id}`}
+                                                        checked={selectedOperatorIds.has(op.id)}
+                                                        onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
+                                                    />
+                                                    <div>
+                                                        <CardTitle>{op.firstName} {op.lastName}</CardTitle>
+                                                        <CardDescription>Codice: {op.username}</CardDescription>
+                                                    </div>
                                                 </div>
                                                 <div className='font-semibold text-lg flex items-center gap-2'><Euro className="h-5 w-5" />{totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                             </div>
@@ -194,6 +241,7 @@ const MonthlyReportPage = () => {
                                 )
                             })}
                         </div>
+                        </>
                     )}
                 </CardContent>
             </Card>
