@@ -207,7 +207,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
             }
             calculationStartTime = roundedTime;
         }
-    } else if (!ignoreContractualStart) {
+    } else {
         // --- Universal rounding logic for operators WITHOUT a contractual start time ---
         const minutes = clockInTime.getMinutes();
         const roundedTime = set(clockInTime, { seconds: 0, milliseconds: 0 });
@@ -484,10 +484,9 @@ export const processMonthlyData = (
     // =================================================================
     // SUMMARIZE (Based on the daily details we just calculated)
     // =================================================================
-    const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
+    let totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    // A worked day is a day with a shift that produced ordinary hours.
     const workedDays = details.filter(d => d.status === 'lavorato' && d.shift && d.shift.ordinaryHours > 0).length;
     
     const totalPermesso = monthlyData.requests
@@ -505,9 +504,15 @@ export const processMonthlyData = (
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
                     const dayName = dayIndexToName[getDay(day)];
-                    if ((operator.workSchedule[dayName]?.totalHours || 0) > 0 && !isPublicHoliday(day)) {
-                        if (req.type === 'ferie') ferieDays++;
-                        if (req.type === 'malattia') malattiaDays++;
+                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
+                    if (contractualHours > 0 && !isPublicHoliday(day)) {
+                        if (req.type === 'ferie') {
+                            ferieDays++;
+                            totalOrdinaryHours += contractualHours; // Add paid leave to ordinary hours
+                        }
+                        if (req.type === 'malattia') {
+                            malattiaDays++;
+                        }
                         processedLeaveDays.add(dayString);
                     }
                 }
