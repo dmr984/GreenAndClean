@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Circle, Calculator, Video, CalendarDays, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Circle, Calculator, Video, CalendarDays, ExternalLink, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -106,6 +106,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                            <Link href="/dashboard/daily-summary" passHref>
                             <Button variant={pathname.startsWith('/dashboard/daily-summary') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <CalendarDays className="h-5 w-5" /> Report Giornaliero
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/monthly-report" passHref>
+                            <Button variant={pathname.startsWith('/dashboard/monthly-report') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <FileText className="h-5 w-5" /> Report del Mese
                             </Button>
                           </Link>
                           <a href="https://console.firebase.google.com/project/studio-9716245358-f94b8/usage" target="_blank" rel="noopener noreferrer" className="w-full">
