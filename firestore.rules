@@ -35,6 +35,11 @@ service cloud.firestore {
         // Allow anyone to read or write daily notes.
         allow read, write: if true;
       }
+
+      match /monthly-overrides/{monthId} {
+        // Allow anyone to read or write monthly overrides.
+        allow read, write: if true;
+      }
     }
     
     // This rule is necessary for the admin notification bell to query
