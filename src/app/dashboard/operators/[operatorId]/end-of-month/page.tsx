@@ -538,8 +538,6 @@ export default function EndOfMonthPage() {
                     {dailyDetails.length > 0 ? (
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
-                                 if (detail.status === 'riposo' && !detail.note) return null;
-
                                  const isSunday = getDay(detail.date) === 0;
 
                                 return (
