@@ -146,7 +146,7 @@ const MonthlySummaryContent = () => {
     
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsSnapshot)
+                getDocs(requestsQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
