@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
@@ -180,13 +180,14 @@ const MonthlyReportPage = () => {
                                             </div>
                                         </CardHeader>
                                         {summary && (
-                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
+                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Giorni Lavorati</span><span className='font-bold'>{summary.workedDays}</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ore Ordinarie</span><span className='font-bold'>{summary.ordinaryHours}h</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Straordinari</span><span className='font-bold'>{summary.overtimeHours}h</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ferie (g)</span><span className='font-bold'>{summary.ferieDays}</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Permessi (h)</span><span className='font-bold'>{summary.permessoHours}</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Malattia (g)</span><span className='font-bold'>{summary.malattiaDays}</span></div>
+                                                <div className="flex flex-col p-2 border rounded-md text-destructive"><span className="text-xs">Assenze (g)</span><span className='font-bold'>{summary.absenceDays}</span></div>
                                             </CardContent>
                                         )}
                                     </Card>

@@ -96,6 +96,7 @@ export type MonthlySummary = {
     ordinaryHours: number;
     overtimeHours: number;
     holidayHoursPayable: number; 
+    absenceDays: number;
 
     ferieDays: number;
     ferieHours: number; // Added to show total hours for ferie
@@ -411,6 +412,8 @@ export const processMonthlyData = (
         // --- Determine Daily Status with Priority ---
         if (leaveRequest) {
              details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
+        } else if (isHoliday && workedEventsRaw.length === 0) {
+             details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (workedEventsRaw.length > 0) {
             // Day was worked, calculate details
             const dayShifts: SingleShiftBlock[] = [];
@@ -469,8 +472,6 @@ export const processMonthlyData = (
                 },
                 note: dailyNote?.note,
             });
-        } else if (isHoliday) {
-            details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (isWorkDay) {
              details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
         } else {
@@ -484,16 +485,8 @@ export const processMonthlyData = (
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    // Correctly count worked days: only days with actual work and non-zero ordinary hours, or pure overtime days.
-    const workedDays = details.filter(d => {
-        if (d.status === 'lavorato' && d.shift) {
-            // A day is "worked" if it's not a day of only overtime
-            // and has some ordinary hours, or if it has any worked events.
-            const isPureOvertime = !d.shift.contractualHours || d.shift.contractualHours === 0;
-            return !isPureOvertime;
-        }
-        return false;
-    }).length;
+    const workedDays = details.filter(d => d.status === 'lavorato').length;
+    const absenceDays = details.filter(d => d.status === 'mancata_timbratura').length;
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
@@ -517,7 +510,8 @@ export const processMonthlyData = (
     const holidayHoursPayable = ferieHours; 
 
     const monthlySummary: MonthlySummary = {
-        workedDays, // Use the new, corrected count
+        workedDays,
+        absenceDays,
         ordinaryHours: totalOrdinaryHours, 
         overtimeHours: totalOvertimeHours,
         holidayHoursPayable, 

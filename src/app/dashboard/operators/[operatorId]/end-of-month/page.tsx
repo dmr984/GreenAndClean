@@ -378,6 +378,7 @@ export default function EndOfMonthPage() {
     const finalFerieHours = manualTotals.ferieDays !== undefined ? manualTotals.ferieDays * (operator.workSchedule['monday']?.totalHours || 8) : (monthlySummary.ferieHours ?? 0);
     const finalPermessoHours = manualTotals.permessoHours ?? monthlySummary.permessoHours ?? 0;
     const finalMalattiaDays = manualTotals.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
+    const finalAbsenceDays = monthlySummary.absenceDays ?? 0;
 
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
@@ -574,6 +575,12 @@ export default function EndOfMonthPage() {
                             value={finalMalattiaDays}
                             icon={Stethoscope}
                             onEdit={() => handleEditTotal('malattiaDays')}
+                        />
+                        <SummaryCard
+                            title="Assenze (giorni)"
+                            value={finalAbsenceDays}
+                            icon={AlertTriangle}
+                            className="text-destructive border-destructive/50"
                         />
                     </div>
                 </div>

@@ -200,6 +200,7 @@ const PrintPageContent = () => {
                     [`GIORNI LAVORATI: ${summary.workedDays}`, `FERIE: ${summary.ferieDays}`],
                     [`ORE ORDINARIE: ${summary.ordinaryHours}`, `GIORNI DI MALATTIA: ${summary.malattiaDays}`],
                     [`ORE STRAORDINARIE: ${summary.overtimeHours}`, `ORE PERMESSI: ${summary.permessoHours}`],
+                     [`ASSENZE: ${summary.absenceDays}`, ` `],
                 ];
 
                 (doc as any).autoTable({
@@ -336,7 +337,7 @@ const PrintPageContent = () => {
                                                 <td className="pb-1 text-right">GIORNI DI MALATTIA: {summary.malattiaDays}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1">ASSENZE: 0</td>
+                                                <td className="pb-1 text-destructive font-semibold">ASSENZE: {summary.absenceDays}</td>
                                                 <td className="pb-1 text-right font-bold text-lg">TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                         </tbody>
