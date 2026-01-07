@@ -4,8 +4,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil, PlusCircle, Wallet } from 'lucide-react';
+import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil, PlusCircle, Wallet, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -139,6 +139,7 @@ export default function EndOfMonthPage() {
 
     const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
     const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
+    const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
 
 
     useEffect(() => {
@@ -348,6 +349,23 @@ export default function EndOfMonthPage() {
             toast({ title: 'Errore', description: 'Impossibile aggiungere la richiesta.', variant: 'destructive'});
         } finally {
             setAddRequestContext(null);
+        }
+    };
+    
+    const handleDeleteRequest = async () => {
+        if (!firestore || !operatorId || !requestToDelete) return;
+
+        const requestRef = doc(firestore, `app-users/${operatorId}/requests`, requestToDelete.id);
+        
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Richiesta eliminata', description: 'La richiesta è stata rimossa con successo.' });
+            fetchDataForMonth(); // Refresh data to reflect the change
+        } catch (error) {
+            console.error('Error deleting request:', error);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        } finally {
+            setRequestToDelete(null);
         }
     };
 
@@ -583,6 +601,11 @@ export default function EndOfMonthPage() {
                                                     <PlusCircle className="h-4 w-4 text-primary" />
                                                 </Button>
                                             )}
+                                            {detail.request && (
+                                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setRequestToDelete(detail.request)}>
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                            )}
                                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
                                                 <Pencil className="h-4 w-4" />
                                             </Button>
@@ -778,6 +801,21 @@ export default function EndOfMonthPage() {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <AlertDialog open={!!requestToDelete} onOpenChange={(open) => !open && setRequestToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione eliminerà la richiesta in modo permanente. L'azione non può essere annullata.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteRequest}>Elimina</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         
         </>
     );
