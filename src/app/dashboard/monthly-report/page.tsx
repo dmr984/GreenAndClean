@@ -71,7 +71,7 @@ const MonthlyReportPage = () => {
 
                 const [timbratureSnap, requestsSnap] = await Promise.all([
                     getDocs(timbratureQuery),
-                    getDocs(requestsSnap),
+                    getDocs(requestsQuery),
                 ]);
 
                 const timbratureData = timbratureSnap.docs.map(d => ({...d.data(), id: d.id} as any));
