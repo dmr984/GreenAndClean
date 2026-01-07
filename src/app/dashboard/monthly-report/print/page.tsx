@@ -7,7 +7,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'fireba
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfMonth, endOfDay, isValid } from 'date-fns';
+import { format, startOfMonth, endOfDay, isValid, endOfMonth as dfnsEndOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
@@ -71,7 +71,7 @@ const PrintPageContent = () => {
             setIsLoading(true);
 
             const monthStart = startOfMonth(date);
-            const monthEnd = endOfDay(date);
+            const monthEnd = dfnsEndOfMonth(date);
 
             try {
                 const promises = operators.map(async (op) => {
@@ -80,13 +80,13 @@ const PrintPageContent = () => {
                         where('timestamp', '>=', monthStart),
                         where('timestamp', '<=', monthEnd)
                     );
-                    const requestsQuery = query(
+                     const requestsQuery = query(
                         collection(firestore, `app-users/${op.id}/requests`),
                         where('status', '==', 'approvato')
                     );
                     const [timbratureSnap, requestsSnap] = await Promise.all([
                         getDocs(timbratureQuery),
-                        getDocs(requestsSnap),
+                        getDocs(requestsQuery),
                     ]);
                     const timbratureData = timbratureSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
                     const requestsData = requestsSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));

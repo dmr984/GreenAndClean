@@ -6,7 +6,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'f
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -55,7 +55,7 @@ const MonthlyReportPage = () => {
         setIsLoading(true);
 
         const monthStart = startOfMonth(date);
-        const monthEnd = endOfDay(date);
+        const monthEnd = dfnsEndOfMonth(date);
 
         try {
             const promises = operators.map(async (op) => {
@@ -64,6 +64,8 @@ const MonthlyReportPage = () => {
                     where('timestamp', '>=', monthStart),
                     where('timestamp', '<=', monthEnd)
                 );
+                // Fetch all approved requests, not just those starting in the current month,
+                // as some might span across months (e.g., ferie).
                 const requestsQuery = query(
                     collection(firestore, `app-users/${op.id}/requests`),
                     where('status', '==', 'approvato')
