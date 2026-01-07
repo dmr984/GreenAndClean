@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil, PlusCircle } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil, PlusCircle, Wallet } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 
 
 // Type definitions are now in calculations.ts
@@ -136,6 +137,7 @@ export default function EndOfMonthPage() {
     const [totalContent, setTotalContent] = useState('');
 
     const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
+    const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
 
 
     useEffect(() => {
@@ -354,20 +356,22 @@ export default function EndOfMonthPage() {
     }
     
     const finalFerieDays = manualTotals.ferieDays ?? monthlySummary.ferieDays ?? 0;
+    const finalFerieHours = manualTotals.ferieDays !== undefined ? manualTotals.ferieDays * (operator.workSchedule['monday']?.totalHours || 8) : (monthlySummary.ferieHours ?? 0);
     const finalPermessoHours = manualTotals.permessoHours ?? monthlySummary.permessoHours ?? 0;
     const finalMalattiaDays = manualTotals.malattiaDays ?? monthlySummary.malattiaDays ?? 0;
 
+    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+    const holidayCost = (monthlySummary.holidayHoursPayable || 0) * (operator.hourlyRate || 0);
+    
     let totalDue: number;
-    let ordinaryCost: number;
-
     if (operator.salaryType === 'fixed') {
-        ordinaryCost = operator.fixedSalary || 0;
-        totalDue = ordinaryCost + overtimeCost;
+        totalDue = (operator.fixedSalary || 0) + overtimeCost;
     } else {
-        const payableOrdinaryHours = (monthlySummary.ordinaryHours || 0) + (monthlySummary.holidayHoursPayable || 0);
-        ordinaryCost = payableOrdinaryHours * (operator.hourlyRate || 0);
         totalDue = ordinaryCost + overtimeCost;
+        if (includeHolidayPay) {
+            totalDue += holidayCost;
+        }
     }
 
     
@@ -473,69 +477,87 @@ export default function EndOfMonthPage() {
                      <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
                 ) : (
                 <>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                     <SummaryCard 
-                        title="Totale Dovuto" 
-                        value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                        icon={Euro}
-                        className="bg-accent/20 border-accent"
-                    />
-                    <SummaryCard 
-                        title="Giorni Lavorati" 
-                        value={monthlySummary.workedDays ?? '...'}
-                        icon={Briefcase} 
-                    />
-                    <SummaryCard 
-                        title="Ore Ordinarie" 
-                        value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
-                        icon={Clock}
-                    />
-
-                    {operator.salaryType === 'fixed' ? (
-                         <SummaryCard 
-                            title="Fisso Mensile" 
-                            value={`${(operator.fixedSalary || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                            icon={Euro}
-                        />
-                    ) : (
+                 <div className="space-y-4">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <SummaryCard 
-                            title="Costo Ore Ordinarie" 
-                            value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            title="Totale Dovuto" 
+                            value={`${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext={`${(monthlySummary.ordinaryHours || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
+                            className="bg-accent/20 border-accent"
                         />
-                    )}
-                    
-                    <SummaryCard 
-                        title="Ore Straordinarie" 
-                        value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} 
-                        icon={Plus}
-                    />
-                    <SummaryCard 
-                        title="Costo Ore Straordinarie" 
-                        value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                        icon={Euro}
-                        subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
-                    />
-                    
-                    <SummaryCard 
-                        title="Ferie (giorni)" 
-                        value={finalFerieDays}
-                        icon={Plane}
-                        onEdit={() => handleEditTotal('ferieDays')}
-                    />
-                    <SummaryCard 
-                        title="Permessi (ore)" 
-                        value={finalPermessoHours} 
-                        icon={UserCheck}
-                        onEdit={() => handleEditTotal('permessoHours')}
-                    />
-                     <SummaryCard 
-                        title="Malattia (giorni)" 
-                        value={finalMalattiaDays}
-                        icon={Stethoscope}
-                        onEdit={() => handleEditTotal('malattiaDays')}
-                    />
+                        <div className="flex items-center space-x-2 rounded-lg border p-4">
+                            <Switch id="include-holiday-pay" checked={includeHolidayPay} onCheckedChange={setIncludeHolidayPay} />
+                            <div className="space-y-0.5">
+                                <Label htmlFor="include-holiday-pay">Includi Pagamento Ferie</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Attiva per aggiungere il costo delle ferie al totale dovuto.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <SummaryCard 
+                            title="Giorni Lavorati" 
+                            value={monthlySummary.workedDays ?? '...'}
+                            icon={Briefcase} 
+                        />
+                        <SummaryCard 
+                            title="Ore Ordinarie" 
+                            value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} 
+                            icon={Clock}
+                        />
+                        {operator.salaryType === 'fixed' ? (
+                            <SummaryCard 
+                                title="Fisso Mensile" 
+                                value={`${(operator.fixedSalary || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                icon={Wallet}
+                            />
+                        ) : (
+                            <SummaryCard 
+                                title="Costo Ore Ordinarie" 
+                                value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                icon={Euro}
+                                subtext={`${(monthlySummary.ordinaryHours || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
+                            />
+                        )}
+                        <SummaryCard 
+                            title="Ore Straordinarie" 
+                            value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} 
+                            icon={Plus}
+                        />
+                        <SummaryCard 
+                            title="Costo Ore Straordinarie" 
+                            value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext={`${(monthlySummary.overtimeHours || 0)}h x ${formatFullRate(operator.overtimeRate)} €/h`}
+                        />
+                         {operator.salaryType !== 'fixed' && (
+                           <SummaryCard 
+                                title="Costo Ore Ferie" 
+                                value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                icon={Euro}
+                                subtext={`${(monthlySummary.holidayHoursPayable || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
+                            />
+                         )}
+                        <SummaryCard 
+                            title="Ferie (giorni)" 
+                            value={`${finalFerieDays} (${finalFerieHours}h)`}
+                            icon={Plane}
+                            onEdit={() => handleEditTotal('ferieDays')}
+                        />
+                        <SummaryCard 
+                            title="Permessi (ore)" 
+                            value={finalPermessoHours} 
+                            icon={UserCheck}
+                            onEdit={() => handleEditTotal('permessoHours')}
+                        />
+                         <SummaryCard 
+                            title="Malattia (giorni)" 
+                            value={finalMalattiaDays}
+                            icon={Stethoscope}
+                            onEdit={() => handleEditTotal('malattiaDays')}
+                        />
+                    </div>
                 </div>
 
                 <Separator />

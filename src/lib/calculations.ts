@@ -95,9 +95,10 @@ export type MonthlySummary = {
     workedDays: number;
     ordinaryHours: number;
     overtimeHours: number;
-    holidayHoursPayable: number; // New field for salary calculation
+    holidayHoursPayable: number; 
 
     ferieDays: number;
+    ferieHours: number; // Added to show total hours for ferie
     permessoHours: number;
     malattiaDays: number;
 };
@@ -372,7 +373,7 @@ export const processMonthlyData = (
     
     // Process each day of the month to create daily details
     for (const day of allDaysOfMonth) {
-        if (day > today) continue;
+        if (day > today && !isSameDay(day, today)) continue;
 
         const dayName = dayIndexToName[getDay(day)];
         let dailySchedule = operator.workSchedule[dayName];
@@ -490,32 +491,31 @@ export const processMonthlyData = (
     const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
     const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
-    const workedDays = details.filter(d => d.status === 'lavorato' && d.shift && d.shift.ordinaryHours > 0).length;
+    const workedDays = details.filter(d => d.status === 'lavorato' && d.shift && (d.shift.ordinaryHours > 0 || d.shift.overtimeHours > 0)).length;
     
     const totalPermesso = monthlyData.requests
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
             
     let ferieDays = 0;
+    let ferieHours = 0;
     let malattiaDays = 0;
-    let holidayHoursPayable = 0; // New accumulator for payable holiday hours
+    let holidayHoursPayable = 0; 
 
     const processedLeaveDays = new Set<string>();
     monthlyData.requests.forEach(req => {
         if (req.type === 'ferie' || req.type === 'malattia') {
             for (let day = new Date(req.startDate.toDate()); day <= req.endDate.toDate(); day.setDate(day.getDate() + 1)) {
-                 if (day > today) continue;
+                 if (day > today && !isSameDay(day, today)) continue;
                 const dayString = day.toDateString();
                 if (isWithinInterval(day, monthInterval) && !processedLeaveDays.has(dayString)) {
-                    // Check if it's a contractual day for the purpose of hour addition
+                    
                     const dayName = dayIndexToName[getDay(day)];
                     const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
 
                     if (req.type === 'ferie') {
                         ferieDays++;
-                         if(contractualHours > 0) {
-                            holidayHoursPayable += contractualHours;
-                        }
+                        ferieHours += contractualHours;
                     }
                     if (req.type === 'malattia') {
                         malattiaDays++;
@@ -528,10 +528,11 @@ export const processMonthlyData = (
 
     const monthlySummary: MonthlySummary = {
         workedDays: workedDays,
-        ordinaryHours: totalOrdinaryHours, // This now ONLY includes hours from actual work shifts
+        ordinaryHours: totalOrdinaryHours, 
         overtimeHours: totalOvertimeHours,
-        holidayHoursPayable: holidayHoursPayable, // Store holiday hours separately for salary calculation
+        holidayHoursPayable: ferieHours, 
         ferieDays,
+        ferieHours,
         permessoHours: totalPermesso,
         malattiaDays,
     };
