@@ -387,7 +387,7 @@ const PrintPageContent = () => {
                                     <table className="w-full text-base mb-2">
                                         <tbody>
                                             {opVisibility.workedDays && <tr><td className="pb-1">GIORNI LAVORATI: {summary.workedDays}</td><td className="pb-1 text-right"></td></tr>}
-                                            {opVisibility.ordinaryHours && <tr><td className="pb-1">ORE ORDINARIE: {summary.ordinaryHours}</td><td className="pb-1 text-right">{opVisibility.ordinaryCost && `TOTALE ORDINARIE: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
+                                            {opVisibility.ordinaryHours && <tr><td className="pb-1">ORE ORDINARIE: {summary.ordinaryHours}</td><td className="pb-1 text-right">{opVisibility.ordinaryCost && `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
                                             {opVisibility.overtimeHours && <tr><td className="pb-1">ORE STRAORDINARIE: {summary.overtimeHours}</td><td className="pb-1 text-right">{opVisibility.overtimeCost && `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
                                             {opVisibility.ferieDays && <tr><td className="pb-1">FERIE: {finalFerieDays}</td><td className="pb-1 text-right">{op.salaryType !== 'fixed' && holidayCost > 0 && opVisibility.holidayCost && `COSTO FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
                                             {opVisibility.permessoHours && <tr><td className="pb-1">ORE PERMESSI: {finalPermessoHours}</td><td></td></tr>}
@@ -396,7 +396,7 @@ const PrintPageContent = () => {
                                             
                                             <tr>
                                                 <td className="pt-2" colSpan={2}>
-                                                    <div className="border-t-2 border-black pt-1 font-bold text-lg text-right">TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</div>
+                                                    <div className="font-bold text-lg text-right">TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</div>
                                                 </td>
                                             </tr>
                                         </tbody>
