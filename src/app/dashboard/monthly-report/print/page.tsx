@@ -276,8 +276,8 @@ const PrintPageContent = () => {
                         opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
                     ],
                     [
-                        opVisibility.ferieDays ? `FERIE RETRIBUITE: ${finalFerieDays}` : '',
-                        opVisibility.holidayCost ? (holidayCost > 0 ? `TOTALE FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '') : '',
+                        opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '',
+                        opVisibility.holidayCost ? (holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '') : '',
                     ],
                     [
                         opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
@@ -433,8 +433,8 @@ const PrintPageContent = () => {
                                                 <td className="pb-1 text-right">{opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1">{opVisibility.ferieDays ? `FERIE RETRIBUITE: ${finalFerieDays}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `TOTALE FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                                <td className="pb-1">{opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
