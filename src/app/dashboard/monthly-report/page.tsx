@@ -191,15 +191,14 @@ const MonthlyReportPage = () => {
     const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined, override?: ManualTotals) => {
         if (!summary) return 0;
         
-        const finalOvertime = summary.overtimeHours || 0;
-        const overtimeCost = finalOvertime * (op.overtimeRate || 0);
+        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
         if (op.salaryType === 'fixed') {
             return (op.fixedSalary || 0) + overtimeCost;
         } else {
-            const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
-            const ordinaryCost = payableOrdinaryHours * (op.hourlyRate || 0);
-            return ordinaryCost + overtimeCost;
+            const ordinaryCost = (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
+            const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+            return ordinaryCost + holidayCost + overtimeCost;
         }
     }
     

@@ -164,13 +164,13 @@ const PrintPageContent = () => {
     const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined, override?: ManualTotals) => {
         if (!summary) return 0;
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-
+        
         if (op.salaryType === 'fixed') {
             return (op.fixedSalary || 0) + overtimeCost;
         } else {
-            const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
-            const ordinaryCost = payableOrdinaryHours * (op.hourlyRate || 0);
-            return ordinaryCost + overtimeCost;
+            const ordinaryCost = (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
+            const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+            return ordinaryCost + holidayCost + overtimeCost;
         }
     }, []);
     
@@ -356,12 +356,11 @@ const PrintPageContent = () => {
                             const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
                             const showAbsences = absenceVisibility[op.id] ?? true;
 
-                            const payableOrdinaryHours = (summary.ordinaryHours || 0) + (summary.holidayHoursPayable || 0);
-
                             const ordinaryCost = op.salaryType === 'fixed' 
                                 ? (op.fixedSalary || 0) 
-                                : payableOrdinaryHours * (op.hourlyRate || 0);
+                                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
 
+                            const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
@@ -377,7 +376,7 @@ const PrintPageContent = () => {
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">ORE ORDINARIE: {summary.ordinaryHours}</td>
-                                                <td className="pb-1 text-right">TOTALE ORDINARIE: {ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                                <td className="pb-1 text-right font-bold">TOTALE ORDINARIE: {ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">ORE STRAORDINARIE: {summary.overtimeHours}</td>
@@ -388,7 +387,7 @@ const PrintPageContent = () => {
                                                 <td className="pb-1 text-right">GIORNI DI MALATTIA: {finalMalattiaDays}</td>
                                             </tr>
                                             <tr>
-                                                {showAbsences && <td className="pb-1">ASSENZE: {summary.absenceDays}</td>}
+                                                {showAbsences && <td className="pb-1">ASSENZE: <span className="font-normal">{summary.absenceDays}</span></td>}
                                                 <td className="pb-1 text-right font-bold text-lg" colSpan={showAbsences ? 1 : 2}>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                         </tbody>
