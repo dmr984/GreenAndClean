@@ -265,7 +265,7 @@ const PrintPageContent = () => {
                 const body = [
                     [
                         opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : '',
-                        opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}`: '',
+                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
                     ],
                     [
                         opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : '',
@@ -281,7 +281,7 @@ const PrintPageContent = () => {
                     ],
                     [
                         opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
-                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
+                        opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}`: '',
                     ],
                 ];
 
@@ -295,7 +295,7 @@ const PrintPageContent = () => {
                         1: { halign: 'right' }
                     }
                 });
-                y = (doc as any).lastAutoTable.finalY + 5;
+                y = (doc as any).lastAutoTable.finalY;
 
 
                 doc.setFontSize(12);
@@ -422,7 +422,7 @@ const PrintPageContent = () => {
                                         <tbody>
                                             <tr>
                                                 <td className="pb-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">{opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : ''}</td>
@@ -438,7 +438,7 @@ const PrintPageContent = () => {
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
                                             </tr>
                                         </tbody>
                                     </table>
