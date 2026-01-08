@@ -235,7 +235,7 @@ const PrintPageContent = () => {
 
                 const totalDue = calculateTotalDue(op, summary, opVisibility);
 
-                const blockHeight = 65; // Estimated height
+                const blockHeight = 60; // Estimated height, reduced
                 if (y > pageHeight - blockHeight) {
                     doc.addPage();
                     y = 20;
@@ -252,7 +252,7 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, margin, y);
-                y += 4;
+                y += 0; // Reduced space
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -300,19 +300,19 @@ const PrintPageContent = () => {
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
                 (doc as any).autoTable({
-                    startY: y,
+                    startY: y + 2, // Reduced space
                     theme: 'plain',
                     body: [[ `TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` ]],
                      styles: { fontSize: 12, cellPadding: 1, textColor: [0,0,0], fontStyle: 'bold' },
                       columnStyles: { 0: { halign: 'right' } }
                 });
 
-                y = (doc as any).lastAutoTable.finalY + 5;
+                y = (doc as any).lastAutoTable.finalY + 2; // Reduced space
                 
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 8;
+                y += 4; // Reduced space
             });
 
 
@@ -413,11 +413,11 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-1" style={{ minHeight: '90mm' }}>
+                                <div key={op.id} className="text-sm text-black print:break-inside-avoid" style={{ minHeight: '90mm' }}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                    <p className='text-sm text-gray-600 mb-1'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
+                                    <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base">
+                                    <table className="w-full text-base mt-1">
                                         <tbody>
                                             <tr>
                                                 <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
