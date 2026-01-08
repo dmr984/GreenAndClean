@@ -76,7 +76,6 @@ const MonthlyReportPage = () => {
                     }));
                 } else {
                     console.error(`Error fetching override for operator ${op.id}:`, error);
-                    // Optionally show a toast for other errors
                 }
             }
         }
@@ -188,7 +187,7 @@ const MonthlyReportPage = () => {
         window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
-    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined, override?: ManualTotals) => {
+    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined) => {
         if (!summary) return 0;
         
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
@@ -337,12 +336,14 @@ const MonthlyReportPage = () => {
                             {operators.map(op => {
                                 const summary = summaries.get(op.id);
                                 const override = manualOverrides[op.id];
-                                const totalDue = calculateTotalDue(op, summary, override);
+                                const totalDue = calculateTotalDue(op, summary);
                                 
                                 const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
                                 const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
                                 const finalMalattiaDays = override?.malattiaDays ?? summary?.malattiaDays ?? 0;
                                 const showAbsences = absenceVisibility[op.id] ?? true;
+
+                                const holidayCost = (summary?.holidayHoursPayable || 0) * (op.hourlyRate || 0);
 
                                 return (
                                     <Card key={op.id}>
@@ -364,7 +365,7 @@ const MonthlyReportPage = () => {
                                         </CardHeader>
                                         {summary && (
                                             <>
-                                            <CardContent className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
+                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Giorni Lavorati</span><span className='font-bold'>{summary.workedDays}</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ore Ordinarie</span><span className='font-bold'>{summary.ordinaryHours}h</span></div>
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Straordinari</span><span className='font-bold'>{summary.overtimeHours}h</span></div>
@@ -383,6 +384,10 @@ const MonthlyReportPage = () => {
                                                     <span className="text-xs text-muted-foreground flex justify-between items-center">Malattia (g) <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditTotal(op.id, 'malattiaDays')}><Pencil className="h-3 w-3"/></Button></span>
                                                     <span className={cn('font-bold', override?.malattiaDays !== undefined && 'text-primary')}>{finalMalattiaDays}</span>
                                                 </div>
+
+                                                {op.salaryType !== 'fixed' && holidayCost > 0 && (
+                                                    <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Costo Ore Ferie</span><span className='font-bold'>{holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span></div>
+                                                )}
 
                                                 {showAbsences && (
                                                     <div className="flex flex-col p-2 border rounded-md"><span className="text-xs">Assenze (g)</span><span className='font-bold'>{summary.absenceDays}</span></div>

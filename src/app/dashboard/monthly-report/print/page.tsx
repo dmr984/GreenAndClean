@@ -161,7 +161,7 @@ const PrintPageContent = () => {
         }
     }, [currentMonth, filteredOperators, firestore, toast]);
 
-    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined, override?: ManualTotals) => {
+    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined) => {
         if (!summary) return 0;
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
         
@@ -215,7 +215,7 @@ const PrintPageContent = () => {
                 const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
                 const showAbsences = absenceVisibility[op.id] ?? true;
 
-                const totalDue = calculateTotalDue(op, summary, override);
+                const totalDue = calculateTotalDue(op, summary);
 
                 const blockHeight = showAbsences ? 65 : 60; // Estimated height
                 if (y > pageHeight - blockHeight) {
@@ -349,7 +349,7 @@ const PrintPageContent = () => {
                             if (!summary) return null;
 
                             const override = manualOverrides[op.id] || {};
-                            const totalDue = calculateTotalDue(op, summary, override);
+                            const totalDue = calculateTotalDue(op, summary);
                             
                             const finalFerieDays = override.ferieDays ?? summary.ferieDays;
                             const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
@@ -386,6 +386,12 @@ const PrintPageContent = () => {
                                                 <td className="pb-1">ORE PERMESSI: {finalPermessoHours}</td>
                                                 <td className="pb-1 text-right">GIORNI DI MALATTIA: {finalMalattiaDays}</td>
                                             </tr>
+                                            {op.salaryType !== 'fixed' && holidayCost > 0 && (
+                                                <tr>
+                                                    <td className="pb-1"></td>
+                                                    <td className="pb-1 text-right">COSTO FERIE: {holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                                </tr>
+                                            )}
                                             <tr>
                                                 {showAbsences && <td className="pb-1">ASSENZE: <span className="font-normal">{summary.absenceDays}</span></td>}
                                                 <td className="pb-1 text-right font-bold text-lg" colSpan={showAbsences ? 1 : 2}>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
