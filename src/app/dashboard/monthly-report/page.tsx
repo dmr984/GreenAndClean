@@ -112,13 +112,13 @@ const MonthlyReportPage = () => {
                     workedDays: true,
                     ordinaryHours: true,
                     overtimeHours: true,
-                    ferieDays: false,
+                    ferieDays: true,
                     permessoHours: true,
                     malattiaDays: true,
                     absenceDays: false,
                     ordinaryCost: true,
                     overtimeCost: true,
-                    holidayCost: true
+                    holidayCost: false
                 };
             });
             setSelectedOperatorIds(new Set(ops.map(op => op.id)));
@@ -356,7 +356,7 @@ const MonthlyReportPage = () => {
                         className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
                     />
                 </span>
-                {isVisible && (
+                {!isVisible ? null : (
                   <>
                     <span className={cn('font-bold', manualOverrides[opId]?.[visibilityKey as keyof ManualTotals] !== undefined && 'text-primary')}>
                         {value}
@@ -450,14 +450,9 @@ const MonthlyReportPage = () => {
                                                 <InfoCard opId={op.id} title="Giorni Lavorati" value={summary.workedDays} icon={Briefcase} visibilityKey="workedDays" />
                                                 <InfoCard opId={op.id} title="Ore Ordinarie" value={summary.ordinaryHours} icon={Clock} visibilityKey="ordinaryHours" />
                                                 <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
-                                                
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Costo Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
                                                 <InfoCard opId={op.id} title="Costo Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
-                                                
-                                                {op.salaryType !== 'fixed' && holidayCost > 0 && (
-                                                    <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" />
-                                                )}
-
+                                                <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" />
                                                 <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
                                                 <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
