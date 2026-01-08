@@ -252,7 +252,7 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, margin, y);
-                y += 8;
+                y += 4;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -265,7 +265,7 @@ const PrintPageContent = () => {
                 const body = [
                     [
                         opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : '',
-                        opVisibility.absenceDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
+                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
                     ],
                     [
                         opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : '',
@@ -281,7 +281,7 @@ const PrintPageContent = () => {
                     ],
                     [
                         opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
-                        opVisibility.malattiaDays ? `ASSENZE: ${summary.absenceDays}`: '',
+                        opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}`: '',
                     ],
                 ];
 
@@ -307,12 +307,12 @@ const PrintPageContent = () => {
                       columnStyles: { 0: { halign: 'right' } }
                 });
 
-                y = (doc as any).lastAutoTable.finalY + 10;
+                y = (doc as any).lastAutoTable.finalY + 5;
                 
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 10;
+                y += 8;
             });
 
 
@@ -413,7 +413,7 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid" style={{ minHeight: '90mm' }}>
+                                <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-1" style={{ minHeight: '90mm' }}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600 mb-1'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
@@ -421,7 +421,7 @@ const PrintPageContent = () => {
                                         <tbody>
                                             <tr>
                                                 <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.absenceDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
                                             </tr>
                                             <tr>
                                                 <td className="py-1">{opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : ''}</td>
@@ -437,7 +437,7 @@ const PrintPageContent = () => {
                                             </tr>
                                             <tr>
                                                 <td className="py-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.malattiaDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -446,7 +446,7 @@ const PrintPageContent = () => {
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div>
+                                    <div className='pt-1'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
                                     
@@ -483,3 +483,4 @@ export default function PrintPage() {
         </div>
     );
 }
+
