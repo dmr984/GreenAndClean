@@ -112,10 +112,10 @@ const MonthlyReportPage = () => {
                     workedDays: true,
                     ordinaryHours: true,
                     overtimeHours: true,
-                    ferieDays: true,
+                    ferieDays: false,
                     permessoHours: true,
                     malattiaDays: true,
-                    absenceDays: true,
+                    absenceDays: false,
                     ordinaryCost: true,
                     overtimeCost: true,
                     holidayCost: true
