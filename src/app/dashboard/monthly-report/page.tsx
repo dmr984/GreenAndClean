@@ -256,21 +256,6 @@ const MonthlyReportPage = () => {
             return newSet;
         });
     };
-
-    const handleEditTotal = (operatorId: string, type: keyof ManualTotals) => {
-        const summary = summaries.get(operatorId);
-        const override = manualOverrides[operatorId];
-        let currentValue = 0;
-
-        switch(type) {
-            case 'ferieDays': currentValue = override?.ferieDays ?? summary?.ferieDays ?? 0; break;
-            case 'permessoHours': currentValue = override?.permessoHours ?? summary?.permessoHours ?? 0; break;
-            case 'malattiaDays': currentValue = override?.malattiaDays ?? summary?.malattiaDays ?? 0; break;
-        }
-        
-        setEditingTotal({ operatorId, type, currentValue });
-        setTotalContent(String(currentValue));
-    };
     
     const handleSaveTotal = async () => {
         if (!editingTotal || !firestore) return;
@@ -347,7 +332,6 @@ const MonthlyReportPage = () => {
         subtext,
         icon: Icon,
         visibilityKey,
-        isCost,
     }: {
         opId: string;
         title: string;
@@ -355,27 +339,31 @@ const MonthlyReportPage = () => {
         subtext?: string;
         icon: React.ElementType;
         visibilityKey: keyof VisibilitySettings;
-        isCost?: boolean;
     }) => {
         const opVisibility = visibility[opId];
-        if (!opVisibility || !opVisibility[visibilityKey]) {
-            return null;
-        }
+        const isVisible = opVisibility ? opVisibility[visibilityKey] : true;
 
         return (
-            <div className="flex flex-col p-2 border rounded-md">
+            <div className={cn(
+                "flex flex-col p-2 border rounded-md transition-opacity",
+                !isVisible && "opacity-50 bg-muted/50"
+            )}>
                 <span className="text-xs text-muted-foreground flex justify-between items-center">
                     {title}
                     <Switch
-                        checked={opVisibility[visibilityKey]}
+                        checked={isVisible}
                         onCheckedChange={() => handleVisibilityChange(opId, visibilityKey)}
                         className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
                     />
                 </span>
-                <span className={cn('font-bold', manualOverrides[opId]?.[visibilityKey as keyof ManualTotals] !== undefined && 'text-primary')}>
-                    {value}
-                </span>
-                {subtext && <span className="text-xs text-muted-foreground">{subtext}</span>}
+                {isVisible && (
+                  <>
+                    <span className={cn('font-bold', manualOverrides[opId]?.[visibilityKey as keyof ManualTotals] !== undefined && 'text-primary')}>
+                        {value}
+                    </span>
+                    {subtext && <span className="text-xs text-muted-foreground">{subtext}</span>}
+                  </>
+                )}
             </div>
         );
     };
@@ -463,11 +451,11 @@ const MonthlyReportPage = () => {
                                                 <InfoCard opId={op.id} title="Ore Ordinarie" value={summary.ordinaryHours} icon={Clock} visibilityKey="ordinaryHours" />
                                                 <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                 
-                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Costo Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" isCost />
-                                                <InfoCard opId={op.id} title="Costo Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" isCost />
+                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Costo Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
+                                                <InfoCard opId={op.id} title="Costo Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
                                                 
                                                 {op.salaryType !== 'fixed' && holidayCost > 0 && (
-                                                    <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" isCost />
+                                                    <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" />
                                                 )}
 
                                                 <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
