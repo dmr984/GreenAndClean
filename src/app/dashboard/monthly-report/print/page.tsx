@@ -79,7 +79,7 @@ const PrintPageContent = () => {
                 const settingKey = parts.slice(0, -1).join('_') as keyof VisibilitySettings;
 
                 if (!visibilitySettings[opId]) visibilitySettings[opId] = {};
-                visibilitySettings[opId][settingKey] = value === 'true';
+                (visibilitySettings[opId] as any)[settingKey] = value === 'true';
             }
         }
         setVisibility(visibilitySettings);
@@ -253,15 +253,37 @@ const PrintPageContent = () => {
                 doc.setTextColor(100);
                 doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, margin, y);
                 y += 8;
+                
+                const ordinaryCost = op.salaryType === 'fixed' 
+                    ? (op.fixedSalary || 0) 
+                    : (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
 
-                const body = [];
-                if (opVisibility.workedDays) body.push([`GIORNI LAVORATI: ${summary.workedDays}`, '']);
-                if (opVisibility.ordinaryHours) body.push([`ORE ORDINARIE: ${summary.ordinaryHours}`, '']);
-                if (opVisibility.overtimeHours) body.push([`ORE STRAORDINARIE: ${summary.overtimeHours}`, '']);
-                if (opVisibility.ferieDays) body.push([`FERIE: ${finalFerieDays}`, '']);
-                if (opVisibility.permessoHours) body.push([`ORE PERMESSI: ${finalPermessoHours}`, '']);
-                if (opVisibility.malattiaDays) body.push([`GIORNI DI MALATTIA: ${finalMalattiaDays}`, '']);
-                if (opVisibility.absenceDays) body.push([`ASSENZE: ${summary.absenceDays}`, '']);
+                const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+                const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+
+
+                const body = [
+                    [
+                        opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : '',
+                        opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}`: '',
+                    ],
+                    [
+                        opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : '',
+                        opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
+                    ],
+                    [
+                        opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : '',
+                        opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
+                    ],
+                    [
+                        opVisibility.ferieDays ? `FERIE RETRIBUITE: ${finalFerieDays}` : '',
+                        opVisibility.holidayCost ? (holidayCost > 0 ? `TOTALE FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '') : '',
+                    ],
+                    [
+                        opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
+                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
+                    ],
+                ];
 
 
                 (doc as any).autoTable({
@@ -269,15 +291,27 @@ const PrintPageContent = () => {
                     theme: 'plain',
                     body: body,
                     styles: { fontSize: 10, cellPadding: 1, textColor: [0,0,0] },
+                     columnStyles: {
+                        1: { halign: 'right' }
+                    }
                 });
                 y = (doc as any).lastAutoTable.finalY + 5;
 
 
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, margin, y);
-                y += 10;
+                (doc as any).autoTable({
+                    startY: y,
+                    theme: 'plain',
+                    body: [[ `TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` ]],
+                     styles: { fontSize: 12, cellPadding: 1, textColor: [0,0,0], fontStyle: 'bold' },
+                      columnStyles: { 0: { halign: 'right' } }
+                });
+
+                y = (doc as any).lastAutoTable.finalY + 15;
                 
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
                 y += 15;
             });
@@ -386,21 +420,32 @@ const PrintPageContent = () => {
                                     
                                     <table className="w-full text-base mb-2">
                                         <tbody>
-                                            {opVisibility.workedDays && <tr><td className="pb-1">GIORNI LAVORATI: {summary.workedDays}</td><td className="pb-1 text-right"></td></tr>}
-                                            {opVisibility.ordinaryHours && <tr><td className="pb-1">ORE ORDINARIE: {summary.ordinaryHours}</td><td className="pb-1 text-right">{opVisibility.ordinaryCost && `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
-                                            {opVisibility.overtimeHours && <tr><td className="pb-1">ORE STRAORDINARIE: {summary.overtimeHours}</td><td className="pb-1 text-right">{opVisibility.overtimeCost && `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
-                                            {opVisibility.ferieDays && <tr><td className="pb-1">FERIE: {finalFerieDays}</td><td className="pb-1 text-right">{op.salaryType !== 'fixed' && holidayCost > 0 && opVisibility.holidayCost && `COSTO FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}</td></tr>}
-                                            {opVisibility.permessoHours && <tr><td className="pb-1">ORE PERMESSI: {finalPermessoHours}</td><td></td></tr>}
-                                            {opVisibility.malattiaDays && <tr><td className="pb-1">GIORNI DI MALATTIA: {finalMalattiaDays}</td><td></td></tr>}
-                                            {opVisibility.absenceDays && <tr><td className="pb-1">ASSENZE: {summary.absenceDays}</td><td></td></tr>}
-                                            
                                             <tr>
-                                                <td className="pt-2" colSpan={2}>
-                                                    <div className="font-bold text-lg text-right">TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</div>
-                                                </td>
+                                                <td className="pb-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="pb-1">{opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="pb-1">{opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="pb-1">{opVisibility.ferieDays ? `FERIE RETRIBUITE: ${finalFerieDays}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `TOTALE FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="pb-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
+                                                <td className="pb-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
                                             </tr>
                                         </tbody>
                                     </table>
+                                    
+                                     <div className="text-right font-bold text-lg mt-4 pt-1 text-black">
+                                        <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                    </div>
 
                                     <div className='mt-8 mb-4'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
