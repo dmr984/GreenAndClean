@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil, Wallet } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
@@ -41,6 +41,12 @@ type ManualTotals = {
     malattiaDays?: number;
 };
 
+type CostInclusion = {
+    ordinary: boolean;
+    overtime: boolean;
+    holiday: boolean;
+};
+
 const MonthlyReportPage = () => {
     const firestore = useFirestore();
     const { toast } = useToast();
@@ -49,6 +55,7 @@ const MonthlyReportPage = () => {
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
     const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(new Set());
+    const [costInclusion, setCostInclusion] = useState<Record<string, CostInclusion>>({});
 
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
@@ -91,9 +98,16 @@ const MonthlyReportPage = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
-            // Initially, select all operators and make absences visible
+            // Initially, select all operators and configure visibilities
+            const initialVisibility: Record<string, boolean> = {};
+            const initialCostInclusion: Record<string, CostInclusion> = {};
+            ops.forEach(op => {
+                initialVisibility[op.id] = true; // Absences visible by default
+                initialCostInclusion[op.id] = { ordinary: true, overtime: true, holiday: true }; // All costs included by default
+            });
             setSelectedOperatorIds(new Set(ops.map(op => op.id)));
-            setAbsenceVisibility(ops.reduce((acc, op) => ({ ...acc, [op.id]: true }), {}));
+            setAbsenceVisibility(initialVisibility);
+            setCostInclusion(initialCostInclusion);
         });
         return () => unsubscribe();
     }, [firestore]);
@@ -179,26 +193,34 @@ const MonthlyReportPage = () => {
             operators: operatorIdsString,
         });
 
-        // Add absence visibility to query params
+        // Add visibility and inclusion params
         for (const operatorId of selectedOperatorIds) {
             queryParams.append(`absences_${operatorId}`, String(absenceVisibility[operatorId] ?? true));
+            const inclusion = costInclusion[operatorId] || { ordinary: true, overtime: true, holiday: true };
+            queryParams.append(`include_ordinary_${operatorId}`, String(inclusion.ordinary));
+            queryParams.append(`include_overtime_${operatorId}`, String(inclusion.overtime));
+            queryParams.append(`include_holiday_${operatorId}`, String(inclusion.holiday));
         }
 
         window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
-    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined) => {
+    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined, inclusion: CostInclusion) => {
         if (!summary) return 0;
         
+        const ordinaryCost = (op.salaryType === 'fixed' 
+            ? (op.fixedSalary || 0) 
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+        
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
 
-        if (op.salaryType === 'fixed') {
-            return (op.fixedSalary || 0) + overtimeCost;
-        } else {
-            const ordinaryCost = (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
-            const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
-            return ordinaryCost + holidayCost + overtimeCost;
-        }
+        let total = 0;
+        if (inclusion.ordinary) total += ordinaryCost;
+        if (inclusion.overtime) total += overtimeCost;
+        if (inclusion.holiday) total += holidayCost;
+        
+        return total;
     }
     
     const handleSelectAll = (checked: boolean) => {
@@ -281,6 +303,18 @@ const MonthlyReportPage = () => {
         setTotalContent('');
     };
 
+    const handleCostInclusionChange = (operatorId: string, costType: keyof CostInclusion) => {
+        setCostInclusion(prev => {
+            const current = prev[operatorId] || { ordinary: true, overtime: true, holiday: true };
+            return {
+                ...prev,
+                [operatorId]: {
+                    ...current,
+                    [costType]: !current[costType]
+                }
+            };
+        });
+    };
 
     const getDialogTitleForType = (type?: keyof ManualTotals) => {
         switch (type) {
@@ -336,13 +370,19 @@ const MonthlyReportPage = () => {
                             {operators.map(op => {
                                 const summary = summaries.get(op.id);
                                 const override = manualOverrides[op.id];
-                                const totalDue = calculateTotalDue(op, summary);
+                                const inclusion = costInclusion[op.id] || { ordinary: true, overtime: true, holiday: true };
+                                const totalDue = calculateTotalDue(op, summary, inclusion);
                                 
                                 const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
                                 const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
                                 const finalMalattiaDays = override?.malattiaDays ?? summary?.malattiaDays ?? 0;
                                 const showAbsences = absenceVisibility[op.id] ?? true;
 
+                                const ordinaryCost = (op.salaryType === 'fixed' 
+                                    ? (op.fixedSalary || 0) 
+                                    : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
+
+                                const overtimeCost = (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
                                 const holidayCost = (summary?.holidayHoursPayable || 0) * (op.hourlyRate || 0);
 
                                 return (
@@ -365,11 +405,41 @@ const MonthlyReportPage = () => {
                                         </CardHeader>
                                         {summary && (
                                             <>
-                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4 pt-2 text-sm">
+                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
                                                 <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Giorni Lavorati</span><span className='font-bold'>{summary.workedDays}</span></div>
-                                                <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Ore Ordinarie</span><span className='font-bold'>{summary.ordinaryHours}h</span></div>
-                                                <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Straordinari</span><span className='font-bold'>{summary.overtimeHours}h</span></div>
                                                 
+                                                <div className="flex flex-col p-2 border rounded-md">
+                                                    <span className="text-xs text-muted-foreground flex justify-between items-center">
+                                                        {op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Costo Ordinarie'}
+                                                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleCostInclusionChange(op.id, 'ordinary')}>
+                                                            <Wallet className={cn("h-3 w-3", inclusion.ordinary ? 'text-green-500' : 'text-muted-foreground')}/>
+                                                        </Button>
+                                                    </span>
+                                                    <span className='font-bold'>{ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>
+                                                </div>
+
+                                                 <div className="flex flex-col p-2 border rounded-md">
+                                                    <span className="text-xs text-muted-foreground flex justify-between items-center">
+                                                        Costo Straordinari
+                                                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleCostInclusionChange(op.id, 'overtime')}>
+                                                            <Wallet className={cn("h-3 w-3", inclusion.overtime ? 'text-green-500' : 'text-muted-foreground')}/>
+                                                        </Button>
+                                                    </span>
+                                                    <span className='font-bold'>{overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>
+                                                </div>
+
+                                                {op.salaryType !== 'fixed' && holidayCost > 0 && (
+                                                    <div className="flex flex-col p-2 border rounded-md">
+                                                        <span className="text-xs text-muted-foreground flex justify-between items-center">
+                                                            Costo Ferie
+                                                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleCostInclusionChange(op.id, 'holiday')}>
+                                                                <Wallet className={cn("h-3 w-3", inclusion.holiday ? 'text-green-500' : 'text-muted-foreground')}/>
+                                                            </Button>
+                                                        </span>
+                                                        <span className='font-bold'>{holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>
+                                                    </div>
+                                                )}
+
                                                 <div className="flex flex-col p-2 border rounded-md">
                                                     <span className="text-xs text-muted-foreground flex justify-between items-center">Ferie (g) <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditTotal(op.id, 'ferieDays')}><Pencil className="h-3 w-3"/></Button></span>
                                                     <span className={cn('font-bold', override?.ferieDays !== undefined && 'text-primary')}>{finalFerieDays}</span>
@@ -384,10 +454,6 @@ const MonthlyReportPage = () => {
                                                     <span className="text-xs text-muted-foreground flex justify-between items-center">Malattia (g) <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleEditTotal(op.id, 'malattiaDays')}><Pencil className="h-3 w-3"/></Button></span>
                                                     <span className={cn('font-bold', override?.malattiaDays !== undefined && 'text-primary')}>{finalMalattiaDays}</span>
                                                 </div>
-
-                                                {op.salaryType !== 'fixed' && holidayCost > 0 && (
-                                                    <div className="flex flex-col p-2 border rounded-md"><span className="text-xs text-muted-foreground">Costo Ore Ferie</span><span className='font-bold'>{holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span></div>
-                                                )}
 
                                                 {showAbsences && (
                                                     <div className="flex flex-col p-2 border rounded-md"><span className="text-xs">Assenze (g)</span><span className='font-bold'>{summary.absenceDays}</span></div>

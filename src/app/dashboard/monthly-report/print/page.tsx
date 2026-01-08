@@ -32,6 +32,12 @@ type ManualTotals = {
     malattiaDays?: number;
 };
 
+type CostInclusion = {
+    ordinary: boolean;
+    overtime: boolean;
+    holiday: boolean;
+};
+
 
 const PrintPageContent = () => {
     const firestore = useFirestore();
@@ -44,6 +50,7 @@ const PrintPageContent = () => {
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [absenceVisibility, setAbsenceVisibility] = useState<Record<string, boolean>>({});
+    const [costInclusion, setCostInclusion] = useState<Record<string, CostInclusion>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -61,16 +68,25 @@ const PrintPageContent = () => {
 
         const overrides: Record<string, ManualTotals> = {};
         const visibility: Record<string, boolean> = {};
+        const inclusion: Record<string, CostInclusion> = {};
 
         for (const [key, value] of searchParams.entries()) {
             if(key.includes('_')) {
-                const [prefix, opId] = key.split('_');
-                 if (prefix === 'absences') {
+                const parts = key.split('_');
+                const opId = parts[parts.length - 1];
+
+                if (parts[0] === 'absences') {
                     visibility[opId] = value === 'true';
+                } else if (parts[0] === 'include') {
+                     if (!inclusion[opId]) inclusion[opId] = { ordinary: true, overtime: true, holiday: true };
+                     if (parts[1] === 'ordinary') inclusion[opId].ordinary = value === 'true';
+                     if (parts[1] === 'overtime') inclusion[opId].overtime = value === 'true';
+                     if (parts[1] === 'holiday') inclusion[opId].holiday = value === 'true';
                 }
             }
         }
         setAbsenceVisibility(visibility);
+        setCostInclusion(inclusion);
 
     }, [searchParams]);
 
@@ -161,17 +177,24 @@ const PrintPageContent = () => {
         }
     }, [currentMonth, filteredOperators, firestore, toast]);
 
-    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined) => {
+    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined, inclusion: CostInclusion | undefined) => {
         if (!summary) return 0;
-        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
         
-        if (op.salaryType === 'fixed') {
-            return (op.fixedSalary || 0) + overtimeCost;
-        } else {
-            const ordinaryCost = (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
-            const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
-            return ordinaryCost + holidayCost + overtimeCost;
-        }
+        const finalInclusion = inclusion || { ordinary: true, overtime: true, holiday: true };
+
+        const ordinaryCost = (op.salaryType === 'fixed' 
+            ? (op.fixedSalary || 0) 
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+        
+        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+
+        let total = 0;
+        if (finalInclusion.ordinary) total += ordinaryCost;
+        if (finalInclusion.overtime) total += overtimeCost;
+        if (finalInclusion.holiday) total += holidayCost;
+        
+        return total;
     }, []);
     
     const generatePdf = useCallback(async (): Promise<{ blob: Blob; fileName: string } | null> => {
@@ -209,13 +232,14 @@ const PrintPageContent = () => {
                 const summary = summaries.get(op.id);
                 if (!summary) return;
                 const override = manualOverrides[op.id] || {};
+                const inclusion = costInclusion[op.id];
                 
                 const finalFerieDays = override.ferieDays ?? summary.ferieDays;
                 const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
                 const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
                 const showAbsences = absenceVisibility[op.id] ?? true;
 
-                const totalDue = calculateTotalDue(op, summary);
+                const totalDue = calculateTotalDue(op, summary, inclusion);
 
                 const blockHeight = showAbsences ? 65 : 60; // Estimated height
                 if (y > pageHeight - blockHeight) {
@@ -278,7 +302,7 @@ const PrintPageContent = () => {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast, absenceVisibility]);
+    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast, absenceVisibility, costInclusion]);
 
     const handlePrint = () => {
         window.print();
@@ -349,7 +373,8 @@ const PrintPageContent = () => {
                             if (!summary) return null;
 
                             const override = manualOverrides[op.id] || {};
-                            const totalDue = calculateTotalDue(op, summary);
+                            const inclusion = costInclusion[op.id];
+                            const totalDue = calculateTotalDue(op, summary, inclusion);
                             
                             const finalFerieDays = override.ferieDays ?? summary.ferieDays;
                             const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
@@ -376,24 +401,32 @@ const PrintPageContent = () => {
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">ORE ORDINARIE: {summary.ordinaryHours}</td>
-                                                <td className="pb-1 text-right font-bold">TOTALE ORDINARIE: {ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                                <td className="pb-1 text-right font-bold">
+                                                    {(inclusion?.ordinary ?? true) && (
+                                                         `TOTALE ORDINARIE: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`
+                                                    )}
+                                                </td>
                                             </tr>
                                             <tr>
                                                 <td className="pb-1">ORE STRAORDINARIE: {summary.overtimeHours}</td>
-                                                <td className="pb-1 text-right">TOTALE STRAORDINARIE: {overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                                <td className="pb-1 text-right">
+                                                     {(inclusion?.overtime ?? true) && (
+                                                        `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`
+                                                     )}
+                                                </td>
                                             </tr>
                                              <tr>
                                                 <td className="pb-1">ORE PERMESSI: {finalPermessoHours}</td>
                                                 <td className="pb-1 text-right">GIORNI DI MALATTIA: {finalMalattiaDays}</td>
                                             </tr>
-                                            {op.salaryType !== 'fixed' && holidayCost > 0 && (
+                                            {op.salaryType !== 'fixed' && holidayCost > 0 && (inclusion?.holiday ?? true) && (
                                                 <tr>
                                                     <td className="pb-1"></td>
                                                     <td className="pb-1 text-right">COSTO FERIE: {holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                                 </tr>
                                             )}
                                             <tr>
-                                                {showAbsences && <td className="pb-1">ASSENZE: <span className="font-normal">{summary.absenceDays}</span></td>}
+                                                {showAbsences && <td className="pb-1">ASSENZE: {summary.absenceDays}</td>}
                                                 <td className="pb-1 text-right font-bold text-lg" colSpan={showAbsences ? 1 : 2}>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
                                             </tr>
                                         </tbody>
