@@ -446,7 +446,7 @@ const PrintPageContent = () => {
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='mt-4 mb-2'>
+                                    <div className='mt-4'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
                                     
