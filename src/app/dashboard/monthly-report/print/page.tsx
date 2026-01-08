@@ -250,7 +250,7 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, pageWidth - margin, y, { align: 'right' });
-                y += 6;
+                y += 4;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -305,12 +305,12 @@ const PrintPageContent = () => {
                       columnStyles: { 0: { halign: 'right' } }
                 });
 
-                y = (doc as any).lastAutoTable.finalY + 2; // Reduced space
+                y = (doc as any).lastAutoTable.finalY + 1; // Minimal space
                 
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 1; // Drastically reduced space after signature
+                y += 1;
             });
 
 
@@ -411,7 +411,7 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="pt-2 text-sm text-black print:break-inside-avoid" style={{ minHeight: '90mm' }}>
+                                <div key={op.id} className="pt-2 text-sm text-black print:break-inside-avoid">
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
@@ -481,5 +481,6 @@ export default function PrintPage() {
         </div>
     );
 }
+
 
 
