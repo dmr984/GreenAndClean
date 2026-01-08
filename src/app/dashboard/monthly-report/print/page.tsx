@@ -297,7 +297,6 @@ const PrintPageContent = () => {
                 });
                 y = (doc as any).lastAutoTable.finalY;
 
-
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
                 (doc as any).autoTable({
@@ -308,12 +307,12 @@ const PrintPageContent = () => {
                       columnStyles: { 0: { halign: 'right' } }
                 });
 
-                y = (doc as any).lastAutoTable.finalY + 15;
+                y = (doc as any).lastAutoTable.finalY + 10;
                 
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 15;
+                y += 10;
             });
 
 
@@ -414,40 +413,40 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="pt-6 pb-2 text-sm text-black print:break-inside-avoid" style={{ minHeight: '99mm' }}>
+                                <div key={op.id} className="pt-2 pb-1 text-sm text-black print:break-inside-avoid" style={{ minHeight: '90mm' }}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                    <p className='text-sm text-gray-600 mb-2'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
+                                    <p className='text-sm text-gray-600 mb-1'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base mb-2">
+                                    <table className="w-full text-base mb-1">
                                         <tbody>
                                             <tr>
-                                                <td className="pb-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
+                                                <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1">{opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                                <td className="py-1">{opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1">{opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                                <td className="py-1">{opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1">{opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
+                                                <td className="py-1">{opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
-                                                <td className="pb-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
-                                                <td className="pb-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
+                                                <td className="py-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                     
-                                     <div className="text-right font-bold text-lg mt-4 pt-1 text-black">
+                                     <div className="text-right font-bold text-lg mt-2 pt-1 text-black">
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='mt-8 mb-4'>
+                                    <div className='mt-4 mb-2'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
                                     
