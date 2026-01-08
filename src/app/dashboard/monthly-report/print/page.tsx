@@ -246,13 +246,11 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                y += 6;
-
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
-                doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, margin, y);
-                y += 0; // Reduced space
+                doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, pageWidth - margin, y, { align: 'right' });
+                y += 6;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -312,7 +310,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 4; // Reduced space
+                y += 1; // Drastically reduced space after signature
             });
 
 
@@ -413,11 +411,11 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid" style={{ minHeight: '90mm' }}>
+                                <div key={op.id} className="pt-2 text-sm text-black print:break-inside-avoid" style={{ minHeight: '90mm' }}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base mt-1">
+                                    <table className="w-full text-base mb-1">
                                         <tbody>
                                             <tr>
                                                 <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
@@ -483,4 +481,5 @@ export default function PrintPage() {
         </div>
     );
 }
+
 
