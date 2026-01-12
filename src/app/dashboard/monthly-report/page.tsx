@@ -43,6 +43,7 @@ type ManualTotals = {
 
 type VisibilitySettings = {
     workedDays: boolean;
+    showWorkedHours: boolean; // New setting
     ordinaryHours: boolean;
     overtimeHours: boolean;
     ferieDays: boolean;
@@ -110,6 +111,7 @@ const MonthlyReportPage = () => {
             ops.forEach(op => {
                 initialVisibility[op.id] = {
                     workedDays: true,
+                    showWorkedHours: false, // Default to false
                     ordinaryHours: true,
                     overtimeHours: true,
                     ferieDays: true,
@@ -118,7 +120,7 @@ const MonthlyReportPage = () => {
                     absenceDays: false,
                     ordinaryCost: true,
                     overtimeCost: true,
-                    holidayCost: false
+                    holidayCost: false,
                 };
             });
             setSelectedOperatorIds(new Set(ops.map(op => op.id)));
@@ -304,8 +306,8 @@ const MonthlyReportPage = () => {
 
     const handleVisibilityChange = (operatorId: string, key: keyof VisibilitySettings) => {
         setVisibility(prev => {
-            const currentSettings = prev[operatorId] || {
-                workedDays: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
+            const currentSettings: VisibilitySettings = prev[operatorId] || {
+                workedDays: true, showWorkedHours: false, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
                 overtimeCost: true, holidayCost: true
             };
@@ -332,6 +334,8 @@ const MonthlyReportPage = () => {
         subtext,
         icon: Icon,
         visibilityKey,
+        extraSwitchKey,
+        extraSwitchLabel
     }: {
         opId: string;
         title: string;
@@ -339,31 +343,44 @@ const MonthlyReportPage = () => {
         subtext?: string;
         icon: React.ElementType;
         visibilityKey: keyof VisibilitySettings;
+        extraSwitchKey?: keyof VisibilitySettings;
+        extraSwitchLabel?: string;
     }) => {
         const opVisibility = visibility[opId];
         const isVisible = opVisibility ? opVisibility[visibilityKey] : true;
+        const isExtraSwitchVisible = extraSwitchKey ? (opVisibility ? opVisibility[extraSwitchKey] : false) : false;
 
         return (
-            <div className={cn(
-                "flex flex-col p-2 border rounded-md transition-opacity",
-                !isVisible && "opacity-50 bg-muted/50"
-            )}>
-                <span className="text-xs text-muted-foreground flex justify-between items-center">
-                    {title}
+            <div className={cn("flex flex-col p-2 border rounded-md transition-all", !isVisible && "bg-muted/50")}>
+                <div className="flex justify-between items-center text-xs text-muted-foreground">
+                    <span>{title}</span>
                     <Switch
                         checked={isVisible}
                         onCheckedChange={() => handleVisibilityChange(opId, visibilityKey)}
                         className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
                     />
-                </span>
-                {!isVisible ? null : (
-                  <>
-                    <span className={cn('font-bold', manualOverrides[opId]?.[visibilityKey as keyof ManualTotals] !== undefined && 'text-primary')}>
-                        {value}
-                    </span>
-                    {subtext && <span className="text-xs text-muted-foreground">{subtext}</span>}
-                  </>
-                )}
+                </div>
+                 {isVisible && (
+                    <>
+                        <div className={cn('font-bold mt-1', manualOverrides[opId]?.[visibilityKey as keyof ManualTotals] !== undefined && 'text-primary')}>
+                            {value}
+                        </div>
+                        {subtext && <span className="text-xs text-muted-foreground">{subtext}</span>}
+                        {extraSwitchKey && extraSwitchLabel && (
+                            <div className="flex items-center space-x-2 mt-2">
+                                <Switch
+                                    id={`extra-switch-${opId}`}
+                                    checked={isExtraSwitchVisible}
+                                    onCheckedChange={() => handleVisibilityChange(opId, extraSwitchKey)}
+                                    className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
+                                />
+                                <Label htmlFor={`extra-switch-${opId}`} className="text-xs font-normal">
+                                    {extraSwitchLabel}
+                                </Label>
+                            </div>
+                        )}
+                    </>
+                 )}
             </div>
         );
     };
@@ -426,6 +443,10 @@ const MonthlyReportPage = () => {
 
                                 const overtimeCost = (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
                                 const holidayCost = (summary?.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+                                
+                                const workedDaysValue = opVisibility.showWorkedHours && summary
+                                    ? `${summary.workedDays} (${summary.ordinaryHours}h)`
+                                    : summary?.workedDays || 0;
 
                                 return (
                                     <Card key={op.id}>
@@ -447,15 +468,14 @@ const MonthlyReportPage = () => {
                                         </CardHeader>
                                         {summary && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
-                                                <InfoCard opId={op.id} title="Giorni Lavorati" value={summary.workedDays} icon={Briefcase} visibilityKey="workedDays" />
-                                                <InfoCard opId={op.id} title="Ore Ordinarie" value={summary.ordinaryHours} icon={Clock} visibilityKey="ordinaryHours" />
-                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
+                                                <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Costo Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
+                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                 <InfoCard opId={op.id} title="Costo Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
-                                                <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" />
-                                                <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
-                                                <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
+                                                <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
+                                                <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
+                                                <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" />
                                                 <InfoCard opId={op.id} title="Assenze (g)" value={summary.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
                                             </CardContent>
                                         )}

@@ -34,6 +34,7 @@ type ManualTotals = {
 
 type VisibilitySettings = {
     workedDays: boolean;
+    showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
     ferieDays: boolean;
@@ -235,8 +236,7 @@ const PrintPageContent = () => {
 
                 const totalDue = calculateTotalDue(op, summary, opVisibility);
 
-                const blockHeight = 60; // Estimated height, reduced
-                if (y > pageHeight - blockHeight) {
+                if (y > pageHeight - 60) { // Check if space is enough
                     doc.addPage();
                     y = 20;
                     addHeader(false); 
@@ -258,15 +258,12 @@ const PrintPageContent = () => {
 
                 const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
                 const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-
+                
+                const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
 
                 const body = [
                     [
-                        opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : '',
-                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
-                    ],
-                    [
-                        opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : '',
+                        opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : '',
                         opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
                     ],
                     [
@@ -274,12 +271,16 @@ const PrintPageContent = () => {
                         opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
                     ],
                     [
+                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
+                        opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
+                    ],
+                    [
                         opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '',
                         opVisibility.holidayCost ? (holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '') : '',
                     ],
                     [
-                        opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
                         opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}`: '',
+                        ''
                     ],
                 ];
 
@@ -293,19 +294,19 @@ const PrintPageContent = () => {
                         1: { halign: 'right' }
                     }
                 });
-                y = (doc as any).lastAutoTable.finalY;
+                y = (doc as any).lastAutoTable.finalY + 1;
 
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
                 (doc as any).autoTable({
-                    startY: y + 2, // Reduced space
+                    startY: y,
                     theme: 'plain',
                     body: [[ `TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` ]],
                      styles: { fontSize: 12, cellPadding: 1, textColor: [0,0,0], fontStyle: 'bold' },
                       columnStyles: { 0: { halign: 'right' } }
                 });
 
-                y = (doc as any).lastAutoTable.finalY + 1; // Minimal space
+                y = (doc as any).lastAutoTable.finalY;
                 
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
@@ -389,7 +390,7 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-0" style={{ width: '210mm', minHeight: '297mm' }}>
+                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-0" style={{ width: '210mm' }}>
                     <div className="space-y-4">
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
@@ -409,20 +410,18 @@ const PrintPageContent = () => {
 
                             const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+                            
+                            const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
 
                             return (
-                                <div key={op.id} className="pt-2 text-sm text-black print:break-inside-avoid">
+                                <div key={op.id} className="text-sm text-black print:break-inside-avoid">
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
                                     <table className="w-full text-base mb-1">
                                         <tbody>
                                             <tr>
-                                                <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${summary.workedDays}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1">{opVisibility.ordinaryHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : ''}</td>
+                                                <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : ''}</td>
                                                 <td className="py-1 text-right">{opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
@@ -430,12 +429,16 @@ const PrintPageContent = () => {
                                                 <td className="py-1 text-right">{opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
                                             <tr>
+                                                <td className="py-1">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
+                                                <td className="py-1 text-right">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
+                                            </tr>
+                                            <tr>
                                                 <td className="py-1">{opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : ''}</td>
                                                 <td className="py-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
                                             </tr>
-                                            <tr>
-                                                <td className="py-1">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
+                                             <tr>
+                                                <td className="py-1">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
+                                                <td className="py-1 text-right"></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -481,6 +484,7 @@ export default function PrintPage() {
         </div>
     );
 }
+
 
 
 
