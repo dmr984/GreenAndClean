@@ -261,34 +261,36 @@ const PrintPageContent = () => {
                 
                 const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
 
-                const body = [
-                    [
-                        opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : '',
-                        opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
-                    ],
-                    [
-                        opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : '',
-                        opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '',
-                    ],
-                    [
-                        opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '',
-                        opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
-                    ],
-                    [
-                        opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '',
-                        opVisibility.holidayCost ? (holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '') : '',
-                    ],
-                    [
-                        opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}`: '',
-                        ''
-                    ],
-                ];
+                const bodyData: [string, string][] = [];
 
+                if (opVisibility.workedDays || opVisibility.ordinaryCost) {
+                    const left = opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : '';
+                    const right = opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                    bodyData.push([left, right]);
+                }
+                if (opVisibility.overtimeHours || opVisibility.overtimeCost) {
+                    const left = opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : '';
+                    const right = opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                    bodyData.push([left, right]);
+                }
+                if (opVisibility.malattiaDays || opVisibility.permessoHours) {
+                    const left = opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '';
+                    const right = opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '';
+                    bodyData.push([left, right]);
+                }
+                if (opVisibility.ferieDays || opVisibility.holidayCost) {
+                    const left = opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '';
+                    const right = opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                    bodyData.push([left, right]);
+                }
+                 if (opVisibility.absenceDays) {
+                    bodyData.push([`ASSENZE: ${summary.absenceDays}`, '']);
+                }
 
                 (doc as any).autoTable({
                     startY: y,
                     theme: 'plain',
-                    body: body,
+                    body: bodyData,
                     styles: { fontSize: 10, cellPadding: 1, textColor: [0,0,0] },
                      columnStyles: {
                         1: { halign: 'right' }
@@ -412,34 +414,54 @@ const PrintPageContent = () => {
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                             
                             const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
+                            
+                            const tableRows: [string, string][] = [];
+                            if (opVisibility.workedDays || opVisibility.absenceDays) {
+                                tableRows.push([
+                                    opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}`: '',
+                                    opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''
+                                ]);
+                            }
+                            if (opVisibility.ordinaryCost) {
+                                tableRows.push([
+                                    opVisibility.showWorkedHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : '',
+                                    `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`
+                                ]);
+                            }
+                            if (opVisibility.overtimeHours || opVisibility.overtimeCost) {
+                                tableRows.push([
+                                    opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : '',
+                                    opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''
+                                ]);
+    
+                            }
+                            if (opVisibility.ferieDays || opVisibility.holidayCost) {
+                                tableRows.push([
+                                    opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '',
+                                    opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''
+                                ]);
+                            }
+                             if (opVisibility.permessoHours || opVisibility.malattiaDays) {
+                                tableRows.push([
+                                    opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
+                                    opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''
+                                ]);
+                            }
+
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid">
+                                <div key={op.id} className="text-sm text-black print:break-inside-avoid pt-2 pb-1">
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base mb-1">
+                                    <table className="w-full text-base mt-1">
                                         <tbody>
-                                            <tr>
-                                                <td className="py-1">{opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1">{opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1">{opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : ''}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="py-1">{opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : ''}</td>
-                                                <td className="py-1 text-right">{opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''}</td>
-                                            </tr>
-                                             <tr>
-                                                <td className="py-1">{opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''}</td>
-                                                <td className="py-1 text-right"></td>
-                                            </tr>
+                                            {tableRows.map((row, i) => (
+                                                <tr key={i}>
+                                                    <td className="py-0">{row[0]}</td>
+                                                    <td className="py-0 text-right">{row[1]}</td>
+                                                </tr>
+                                            ))}
                                         </tbody>
                                     </table>
                                     
@@ -484,7 +506,3 @@ export default function PrintPage() {
         </div>
     );
 }
-
-
-
-

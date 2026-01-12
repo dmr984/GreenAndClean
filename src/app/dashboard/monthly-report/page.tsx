@@ -111,13 +111,13 @@ const MonthlyReportPage = () => {
             ops.forEach(op => {
                 initialVisibility[op.id] = {
                     workedDays: true,
-                    showWorkedHours: false, // Default to false
+                    showWorkedHours: false,
                     ordinaryHours: true,
                     overtimeHours: true,
                     ferieDays: true,
                     permessoHours: true,
                     malattiaDays: true,
-                    absenceDays: false,
+                    absenceDays: true,
                     ordinaryCost: true,
                     overtimeCost: true,
                     holidayCost: false,
