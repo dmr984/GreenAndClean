@@ -280,7 +280,7 @@ const PrintPageContent = () => {
                 }
                 if (opVisibility.ferieDays || opVisibility.holidayCost) {
                     const left = opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '';
-                    const right = opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                    const right = opVisibility.holidayCost ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
                     bodyData.push([left, right]);
                 }
                  if (opVisibility.absenceDays) {
@@ -416,45 +416,33 @@ const PrintPageContent = () => {
                             const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
                             
                             const tableRows: [string, string][] = [];
-                            if (opVisibility.workedDays || opVisibility.absenceDays) {
-                                tableRows.push([
-                                    opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}`: '',
-                                    opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : ''
-                                ]);
-                            }
-                            if (opVisibility.ordinaryCost) {
-                                tableRows.push([
-                                    opVisibility.showWorkedHours ? `ORE ORDINARIE: ${summary.ordinaryHours}` : '',
-                                    `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`
-                                ]);
-                            }
-                            if (opVisibility.overtimeHours || opVisibility.overtimeCost) {
-                                tableRows.push([
-                                    opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : '',
-                                    opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''
-                                ]);
-    
-                            }
-                            if (opVisibility.ferieDays || opVisibility.holidayCost) {
-                                tableRows.push([
-                                    opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '',
-                                    opVisibility.holidayCost && holidayCost > 0 ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : ''
-                                ]);
-                            }
-                             if (opVisibility.permessoHours || opVisibility.malattiaDays) {
-                                tableRows.push([
-                                    opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '',
-                                    opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: ''
-                                ]);
-                            }
+
+                            const row1_left = opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : '';
+                            const row1_right = opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                            if(row1_left || row1_right) tableRows.push([row1_left, row1_right]);
+                            
+                            const row2_left = opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : '';
+                            const row2_right = opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                            if(row2_left || row2_right) tableRows.push([row2_left, row2_right]);
+
+                            const row3_left = opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: '';
+                            const row3_right = opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : '';
+                            if(row3_left || row3_right) tableRows.push([row3_left, row3_right]);
+
+                            const row4_left = opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : '';
+                            const row4_right = opVisibility.holidayCost ? `FERIE RETRIBUITE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : '';
+                            if(row4_left || row4_right) tableRows.push([row4_left, row4_right]);
+
+                            const row5_left = opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : '';
+                            if(row5_left) tableRows.push([row5_left, '']);
 
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid pt-2 pb-1">
+                                <div key={op.id} className="text-sm text-black print:break-inside-avoid">
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                    <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
+                                    <p className='text-sm text-gray-600 mb-1'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base mt-1">
+                                    <table className="w-full text-base">
                                         <tbody>
                                             {tableRows.map((row, i) => (
                                                 <tr key={i}>
