@@ -218,7 +218,7 @@ const PrintPageContent = () => {
                     doc.setTextColor(100);
                     const dateStr = format(currentMonth, 'MMMM yyyy', { locale: it });
                     doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth / 2, y, { align: 'center' });
-                    y += 10;
+                    y += 5;
                 }
             };
 
@@ -250,7 +250,7 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, pageWidth - margin, y, { align: 'right' });
-                y += 4;
+                y += 2;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -305,7 +305,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 8; // Reduce space between operators
+                y += 1; // Reduce space between operators
             });
 
 
@@ -384,7 +384,7 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-0" style={{ width: '210mm' }}>
+                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
                     <div className="space-y-4">
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
@@ -426,11 +426,11 @@ const PrintPageContent = () => {
 
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid">
+                                <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-1">
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                    <p className='text-sm text-gray-600 mb-1'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
+                                    <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
-                                    <table className="w-full text-base">
+                                    <table className="w-full text-base mt-1">
                                         <tbody>
                                             {bodyData.map((row, i) => (
                                                 <tr key={i}>
@@ -482,4 +482,3 @@ export default function PrintPage() {
         </div>
     );
 }
-
