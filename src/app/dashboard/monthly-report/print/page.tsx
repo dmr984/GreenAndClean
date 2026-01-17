@@ -279,33 +279,31 @@ const PrintPageContent = () => {
                     bodyData.push([allItems[i], allItems[i + 1] || '']);
                 }
                 
-                (doc as any).autoTable({
-                    startY: y,
-                    theme: 'plain',
-                    body: bodyData,
-                    styles: { fontSize: 10, cellPadding: 1, textColor: [0,0,0] },
-                     columnStyles: {
-                        1: { halign: 'right' }
-                    }
-                });
-                y = (doc as any).lastAutoTable.finalY + 1;
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(0,0,0);
 
+                bodyData.forEach(row => {
+                    if (y > pageHeight - 20) {
+                        doc.addPage();
+                        y = 20;
+                        addHeader(false);
+                    }
+                    doc.text(row[0], margin, y);
+                    doc.text(row[1], pageWidth - margin, y, { align: 'right' });
+                    y += 5; // space between rows
+                });
+                
+                y += 2;
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
-                (doc as any).autoTable({
-                    startY: y,
-                    theme: 'plain',
-                    body: [[ `TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` ]],
-                     styles: { fontSize: 12, cellPadding: 1, textColor: [0,0,0], fontStyle: 'bold' },
-                      columnStyles: { 0: { halign: 'right' } }
-                });
+                doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
+                y += 5;
 
-                y = (doc as any).lastAutoTable.finalY;
-                
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 1; // Reduce space between operators
+                y += 8;
             });
 
 
