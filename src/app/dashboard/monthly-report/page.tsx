@@ -18,7 +18,7 @@ import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 
 
 type Operator = {
@@ -159,7 +159,8 @@ const MonthlyReportPage = () => {
                 const straordinariQuery = query(
                     collection(firestore, `app-users/${op.id}/straordinari`),
                     where('date', '>=', monthStart),
-                    where('date', '<=', monthEnd)
+                    where('date', '<=', monthEnd),
+                    orderBy('date', 'desc')
                 );
 
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
