@@ -521,8 +521,9 @@ export const processMonthlyData = (
         switch (detail.status) {
             case 'lavorato':
                 if (detail.shift) {
-                    // Only count day as worked if there are actual hours
-                    if (detail.shift.ordinaryHours > 0 || detail.shift.overtimeHours > 0) {
+                    // A day is "worked" if it's a contractual workday.
+                    // Overtime-only days on days off don't count towards "worked days".
+                    if (detail.shift.contractualHours > 0) {
                         workedDays++;
                     }
                     totalOrdinaryHours += detail.shift.ordinaryHours;
