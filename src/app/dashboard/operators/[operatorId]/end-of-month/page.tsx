@@ -9,7 +9,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay, endOfMonth as dfnsEndOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -162,7 +162,7 @@ export default function EndOfMonthPage() {
         setIsLoading(true);
 
         const monthStart = startOfMonth(currentMonth);
-        const monthEnd = endOfMonth(currentMonth);
+        const monthEnd = dfnsEndOfMonth(currentMonth);
         const monthId = format(currentMonth, 'yyyy-MM');
 
         try {
@@ -231,7 +231,7 @@ export default function EndOfMonthPage() {
         setIsCleaning(true);
 
         const monthStart = startOfMonth(currentMonth);
-        const monthEnd = endOfMonth(currentMonth);
+        const monthEnd = dfnsEndOfMonth(currentMonth);
 
         const batch = writeBatch(firestore);
 
@@ -250,6 +250,10 @@ export default function EndOfMonthPage() {
         const notesQuery = query(collection(firestore, `app-users/${operatorId}/daily-notes`), where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')), where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd')));
         const notesSnap = await getDocs(notesQuery);
         notesSnap.forEach(doc => batch.delete(doc.ref));
+
+        const monthId = format(currentMonth, 'yyyy-MM');
+        const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
+        batch.delete(overrideDocRef);
 
         try {
             await batch.commit();
@@ -430,6 +434,9 @@ export default function EndOfMonthPage() {
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                          <Button variant="outline" onClick={handleOpenPrintPreview}>
                             <Printer className="mr-2 h-4 w-4" /> Crea Report
+                        </Button>
+                        <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)}>
+                            <Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese
                         </Button>
                      </div>
                 </div>

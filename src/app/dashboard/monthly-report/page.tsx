@@ -2,7 +2,7 @@
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil, Wallet, Trash2, Clock, Plus, UserCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
 type Operator = {
@@ -70,6 +71,10 @@ const MonthlyReportPage = () => {
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
     const [totalContent, setTotalContent] = useState('');
 
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+
+
     const fetchOverridesForMonth = useCallback(async (date: Date) => {
         if (!firestore || operators.length === 0) return;
 
@@ -106,7 +111,7 @@ const MonthlyReportPage = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
-            // Initially, select all operators and configure visibilities
+            // Configure visibilities, but do not select all by default anymore
             const initialVisibility: Record<string, VisibilitySettings> = {};
             ops.forEach(op => {
                 initialVisibility[op.id] = {
@@ -123,7 +128,6 @@ const MonthlyReportPage = () => {
                     holidayCost: false,
                 };
             });
-            setSelectedOperatorIds(new Set(ops.map(op => op.id)));
             setVisibility(initialVisibility);
         });
         return () => unsubscribe();
@@ -265,6 +269,55 @@ const MonthlyReportPage = () => {
             return newSet;
         });
     };
+
+    const handleCleanMonth = async () => {
+        if (!firestore || selectedOperatorIds.size === 0 || !currentMonth) return;
+        setIsCleaning(true);
+
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = dfnsEndOfMonth(currentMonth);
+        const batch = writeBatch(firestore);
+
+        try {
+            for (const operatorId of Array.from(selectedOperatorIds)) {
+                // Timbrature
+                const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', monthStart), where('timestamp', '<=', monthEnd));
+                const timbratureSnap = await getDocs(timbratureQuery);
+                timbratureSnap.forEach(doc => batch.delete(doc.ref));
+
+                // Straordinari
+                const straordinariQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('date', '>=', monthStart), where('date', '<=', monthEnd));
+                const straordinariSnap = await getDocs(straordinariQuery);
+                straordinariSnap.forEach(doc => batch.delete(doc.ref));
+
+                // Requests
+                const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', monthStart), where('startDate', '<=', monthEnd));
+                const requestsSnap = await getDocs(requestsQuery);
+                requestsSnap.forEach(doc => batch.delete(doc.ref));
+
+                // Daily Notes
+                const notesQuery = query(collection(firestore, `app-users/${operatorId}/daily-notes`), where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')), where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd')));
+                const notesSnap = await getDocs(notesQuery);
+                notesSnap.forEach(doc => batch.delete(doc.ref));
+
+                // Monthly Overrides
+                const monthId = format(currentMonth, 'yyyy-MM');
+                const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
+                batch.delete(overrideDocRef); // It's okay if it doesn't exist.
+            }
+
+            await batch.commit();
+            toast({ title: "Successo!", description: `I dati per gli operatori selezionati sono stati eliminati per ${format(currentMonth, 'MMMM yyyy', { locale: it })}.` });
+            fetchDataForMonth(currentMonth); // Refresh data
+            setSelectedOperatorIds(new Set()); // Clear selection
+        } catch (error) {
+            console.error("Errore pulizia mese:", error);
+            toast({ title: "Errore", description: "Impossibile completare la pulizia.", variant: "destructive" });
+        } finally {
+            setIsCleaning(false);
+            setIsCleanConfirmOpen(false);
+        }
+    };
     
     const handleSaveTotal = async () => {
         if (!editingTotal || !firestore) return;
@@ -402,9 +455,14 @@ const MonthlyReportPage = () => {
                         <CardTitle className="text-2xl">Report Mensile Aggregato</CardTitle>
                         <CardDescription>Visualizza i totali di tutti gli operatori per il mese selezionato.</CardDescription>
                     </div>
-                     <Button onClick={handleOpenPrintPreview} disabled={isLoading} className="w-full sm:w-auto">
-                        <Printer className="mr-2 h-4 w-4" /> Crea Report Stampabile
-                    </Button>
+                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <Button onClick={handleOpenPrintPreview} disabled={isLoading || selectedOperatorIds.size === 0}>
+                            <Printer className="mr-2 h-4 w-4" /> Crea Report
+                        </Button>
+                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isLoading || selectedOperatorIds.size === 0}>
+                            <Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                      <div className="flex items-center justify-between gap-2 p-2 border rounded-md mb-6 w-full md:w-auto">
@@ -428,7 +486,7 @@ const MonthlyReportPage = () => {
                         <div className="flex items-center space-x-2 mb-4 p-2 border rounded-md">
                            <Checkbox
                                 id="select-all"
-                                checked={selectedOperatorIds.size === operators.length}
+                                checked={selectedOperatorIds.size === operators.length && operators.length > 0}
                                 onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
                             />
                             <Label htmlFor="select-all" className="font-semibold">Seleziona/Deseleziona Tutto</Label>
@@ -520,6 +578,25 @@ const MonthlyReportPage = () => {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Questa azione è irreversibile. Verranno eliminati TUTTI i dati (turni, richieste, note, etc.) per gli operatori selezionati nel mese di{' '}
+                        <span className="font-bold">{currentMonth ? format(currentMonth, 'MMMM yyyy', { locale: it }) : ''}</span>.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCleanMonth} disabled={isCleaning}>
+                        {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Conferma e Pulisci
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         </>
     );
 };
