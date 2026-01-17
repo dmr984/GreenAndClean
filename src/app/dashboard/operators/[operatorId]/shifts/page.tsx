@@ -80,11 +80,19 @@ type Shift = {
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
 };
 
+type StraordinarioEvent = {
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+    latitude?: number;
+    longitude?: number;
+};
+
 type StraordinarioShift = {
     id: string;
     events: StraordinarioEvent[];
     status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
     date: Timestamp;
+    approvedHours?: number;
 };
 
 type CombinedShiftHistoryItem = (Shift | StraordinarioShift) & { type: 'regular' | 'overtime' };
@@ -1105,14 +1113,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             await updateDoc(shiftRef, { status: 'rifiutato' });
             toast({ title: 'Successo', description: 'Turno straordinario rifiutato.' });
         } else { // approve
-             const approvedOvertime = approvalContext ? parseFloat(approvalContext.overtimeHours) : 0;
-            if (approvedOvertime > 0) {
-                 await updateDoc(shiftRef, { status: 'approvato' });
-                 toast({ title: 'Successo', description: 'Turno straordinario approvato.' });
-            } else {
-                 toast({ title: 'Nessun straordinario', description: 'Nessuna ora di straordinario da registrare. Il turno verrà eliminato.', variant: 'default' });
-                 await deleteDoc(shiftRef);
-            }
+            const approvedOvertime = approvalContext ? parseFloat(approvalContext.overtimeHours) : 0;
+            const updateData: {status: 'approvato' | 'rifiutato', approvedHours?: number} = {
+                status: 'approvato',
+                approvedHours: approvedOvertime,
+            };
+
+            await updateDoc(shiftRef, updateData);
+            toast({ title: 'Successo', description: 'Turno straordinario approvato.' });
         }
         
         setApprovalContext(null);
@@ -1222,56 +1230,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setIsOvertimeAddBreakDialogOpen(false);
         setOvertimeShiftForBreak(null);
         setBreakTimes({ start: '', end: '' });
-    };
-
-
-    const getAdjustedStartTime = (shift: Shift | StraordinarioShift): { display: string; calculationStart: Date | null } => {
-        if (!operator || !shift?.events?.length) return { display: '--:--', calculationStart: null };
-        const clockInEvent = shift.events.find(e => e.type === 'entrata');
-        if (!clockInEvent) return { display: '--:--', calculationStart: null };
-        
-        const { calculationStart } = calculateHours(shift as Shift, (shift as Shift).isOvertime ? undefined : operator.workSchedule[dayIndexToName[getDayFns((shift as Shift).date)]], (shift as Shift).ignoreContractualStart);
-
-        const originalTime = format(clockInEvent.timestamp.toDate(), 'HH:mm:ss');
-        
-        if (calculationStart) {
-           return { display: `${originalTime} (${format(calculationStart, 'HH:mm')})`, calculationStart };
-        }
-
-        return { display: originalTime, calculationStart: clockInEvent.timestamp.toDate() };
-    }
-    
-    const getAdjustedEndTime = (shift: Shift | StraordinarioShift): { display: string; calculationEnd: Date | null } => {
-        if (!operator || !shift?.events?.length) return { display: '--:--', calculationEnd: null };
-    
-        const clockOutEvent = shift.events.find(e => e.type === 'uscita');
-        if (!clockOutEvent) return { display: '--:--', calculationEnd: null };
-    
-        const originalTime = format(clockOutEvent.timestamp.toDate(), 'HH:mm:ss');
-        
-        const { calculationEnd } = calculateHours(shift as Shift, (shift as Shift).isOvertime ? undefined : operator.workSchedule[dayIndexToName[getDayFns((shift as Shift).date)]], (shift as Shift).ignoreContractualStart, operator.overtimeCalculation);
-    
-        if (calculationEnd) {
-            return { display: `${originalTime} (${format(calculationEnd, 'HH:mm')})`, calculationEnd: calculationEnd };
-        }
-        
-        return { display: originalTime, calculationEnd: clockOutEvent.timestamp.toDate() };
-    };
-    
-    const getAdjustedOvertimeTimes = (shift: StraordinarioShift) => {
-        if (!operator) return { start: '--:--', end: '--:--' };
-        
-        const { display: startDisplay, calculationStart } = getAdjustedStartTime(shift);
-
-        const endTimeEvent = shift.events.find(e => e.type === 'uscita');
-        if (!endTimeEvent) return { start: startDisplay, end: '--:--' };
-
-        const { display: endDisplay } = getAdjustedEndTime(shift);
-
-        return {
-            start: startDisplay,
-            end: endDisplay,
-        };
     };
 
     return (
@@ -1765,31 +1723,36 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {detailOvertimeShift?.events.map((e, i) => {
-                                      const { calculationStart, calculationEnd } = calculateHours({ date: detailOvertimeShift.date.toDate(), events: detailOvertimeShift.events as Timbratura[] }, undefined, false, operator.overtimeCalculation);
-                                      const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
-                                      let referenceTime = '';
+                                {detailOvertimeShift && operator && (() => {
+                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], operator.workSchedule[dayIndexToName[getDayFns(detailOvertimeShift.date.toDate())]], false, operator.overtimeCalculation);
 
-                                       if (e.type === 'entrata' && calculationStart) {
+                                    return detailOvertimeShift.events.map((e, i) => {
+                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
+                                        let referenceTime = '';
+
+                                        if (e.type === 'entrata' && calculationStart) {
                                             referenceTime = `(${format(calculationStart, 'HH:mm')})`;
                                         } else if (e.type === 'uscita' && calculationEnd) {
                                             referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                         }
-                                    return (
-                                    <TableRow key={i}>
-                                        <TableCell><span className='italic'>{`${originalTime} ${referenceTime}`.trim()}</span></TableCell>
-                                        <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
-                                        <TableCell className="whitespace-nowrap">
-                                           {e.latitude && e.longitude ? (
-                                                <a href={`https://www.google.com/maps?q=${e.latitude},${e.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                                                    <MapPin className="h-4 w-4"/> Mappa
-                                                </a>
-                                            ) : (
-                                                <span>N/D</span>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                )})}
+
+                                        return (
+                                            <TableRow key={i}>
+                                                <TableCell><span className='italic'>{`${originalTime} ${referenceTime}`.trim()}</span></TableCell>
+                                                <TableCell className="capitalize">{e.type.replace('_', ' ')}</TableCell>
+                                                <TableCell className="whitespace-nowrap">
+                                                {e.latitude && e.longitude ? (
+                                                        <a href={`https://www.google.com/maps?q=${e.latitude},${e.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                                                            <MapPin className="h-4 w-4"/> Mappa
+                                                        </a>
+                                                    ) : (
+                                                        <span>N/D</span>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    });
+                                })()}
                             </TableBody>
                         </Table>
                     </div>
