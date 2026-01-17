@@ -360,7 +360,18 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
 export const processMonthlyData = (
     currentMonth: Date,
     operator: Operator,
-    monthlyData: { timbrature: Timbratura[], requests: Request[], dailyNotes?: DailyNote[], straordinari?: { id: string; events: { type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita'; timestamp: Timestamp; }[]; status: 'approvato' | 'rifiutato'; date: Timestamp; approvedHours?: number }[] }
+    monthlyData: { 
+        timbrature: Timbratura[], 
+        requests: Request[], 
+        dailyNotes?: DailyNote[], 
+        straordinari?: { 
+            id: string; 
+            events: { type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita'; timestamp: Timestamp; }[]; 
+            status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato'; 
+            date: Timestamp; 
+            approvedHours?: number 
+        }[] 
+    }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
@@ -405,7 +416,7 @@ export const processMonthlyData = (
         
         const isHoliday = isPublicHoliday(day);
         const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
-        const dayStraordinario = monthlyData.straordinari?.find(s => s.status === 'approvato' && isSameDay(s.date.toDate(), day));
+        const dayStraordinario = monthlyData.straordinari?.find(s => isSameDay(s.date.toDate(), day));
 
         // --- Determine Daily Status with Priority ---
         if (leaveRequest) {
@@ -471,7 +482,9 @@ export const processMonthlyData = (
                 note: dailyNote?.note,
             });
         } else if (dayStraordinario) {
-             const overtimeHours = dayStraordinario.approvedHours ?? calculatePureOvertime(dayStraordinario, operator);
+             const overtimeHours = dayStraordinario.status === 'approvato' 
+                ? (dayStraordinario.approvedHours ?? calculatePureOvertime(dayStraordinario, operator))
+                : calculatePureOvertime(dayStraordinario, operator);
              details.push({
                 date: day,
                 status: 'lavorato',
@@ -493,11 +506,27 @@ export const processMonthlyData = (
     }
     
     // =================================================================
-    // SUMMARIZE (Based on the daily details we just calculated)
+    // SUMMARIZE (Based on the daily details we just calculated for display)
     // =================================================================
-    const totalOrdinaryHours = details.reduce((sum, d) => sum + (d.shift?.ordinaryHours || 0), 0);
-    const totalOvertimeHours = details.reduce((sum, d) => sum + (d.shift?.overtimeHours || 0), 0);
     
+    // For totals, we only consider CONFIRMED/APPROVED data.
+    const totalOrdinaryHours = details.reduce((sum, d) => {
+        // Only add ordinary hours if it's NOT a pure overtime day
+        const isPureOvertimeDay = monthlyData.straordinari?.some(s => isSameDay(s.date.toDate(), d.date));
+        return sum + (isPureOvertimeDay ? 0 : (d.shift?.ordinaryHours || 0));
+    }, 0);
+
+    const overtimeFromRegularShifts = details.reduce((sum, d) => {
+        const isPureOvertimeDay = monthlyData.straordinari?.some(s => isSameDay(s.date.toDate(), d.date));
+        return sum + (isPureOvertimeDay ? 0 : (d.shift?.overtimeHours || 0));
+    }, 0);
+
+    const overtimeFromPureOvertimeShifts = (monthlyData.straordinari ?? [])
+        .filter(s => s.status === 'approvato')
+        .reduce((sum, s) => sum + (s.approvedHours ?? calculatePureOvertime(s, operator)), 0);
+
+    const totalOvertimeHours = overtimeFromRegularShifts + overtimeFromPureOvertimeShifts;
+
     const workedDays = details.filter(d => d.status === 'lavorato' && ((d.shift?.ordinaryHours || 0) > 0 || (d.shift?.overtimeHours || 0) > 0)).length;
     const absenceDays = details.filter(d => d.status === 'mancata_timbratura').length;
     
