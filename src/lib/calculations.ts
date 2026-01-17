@@ -317,14 +317,8 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const isWorkDay = isMakeupShift || (contractualHours > 0 && !isPublicHoliday(shift.date));
     
     if (!isWorkDay) {
-        // Since it's not a workday, all time is calculated as pure overtime
-        const clockOutEvent = shift.events.find(e => e.type === 'uscita')?.timestamp.toDate();
-        if (!clockOutEvent || !calculationStart) {
-             return { ordinary: 0, overtime: 0, leave: 0, worked: 0, break: 0, calculationStart: null, calculationEnd: null };
-        }
-        const effectiveMillis = clockOutEvent.getTime() - calculationStart.getTime() - (breakMinutes * 60000);
-        const effectiveMinutes = effectiveMillis > 0 ? Math.floor(effectiveMillis / (1000 * 60)) : 0;
-        const overtime = roundOvertimeHours(effectiveMinutes, overtimeCalculation);
+        // On non-working days, all worked minutes are considered overtime.
+        const overtime = roundOvertimeHours(workedMinutes, overtimeCalculation);
         
         return {
             ordinary: 0,
