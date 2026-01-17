@@ -139,14 +139,22 @@ const PrintPageContent = () => {
                         collection(firestore, `app-users/${op.id}/requests`),
                         where('status', '==', 'approvato')
                     );
-                    const [timbratureSnap, requestsSnap] = await Promise.all([
+                    const straordinariQuery = query(
+                        collection(firestore, `app-users/${op.id}/straordinari`),
+                        where('date', '>=', monthStart),
+                        where('date', '<=', monthEnd)
+                    );
+
+                    const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                         getDocs(timbratureQuery),
                         getDocs(requestsQuery),
+                        getDocs(straordinariQuery)
                     ]);
                     const timbratureData = timbratureSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
                     const requestsData = requestsSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
+                    const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                     
-                    const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData });
+                    const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
                     return { opId: op.id, summary: monthlySummary };
                 });
 

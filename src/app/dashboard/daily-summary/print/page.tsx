@@ -83,13 +83,21 @@ const PrintPageContent = () => {
                         collection(firestore, `app-users/${op.id}/requests`),
                         where('status', '==', 'approvato')
                     );
-                    const [timbratureSnap, requestsSnap] = await Promise.all([
+                     const straordinariQuery = query(
+                        collection(firestore, `app-users/${op.id}/straordinari`),
+                        where('date', '>=', monthStart),
+                        where('date', '<=', dayEnd)
+                    );
+                    const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                         getDocs(timbratureQuery),
                         getDocs(requestsQuery),
+                        getDocs(straordinariQuery)
                     ]);
                     const timbratureData = timbratureSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
                     const requestsData = requestsSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
-                    const { dailyDetails: monthDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData });
+                    const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
+
+                    const { dailyDetails: monthDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
                     const cumulative = monthDetails
                         .filter(d => d.date <= dayStart)
                         .reduce((acc, d) => {

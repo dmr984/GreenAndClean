@@ -490,6 +490,7 @@ export const processMonthlyData = (
                 status: 'lavorato',
                 request: null,
                 shift: {
+                    allShifts: [{ events: dayStraordinario.events as Timbratura[] }],
                     events: dayStraordinario.events as Timbratura[],
                     contractualHours: 0,
                     ordinaryHours: 0,
@@ -506,65 +507,64 @@ export const processMonthlyData = (
     }
     
     // =================================================================
-    // SUMMARIZE (Based on the daily details we just calculated for display)
+    // SUMMARIZE (Based on the daily details we just calculated)
     // =================================================================
-    
-    // For totals, we only consider CONFIRMED/APPROVED data.
-    const totalOrdinaryHours = details.reduce((sum, d) => {
-        // Only add ordinary hours if it's NOT a pure overtime day
-        const isPureOvertimeDay = monthlyData.straordinari?.some(s => isSameDay(s.date.toDate(), d.date));
-        return sum + (isPureOvertimeDay ? 0 : (d.shift?.ordinaryHours || 0));
-    }, 0);
-
-    const overtimeFromRegularShifts = details.reduce((sum, d) => {
-        const isPureOvertimeDay = monthlyData.straordinari?.some(s => isSameDay(s.date.toDate(), d.date));
-        return sum + (isPureOvertimeDay ? 0 : (d.shift?.overtimeHours || 0));
-    }, 0);
-
-    const overtimeFromPureOvertimeShifts = (monthlyData.straordinari ?? [])
-        .filter(s => s.status === 'approvato')
-        .reduce((sum, s) => sum + (s.approvedHours ?? calculatePureOvertime(s, operator)), 0);
-
-    const totalOvertimeHours = overtimeFromRegularShifts + overtimeFromPureOvertimeShifts;
-
-    const workedDays = details.filter(d => d.status === 'lavorato' && ((d.shift?.ordinaryHours || 0) > 0 || (d.shift?.overtimeHours || 0) > 0)).length;
-    const absenceDays = details.filter(d => d.status === 'mancata_timbratura').length;
-    
-    const totalPermesso = monthlyData.requests
-        .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
-        .reduce((sum, r) => sum + (r.hours || 0), 0);
-            
+    let totalOrdinaryHours = 0;
+    let totalOvertimeHours = 0;
+    let workedDays = 0;
+    let absenceDays = 0;
     let ferieDays = 0;
     let ferieHours = 0;
     let malattiaDays = 0;
 
     details.forEach(detail => {
-        if (detail.status === 'ferie') {
-            ferieDays++;
-            const dayName = dayIndexToName[getDay(detail.date)];
-            // If the vacation day is on a non-working day, assign default hours (e.g., 8).
-            const contractualHours = operator.workSchedule[dayName]?.totalHours || 8;
-            ferieHours += contractualHours;
-        }
-        if (detail.status === 'malattia') {
-            malattiaDays++;
+        switch (detail.status) {
+            case 'lavorato':
+                if (detail.shift) {
+                    // Only count day as worked if there are actual hours
+                    if (detail.shift.ordinaryHours > 0 || detail.shift.overtimeHours > 0) {
+                        workedDays++;
+                    }
+                    totalOrdinaryHours += detail.shift.ordinaryHours;
+                    totalOvertimeHours += detail.shift.overtimeHours;
+                }
+                break;
+            case 'ferie':
+                ferieDays++;
+                const dayNameFerie = dayIndexToName[getDay(detail.date)];
+                const contractualHoursFerie = operator.workSchedule[dayNameFerie]?.totalHours || 8; // Default to 8 if not defined
+                ferieHours += contractualHoursFerie;
+                break;
+            case 'malattia':
+                malattiaDays++;
+                break;
+            case 'mancata_timbratura':
+                absenceDays++;
+                break;
+            default:
+                break;
         }
     });
 
-    const holidayHoursPayable = ferieHours; 
+    const totalPermesso = monthlyData.requests
+        .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .reduce((sum, r) => sum + (r.hours || 0), 0);
+    
+    // Holiday pay is calculated based on vacation days taken
+    const holidayHoursPayable = ferieHours;
 
     const monthlySummary: MonthlySummary = {
         workedDays,
         absenceDays,
-        ordinaryHours: totalOrdinaryHours, 
+        ordinaryHours: totalOrdinaryHours,
         overtimeHours: totalOvertimeHours,
-        holidayHoursPayable, 
+        holidayHoursPayable,
         ferieDays,
         ferieHours,
         permessoHours: totalPermesso,
         malattiaDays,
     };
-
+    
     return {
         monthlySummary,
         dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),

@@ -124,7 +124,7 @@ export default function EndOfMonthPage() {
     
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[] }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
@@ -181,18 +181,25 @@ export default function EndOfMonthPage() {
                  where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
                  where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
             );
+            const straordinariQuery = query(
+                collection(firestore, `app-users/${operatorId}/straordinari`),
+                where('date', '>=', monthStart),
+                where('date', '<=', monthEnd)
+            );
     
-            const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
                 getDocs(notesQuery),
+                getDocs(straordinariQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
             const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
+            const straordinariData = straordinariSnapshot.docs.map(d => ({id: d.id, ...d.data()} as any));
             
-            setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData, straordinari: straordinariData });
         } catch (error) {
             console.error("Error fetching monthly data:", error);
             toast({ title: 'Errore', description: 'Impossibile caricare i dati del mese.', variant: 'destructive' });

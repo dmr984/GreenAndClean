@@ -70,17 +70,24 @@ const DailySummaryPage = () => {
                     collection(firestore, `app-users/${op.id}/requests`),
                     where('status', '==', 'approvato')
                 );
+                const straordinariQuery = query(
+                    collection(firestore, `app-users/${op.id}/straordinari`),
+                    where('date', '>=', monthStart),
+                    where('date', '<=', dayEnd)
+                );
 
-                const [timbratureSnap, requestsSnap] = await Promise.all([
+                const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
+                    getDocs(straordinariQuery)
                 ]);
 
                 const timbratureData = timbratureSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                 const requestsData = requestsSnap.docs.map(d => ({...d.data(), id: d.id} as any));
+                const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
 
                 // Cumulative data for the month up to the selected day
-                const { dailyDetails: monthDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData });
+                const { dailyDetails: monthDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
                 
                 const cumulative = monthDetails
                     .filter(d => d.date <= dayStart)
