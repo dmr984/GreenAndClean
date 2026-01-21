@@ -118,7 +118,9 @@ type ApprovalContext = {
 } | null;
 
 type Request = {
+    id: string;
     hours?: number;
+    type: string;
     associatedShiftId?: string;
 }
 
@@ -178,16 +180,16 @@ export default function ShiftApprovalPage() {
         return operator.workSchedule[dayName]?.startTime || null;
     }, [newShiftDate, operator]);
     
-    const getShiftDurations = (events: (Timbratura | StraordinarioEvent)[]): { workDuration: number, breakDuration: number } => {
+    const getShiftDurations = (events: (Timbratura | StraordinarioEvent)[]): { workDuration: number, breakDuration: number, workedMinutes: number } => {
         if (!Array.isArray(events) || events.length < 2) {
-            return { workDuration: 0, breakDuration: 0 };
+            return { workDuration: 0, breakDuration: 0, workedMinutes: 0 };
         }
 
         const clockInEvent = events.find(e => e.type === 'entrata');
         const clockOutEvent = events.find(e => e.type === 'uscita');
 
         if (!clockInEvent || !clockOutEvent) {
-             return { workDuration: 0, breakDuration: 0 };
+             return { workDuration: 0, breakDuration: 0, workedMinutes: 0 };
         }
         
         let totalMillis = clockOutEvent.timestamp.toMillis() - clockInEvent.timestamp.toMillis();
@@ -202,12 +204,13 @@ export default function ShiftApprovalPage() {
             }
         }
         
-        totalMillis -= breakDurationMillis;
+        const workedMillis = totalMillis - breakDurationMillis;
 
         const workDuration = totalMillis > 0 ? Math.round(totalMillis / (1000 * 60)) : 0;
         const breakDuration = breakDurationMillis > 0 ? breakDurationMillis / (1000 * 60) : 0;
+        const workedMinutes = workedMillis > 0 ? Math.round(workedMillis / (1000*60)) : 0;
 
-        return { workDuration, breakDuration };
+        return { workDuration, breakDuration, workedMinutes };
     };
 
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> | null => {
@@ -1086,7 +1089,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     };
     
     
-    const formatTime = (date: Timestamp | undefined | null) => date ? format(date.toDate(), 'p', { locale: it }) : '--:--';
     const formatDate = (date: Timestamp | undefined | Date) => date ? format(date instanceof Date ? date : date.toDate(), 'PPP', { locale: it }) : 'N/D';
     
     const totalPages = Math.ceil(historicalShifts.length / ITEMS_PER_PAGE);
@@ -1275,8 +1277,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                   {formatDate(startTime)}
                                                   {shift.makeupOfDay && <Badge variant="outline">Recupero</Badge>}
                                                 </TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
                                                 <TableCell className="whitespace-nowrap">
                                                     <Badge variant={
@@ -1331,8 +1333,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     {pendingOvertimeShifts.map((shift) => (
                                         <TableRow key={shift.id}>
                                             <TableCell className="whitespace-nowrap">{formatDate(shift.date)}</TableCell>
-                                            <TableCell className="whitespace-nowrap">{formatTime(shift.events.find(e => e.type === 'entrata')?.timestamp)}</TableCell>
-                                            <TableCell className="whitespace-nowrap">{formatTime(shift.events.find(e => e.type === 'uscita')?.timestamp)}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'entrata') ? format(shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'uscita') ? format(shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
                                             <TableCell className="text-right whitespace-nowrap">
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'overtime' })}>
                                                     <Eye className="h-5 w-5" />
@@ -1364,30 +1366,84 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="whitespace-nowrap">Data</TableHead>
-                                        <TableHead className="whitespace-nowrap">Inizio</TableHead>
-                                        <TableHead className="whitespace-nowrap">Fine</TableHead>
-                                        <TableHead className="whitespace-nowrap">Durata</TableHead>
+                                        <TableHead className="whitespace-nowrap">Timbrature</TableHead>
+                                        <TableHead className="whitespace-nowrap">Durata Effettiva</TableHead>
+                                        <TableHead className="whitespace-nowrap">Ore Contabili</TableHead>
                                         <TableHead className="whitespace-nowrap">Stato</TableHead>
                                         <TableHead className="text-right whitespace-nowrap">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
-                                <TableBody>
+                               <TableBody>
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const isRegular = shift.type === 'regular';
-                                        const displayShift = shift as Shift; 
-                                        const displayOvertime = shift as StraordinarioShift;
+                                        const date = isRegular ? (shift as Shift).date : (shift as StraordinarioShift).date;
 
-                                        const startTime = isRegular ? displayShift.events[0]?.timestamp : displayOvertime.events.find(e => e.type === 'entrata')?.timestamp;
-                                        const endTime = isRegular ? displayShift.events.find(e => e.type === 'uscita')?.timestamp : displayOvertime.events.find(e => e.type === 'uscita')?.timestamp;
-                                        const duration = isRegular ? displayShift.workDuration : calculateOvertimeShiftMinutes(displayOvertime);
-                                        const date = isRegular ? startTime : displayOvertime.date;
+                                        let timbratureString = '';
+                                        let effectiveDurationString = '';
+                                        let accountingHoursString = '';
+
+                                        if (!operator) return null;
+
+                                        if (isRegular) {
+                                            const regularShift = shift as Shift;
+                                            const sortedEvents = [...regularShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                                            
+                                            const clockInEvent = sortedEvents.find(e => e.type === 'entrata');
+                                            const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
+                                            const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
+                                            const schedule = operator.workSchedule[dayToUse];
+                                            
+                                            const { ordinary, overtime, leave, calculationStart, calculationEnd, worked } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator.overtimeCalculation);
+                                            
+                                            effectiveDurationString = formatMinutes(worked);
+
+                                            timbratureString = sortedEvents.map(e => {
+                                                const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                let referenceTime = '';
+                                                if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                }
+                                                const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                            }).join(' | ');
+                                            
+                                            const parts = [];
+                                            if (ordinary > 0) parts.push(`${ordinary}h ordinarie`);
+                                            
+                                            const associatedLeaveRequest = approvedRequests.find(r => r.associatedShiftId === regularShift.id && r.type === 'permesso');
+                                            if (associatedLeaveRequest?.hours) {
+                                                 parts.push(`${associatedLeaveRequest.hours}h permesso`);
+                                            }
+                                            
+                                            if (overtime > 0) parts.push(`${overtime}h straordinarie`);
+
+                                            accountingHoursString = parts.length > 0 ? parts.join(', ') : '0h';
+
+                                        } else { // Overtime shift
+                                            const overtimeShift = shift as StraordinarioShift;
+                                            const approvedHours = overtimeShift.approvedHours ?? calculatePureOvertime(overtimeShift, operator);
+
+                                            const sortedEvents = [...overtimeShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+                                            timbratureString = sortedEvents.map(e => {
+                                                 const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                 const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                 return `${typeFormatted}: ${originalTime}`;
+                                            }).join(' | ');
+                                            
+                                            const { workedMinutes } = getShiftDurations(overtimeShift.events);
+                                            effectiveDurationString = formatMinutes(workedMinutes);
+                                            accountingHoursString = `${approvedHours}h straordinarie`;
+                                        }
 
                                         return (
                                             <TableRow key={`${shift.id}-${index}`}>
                                                 <TableCell className="whitespace-nowrap">{formatDate(date)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatTime(startTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatTime(endTime)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatMinutes(duration)}</TableCell>
+                                                <TableCell className="text-xs max-w-[300px] truncate" title={timbratureString}>{timbratureString}</TableCell>
+                                                <TableCell className="whitespace-nowrap">{effectiveDurationString}</TableCell>
+                                                <TableCell className="whitespace-nowrap text-xs">{accountingHoursString}</TableCell>
                                                 <TableCell className="whitespace-nowrap">
                                                     <Badge variant={shift.status === 'confermato' || shift.status === 'approvato' ? 'secondary' : 'destructive'}>
                                                         {shift.status.charAt(0).toUpperCase() + shift.status.slice(1).replace('_', ' ')}
@@ -1568,20 +1624,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         
                         const { ordinary, overtime, leave, worked, break: breakDuration, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeCalculation);
 
-                        const associatedOvertimeRequest = detailShift.status === 'confermato' 
-                            ? approvedRequests.find(r => r.associatedShiftId === detailShift.id)
+                        const associatedLeaveRequest = detailShift.status === 'confermato' 
+                            ? approvedRequests.find(r => r.associatedShiftId === detailShift.id && r.type === 'permesso')
                             : null;
                         
-                        const finalOvertime = associatedOvertimeRequest?.hours ?? overtime;
-
+                        const finalOvertime = overtime;
+                        
                         let mainResultLabel = 'Straordinari';
                         let mainResultValue = `${finalOvertime}h`;
 
-                        if (finalOvertime === 0 && leave > 0) {
+                        const permissionHours = associatedLeaveRequest?.hours ?? leave;
+
+                        if (finalOvertime === 0 && permissionHours > 0) {
                             mainResultLabel = 'Permessi';
-                            mainResultValue = `${leave}h`;
-                        } else if (finalOvertime > 0 && leave > 0) {
-                             mainResultValue = `${finalOvertime}h (Perm: ${leave}h)`;
+                            mainResultValue = `${permissionHours}h`;
+                        } else if (finalOvertime > 0 && permissionHours > 0) {
+                             mainResultValue = `${finalOvertime}h (Perm: ${permissionHours}h)`;
                         }
 
                         return (
