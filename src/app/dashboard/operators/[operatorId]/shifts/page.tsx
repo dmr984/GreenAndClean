@@ -421,8 +421,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     const approvedOvertime = parseFloat(overtimeHours) || 0;
     const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
 
-    // --- START OF FIX ---
-    // Determine a STABLE shift ID. Use existing one, or fallback to the 'entrata' event's ID.
     const stableShiftId = regularShift.events.find(e => e.shiftId)?.shiftId || regularShift.events.find(e => e.type === 'entrata')?.id;
     
     if (!stableShiftId) {
@@ -431,10 +429,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     }
 
     const requestsRef = collection(firestore, `app-users/${operator.id}/requests`);
-    // Use the stable ID to find the old request.
     const q = query(requestsRef, where('associatedShiftId', '==', stableShiftId));
     const existingRequestsSnap = await getDocs(q);
-    // --- END OF FIX ---
 
     const batch = writeBatch(firestore);
     const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
@@ -443,7 +439,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         batch.delete(doc.ref);
     });
     
-    // Find the clock-in event to associate the approved hours
     const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
     if (clockInEvent) {
         const clockInRef = doc(timbratureRef, clockInEvent.id);
@@ -455,7 +450,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
     regularShift.events.forEach(event => {
         const docRef = doc(timbratureRef, event.id);
-        // Ensure all events in the shift now have the stable shiftId
         const updateData: any = {
             status: 'confermata',
             viewedByOperator: false,
@@ -498,7 +492,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             reason: 'Permesso generato da ammanco ore',
             createdAt: serverTimestamp(),
             viewedByOperator: false,
-            associatedShiftId: stableShiftId, // Use stable ID
+            associatedShiftId: stableShiftId,
         };
         const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
         batch.set(newRequestRef, leaveRequest);
@@ -1413,9 +1407,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             timbratureString = sortedEvents.map(e => {
                                                 const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                 let referenceTime = '';
-                                                if (e.type === 'entrata' && calculationStart && Math.abs(calculationStart.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                
+                                                if (e.type === 'entrata' && calculationStart) {
                                                     referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                } else if (e.type === 'uscita' && calculationEnd && Math.abs(calculationEnd.getTime() - e.timestamp.toDate().getTime()) > 60000) {
+                                                } else if (e.type === 'uscita' && calculationEnd) {
                                                     referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
                                                 }
                                                 const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
@@ -1440,10 +1435,21 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
                                             const sortedEvents = [...overtimeShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
+                                            const shiftDate = overtimeShift.date.toDate();
+                                            const dayName = dayIndexToName[getDayFns(shiftDate)];
+                                            const schedule = operator.workSchedule[dayName];
+                                            const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator.overtimeCalculation);
+                                            
                                             timbratureString = sortedEvents.map(e => {
                                                  const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                 let referenceTime = '';
+                                                 if (e.type === 'entrata' && calculationStart) {
+                                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                 } else if (e.type === 'uscita' && calculationEnd) {
+                                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                 }
                                                  const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                 return `${typeFormatted}: ${originalTime}`;
+                                                 return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                             }).join(' | ');
                                             
                                             const { workedMinutes } = getShiftDurations(overtimeShift.events);
