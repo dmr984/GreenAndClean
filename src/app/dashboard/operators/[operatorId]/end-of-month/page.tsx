@@ -191,7 +191,7 @@ export default function EndOfMonthPage() {
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
                 getDocs(notesQuery),
-                getDocs(straordinariSnapshot)
+                getDocs(straordinariQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
