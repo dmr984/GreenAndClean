@@ -428,8 +428,16 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     const approvedOvertime = parseFloat(overtimeHours) || 0;
     const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
 
+    const requestsRef = collection(firestore, `app-users/${operator.id}/requests`);
+    const q = query(requestsRef, where('associatedShiftId', '==', regularShift.id));
+    const existingRequestsSnap = await getDocs(q);
+
     const batch = writeBatch(firestore);
     const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+
+    existingRequestsSnap.forEach(doc => {
+        batch.delete(doc.ref);
+    });
     
     // Find the clock-in event to associate the approved hours
     const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
@@ -1393,7 +1401,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                                             const schedule = operator.workSchedule[dayToUse];
                                             
-                                            const { ordinary, overtime, leave, calculationStart, calculationEnd, worked } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator.overtimeCalculation);
+                                            const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator.overtimeCalculation);
                                             
                                             effectiveDurationString = formatMinutes(worked);
 
