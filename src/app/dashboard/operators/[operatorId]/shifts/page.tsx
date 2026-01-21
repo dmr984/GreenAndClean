@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
 import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -78,13 +78,6 @@ type Shift = {
     isOvertime: boolean;
     ignoreContractualStart?: boolean;
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
-};
-
-type StraordinarioEvent = {
-    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
-    timestamp: Timestamp;
-    latitude?: number;
-    longitude?: number;
 };
 
 type StraordinarioShift = {
@@ -428,9 +421,20 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     const approvedOvertime = parseFloat(overtimeHours) || 0;
     const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
 
+    // --- START OF FIX ---
+    // Determine a STABLE shift ID. Use existing one, or fallback to the 'entrata' event's ID.
+    const stableShiftId = regularShift.events.find(e => e.shiftId)?.shiftId || regularShift.events.find(e => e.type === 'entrata')?.id;
+    
+    if (!stableShiftId) {
+        toast({ title: 'Errore Critico', description: 'Impossibile trovare un ID stabile per il turno.', variant: 'destructive' });
+        return;
+    }
+
     const requestsRef = collection(firestore, `app-users/${operator.id}/requests`);
-    const q = query(requestsRef, where('associatedShiftId', '==', regularShift.id));
+    // Use the stable ID to find the old request.
+    const q = query(requestsRef, where('associatedShiftId', '==', stableShiftId));
     const existingRequestsSnap = await getDocs(q);
+    // --- END OF FIX ---
 
     const batch = writeBatch(firestore);
     const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
@@ -451,9 +455,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
     regularShift.events.forEach(event => {
         const docRef = doc(timbratureRef, event.id);
-        const updateData: { status: string; viewedByOperator: boolean; ignoreContractualStart?: boolean } = {
+        // Ensure all events in the shift now have the stable shiftId
+        const updateData: any = {
             status: 'confermata',
-            viewedByOperator: false
+            viewedByOperator: false,
+            shiftId: stableShiftId 
         };
         if (event.type === 'entrata') {
             updateData.ignoreContractualStart = ignoreContractualStart;
@@ -462,7 +468,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     });
     
     if (manualBreak && manualBreak.start && manualBreak.end) {
-        const shiftId = regularShift.events[0]?.shiftId || regularShift.id;
         const shiftDate = regularShift.events[0].timestamp.toDate();
 
         const createTimestamp = (time: string): Timestamp => {
@@ -473,12 +478,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const breakStartRef = doc(timbratureRef);
         batch.set(breakStartRef, {
             userId: operator.id, type: 'pausa', timestamp: createTimestamp(manualBreak.start),
-            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+            status: 'confermata', viewedByOperator: false, shiftId: stableShiftId, isAuto: true
         });
         const breakEndRef = doc(timbratureRef);
         batch.set(breakEndRef, {
             userId: operator.id, type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end),
-            status: 'confermata', viewedByOperator: false, shiftId, isAuto: true
+            status: 'confermata', viewedByOperator: false, shiftId: stableShiftId, isAuto: true
         });
     }
 
@@ -493,7 +498,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             reason: 'Permesso generato da ammanco ore',
             createdAt: serverTimestamp(),
             viewedByOperator: false,
-            associatedShiftId: regularShift.id,
+            associatedShiftId: stableShiftId, // Use stable ID
         };
         const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
         batch.set(newRequestRef, leaveRequest);
@@ -1630,7 +1635,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                         const schedule = operator.workSchedule[dayToUse];
                         
-                        const { ordinary, overtime, leave, worked, break: breakDuration, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeCalculation);
+                        const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeCalculation);
 
                         const associatedLeaveRequest = detailShift.status === 'confermato' 
                             ? approvedRequests.find(r => r.associatedShiftId === detailShift.id && r.type === 'permesso')
