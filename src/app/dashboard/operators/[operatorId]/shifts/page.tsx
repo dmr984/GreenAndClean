@@ -209,7 +209,6 @@ export default function ShiftApprovalPage() {
     const processShift = (events: Timbratura[], leaveDays: Set<string>): Omit<Shift, 'id'> | null => {
         const startTime = events.find(e => e.type === 'entrata')?.timestamp;
         
-        // Safety check: if there's no clock-in event, we can't process this as a shift.
         if (!startTime) {
             return null;
         }
@@ -280,36 +279,35 @@ export default function ShiftApprovalPage() {
             });
             
             const shiftsByDay: { [key: string]: Timbratura[] } = {};
-            const shiftsByManualId: { [key: string]: Timbratura[] } = {};
 
             for (const event of allClockings) {
-                if (event.shiftId) { 
-                    if (!shiftsByManualId[event.shiftId]) shiftsByManualId[event.shiftId] = [];
-                    shiftsByManualId[event.shiftId].push(event);
-                } else { 
-                    const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
-                    if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
-                    shiftsByDay[dayString].push(event);
+                const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                if (!shiftsByDay[dayString]) {
+                    shiftsByDay[dayString] = [];
                 }
+                shiftsByDay[dayString].push(event);
             }
-
+    
             const groupedShifts: Shift[] = [];
-            
-            for (const shiftId in shiftsByManualId) {
-                const events = shiftsByManualId[shiftId];
-                const processed = processShift(events, leaveDays);
-                if (processed) {
-                    groupedShifts.push({ id: shiftId, ...processed });
-                }
-            }
-
-            for (const day in shiftsByDay) {
-                const dayEvents = shiftsByDay[day];
+    
+            for (const dayString in shiftsByDay) {
+                const dayEvents = shiftsByDay[dayString].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                
                 let currentShiftEvents: Timbratura[] = [];
                 for (const event of dayEvents) {
+                    if (event.type === 'entrata' && currentShiftEvents.length > 0) {
+                        const oldShiftId = currentShiftEvents.find(e => e.shiftId) ?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `incomplete-${dayString}`;
+                        const processedOld = processShift(currentShiftEvents, leaveDays);
+                        if (processedOld) {
+                            groupedShifts.push({ id: oldShiftId, ...processedOld });
+                        }
+                        currentShiftEvents = [];
+                    }
+    
                     currentShiftEvents.push(event);
+    
                     if (event.type === 'uscita') {
-                        const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                        const shiftId = currentShiftEvents.find(e => e.shiftId)?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `shift-${dayString}`;
                         const processed = processShift(currentShiftEvents, leaveDays);
                         if (processed) {
                             groupedShifts.push({ id: shiftId, ...processed });
@@ -317,15 +315,16 @@ export default function ShiftApprovalPage() {
                         currentShiftEvents = [];
                     }
                 }
+                
                 if (currentShiftEvents.length > 0) {
-                    const shiftId = currentShiftEvents.map(e => e.id).sort().join('-');
+                    const shiftId = currentShiftEvents.find(e => e.shiftId)?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `final-shift-${dayString}`;
                     const processed = processShift(currentShiftEvents, leaveDays);
                     if (processed) {
                         groupedShifts.push({ id: shiftId, ...processed });
                     }
                 }
             }
-            
+
             groupedShifts.sort((a,b) => {
                 const dateA = a.events[0]?.timestamp.toMillis() || 0;
                 const dateB = b.events[0]?.timestamp.toMillis() || 0;
@@ -408,7 +407,7 @@ export default function ShiftApprovalPage() {
                  return;
             }
         }
-        // If no leave hours or if checkbox is checked, approve directly
+        
         await handleRegularShiftApproval(context);
     };
     
@@ -817,7 +816,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        const shiftId = shiftForBreak.events.find(e => e.shiftId)?.shiftId || shiftForBreak.id;
+        const shiftId = shiftForBreak.events.find(e => e.shiftId)?.shiftId || shiftForBreak.events.find(e => e.type === 'entrata')?.id;
+
+        if (!shiftId) {
+            toast({ title: 'Errore', description: 'Impossibile associare la pausa al turno. ID del turno non trovato.', variant: 'destructive' });
+            return;
+        }
+
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
     
         const createTimestamp = (time: string): Timestamp => {
