@@ -62,7 +62,7 @@ type Timbratura = {
     isOvertime?: boolean;
     isAuto?: boolean;
     ignoreContractualStart?: boolean;
-    makeupOfDay?: string;
+    makeupOfDay?: string; // Changed to ISO date string 'YYYY-MM-DD'
 };
 
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
@@ -146,10 +146,10 @@ const MonthlySummaryContent = () => {
     
             const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery)
+                getDocs(requestsSnapshot)
             ]);
 
-            const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
+            const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
 
             setMonthlyData({ timbrature: timbratureData, requests: requestsData });
@@ -308,6 +308,8 @@ const MonthlySummaryContent = () => {
                                         <p className="text-muted-foreground mt-1">Giorno festivo.</p>
                                     ) : detail.status === 'mancata_timbratura' ? (
                                         <p className="text-yellow-600 font-semibold mt-1">Assenza.</p>
+                                    ) : detail.status === 'in_corso' ? (
+                                        <p className="text-blue-500 font-semibold mt-1">Turno in corso...</p>
                                     ) : null}
 
                                 </div>

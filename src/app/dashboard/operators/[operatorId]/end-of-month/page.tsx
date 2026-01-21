@@ -191,10 +191,10 @@ export default function EndOfMonthPage() {
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
                 getDocs(notesQuery),
-                getDocs(straordinariQuery)
+                getDocs(straordinariSnapshot)
             ]);
 
-            const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
+            const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
             const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
             const straordinariData = straordinariSnapshot.docs.map(d => ({id: d.id, ...d.data()} as any));
@@ -622,7 +622,8 @@ export default function EndOfMonthPage() {
                                                 { detail.status === 'mancata_timbratura' ? 'Assenza' :
                                                   detail.status === 'ferie' ? 'Giorno di Ferie' :
                                                   detail.status === 'malattia' ? 'Giorno di Malattia' :
-                                                  detail.status === 'festa' ? 'Giorno Festivo' : ''
+                                                  detail.status === 'festa' ? 'Giorno Festivo' :
+                                                  detail.status === 'in_corso' ? 'Turno in corso...' : ''
                                                 }
                                             </p>
                                         )

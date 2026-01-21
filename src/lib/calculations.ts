@@ -75,7 +75,7 @@ type SingleShiftBlock = {
 
 export type DailyDetail = {
     date: Date;
-    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa';
+    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa' | 'in_corso';
     shift: {
         allShifts?: SingleShiftBlock[];
         events: Timbratura[];
@@ -376,7 +376,7 @@ export const processMonthlyData = (
     
     // Process each day of the month to create daily details
     for (const day of allDaysOfMonth) {
-        if (day > today && !isSameDay(day, today)) continue;
+        if (day > today) continue;
 
         let dailySchedule: DailySchedule | undefined;
         let isMakeupShift = false;
@@ -418,6 +418,27 @@ export const processMonthlyData = (
         } else if (isHoliday && workedEventsRaw.length === 0 && !dayStraordinario) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (workedEventsRaw.length > 0) {
+            const isShiftComplete = workedEventsRaw.some(e => e.type === 'uscita');
+            const isTodayAndInProgress = isSameDay(day, today) && !isShiftComplete;
+
+            if (isTodayAndInProgress) {
+                 details.push({
+                    date: day,
+                    status: 'in_corso',
+                    request: null,
+                    shift: {
+                        allShifts: [{ events: workedEventsRaw }],
+                        events: workedEventsRaw,
+                        contractualHours,
+                        ordinaryHours: 0,
+                        overtimeHours: 0,
+                        permissionHours: 0,
+                    },
+                    note: dailyNote?.note
+                });
+                continue;
+            }
+
             // Day was worked, calculate details
             const dayShifts: SingleShiftBlock[] = [];
             let currentShiftEvents: Timbratura[] = [];
@@ -438,6 +459,19 @@ export const processMonthlyData = (
                         });
                     }
                     currentShiftEvents = []; 
+                }
+            }
+             if (currentShiftEvents.length > 0) {
+                const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
+                if(clockInTime) {
+                    const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
+                    const { calculationStart } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                    
+                    dayShifts.push({
+                        events: currentShiftEvents,
+                        calculationStart: calculationStart || undefined,
+                        calculationEnd: undefined
+                    });
                 }
             }
 
@@ -493,9 +527,9 @@ export const processMonthlyData = (
                 },
                 note: dailyNote?.note
              });
-        } else if (isWorkDay) {
+        } else if (isWorkDay && day < today) {
              details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
-        } else {
+        } else if (!isWorkDay) {
              details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
         }
     }
@@ -515,13 +549,16 @@ export const processMonthlyData = (
         switch (detail.status) {
             case 'lavorato':
                 if (detail.shift) {
-                    // A day is "worked" if it's a contractual workday.
-                    // Overtime-only days on days off don't count towards "worked days".
-                    if (detail.shift.contractualHours > 0) {
-                        workedDays++;
+                    const isConfirmed = detail.shift.events.every(e => e.status === 'confermata');
+                    const isStraordinarioApproved = monthlyData.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
+
+                    if (isConfirmed || isStraordinarioApproved) {
+                         if (detail.shift.contractualHours > 0) {
+                            workedDays++;
+                        }
+                        totalOrdinaryHours += detail.shift.ordinaryHours;
+                        totalOvertimeHours += detail.shift.overtimeHours;
                     }
-                    totalOrdinaryHours += detail.shift.ordinaryHours;
-                    totalOvertimeHours += detail.shift.overtimeHours;
                 }
                 break;
             case 'ferie':
