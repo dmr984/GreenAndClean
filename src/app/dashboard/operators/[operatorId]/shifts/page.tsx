@@ -2157,27 +2157,29 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
             
-            <NoteDialogContent open={!!editingNote} onOpenChange={(open) => !open && setEditingNote(null)}>
-                <NoteDialogHeader>
-                    <NoteDialogTitle>Modifica Nota Giornaliera</NoteDialogTitle>
-                    <NoteDialogDescription>
-                        Aggiungi o modifica la nota per il giorno {editingNote ? format(editingNote.date, 'PPP', { locale: it }) : ''}.
-                    </NoteDialogDescription>
-                </NoteDialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="note-content">Nota</Label>
-                    <Input
-                        id="note-content"
-                        value={noteContent}
-                        onChange={(e) => setNoteContent(e.target.value)}
-                        placeholder="Es: Assenza giustificata"
-                    />
-                </div>
-                <NoteDialogFooter>
-                    <Button variant="outline" onClick={() => setEditingNote(null)}>Annulla</Button>
-                    <Button onClick={handleSaveNote}>Salva Nota</Button>
-                </NoteDialogFooter>
-            </NoteDialogContent>
+            <Dialog open={!!editingNote} onOpenChange={(open) => !open && setEditingNote(null)}>
+                <NoteDialogContent>
+                    <NoteDialogHeader>
+                        <NoteDialogTitle>Modifica Nota Giornaliera</NoteDialogTitle>
+                        <NoteDialogDescription>
+                            Aggiungi o modifica la nota per il giorno {editingNote ? format(editingNote.date, 'PPP', { locale: it }) : ''}.
+                        </NoteDialogDescription>
+                    </NoteDialogHeader>
+                    <div className="py-4">
+                        <Label htmlFor="note-content">Nota</Label>
+                        <Input
+                            id="note-content"
+                            value={noteContent}
+                            onChange={(e) => setNoteContent(e.target.value)}
+                            placeholder="Es: Assenza giustificata"
+                        />
+                    </div>
+                    <NoteDialogFooter>
+                        <Button variant="outline" onClick={() => setEditingNote(null)}>Annulla</Button>
+                        <Button onClick={handleSaveNote}>Salva Nota</Button>
+                    </NoteDialogFooter>
+                </NoteDialogContent>
+            </Dialog>
 
         </div>
     );
