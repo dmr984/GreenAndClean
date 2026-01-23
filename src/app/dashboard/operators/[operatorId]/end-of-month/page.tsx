@@ -187,7 +187,7 @@ export default function EndOfMonthPage() {
                 where('date', '<=', monthEnd)
             );
     
-            const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
                 getDocs(notesQuery),
@@ -197,7 +197,7 @@ export default function EndOfMonthPage() {
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
             const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
-            const straordinariData = straordinariSnapshot.docs.map(d => ({id: d.id, ...d.data()} as any));
+            const straordinariData = straordinariSnap.docs.map(d => ({id: d.id, ...d.data()} as any));
             
             setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData, straordinari: straordinariData });
         } catch (error) {
@@ -572,7 +572,7 @@ export default function EndOfMonthPage() {
                                                 </Button>
                                             )}
                                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditNoteClick(detail)}>
-                                                <Pencil className="h-4 w-4" />
+                                                <FileText className={cn('h-4 w-4', detail.note ? 'text-green-500' : 'text-muted-foreground')} />
                                             </Button>
                                         </div>
                                     </div>

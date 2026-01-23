@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent as NoteDialogContent, DialogHeader as NoteDialogHeader, DialogTitle as NoteDialogTitle, DialogDescription as NoteDialogDescription, DialogFooter as NoteDialogFooter } from '@/components/ui/dialog';
 import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams } from 'next/navigation';
@@ -30,6 +31,10 @@ type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 's
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const weekDayLabels: Record<DayOfWeek, string> = { monday: 'Lunedì', tuesday: 'Martedì', wednesday: 'Mercoledì', thursday: 'Giovedì', friday: 'Venerdì', saturday: 'Sabato', sunday: 'Domenica' };
 
+type DailyNote = {
+    note: string;
+    date: string;
+}
 
 type DailySchedule = {
     totalHours?: number;
@@ -166,6 +171,10 @@ export default function ShiftApprovalPage() {
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [isConfirmingNoLeave, setIsConfirmingNoLeave] = useState(false);
 
+    const [dailyNotes, setDailyNotes] = useState<DailyNote[]>([]);
+    const [editingNote, setEditingNote] = useState<{ date: Date; currentNote: string } | null>(null);
+    const [noteContent, setNoteContent] = useState('');
+
 
     const contractualStartTime = useMemo(() => {
         if (!newShiftDate || !operator?.workSchedule) return null;
@@ -256,6 +265,12 @@ export default function ShiftApprovalPage() {
         const allClockingsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`));
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`));
         const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), orderBy('date', 'desc'));
+        const notesQuery = query(collection(firestore, `app-users/${operatorId}/daily-notes`));
+        
+        const unsubNotes = onSnapshot(notesQuery, (snapshot) => {
+            const notesData = snapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
+            setDailyNotes(notesData);
+        });
 
         const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
             const allClockings: Timbratura[] = [];
@@ -295,7 +310,7 @@ export default function ShiftApprovalPage() {
                 
                 let currentShiftEvents: Timbratura[] = [];
                 for (const event of dayEvents) {
-                    if (event.type === 'entrata' && currentShiftEvents.length > 0) {
+                    if (event.type === 'entrata' && currentShiftEvents.length > 0 && currentShiftEvents.some(e => e.type === 'entrata')) {
                         const oldShiftId = currentShiftEvents.find(e => e.shiftId) ?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `incomplete-${dayString}`;
                         const processedOld = processShift(currentShiftEvents, leaveDays);
                         if (processedOld) {
@@ -351,6 +366,7 @@ export default function ShiftApprovalPage() {
         return () => {
             unsubClockings();
             unsubOvertime();
+            unsubNotes();
         }
     }, [firestore, operatorId, toast, operator]);
 
@@ -1246,6 +1262,42 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setBreakTimes({ start: '', end: '' });
     };
 
+    const handleSaveNote = async () => {
+        if (!firestore || !operatorId || !editingNote) return;
+    
+        const dateString = format(editingNote.date, 'yyyy-MM-dd');
+        const noteRef = doc(firestore, `app-users/${operatorId}/daily-notes`, dateString);
+    
+        const noteData = {
+            note: noteContent,
+            date: dateString,
+            userId: operatorId,
+            updatedAt: serverTimestamp()
+        };
+    
+        setDoc(noteRef, noteData, { merge: true })
+            .then(() => {
+                toast({ title: 'Nota salvata'});
+                setDailyNotes(prev => {
+                    const existingNoteIndex = prev.findIndex(n => n.date === dateString);
+                    if (existingNoteIndex > -1) {
+                        const newNotes = [...prev];
+                        newNotes[existingNoteIndex] = { ...newNotes[existingNoteIndex], note: noteContent };
+                        return newNotes;
+                    } else {
+                        return [...prev, { date: dateString, note: noteContent }];
+                    }
+                });
+            })
+            .catch(err => {
+                toast({ title: 'Errore', description: 'Impossibile salvare la nota.', variant: 'destructive' });
+            })
+            .finally(() => {
+                setEditingNote(null);
+                setNoteContent('');
+            });
+    };
+
     return (
         <div className="space-y-6">
 
@@ -1389,6 +1441,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     {paginatedApprovedShifts.map((shift, index) => {
                                         const isRegular = shift.type === 'regular';
                                         const date = isRegular ? (shift as Shift).date : (shift as StraordinarioShift).date;
+                                        const note = dailyNotes.find(n => isSameDay(parse(n.date, 'yyyy-MM-dd', new Date()), date));
 
                                         let timbratureString = '';
                                         let effectiveDurationString = '';
@@ -1474,6 +1527,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right whitespace-nowrap">
+                                                    <Button variant="ghost" size="icon" onClick={() => { setEditingNote({ date, currentNote: note?.note || '' }); setNoteContent(note?.note || ''); }}>
+                                                        <FileText className={cn('h-5 w-5', note ? 'text-green-500' : 'text-foreground')}/>
+                                                    </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                                         <Eye className="h-5 w-5" />
                                                     </Button>
@@ -1631,12 +1687,23 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                  <ResponsiveDialogTitle>Dettaglio Turno per {operator.firstName}</ResponsiveDialogTitle>
                                 {detailShift?.events[0]?.timestamp && <ResponsiveDialogDescription>Turno del {formatDate(detailShift.events[0].timestamp)} {detailShift.makeupOfDay && `(Recupero del ${format(parse(detailShift.makeupOfDay, 'yyyy-MM-dd', new Date()), 'PPP', { locale: it })})`}</ResponsiveDialogDescription>}
                             </div>
-                             {detailShift?.isOnLeaveDay && (
-                                <div className='flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded-md'>
-                                    <AlertCircle className="h-5 w-5" />
-                                    <span className="text-sm font-medium">Timbrato in giorno di assenza</span>
-                                </div>
-                             )}
+                             <div className="flex items-center gap-2">
+                                {detailShift?.isOnLeaveDay && (
+                                    <div className='flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded-md'>
+                                        <AlertCircle className="h-5 w-5" />
+                                        <span className="text-sm font-medium">Timbrato in giorno di assenza</span>
+                                    </div>
+                                )}
+                                {detailShift && (
+                                    <Button variant="ghost" size="icon" onClick={() => {
+                                        const note = dailyNotes.find(n => isSameDay(parse(n.date, 'yyyy-MM-dd', new Date()), detailShift.date));
+                                        setEditingNote({ date: detailShift.date, currentNote: note?.note || '' });
+                                        setNoteContent(note?.note || '');
+                                    }}>
+                                        <FileText className={cn('h-5 w-5', dailyNotes.some(n => isSameDay(parse(n.date, 'yyyy-MM-dd', new Date()), detailShift.date)) ? 'text-green-500' : 'text-foreground')}/>
+                                    </Button>
+                                )}
+                             </div>
                         </div>
                     </ResponsiveDialogHeader>
 
@@ -2089,6 +2156,28 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </div>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
+            
+            <NoteDialogContent open={!!editingNote} onOpenChange={(open) => !open && setEditingNote(null)}>
+                <NoteDialogHeader>
+                    <NoteDialogTitle>Modifica Nota Giornaliera</NoteDialogTitle>
+                    <NoteDialogDescription>
+                        Aggiungi o modifica la nota per il giorno {editingNote ? format(editingNote.date, 'PPP', { locale: it }) : ''}.
+                    </NoteDialogDescription>
+                </NoteDialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="note-content">Nota</Label>
+                    <Input
+                        id="note-content"
+                        value={noteContent}
+                        onChange={(e) => setNoteContent(e.target.value)}
+                        placeholder="Es: Assenza giustificata"
+                    />
+                </div>
+                <NoteDialogFooter>
+                    <Button variant="outline" onClick={() => setEditingNote(null)}>Annulla</Button>
+                    <Button onClick={handleSaveNote}>Salva Nota</Button>
+                </NoteDialogFooter>
+            </NoteDialogContent>
 
         </div>
     );
