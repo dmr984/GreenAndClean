@@ -286,7 +286,7 @@ export default function ShiftApprovalPage() {
 
             requestSnapshot.forEach(doc => {
                 const req = doc.data();
-                if (req.type === 'ferie' || req.type === 'malattia' && req.status === 'approvato') {
+                if ((req.type === 'ferie' || req.type === 'malattia') && req.status === 'approvato') {
                     for(let d = req.startDate.toDate(); d <= req.endDate.toDate(); d.setDate(d.getDate() + 1)) {
                         leaveDays.add(format(d, 'yyyy-MM-dd'));
                     }
