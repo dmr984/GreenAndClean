@@ -145,7 +145,6 @@ const MonthlySummaryContent = () => {
             );
              const straordinariQuery = query(
                 collection(firestore, `app-users/${user.id}/straordinari`),
-                where('status', '==', 'approvato'),
                 where('date', '>=', monthStart),
                 where('date', '<=', monthEnd)
             );
