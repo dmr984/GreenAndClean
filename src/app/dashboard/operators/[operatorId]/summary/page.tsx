@@ -698,7 +698,10 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
 
 
     useEffect(() => {
-        if (!firestore || !operatorId || !currentDate) return;
+        if (!firestore || !operatorId || !currentDate) {
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
 
         const startOfMonthValue = startOfMonth(currentDate);
@@ -715,17 +718,33 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             where('timestamp', '<=', Timestamp.fromDate(endOfMonthValue))
         );
         
+        let requestsDataLoaded = false;
+        let timbratureDataLoaded = false;
+        
+        const checkLoading = () => {
+            if (requestsDataLoaded && timbratureDataLoaded) {
+                setIsLoading(false);
+            }
+        }
+        
         const unsubRequests = onSnapshot(requestsQuery, s => {
             const allRequests = s.docs.map(d => ({id: d.id, ...d.data()} as Request));
             setRequests(allRequests);
-            if (!unsubTimbrature) setIsLoading(false); 
-        }, () => setIsLoading(false));
+            requestsDataLoaded = true;
+            checkLoading();
+        }, (err) => {
+            console.error("Error fetching requests:", err);
+            toast({ title: "Errore", description: "Impossibile caricare le richieste.", variant: "destructive"});
+            requestsDataLoaded = true;
+            checkLoading();
+        });
 
         const unsubTimbrature = onSnapshot(timbratureQuery, s => {
             const allTimbrature = s.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             allTimbrature.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             setTimbrature(allTimbrature.filter(t => t.status === 'confermata'));
-            if (!unsubRequests) setIsLoading(false); 
+            timbratureDataLoaded = true;
+            checkLoading();
         }, (error) => {
             console.error("Error fetching timbrature", error);
             if (error.code === 'failed-precondition') {
@@ -735,11 +754,9 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
                     description: "La query richiede un indice. Controlla la console per il link di creazione."
                 })
             }
-            setIsLoading(false);
+            timbratureDataLoaded = true;
+            checkLoading();
         });
-        
-        Promise.all([getDocs(requestsQuery), getDocs(timbratureQuery)]).then(() => setIsLoading(false));
-
 
         return () => { 
             unsubRequests(); 
