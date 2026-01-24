@@ -6,7 +6,7 @@ import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'firebase/firestore';
-import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, Coffee } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, parse, isAfter } from 'date-fns';
@@ -93,7 +93,7 @@ const MonthlySummaryContent = () => {
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoadingOperator, setIsLoadingOperator] = useState(true);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[] }>({ timbrature: [], requests: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], straordinari: any[] }>({ timbrature: [], requests: [], straordinari: [] });
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -143,16 +143,24 @@ const MonthlySummaryContent = () => {
                 collection(firestore, `app-users/${user.id}/requests`),
                 where('status', '==', 'approvato')
             );
+             const straordinariQuery = query(
+                collection(firestore, `app-users/${user.id}/straordinari`),
+                where('status', '==', 'approvato'),
+                where('date', '>=', monthStart),
+                where('date', '<=', monthEnd)
+            );
     
-            const [timbratureSnapshot, requestsSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery)
+                getDocs(requestsQuery),
+                getDocs(straordinariQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
+            const straordinariData = straordinariSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
 
-            setMonthlyData({ timbrature: timbratureData, requests: requestsData });
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
         } catch (error) {
             console.error("Error fetching monthly data:", error);
             toast({ title: 'Errore', description: "Impossibile caricare i dati del mese.", variant: 'destructive' });
@@ -249,8 +257,6 @@ const MonthlySummaryContent = () => {
                     {dailyDetails.length > 0 ? (
                         <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
-                                 if (detail.status === 'riposo') return null;
-
                                  const isSunday = getDay(detail.date) === 0;
 
                                 return (
@@ -261,6 +267,7 @@ const MonthlySummaryContent = () => {
                                         {detail.status === 'mancata_timbratura' && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
                                         {detail.status === 'lavorato' && <Briefcase className="h-5 w-5 text-blue-500" />}
                                         {detail.status === 'festa' && <Briefcase className="h-5 w-5 text-purple-500" />}
+                                        {detail.status === 'riposo' && <Coffee className="h-5 w-5 text-gray-500" />}
 
                                         {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                     </h4>
@@ -310,6 +317,8 @@ const MonthlySummaryContent = () => {
                                         <p className="text-yellow-600 font-semibold mt-1">Assenza.</p>
                                     ) : detail.status === 'in_corso' ? (
                                         <p className="text-blue-500 font-semibold mt-1">Turno in corso...</p>
+                                    ) : detail.status === 'riposo' ? (
+                                        <p className="text-gray-500 font-semibold mt-1">Giorno di riposo.</p>
                                     ) : null}
 
                                 </div>
