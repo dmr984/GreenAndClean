@@ -170,6 +170,9 @@ export default function ShiftApprovalPage() {
     const [isOvertimeAddBreakDialogOpen, setIsOvertimeAddBreakDialogOpen] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [isConfirmingNoLeave, setIsConfirmingNoLeave] = useState(false);
+    const [orphanedEvents, setOrphanedEvents] = useState<Timbratura[]>([]);
+    const [eventToDelete, setEventToDelete] = useState<Timbratura | null>(null);
+
 
     const [dailyNotes, setDailyNotes] = useState<DailyNote[]>([]);
     const [editingNote, setEditingNote] = useState<{ date: Date; currentNote: string } | null>(null);
@@ -349,6 +352,14 @@ export default function ShiftApprovalPage() {
             setAllShifts(groupedShifts);
             setBookedShiftDays(groupedShifts.map(s => startOfDay(s.events[0].timestamp.toDate())));
             setIsLoading(false);
+
+            const allProcessedEventIds = new Set<string>();
+            groupedShifts.forEach(shift => {
+                shift.events.forEach(event => allProcessedEventIds.add(event.id));
+            });
+            const orphans = allClockings.filter(e => e.status === 'sospesa' && !allProcessedEventIds.has(e.id));
+            setOrphanedEvents(orphans);
+
 
         }, error => {
             console.error(error);
@@ -1298,6 +1309,21 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             });
     };
 
+     const handleDeleteOrphanedEvent = async () => {
+        if (!firestore || !eventToDelete || !operatorId) return;
+        const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, eventToDelete.id);
+        try {
+            await deleteDoc(docRef);
+            toast({ title: "Successo", description: "Evento orfano eliminato." });
+        } catch (error) {
+            toast({ title: 'Errore', description: 'Impossibile eliminare l\'evento.', variant: 'destructive' });
+            console.error("Error deleting orphaned event: ", error);
+        } finally {
+            setEventToDelete(null);
+        }
+    };
+
+
     return (
         <div className="space-y-6">
 
@@ -1373,6 +1399,47 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     )}
                 </CardContent>
             </Card>
+
+            {orphanedEvents.length > 0 && (
+                <Card className="border-destructive">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <AlertCircle className="h-5 w-5 text-destructive" />
+                            Eventi Sospesi Orfani
+                        </CardTitle>
+                        <CardDescription>
+                            Questi eventi sono in attesa ma non appartengono a un turno valido. Potrebbero causare notifiche fantasma. Puoi eliminarli per risolvere il problema.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="border rounded-lg overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Data e Ora</TableHead>
+                                        <TableHead>Tipo Evento</TableHead>
+                                        <TableHead className="text-right">Azione</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {orphanedEvents.map((event) => (
+                                        <TableRow key={event.id}>
+                                            <TableCell>{format(event.timestamp.toDate(), 'PPP p', { locale: it })}</TableCell>
+                                            <TableCell className="capitalize">{event.type}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" onClick={() => setEventToDelete(event)}>
+                                                    <Trash2 className="h-5 w-5 text-destructive" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
 
             <Card>
                 <CardHeader>
@@ -1671,6 +1738,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+             <AlertDialog open={!!eventToDelete} onOpenChange={(open) => !open && setEventToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminare questo evento orfano?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            L'azione è permanente e non può essere annullata. Eliminarlo risolverà la notifica fantasma.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setEventToDelete(null)}>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteOrphanedEvent}>Elimina Evento</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
 
             <AlertDialog open={isConfirmingOvertimeDelete} onOpenChange={setIsConfirmingOvertimeDelete}>
                 <AlertDialogContent>
