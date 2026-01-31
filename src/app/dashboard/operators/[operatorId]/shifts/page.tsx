@@ -1424,7 +1424,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                 <TableBody>
                                     {orphanedEvents.map((event) => (
                                         <TableRow key={event.id}>
-                                            <TableCell>{format(event.timestamp.toDate(), 'PPP p', { locale: it })}</TableCell>
+                                            <TableCell>{event.timestamp ? format(event.timestamp.toDate(), 'PPP p', { locale: it }) : 'Data mancante'}</TableCell>
                                             <TableCell className="capitalize">{event.type}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button variant="ghost" size="icon" onClick={() => setEventToDelete(event)}>
