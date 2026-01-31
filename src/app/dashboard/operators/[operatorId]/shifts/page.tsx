@@ -17,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent as NoteDialogContent, DialogHeader as NoteDialogHeader, DialogTitle as NoteDialogTitle, DialogDescription as NoteDialogDescription, DialogFooter as NoteDialogFooter } from '@/components/ui/dialog';
 import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
@@ -133,6 +133,7 @@ export default function ShiftApprovalPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
     const params = useParams();
+    const router = useRouter();
     const operatorId = params.operatorId as string;
     
     const [operator, setOperator] = useState<Operator | null>(null);
@@ -258,14 +259,20 @@ export default function ShiftApprovalPage() {
     };
 
      useEffect(() => {
-        if (!firestore || !operatorId) return;
+        if (!firestore || !operatorId) {
+             router.push('/dashboard');
+             return;
+        }
         const operatorDocRef = doc(firestore, 'app-users', operatorId);
         getDoc(operatorDocRef).then(docSnap => {
             if (docSnap.exists()) {
                 setOperator({ id: docSnap.id, ...docSnap.data() } as Operator);
+            } else {
+                toast({title: 'Errore', description: 'Operatore non trovato.', variant: 'destructive'});
+                router.push('/dashboard');
             }
         });
-    }, [firestore, operatorId]);
+    }, [firestore, operatorId, router, toast]);
 
     useEffect(() => {
         if (!firestore || !operatorId || !operator) return;
@@ -2285,3 +2292,5 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         </div>
     );
 };
+
+    

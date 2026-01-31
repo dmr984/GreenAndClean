@@ -96,25 +96,27 @@ export function AdminDashboard() {
                     const events = shiftsByDay[dayString];
                     if (events.length === 0) continue;
 
-                    let status: Shift['status'] = 'in_corso';
+                    let status: Shift['status'];
                     const isComplete = events.some(e => e.type === 'uscita');
                     const hasPending = events.some(e => e.status === 'sospesa');
                     const allConfirmed = events.every(e => e.status === 'confermata');
                     
-                    if(allConfirmed) {
-                        status = 'confermato';
-                    } else if (hasPending) {
-                        // Any shift with a pending event requires attention
-                        status = 'in_sospeso';
+                    if (isComplete) {
+                        if (hasPending) {
+                            status = 'in_sospeso';
+                        } else if (allConfirmed) {
+                            status = 'confermato';
+                        } else {
+                            status = 'in_sospeso';
+                        }
                     } else {
-                         // Default to in_corso if no pending events but not yet fully confirmed (e.g., just started)
                         status = 'in_corso';
                     }
                     
                     groupedShifts.push({ id: dayString, status, events });
                 }
                 
-                const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso').length;
+                const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
 
                 setPendingCounts(prev => ({
                     ...prev,
@@ -134,7 +136,7 @@ export function AdminDashboard() {
             unsubscribers.push(unsubLeaves);
 
             // --- Listener for Overtime Shifts ---
-            const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione']));
+            const overtimeQuery = query(collection(firestore, `app-users/${op.id}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
             const unsubOvertime = onSnapshot(overtimeQuery, (overtimeSnapshot) => {
                 setPendingCounts(prev => ({
                     ...prev,
@@ -207,3 +209,4 @@ export function AdminDashboard() {
         </div>
     );
 }
+    
