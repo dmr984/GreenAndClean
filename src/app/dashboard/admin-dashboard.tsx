@@ -86,6 +86,9 @@ export function AdminDashboard() {
                 const shiftsByDay: { [key: string]: Timbratura[] } = {};
                 
                 for (const event of allTimbrature) {
+                     if (!event.timestamp || typeof event.timestamp.toDate !== 'function') {
+                        continue; // Skip malformed/deleted data
+                    }
                     const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
                     if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
                     shiftsByDay[dayString].push(event);

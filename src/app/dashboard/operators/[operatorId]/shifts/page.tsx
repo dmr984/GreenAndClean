@@ -288,10 +288,15 @@ export default function ShiftApprovalPage() {
         });
 
         const unsubClockings = onSnapshot(allClockingsQuery, async (clockingSnapshot) => {
-            const allClockings: Timbratura[] = [];
+            const allClockingsFromDb: Timbratura[] = [];
             clockingSnapshot.forEach(doc => {
-                allClockings.push({ id: doc.id, ...doc.data() } as Timbratura);
+                allClockingsFromDb.push({ id: doc.id, ...doc.data() } as Timbratura);
             });
+            
+            const allClockings: Timbratura[] = allClockingsFromDb.filter(event => 
+                event.timestamp && typeof event.timestamp.toDate === 'function'
+            );
+            
             allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
             
             const requestSnapshot = await getDocs(requestsQuery);
@@ -369,9 +374,23 @@ export default function ShiftApprovalPage() {
             groupedShifts.forEach(shift => {
                 shift.events.forEach(event => allProcessedEventIds.add(event.id));
             });
-            const orphans = allClockings.filter(e => e.status === 'sospesa' && !allProcessedEventIds.has(e.id));
-            setOrphanedEvents(orphans);
 
+            const logicalOrphans = allClockings.filter(
+                e => e.status === 'sospesa' && !allProcessedEventIds.has(e.id)
+            );
+
+            const malformedOrphans = allClockingsFromDb.filter(
+                event => !event.timestamp || typeof event.timestamp.toDate !== 'function'
+            );
+
+            const combinedOrphans = [...malformedOrphans];
+            logicalOrphans.forEach(lo => {
+                if (!combinedOrphans.some(mo => mo.id === lo.id)) {
+                    combinedOrphans.push(lo);
+                }
+            });
+
+            setOrphanedEvents(combinedOrphans);
 
         }, error => {
             console.error(error);
@@ -1321,7 +1340,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             });
     };
 
-     const handleDeleteOrphanedEvent = async () => {
+    const handleDeleteOrphanedEvent = async () => {
         if (!firestore || !eventToDelete || !operatorId) return;
         const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, eventToDelete.id);
         try {
@@ -1353,6 +1372,47 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </Button>
                 </CardHeader>
                 <CardContent>
+                    {orphanedEvents.length > 0 && (
+                        <Card className="mb-6 border-destructive bg-destructive/10">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-destructive">
+                                    <AlertCircle className="h-5 w-5" />
+                                    ATTENZIONE: Risolvi Notifica Fantasma
+                                </CardTitle>
+                                <CardDescription className="text-destructive/90">
+                                    Sono stati trovati {orphanedEvents.length} eventi di timbratura "orfani" che potrebbero causare notifiche errate.
+                                    Questi dati sono incompleti o non associati a un turno valido. Eliminali per risolvere il problema.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Data Evento</TableHead>
+                                            <TableHead>Tipo</TableHead>
+                                            <TableHead className="text-right">Azione</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {orphanedEvents.map((event) => (
+                                            <TableRow key={event.id} className="border-destructive/20">
+                                                <TableCell>
+                                                    {event.timestamp ? format(event.timestamp.toDate(), 'PPP p', { locale: it }) : <span className="text-destructive font-bold">Data non valida</span>}
+                                                </TableCell>
+                                                <TableCell className="capitalize">{event.type}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="destructive" size="sm" onClick={() => setEventToDelete(event)}>
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        Elimina
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
                     {pendingShifts.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-8">Nessun turno in attesa di approvazione.</p>
                     ) : (
@@ -1411,47 +1471,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     )}
                 </CardContent>
             </Card>
-
-            {orphanedEvents.length > 0 && (
-                <Card className="border-destructive">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <AlertCircle className="h-5 w-5 text-destructive" />
-                            Eventi Sospesi Orfani
-                        </CardTitle>
-                        <CardDescription>
-                            Questi eventi sono in attesa ma non appartengono a un turno valido. Potrebbero causare notifiche fantasma. Puoi eliminarli per risolvere il problema.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="border rounded-lg overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data e Ora</TableHead>
-                                        <TableHead>Tipo Evento</TableHead>
-                                        <TableHead className="text-right">Azione</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {orphanedEvents.map((event) => (
-                                        <TableRow key={event.id}>
-                                            <TableCell>{event.timestamp ? format(event.timestamp.toDate(), 'PPP p', { locale: it }) : 'Data mancante'}</TableCell>
-                                            <TableCell className="capitalize">{event.type}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => setEventToDelete(event)}>
-                                                    <Trash2 className="h-5 w-5 text-destructive" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
 
             <Card>
                 <CardHeader>
@@ -1764,12 +1783,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 </AlertDialogContent>
             </AlertDialog>
 
-             <AlertDialog open={!!eventToDelete} onOpenChange={(open) => !open && setEventToDelete(null)}>
+            <AlertDialog open={!!eventToDelete} onOpenChange={(open) => !open && setEventToDelete(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Eliminare questo evento orfano?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            L'azione è permanente e non può essere annullata. Eliminarlo risolverà la notifica fantasma.
+                            Questa azione è permanente e non può essere annullata. Eliminando questo evento si risolverà la notifica fantasma.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
