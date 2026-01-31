@@ -85,6 +85,11 @@ type Shift = {
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
 };
 
+type StraordinarioEvent = {
+    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
+    timestamp: Timestamp;
+};
+
 type StraordinarioShift = {
     id: string;
     events: StraordinarioEvent[];
@@ -387,7 +392,7 @@ export default function ShiftApprovalPage() {
     }, [allShifts]);
 
     const { pendingOvertimeShifts } = useMemo(() => {
-        const pending = overtimeShifts.filter(s => s.status === 'in_attesa_di_approvazione');
+        const pending = overtimeShifts.filter(s => s.status === 'in_attesa_di_approvazione' || s.status === 'in_corso');
         return { pendingOvertimeShifts: pending };
     }, [overtimeShifts]);
 
@@ -1443,12 +1448,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Turni Straordinari da Approvare</CardTitle>
-                    <CardDescription>Approva o rifiuta i turni svolti in giorni non lavorativi.</CardDescription>
+                    <CardTitle>Turni Straordinari da Gestire</CardTitle>
+                    <CardDescription>Gestisci i turni di straordinario in corso o completati.</CardDescription>
                 </CardHeader>
                 <CardContent>
                      {pendingOvertimeShifts.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno straordinario in attesa di approvazione.</p>
+                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno straordinario in corso o in attesa di approvazione.</p>
                      ) : (
                         <div className="border rounded-lg overflow-x-auto">
                             <Table>
@@ -1457,6 +1462,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                         <TableHead>Data</TableHead>
                                         <TableHead>Inizio</TableHead>
                                         <TableHead>Fine</TableHead>
+                                        <TableHead>Stato</TableHead>
                                         <TableHead className="text-right">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -1466,6 +1472,18 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <TableCell className="whitespace-nowrap">{formatDate(shift.date)}</TableCell>
                                             <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'entrata') ? format(shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
                                             <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'uscita') ? format(shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                            <TableCell className="whitespace-nowrap">
+                                                <Badge variant={
+                                                    shift.status === 'in_attesa_di_approvazione' ? 'default'
+                                                    : shift.status === 'in_corso' ? 'outline'
+                                                    : 'destructive'
+                                                } className={cn(
+                                                    shift.status === 'in_attesa_di_approvazione' && 'bg-yellow-500 text-white',
+                                                    shift.status === 'in_corso' && 'bg-blue-500 text-white'
+                                                )}>
+                                                {shift.status.replace(/_/g, ' ')}
+                                                </Badge>
+                                            </TableCell>
                                             <TableCell className="text-right whitespace-nowrap">
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'overtime' })}>
                                                     <Eye className="h-5 w-5" />
