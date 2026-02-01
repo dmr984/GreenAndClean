@@ -2,14 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { doc, getDoc, collection, query, where, onSnapshot, orderBy, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, orderBy, updateDoc, deleteDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { Loader2, BellRing, Trash2, ShieldX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useParams } from 'next/navigation';
-import { format } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 // Define types
@@ -20,12 +20,12 @@ type Operator = {
     lastName: string;
 };
 
-type PendingTimbratura = {
+type Timbratura = {
     id: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
-    status: 'sospesa';
-};
+    status: 'sospesa' | 'confermata' | 'rifiutata';
+}
 
 type PendingRequest = {
     id: string;
@@ -82,21 +82,58 @@ export default function NotificationCenterPage() {
              setIsLoading(false);
         };
         
-        // Listener for Timbrature
-        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('status', '==', 'sospesa'));
-        const unsubTimbrature = onSnapshot(timbratureQuery, (snapshot) => {
-            const items = snapshot.docs.map(doc => {
-                const data = doc.data() as PendingTimbratura;
-                return {
-                    id: doc.id,
+        // Listener for Timbrature (now more comprehensive)
+        const allTimbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'desc'));
+        const unsubTimbrature = onSnapshot(allTimbratureQuery, (snapshot) => {
+            const allTimbrature = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as Timbratura }));
+            const newItems: NotificationItem[] = [];
+
+            // 1. Find individual 'sospesa' events
+            const suspendedEvents = allTimbrature.filter(t => t.status === 'sospesa');
+            suspendedEvents.forEach(data => {
+                newItems.push({
+                    id: data.id,
                     collection: 'timbrature',
                     description: `Timbratura di "${data.type}" in attesa`,
-                    date: data.timestamp?.toDate() || new Date(0), // Use epoch for invalid dates
-                } as NotificationItem;
+                    date: data.timestamp?.toDate() || new Date(0),
+                });
             });
-            processAndSetNotifications(items, 'timbrature');
+
+            // 2. Find 'in_corso' shifts by grouping events by day
+            const shiftsByDay: { [key: string]: Timbratura[] } = {};
+            for (const event of allTimbrature) {
+                if (!event.timestamp || typeof event.timestamp.toDate !== 'function') continue;
+                const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
+                shiftsByDay[dayString].push(event);
+            }
+            
+            for (const dayString in shiftsByDay) {
+                const dayEvents = shiftsByDay[dayString];
+                const hasEntrata = dayEvents.some(e => e.type === 'entrata');
+                const hasUscita = dayEvents.some(e => e.type === 'uscita');
+
+                if (hasEntrata && !hasUscita) {
+                    const firstEvent = dayEvents.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis())[0];
+                    const shiftId = dayEvents.map(e => e.id).join(',');
+                    
+                    const isAlreadyHandledAsSuspended = newItems.some(item => dayEvents.some(de => de.id === item.id));
+
+                    if (!isAlreadyHandledAsSuspended) {
+                        newItems.push({
+                            id: shiftId,
+                            collection: 'timbrature',
+                            description: `Turno non terminato del ${format(firstEvent.timestamp.toDate(), 'PPP', { locale: it })}`,
+                            date: firstEvent.timestamp.toDate(),
+                        });
+                    }
+                }
+            }
+
+            processAndSetNotifications(newItems, 'timbrature');
         }, () => setIsLoading(false));
         unsubs.push(unsubTimbrature);
+
 
         // Listener for Requests
         const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('status', '==', 'in_attesa'));
@@ -138,6 +175,28 @@ export default function NotificationCenterPage() {
         if (!firestore || !operatorId || !itemToDelete) return;
         
         const { id, collection } = itemToDelete;
+
+        // Handle synthetic shift deletion for 'in_corso' shifts
+        if (collection === 'timbrature' && id.includes(',')) {
+            const batch = writeBatch(firestore);
+            const eventIds = id.split(',');
+            eventIds.forEach(eventId => {
+                const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, eventId);
+                batch.delete(docRef);
+            });
+            try {
+                await batch.commit();
+                toast({ title: 'Successo', description: 'Turno incompleto eliminato.' });
+            } catch (error) {
+                console.error("Error deleting incomplete shift:", error);
+                toast({ title: 'Errore', description: 'Impossibile eliminare il turno.', variant: 'destructive' });
+            } finally {
+                setItemToDelete(null);
+            }
+            return;
+        }
+
+        // Original logic for single items
         const docRef = doc(firestore, `app-users/${operatorId}/${collection}`, id);
 
         try {
