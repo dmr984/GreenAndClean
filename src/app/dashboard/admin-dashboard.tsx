@@ -98,27 +98,28 @@ export function AdminDashboard() {
                 for (const dayString in shiftsByDay) {
                     const events = shiftsByDay[dayString];
                     if (events.length === 0) continue;
-
-                    // FIX: A day's events only constitute a "shift" if there is an actual clock-in.
-                    // This prevents stray 'pausa' events from being counted as an 'in_corso' shift.
+                    
                     const hasEntrata = events.some(e => e.type === 'entrata');
                     if (!hasEntrata) continue;
 
                     let status: Shift['status'];
                     const isComplete = events.some(e => e.type === 'uscita');
-                    const hasPending = events.some(e => e.status === 'sospesa');
-                    const allConfirmed = events.every(e => e.status === 'confermata');
-                    
+                    const hasSuspended = events.some(e => e.status === 'sospesa');
+
                     if (isComplete) {
-                        if (hasPending) {
+                        // A completed shift is pending only if it has suspended events.
+                        if (hasSuspended) {
                             status = 'in_sospeso';
-                        } else if (allConfirmed) {
-                            status = 'confermato';
                         } else {
-                            status = 'in_sospeso';
+                            status = 'confermato'; // Not pending
                         }
                     } else {
-                        status = 'in_corso';
+                        // An incomplete shift is "in_corso" and pending only if it has suspended events.
+                        if (hasSuspended) {
+                            status = 'in_corso';
+                        } else {
+                            status = 'confermato'; // Not pending from an admin's perspective.
+                        }
                     }
                     
                     groupedShifts.push({ id: dayString, status, events });
