@@ -99,6 +99,11 @@ export function AdminDashboard() {
                     const events = shiftsByDay[dayString];
                     if (events.length === 0) continue;
 
+                    // FIX: A day's events only constitute a "shift" if there is an actual clock-in.
+                    // This prevents stray 'pausa' events from being counted as an 'in_corso' shift.
+                    const hasEntrata = events.some(e => e.type === 'entrata');
+                    if (!hasEntrata) continue;
+
                     let status: Shift['status'];
                     const isComplete = events.some(e => e.type === 'uscita');
                     const hasPending = events.some(e => e.status === 'sospesa');
