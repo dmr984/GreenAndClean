@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useUser } from '@/hooks/use-user';
 import { doc, onSnapshot, collection, query, where, Timestamp } from 'firebase/firestore';
-import { Loader2, User, ClipboardList, ListChecks, Calculator } from 'lucide-react';
+import { Loader2, User, ClipboardList, ListChecks, Calculator, BellRing } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -64,7 +64,7 @@ export default function OperatorDetailPage() {
 
         const shiftsQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('status', '==', 'sospesa'));
         const unsubShifts = onSnapshot(shiftsQuery, (snapshot) => {
-            const pendingDays = new Set(snapshot.docs.map(d => d.data().timestamp.toDate().toDateString()));
+            const pendingDays = new Set(snapshot.docs.map(d => d.data().timestamp?.toDate()?.toDateString()).filter(Boolean));
             setPendingCounts(prev => ({ ...prev, shifts: pendingDays.size }));
         });
         
@@ -73,7 +73,7 @@ export default function OperatorDetailPage() {
              setPendingCounts(prev => ({ ...prev, requests: snapshot.size }));
         });
 
-        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione']));
+        const overtimeQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('status', 'in', ['in_attesa_di_approvazione', 'in_corso']));
         const unsubOvertime = onSnapshot(overtimeQuery, (snapshot) => {
             setPendingCounts(prev => ({ ...prev, overtime: snapshot.size }));
         });
@@ -143,6 +143,8 @@ export default function OperatorDetailPage() {
         </Card>
     );
 
+    const totalPending = (pendingCounts.shifts || 0) + (pendingCounts.requests || 0) + (pendingCounts.overtime || 0);
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4">
@@ -176,6 +178,13 @@ export default function OperatorDetailPage() {
                     description="Riepilogo mensile e stampa."
                     icon={Calculator}
                     link={`/dashboard/operators/${operatorId}/end-of-month`}
+                />
+                <NavCard
+                    title="Centro Notifiche"
+                    description="Risolvi notifiche fantasma e azioni in sospeso."
+                    icon={BellRing}
+                    link={`/dashboard/operators/${operatorId}/notifications`}
+                    notificationCount={totalPending}
                 />
             </div>
         </div>
