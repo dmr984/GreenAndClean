@@ -236,14 +236,18 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         
         const overtimeQuery = query(
             collection(firestore, `app-users/${authUser.id}/straordinari`),
-            where('date', '==', Timestamp.fromDate(startOfDay(new Date()))),
-            where('status', '==', 'in_corso')
+            where('date', '>=', startOfDay(new Date())),
+            where('date', '<=', endOfDay(new Date())),
         );
 
         const unsubscribe = onSnapshot(overtimeQuery, (snapshot) => {
             if (!snapshot.empty) {
-                const shiftDoc = snapshot.docs[0];
-                setCurrentOvertimeShift({ id: shiftDoc.id, ...shiftDoc.data() } as StraordinarioShift);
+                const shiftDoc = snapshot.docs.find(d => d.data().status === 'in_corso');
+                if (shiftDoc) {
+                   setCurrentOvertimeShift({ id: shiftDoc.id, ...shiftDoc.data() } as StraordinarioShift);
+                } else {
+                   setCurrentOvertimeShift(null);
+                }
             } else {
                 setCurrentOvertimeShift(null);
             }
@@ -788,16 +792,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const calendarDisabledMatcher = (day: Date) => {
-    // Check if it's a day with approved leave
-    const onLeave = bookedDays.some(leaveDay => isSameDay(leaveDay, day));
-    if (onLeave) return true;
-    
-    if (isPublicHoliday(day)) return true;
-
-    // Check if it's a contractual workday
-    const dayName = dayIndexToName[getDay(day)];
-    const isContractualWorkDay = (operator?.workSchedule?.[dayName]?.totalHours || 0) > 0;
+    // A day is disabled if it's not a contractual working day, or it's a holiday, or it's already booked
+    const isContractualWorkDay = (operator?.workSchedule?.[dayIndexToName[getDay(day)]]?.totalHours || 0) > 0;
     if (!isContractualWorkDay) return true;
+
+    if (isPublicHoliday(day)) return true;
+    
+    if (bookedDays.some(leaveDay => isSameDay(leaveDay, day))) return true;
 
     return false;
   };
@@ -854,7 +855,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             locale={it}
                             disabled={calendarDisabledMatcher}
                             month={currentDate || new Date()}
-                            onMonthChange={setCurrentDate}
+                            onMonthChange={(month) => setCurrentDate(month)}
                             fromMonth={subMonths(new Date(), 2)}
                             toMonth={addMonths(new Date(), 2)}
                          />
