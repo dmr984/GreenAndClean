@@ -316,7 +316,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     
     const isMakeupShift = !!clockInEvent?.makeupOfDay;
 
-    const isWorkDay = isMakeupShift || (contractualHours > 0 && !isPublicHoliday(shift.date));
+    const isWorkDay = isMakeupShift || contractualHours > 0;
     
     if (!isWorkDay) {
         // On non-working days, all worked minutes are considered overtime.
@@ -563,7 +563,6 @@ export const processMonthlyData = (
                         totalOrdinaryHours += detail.shift.ordinaryHours;
                         totalOvertimeHours += detail.shift.overtimeHours;
                         
-                        // THIS IS THE KEY CHANGE: Only increment workedDays if there are ordinary hours.
                         if (detail.shift.ordinaryHours > 0) {
                             workedDays++;
                         }
