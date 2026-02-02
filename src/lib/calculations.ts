@@ -549,13 +549,17 @@ export const processMonthlyData = (
         if (!isWithinInterval(detail.date, monthInterval)) return;
         
         switch (detail.status) {
+            case 'recupero_effettuato':
+                // This day is just a pointer to work done for another day. Do not count it for anything.
+                break;
             case 'lavorato':
                 if (detail.shift) {
                     const isConfirmed = detail.shift.events.every(e => e.status === 'confermata');
                     const isStraordinarioApproved = data.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
 
                     if (isConfirmed || isStraordinarioApproved) {
-                         if (detail.shift.contractualHours > 0) {
+                         // Only count as a worked day if it resulted in payable hours
+                         if (detail.shift.ordinaryHours > 0 || detail.shift.overtimeHours > 0) {
                             workedDays++;
                         }
                         totalOrdinaryHours += detail.shift.ordinaryHours;
@@ -579,7 +583,7 @@ export const processMonthlyData = (
                 break;
         }
     });
-
+    
     const totalPermesso = data.requests
         .filter(r => {
             const requestDate = r.startDate.toDate();
