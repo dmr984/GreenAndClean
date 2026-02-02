@@ -60,7 +60,7 @@
 
 @media print {
   @page {
-    margin: 0;
+    margin: 20mm;
   }
   body {
     background: white;
