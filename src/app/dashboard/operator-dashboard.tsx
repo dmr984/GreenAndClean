@@ -134,7 +134,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
   const [isMakeupShiftDialogOpen, setIsMakeupShiftDialogOpen] = useState(false);
-  const [makeupShiftType, setMakeupShiftType] = useState<'overtime' | 'makeup' | null>(null);
+  const [shiftStartContext, setShiftStartContext] = useState<'normal' | 'extra'>('extra');
+  const [makeupShiftType, setMakeupShiftType] = useState<'overtime' | 'makeup' | 'normal' | null>(null);
   const [makeupDay, setMakeupDay] = useState<Date | undefined>(undefined);
   const [bookedDays, setBookedDays] = useState<Date[]>([]);
 
@@ -421,12 +422,22 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
 
   const handleClocking = async (type: 'entrata' | 'uscita') => {
-    if (type === 'entrata' && !isWorkDay) {
-        setIsMakeupShiftDialogOpen(true);
+    if (type === 'uscita') {
+        await performClocking(type);
         return;
     }
-    await performClocking(type);
-  }
+
+    // ENTRATA LOGIC
+    const hasExistingShiftsToday = clockings && clockings.length > 0 && clockings.some(c => c.type === 'entrata');
+
+    if (isWorkDay && !hasExistingShiftsToday) {
+        setShiftStartContext('normal');
+    } else {
+        setShiftStartContext('extra');
+    }
+    setMakeupShiftType(null); // Reset selection
+    setIsMakeupShiftDialogOpen(true);
+  };
 
   const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: string) => {
     if (!firestore || !operator || isProcessing) return;
@@ -480,43 +491,37 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             newTimbratura.makeupOfDay = makeupDayInfo;
         }
 
-        addDoc(timbraturaRef, newTimbratura)
-            .then(() => {
-                toast({
-                    title: "Successo!",
-                    description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente. In attesa di approvazione.`,
-                });
-            })
-            .catch(err => {
-                if (err.code === 'permission-denied') {
-                    const contextualError = new FirestorePermissionError({
-                        operation: 'create',
-                        path: timbraturaRef.path,
-                        requestResourceData: newTimbratura
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                    toast({
-                        variant: 'destructive',
-                        title: 'Errore di Timbratura',
-                        description: "Non è stato possibile registrare la timbratura.",
-                    });
-                }
-            });
+        await addDoc(timbraturaRef, newTimbratura);
+        toast({
+            title: "Successo!",
+            description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente. In attesa di approvazione.`,
+        });
 
     } catch (error: any) {
-        // This will catch errors from getLocation() if GPS is required
-        if (operator.requireGps !== false) {
+        if (operator.requireGps !== false && (error.message.includes("Geolocalizzazione") || error.message.includes("location"))) {
             toast({
                 variant: 'destructive',
                 title: 'Errore di Geolocalizzazione',
                 description: error.message || "Non è stato possibile ottenere la posizione.",
             });
+        } else if (error.code === 'permission-denied') {
+            const contextualError = new FirestorePermissionError({
+                operation: 'create',
+                path: `app-users/${operator.id}/timbrature`,
+                requestResourceData: { type, makeupDayInfo }
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Errore di Timbratura',
+                description: "Non è stato possibile registrare la timbratura.",
+            });
         }
+        // Re-throw to prevent dialog from closing on error
+        throw error;
     } finally {
         setIsProcessing(false);
-        setIsMakeupShiftDialogOpen(false);
-        setMakeupDay(undefined);
     }
   }
 
@@ -620,18 +625,37 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 title: 'Errore di Geolocalizzazione o Salvataggio',
                 description: error.message || "Non è stato possibile registrare il turno straordinario.",
             });
+            throw error; // Re-throw for the submit handler
         }
     };
 
-  const handleMakeupShiftDialogSubmit = () => {
-    if (makeupShiftType === 'overtime') {
-        handleOvertimeClocking('entrata');
-    } else if (makeupShiftType === 'makeup' && makeupDay) {
-        performClocking('entrata', format(makeupDay, 'yyyy-MM-dd'));
-    } else {
-         toast({ title: "Selezione mancante", description: "Seleziona il giorno che vuoi recuperare.", variant: "destructive" });
+  const handleMakeupShiftDialogSubmit = async () => {
+    if (!makeupShiftType || (makeupShiftType === 'makeup' && !makeupDay)) {
+        if (makeupShiftType === 'makeup' && !makeupDay) {
+            toast({ title: "Selezione mancante", description: "Seleziona il giorno che vuoi recuperare.", variant: "destructive" });
+        }
+        return; 
     }
-    setIsMakeupShiftDialogOpen(false);
+
+    try {
+        if (makeupShiftType === 'normal') {
+            await performClocking('entrata');
+        } else if (makeupShiftType === 'overtime') {
+            await handleOvertimeClocking('entrata');
+        } else if (makeupShiftType === 'makeup' && makeupDay) {
+            await performClocking('entrata', format(makeupDay, 'yyyy-MM-dd'));
+        }
+
+        // Close dialog on success
+        setIsMakeupShiftDialogOpen(false);
+        setMakeupShiftType(null);
+        setMakeupDay(undefined);
+
+    } catch (error) {
+        // Errors are already toasted inside the clocking functions.
+        // We just prevent the dialog from closing by catching the error here.
+        console.error("Clocking failed", error);
+    }
   };
 
 
@@ -741,9 +765,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       if (!isClockedIn && leaveStatus.onLeave) {
           return renderLeaveCard();
       }
-      if (!isClockedIn && !isWorkDay) {
-          return renderNonWorkDayCard();
-      }
+      // This is now handled by the dialog logic
+      // if (!isClockedIn && !isWorkDay) {
+      //     return renderNonWorkDayCard();
+      // }
       return (
          <Card>
             <CardHeader className="pb-4">
@@ -817,22 +842,39 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     <ResponsiveDialog open={isMakeupShiftDialogOpen} onOpenChange={setIsMakeupShiftDialogOpen}>
         <ResponsiveDialogContent>
              <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle>Tipo di Turno</ResponsiveDialogTitle>
+                <ResponsiveDialogTitle>{shiftStartContext === 'normal' ? 'Inizia Turno' : 'Tipo di Turno'}</ResponsiveDialogTitle>
                 <ResponsiveDialogDescription>
-                    Stai timbrando in un giorno non lavorativo. Che tipo di turno vuoi iniziare?
+                    {shiftStartContext === 'normal' 
+                        ? 'Stai iniziando il tuo turno. Se questo è un recupero, specificalo.'
+                        : 'Stai timbrando fuori dal tuo orario standard. Che tipo di turno vuoi iniziare?'
+                    }
                 </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
              <div className="py-4 space-y-4">
-                <Button 
-                    variant={makeupShiftType === 'overtime' ? 'secondary' : 'outline'} 
-                    className="w-full justify-start text-left h-auto py-3"
-                    onClick={() => setMakeupShiftType('overtime')}
-                >
-                    <div>
-                        <p className="font-semibold">Turno Straordinario</p>
-                        <p className="text-xs text-muted-foreground">Le ore verranno calcolate come straordinario.</p>
-                    </div>
-                </Button>
+                {shiftStartContext === 'normal' && (
+                    <Button 
+                        variant={makeupShiftType === 'normal' ? 'secondary' : 'outline'} 
+                        className="w-full justify-start text-left h-auto py-3"
+                        onClick={() => setMakeupShiftType('normal')}
+                    >
+                        <div>
+                            <p className="font-semibold">Turno Normale</p>
+                            <p className="text-xs text-muted-foreground">Registra un turno di lavoro standard per oggi.</p>
+                        </div>
+                    </Button>
+                )}
+                {shiftStartContext === 'extra' && (
+                    <Button 
+                        variant={makeupShiftType === 'overtime' ? 'secondary' : 'outline'} 
+                        className="w-full justify-start text-left h-auto py-3"
+                        onClick={() => setMakeupShiftType('overtime')}
+                    >
+                        <div>
+                            <p className="font-semibold">Turno Straordinario</p>
+                            <p className="text-xs text-muted-foreground">Le ore verranno calcolate come straordinario.</p>
+                        </div>
+                    </Button>
+                )}
                 <Button 
                     variant={makeupShiftType === 'makeup' ? 'secondary' : 'outline'} 
                     className="w-full justify-start text-left h-auto py-3"
@@ -840,7 +882,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 >
                      <div>
                         <p className="font-semibold">Recupero / Anticipo di un altro giorno</p>
-                        <p className="text-xs text-muted-foreground">Le ore verranno calcolate come turno ordinario.</p>
+                        <p className="text-xs text-muted-foreground">Le ore verranno conteggiate sul giorno originale.</p>
                     </div>
                 </Button>
 
@@ -869,7 +911,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </div>
             <ResponsiveDialogFooter>
                 <Button variant="outline" onClick={() => setIsMakeupShiftDialogOpen(false)}>Annulla</Button>
-                <Button onClick={handleMakeupShiftDialogSubmit} disabled={makeupShiftType === 'makeup' && !makeupDay}>Avvia Turno</Button>
+                <Button onClick={handleMakeupShiftDialogSubmit} disabled={!makeupShiftType || (makeupShiftType === 'makeup' && !makeupDay)}>Avvia Turno</Button>
             </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
     </ResponsiveDialog>
