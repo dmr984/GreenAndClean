@@ -6,7 +6,7 @@ import { doc, getDoc, collection, query, where, Timestamp, getDocs } from 'fireb
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useParams, useSearchParams } from 'next/navigation';
-import { format, isValid, getDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, isValid, getDay, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, type MonthlySummary, type DailyDetail, calculateShiftDetails, calculateHours } from '@/lib/calculations';
@@ -77,7 +77,7 @@ const PrintPageContent = () => {
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], dailyNotes: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[] }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [] });
     const [manualTotals, setManualTotals] = useState({ ferie: -1, permessi: -1, malattia: -1 });
     const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
 
@@ -131,11 +131,13 @@ const PrintPageContent = () => {
                 // Fetch Timbrature and Requests
                 const monthStart = startOfMonth(currentMonth);
                 const monthEnd = endOfMonth(currentMonth);
+                const queryStart = subMonths(monthStart, 1);
+                const queryEnd = addMonths(monthEnd, 1);
 
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${operatorId}/timbrature`),
-                    where('timestamp', '>=', monthStart),
-                    where('timestamp', '<=', monthEnd)
+                    where('timestamp', '>=', queryStart),
+                    where('timestamp', '<=', queryEnd)
                 );
                 const requestsQuery = query(
                     collection(firestore, `app-users/${operatorId}/requests`),
@@ -147,18 +149,25 @@ const PrintPageContent = () => {
                      where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
                      where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
                 );
+                const straordinariQuery = query(
+                    collection(firestore, `app-users/${operatorId}/straordinari`),
+                    where('date', '>=', queryStart),
+                    where('date', '<=', queryEnd)
+                );
 
-                const [timbratureSnapshot, requestsSnapshot, notesSnapshot] = await Promise.all([
+                const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
                     getDocs(notesQuery),
+                    getDocs(straordinariQuery)
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
                 const requestsData = requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
                 const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
+                const straordinariData = straordinariSnap.docs.map(d => ({id: d.id, ...d.data()} as any));
                 
-                setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData });
+                setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData, straordinari: straordinariData });
 
             } catch (error) {
                  console.error("Error fetching data for print:", error);
@@ -341,6 +350,13 @@ const PrintPageContent = () => {
             }
 
             if (detail.shift && detail.shift.allShifts) {
+                const clockInEvent = detail.shift.events.find(e => e.type === 'entrata');
+                const makeupDay = clockInEvent?.makeupOfDay;
+                if(makeupDay) {
+                    doc.text(`Recupero eseguito il ${format(detail.shift.events[0].timestamp.toDate(), 'PPP', {locale: it})}`, margin, y);
+                    y += 5;
+                }
+
                 detail.shift.allShifts.forEach((shiftBlock, idx) => {
                      const timbratureString = shiftBlock.events.map(e => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -534,6 +550,7 @@ const PrintPageContent = () => {
                                     {detail.shift && detail.shift.allShifts ? (
                                         <>
                                             {detail.shift.allShifts.map((shiftBlock, idx) => {
+                                                const makeupDay = shiftBlock.events.find(e => e.type === 'entrata')?.makeupOfDay;
                                                 const timbratureString = shiftBlock.events.map(e => {
                                                     const originalTime = format(e.timestamp.toDate(), 'HH:mm');
                                                     let referenceTime = '';
@@ -547,7 +564,10 @@ const PrintPageContent = () => {
                                                 }).join(' | ');
 
                                                 return (
-                                                    <p key={idx} className="text-black text-sm pl-1 leading-tight">{`Turno ${idx + 1}: ${timbratureString}`}</p>
+                                                    <div key={idx}>
+                                                        {makeupDay && <p className="text-black text-sm pl-1 leading-tight font-semibold text-primary">Recupero eseguito il {format(shiftBlock.events[0].timestamp.toDate(), 'PPP', {locale: it})}</p>}
+                                                        <p className="text-black text-sm pl-1 leading-tight">{`Turno ${idx + 1}: ${timbratureString}`}</p>
+                                                    </div>
                                                 )
                                             })}
                                             <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>

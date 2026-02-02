@@ -57,10 +57,9 @@ const DailySummaryPage = () => {
 
         const dayStart = startOfDay(date);
         const dayEnd = endOfDay(date);
-        const monthStart = startOfMonth(date);
         
         // Widen query range for makeup shifts
-        const queryStart = subMonths(monthStart, 1);
+        const queryStart = subMonths(dayStart, 1);
         const queryEnd = addMonths(dayEnd, 1);
 
         try {
@@ -229,7 +228,7 @@ const DailySummaryPage = () => {
                                         <CardContent className="space-y-3">
                                             {detail?.shift && detail.shift.allShifts ? (
                                                 <div className='text-sm'>
-                                                    {makeupDay && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(new Date(makeupDay), 'PPP', {locale: it})}</p>}
+                                                    {makeupDay && detail.shift && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(detail.shift.events[0].timestamp.toDate(), 'PPP', {locale: it})}</p>}
                                                     <p className='font-semibold'>Timbrature del giorno:</p>
                                                     <div className='text-muted-foreground'>
                                                         {detail.shift.allShifts.map((shiftBlock, idx) => (

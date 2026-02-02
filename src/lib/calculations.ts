@@ -354,7 +354,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
 export const processMonthlyData = (
     currentMonth: Date,
     operator: Operator,
-    monthlyData: { 
+    data: { 
         timbrature: Timbratura[], 
         requests: Request[], 
         dailyNotes?: DailyNote[], 
@@ -371,19 +371,9 @@ export const processMonthlyData = (
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
 
-    // Filter timbrature relevant for this month's calculation
-    const timbratureForThisMonthCalc = monthlyData.timbrature.filter(t => {
-        const eventDate = t.timestamp.toDate();
-        if (t.makeupOfDay) {
-            const makeupDate = parse(t.makeupOfDay, 'yyyy-MM-dd', new Date());
-            return isWithinInterval(makeupDate, monthInterval); // Include if it's a makeup for a day in this month
-        }
-        return isWithinInterval(eventDate, monthInterval); // Not a makeup shift, include if it was performed in this month
-    });
-
-    // Group timbrature by their effective date (the day they count for)
+    // Group all timbrature by their effective date
     const eventsByEffectiveDay: { [key: string]: Timbratura[] } = {};
-    timbratureForThisMonthCalc.forEach(timbratura => {
+    data.timbrature.forEach(timbratura => {
         const effectiveDate = timbratura.makeupOfDay
             ? parse(timbratura.makeupOfDay, 'yyyy-MM-dd', new Date())
             : timbratura.timestamp.toDate();
@@ -400,8 +390,6 @@ export const processMonthlyData = (
     
     // Process each day of the month to create daily details
     for (const day of allDaysOfMonth) {
-        if (day > today) continue;
-
         const dayString = startOfDay(day).toISOString();
         const workedEventsRaw = eventsByEffectiveDay[dayString] || [];
         
@@ -411,16 +399,16 @@ export const processMonthlyData = (
         const contractualHours = dailySchedule?.totalHours || 0;
         const isWorkDay = contractualHours > 0;
 
-        const isMadeUpElsewhere = monthlyData.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
+        const isMadeUpElsewhere = data.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
         
-        const leaveRequest = monthlyData.requests.find(r =>
+        const leaveRequest = data.requests.find(r =>
             (r.type === 'ferie' || r.type === 'malattia') &&
             isWithinInterval(day, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) })
         );
         
         const isHoliday = isPublicHoliday(day);
-        const dailyNote = monthlyData.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
-        const dayStraordinario = monthlyData.straordinari?.find(s => isSameDay(s.date.toDate(), day));
+        const dailyNote = data.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
+        const dayStraordinario = data.straordinari?.find(s => isSameDay(s.date.toDate(), day));
 
         // --- Determine Daily Status with Priority ---
         if (leaveRequest) {
@@ -498,7 +486,7 @@ export const processMonthlyData = (
                  allDayEvents.push(...shiftBlock.events);
             });
             
-            const permissionHours = monthlyData.requests
+            const permissionHours = data.requests
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
@@ -557,11 +545,14 @@ export const processMonthlyData = (
     let malattiaDays = 0;
 
     details.forEach(detail => {
+        // Only count data if it falls within the current month being processed
+        if (!isWithinInterval(detail.date, monthInterval)) return;
+        
         switch (detail.status) {
             case 'lavorato':
                 if (detail.shift) {
                     const isConfirmed = detail.shift.events.every(e => e.status === 'confermata');
-                    const isStraordinarioApproved = monthlyData.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
+                    const isStraordinarioApproved = data.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
 
                     if (isConfirmed || isStraordinarioApproved) {
                          if (detail.shift.contractualHours > 0) {
@@ -589,7 +580,7 @@ export const processMonthlyData = (
         }
     });
 
-    const totalPermesso = monthlyData.requests
+    const totalPermesso = data.requests
         .filter(r => {
             const requestDate = r.startDate.toDate();
             // Check if request is for a single day within the current month

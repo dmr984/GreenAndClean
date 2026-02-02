@@ -70,10 +70,9 @@ const PrintPageContent = () => {
 
             const dayStart = startOfDay(date);
             const dayEnd = endOfDay(date);
-            const monthStart = startOfMonth(date);
-
+            
             // Widen query range for makeup shifts
-            const queryStart = subMonths(monthStart, 1);
+            const queryStart = subMonths(dayStart, 1);
             const queryEnd = addMonths(dayEnd, 1);
 
             try {
@@ -204,6 +203,13 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
 
                 if (detail.shift && detail.shift.allShifts) {
+                    const clockInEvent = detail.shift.events.find(e => e.type === 'entrata');
+                    const makeupDay = clockInEvent?.makeupOfDay;
+                    if(makeupDay) {
+                        doc.text(`Recupero del ${format(new Date(makeupDay), 'PPP', {locale: it})}`, margin, y);
+                        y += 6;
+                    }
+
                     detail.shift.allShifts.forEach((shiftBlock, idx) => {
                         const timbratureString = shiftBlock.events.map(e => {
                             const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -352,7 +358,7 @@ const PrintPageContent = () => {
                                 <div key={op.id} className="pt-2 pb-2 text-sm text-black print:break-inside-avoid border-b border-gray-300 last:border-b-0">
                                     <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
                                     <div className="text-sm space-y-1 pl-1 mt-1 text-black">
-                                        {makeupDay && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(new Date(makeupDay), 'PPP', {locale: it})}</p>}
+                                        {makeupDay && detail?.shift && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(detail.shift.events[0].timestamp.toDate(), 'PPP', {locale: it})}</p>}
                                         {detail.shift && detail.shift.allShifts ? (
                                              <>
                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {

@@ -9,7 +9,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay, endOfMonth as dfnsEndOfMonth } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -163,13 +163,14 @@ export default function EndOfMonthPage() {
 
         const monthStart = startOfMonth(currentMonth);
         const monthEnd = dfnsEndOfMonth(currentMonth);
-        const monthId = format(currentMonth, 'yyyy-MM');
+        const queryStart = subMonths(monthStart, 1);
+        const queryEnd = addMonths(monthEnd, 1);
 
         try {
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('timestamp', '>=', monthStart),
-                where('timestamp', '<=', monthEnd)
+                where('timestamp', '>=', queryStart),
+                where('timestamp', '<=', queryEnd)
             );
             const requestsQuery = query(
                 collection(firestore, `app-users/${operatorId}/requests`),
@@ -183,14 +184,14 @@ export default function EndOfMonthPage() {
             );
             const straordinariQuery = query(
                 collection(firestore, `app-users/${operatorId}/straordinari`),
-                where('date', '>=', monthStart),
-                where('date', '<=', monthEnd)
+                where('date', '>=', queryStart),
+                where('date', '<=', queryEnd)
             );
     
             const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsQuery),
-                getDocs(notesQuery),
+                getDocs(requestsSnapshot),
+                getDocs(notesSnapshot),
                 getDocs(straordinariQuery)
             ]);
 
@@ -553,6 +554,10 @@ export default function EndOfMonthPage() {
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
                                  const isSunday = getDay(detail.date) === 0;
+                                 const clockInEvent = detail.shift?.events.find(e => e.type === 'entrata');
+                                 const makeupDay = clockInEvent?.makeupOfDay;
+                                 const performedOnDate = detail.shift ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) : null;
+
 
                                 return (
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
@@ -576,6 +581,12 @@ export default function EndOfMonthPage() {
                                             </Button>
                                         </div>
                                     </div>
+                                    
+                                     {makeupDay && performedOnDate && !isSameDay(parse(makeupDay, 'yyyy-MM-dd', new Date()), detail.date) && (
+                                        <p className="text-sm font-semibold text-primary mt-1">
+                                            Recupero eseguito il {performedOnDate}
+                                        </p>
+                                    )}
 
                                     <div className="border-b my-2"></div>
                                     

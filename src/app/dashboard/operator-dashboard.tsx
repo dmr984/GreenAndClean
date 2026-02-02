@@ -293,7 +293,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             let onLeaveToday = false;
             let leaveType: LeaveStatus['type'] = null;
             let unlockRequestExists = false;
-
+            
             const newBookedDays = new Set<string>();
 
             snapshot.forEach(doc => {
@@ -310,9 +310,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                        unlockRequestExists = true;
                     }
                 }
-
-                // For calendar disabling
-                if(request.type === 'ferie' || request.type === 'malattia') {
+                
+                 if(request.type === 'ferie' || request.type === 'malattia') {
                      for (let day = startOfDay(startDate); day <= endOfDay(endDate); day.setDate(day.getDate() + 1)) {
                         newBookedDays.add(format(day, 'yyyy-MM-dd'));
                     }
@@ -365,7 +364,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     const shiftStartTime = set(today, { hours, minutes, seconds: 0, milliseconds: 0 });
     const activationTime = new Date(shiftStartTime.getTime() - 90 * 60 * 1000); // 90 minutes before
 
-    setCanClockIn(today >= activationTime);
+    setCanClockIn(new Date() >= activationTime);
 
     const interval = setInterval(() => {
         setCanClockIn(new Date() >= activationTime);
@@ -792,14 +791,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const calendarDisabledMatcher = (day: Date) => {
-    // A day is disabled if it's not a contractual working day, or it's a holiday, or it's already booked
+    // A day is disabled if it's not a contractual working day, or it's a holiday, or it's already booked for ferie/malattia
     const isContractualWorkDay = (operator?.workSchedule?.[dayIndexToName[getDay(day)]]?.totalHours || 0) > 0;
     if (!isContractualWorkDay) return true;
 
     if (isPublicHoliday(day)) return true;
     
-    if (bookedDays.some(leaveDay => isSameDay(leaveDay, day))) return true;
-
+    // Allow selecting days with existing requests (ferie/malattia)
+    // The user explicitly asked to allow double shifts/makeup on any contractual day.
+    
     return false;
   };
 

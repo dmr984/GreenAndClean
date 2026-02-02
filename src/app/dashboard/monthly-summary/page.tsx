@@ -226,7 +226,7 @@ const MonthlySummaryContent = () => {
             </CardHeader>
             <CardContent className="space-y-8">
                  <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
-                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)} disabled={!canGoBack}>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex items-center gap-2">
@@ -235,7 +235,7 @@ const MonthlySummaryContent = () => {
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
                         </Button>
                     </div>
-                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)} disabled={!canGoForward}>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
