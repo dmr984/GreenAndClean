@@ -418,7 +418,6 @@ export const processMonthlyData = (
         const dayStraordinario = data.straordinari?.find(s => isSameDay(s.date.toDate(), day));
 
         // --- Determine Daily Status with Priority ---
-
         if (effectiveEventsForDay.length === 0 && makeupShiftsPhysicallyPerformedOnDay.length > 0) {
             const targetDate = makeupShiftsPhysicallyPerformedOnDay[0].makeupOfDay;
             details.push({
@@ -429,7 +428,10 @@ export const processMonthlyData = (
                 note: dailyNote?.note,
                 makeupPerformedFor: targetDate ? format(parse(targetDate, 'yyyy-MM-dd', new Date()), 'dd MMM', { locale: it }) : undefined,
             });
-        } else if (leaveRequest) {
+            continue;
+        }
+
+        if (leaveRequest) {
              details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
         } else if (isHoliday && effectiveEventsForDay.length === 0 && !dayStraordinario) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });

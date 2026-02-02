@@ -583,21 +583,18 @@ export default function EndOfMonthPage() {
                                         </div>
                                     </div>
                                     
-                                     {performedOnDate && (
-                                        <p className="text-sm font-semibold text-primary mt-1">
-                                            Recupero eseguito il {performedOnDate}
-                                        </p>
-                                    )}
-
-                                    <div className="border-b my-2"></div>
-                                    
-                                    {detail.status === 'recupero_effettuato' ? (
-                                        <p className="text-muted-foreground font-semibold italic">
-                                            Effettuato un turno di recupero {detail.makeupPerformedFor ? `(vedi ${detail.makeupPerformedFor})` : ''}.
-                                        </p>
-                                    ) : (
-                                        <>
-                                            {detail.note && !detail.shift ? (
+                                     {detail.status !== 'recupero_effettuato' && (
+                                         <>
+                                            {performedOnDate && (
+                                                <p className="text-sm font-semibold text-primary mt-1">
+                                                    Recupero eseguito il {performedOnDate}
+                                                </p>
+                                            )}
+                                            <div className="border-b my-2"></div>
+                                            
+                                            {detail.status === 'ferie' ? (
+                                                <p className="text-muted-foreground font-semibold">Giorno di Ferie</p>
+                                            ) : detail.note && !detail.shift ? (
                                                 <p className="text-muted-foreground font-semibold italic">"{detail.note}"</p>
                                             ) : detail.status === 'riposo' ? (
                                                 <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
@@ -632,18 +629,17 @@ export default function EndOfMonthPage() {
                                                             )
                                                         })}
                                                     </div>
-                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                         <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
                                                         <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
-                                                        <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
+                                                        <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} /> 
                                                         <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
                                                     </div>
                                                 </>
                                             ) : (
-                                                !detail.note && detail.status !== 'riposo' && (
+                                                !detail.note && detail.status !== 'riposo' && detail.status !== 'ferie' && (
                                                    <p className="text-muted-foreground font-semibold mt-1">
                                                         { detail.status === 'mancata_timbratura' ? 'Assenza' :
-                                                          detail.status === 'ferie' ? 'Giorno di Ferie' :
                                                           detail.status === 'malattia' ? 'Giorno di Malattia' :
                                                           detail.status === 'festa' ? 'Giorno Festivo' :
                                                           detail.status === 'in_corso' ? 'Turno in corso...' : ''
@@ -652,7 +648,7 @@ export default function EndOfMonthPage() {
                                                 )
                                             )}
                                         </>
-                                    )}
+                                     )}
                                 </div>
                             )})}
                         </div>
