@@ -61,6 +61,7 @@ type Request = {
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    associatedShiftId?: string;
 };
 
 type Timbratura = {
@@ -71,6 +72,7 @@ type Timbratura = {
     isOvertime?: boolean;
     isAuto?: boolean;
     ignoreContractualStart?: boolean;
+    makeupOfDay?: string;
 };
 
 type DailyNote = {
@@ -553,11 +555,11 @@ export default function EndOfMonthPage() {
                     {dailyDetails.length > 0 ? (
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
-                                 const isSunday = getDay(detail.date) === 0;
-                                 const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                                const isSunday = getDay(detail.date) === 0;
+                                const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
                                      ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) 
                                      : null;
-
+                                     
                                 return (
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
                                     <div className="flex justify-between items-start">
@@ -593,61 +595,64 @@ export default function EndOfMonthPage() {
                                         <p className="text-muted-foreground font-semibold italic">
                                             Effettuato un turno di recupero {detail.makeupPerformedFor ? `(vedi ${detail.makeupPerformedFor})` : ''}.
                                         </p>
-                                    ) : detail.note && !detail.shift ? (
-                                        <p className="text-muted-foreground font-semibold italic">"{detail.note}"</p>
-                                     ) : detail.status === 'riposo' ? (
-                                        <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
-                                     ) : null}
-
-                                    {detail.shift && detail.shift.allShifts ? (
-                                        <>
-                                            <div className="text-sm text-muted-foreground mt-1 mb-3">
-                                                {detail.shift.allShifts.map((shiftBlock, idx) => {
-                                                    const timbratureString = shiftBlock.events.map(e => {
-                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                        let referenceTime = '';
-
-                                                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
-                                                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
-                                                        }
-                                                        const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                        return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
-                                                    }).join(' | ');
-
-                                                    const firstEventDate = shiftBlock.events[0]?.timestamp.toDate();
-                                                    const isRecoveryDisplay = firstEventDate && !isSameDay(firstEventDate, detail.date);
-                                                    const recoveryDateString = isRecoveryDisplay ? ` (rec. il ${format(firstEventDate, 'dd/MM/yy')})` : '';
-
-
-                                                    return (
-                                                        <span key={idx} className="mr-2 inline-block mb-1 border-b pb-1">
-                                                            {`T${idx + 1}: ${timbratureString}${recoveryDateString}`}
-                                                        </span>
-                                                    )
-                                                })}
-                                            </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
-                                                <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
-                                                <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
-                                                <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
-                                            </div>
-                                        </>
                                     ) : (
-                                        !detail.note && detail.status !== 'recupero_effettuato' && (
-                                           <p className="text-muted-foreground font-semibold mt-1">
-                                                { detail.status === 'mancata_timbratura' ? 'Assenza' :
-                                                  detail.status === 'ferie' ? 'Giorno di Ferie' :
-                                                  detail.status === 'malattia' ? 'Giorno di Malattia' :
-                                                  detail.status === 'festa' ? 'Giorno Festivo' :
-                                                  detail.status === 'in_corso' ? 'Turno in corso...' : ''
-                                                }
-                                            </p>
-                                        )
-                                    )}
+                                        <>
+                                            {detail.note && !detail.shift ? (
+                                                <p className="text-muted-foreground font-semibold italic">"{detail.note}"</p>
+                                            ) : detail.status === 'riposo' ? (
+                                                <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
+                                            ) : null}
 
+                                            {detail.shift && detail.shift.allShifts ? (
+                                                <>
+                                                    <div className="text-sm text-muted-foreground mt-1 mb-3">
+                                                        {detail.shift.allShifts.map((shiftBlock, idx) => {
+                                                            const timbratureString = shiftBlock.events.map(e => {
+                                                                const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                                let referenceTime = '';
+
+                                                                if (e.type === 'entrata' && shiftBlock.calculationStart) {
+                                                                    referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
+                                                                } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
+                                                                    referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
+                                                                }
+                                                                const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                                return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
+                                                            }).join(' | ');
+
+                                                            const firstEventDate = shiftBlock.events[0]?.timestamp.toDate();
+                                                            const isRecoveryDisplay = firstEventDate && !isSameDay(firstEventDate, detail.date);
+                                                            const recoveryDateString = isRecoveryDisplay ? ` (rec. il ${format(firstEventDate, 'dd/MM/yy')})` : '';
+
+
+                                                            return (
+                                                                <span key={idx} className="mr-2 inline-block mb-1 border-b pb-1">
+                                                                    {`T${idx + 1}: ${timbratureString}${recoveryDateString}`}
+                                                                </span>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                        <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
+                                                        <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                                        <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
+                                                        <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                !detail.note && detail.status !== 'riposo' && (
+                                                   <p className="text-muted-foreground font-semibold mt-1">
+                                                        { detail.status === 'mancata_timbratura' ? 'Assenza' :
+                                                          detail.status === 'ferie' ? 'Giorno di Ferie' :
+                                                          detail.status === 'malattia' ? 'Giorno di Malattia' :
+                                                          detail.status === 'festa' ? 'Giorno Festivo' :
+                                                          detail.status === 'in_corso' ? 'Turno in corso...' : ''
+                                                        }
+                                                    </p>
+                                                )
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             )})}
                         </div>
