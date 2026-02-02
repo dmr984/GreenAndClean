@@ -560,11 +560,8 @@ export const processMonthlyData = (
                     const isStraordinarioApproved = data.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
 
                     if (isConfirmed || isStraordinarioApproved) {
-                        // A day is counted as "worked" only if it has ordinary hours.
-                        // Overtime-only days are not considered standard "worked days".
-                        if (detail.shift.ordinaryHours > 0) {
-                            workedDays++;
-                        }
+                        // A day is counted as "worked" if it has any approved activity.
+                        workedDays++;
                         totalOrdinaryHours += detail.shift.ordinaryHours;
                         totalOvertimeHours += detail.shift.overtimeHours;
                     }
