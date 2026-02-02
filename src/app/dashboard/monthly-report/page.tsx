@@ -163,8 +163,7 @@ const MonthlyReportPage = () => {
                 const straordinariQuery = query(
                     collection(firestore, `app-users/${op.id}/straordinari`),
                     where('date', '>=', queryStart),
-                    where('date', '<=', queryEnd),
-                    orderBy('date', 'desc')
+                    where('date', '<=', queryEnd)
                 );
 
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
