@@ -3,6 +3,7 @@
 import { Timestamp } from 'firebase/firestore';
 import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays, parse, endOfDay as dateFnsEndOfDay } from 'date-fns';
 import { isPublicHoliday } from '@/lib/holidays';
+import { it } from 'date-fns/locale';
 
 // Type Definitions
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -75,7 +76,7 @@ type SingleShiftBlock = {
 
 export type DailyDetail = {
     date: Date;
-    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa' | 'in_corso';
+    status: 'lavorato' | 'ferie' | 'malattia' | 'mancata_timbratura' | 'riposo' | 'festa' | 'in_corso' | 'recupero_effettuato';
     shift: {
         allShifts?: SingleShiftBlock[];
         events: Timbratura[];
@@ -88,6 +89,7 @@ export type DailyDetail = {
     } | null;
     request: Request | null;
     note?: string;
+    makeupPerformedFor?: string;
 };
 
 
@@ -371,7 +373,7 @@ export const processMonthlyData = (
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
 
-    // Group all timbrature by their effective date
+    // Group all timbrature by their effective date (makeup day or actual day)
     const eventsByEffectiveDay: { [key: string]: Timbratura[] } = {};
     data.timbrature.forEach(timbratura => {
         const effectiveDate = timbratura.makeupOfDay
@@ -390,12 +392,17 @@ export const processMonthlyData = (
     
     // Process each day of the month to create daily details
     for (const day of allDaysOfMonth) {
-        const dayString = startOfDay(day).toISOString();
-        const workedEventsRaw = eventsByEffectiveDay[dayString] || [];
+        const dayISO = startOfDay(day).toISOString();
+        const effectiveEventsForDay = eventsByEffectiveDay[dayISO] || []; // Events that COUNT for this day.
         
+        const makeupShiftsPhysicallyPerformedOnDay = data.timbrature.filter(t => 
+            t.makeupOfDay && 
+            isSameDay(t.timestamp.toDate(), day) &&
+            !isSameDay(parse(t.makeupOfDay, 'yyyy-MM-dd', new Date()), day)
+        );
+
         const dayName = dayIndexToName[getDay(day)];
         const dailySchedule = operator.workSchedule[dayName];
-        
         const contractualHours = dailySchedule?.totalHours || 0;
         const isWorkDay = contractualHours > 0;
 
@@ -411,13 +418,24 @@ export const processMonthlyData = (
         const dayStraordinario = data.straordinari?.find(s => isSameDay(s.date.toDate(), day));
 
         // --- Determine Daily Status with Priority ---
-        if (leaveRequest) {
+
+        if (effectiveEventsForDay.length === 0 && makeupShiftsPhysicallyPerformedOnDay.length > 0) {
+            const targetDate = makeupShiftsPhysicallyPerformedOnDay[0].makeupOfDay;
+            details.push({
+                date: day,
+                status: 'recupero_effettuato',
+                request: null,
+                shift: null,
+                note: dailyNote?.note,
+                makeupPerformedFor: targetDate ? format(parse(targetDate, 'yyyy-MM-dd', new Date()), 'dd MMM', { locale: it }) : undefined,
+            });
+        } else if (leaveRequest) {
              details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
-        } else if (isHoliday && workedEventsRaw.length === 0 && !dayStraordinario) {
+        } else if (isHoliday && effectiveEventsForDay.length === 0 && !dayStraordinario) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
-        } else if (workedEventsRaw.length > 0) {
-            const performedOnDate = workedEventsRaw[0].timestamp.toDate();
-            const isShiftComplete = workedEventsRaw.some(e => e.type === 'uscita');
+        } else if (effectiveEventsForDay.length > 0) {
+            const performedOnDate = effectiveEventsForDay[0].timestamp.toDate();
+            const isShiftComplete = effectiveEventsForDay.some(e => e.type === 'uscita');
             const isTodayAndInProgress = isSameDay(performedOnDate, today) && !isShiftComplete;
 
             if (isTodayAndInProgress) {
@@ -426,8 +444,8 @@ export const processMonthlyData = (
                     status: 'in_corso',
                     request: null,
                     shift: {
-                        allShifts: [{ events: workedEventsRaw }],
-                        events: workedEventsRaw,
+                        allShifts: [{ events: effectiveEventsForDay }],
+                        events: effectiveEventsForDay,
                         contractualHours,
                         ordinaryHours: 0,
                         overtimeHours: 0,
@@ -438,58 +456,24 @@ export const processMonthlyData = (
                 continue;
             }
 
-            // Day was worked, calculate details
-            const performedOnDays: { [key: string]: Timbratura[] } = {};
-            workedEventsRaw.forEach(event => {
-                const performedDateString = startOfDay(event.timestamp.toDate()).toISOString();
-                if (!performedOnDays[performedDateString]) {
-                    performedOnDays[performedDateString] = [];
-                }
-                performedOnDays[performedDateString].push(event);
-            });
-
             const dayShifts: SingleShiftBlock[] = [];
-            const allDayEvents: Timbratura[] = [];
+            let currentShiftEvents: Timbratura[] = [];
+            const sortedEvents = effectiveEventsForDay.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
 
-            const sortedPerformedDays = Object.keys(performedOnDays).sort();
-
-            for (const performedDayString of sortedPerformedDays) {
-                const eventsOnThisDay = performedOnDays[performedDayString];
-                
-                let currentShiftEvents: Timbratura[] = [];
-                const sortedEvents = eventsOnThisDay.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-                for (const event of sortedEvents) {
-                    currentShiftEvents.push(event);
-                    if (event.type === 'uscita') {
-                        const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
-                        if(clockInTime) {
-                            const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                            const { calculationStart, calculationEnd } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
-                            
-                            dayShifts.push({
-                                events: currentShiftEvents,
-                                calculationStart: calculationStart || undefined,
-                                calculationEnd: calculationEnd || undefined
-                            });
-                        }
-                        currentShiftEvents = []; 
-                    }
-                }
-                if (currentShiftEvents.length > 0) { // Incomplete shift
+            for (const event of sortedEvents) {
+                currentShiftEvents.push(event);
+                if (event.type === 'uscita') {
                     const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
                     if(clockInTime) {
                         const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                        const { calculationStart } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
-                        
-                        dayShifts.push({
-                            events: currentShiftEvents,
-                            calculationStart: calculationStart || undefined,
-                            calculationEnd: undefined
-                        });
+                        const { calculationStart, calculationEnd } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                        dayShifts.push({ events: currentShiftEvents, calculationStart: calculationStart || undefined, calculationEnd: calculationEnd || undefined });
                     }
+                    currentShiftEvents = []; 
                 }
-                allDayEvents.push(...eventsOnThisDay);
+            }
+            if (currentShiftEvents.length > 0) { // Incomplete shift
+                dayShifts.push({ events: currentShiftEvents, calculationStart: undefined, calculationEnd: undefined });
             }
             
             let totalOrdinary = 0;
@@ -506,7 +490,7 @@ export const processMonthlyData = (
                 .filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), day))
                 .reduce((sum, r) => sum + (r.hours || 0), 0);
             
-            const { calculationStart, calculationEnd } = calculateHours({ date: day, events: allDayEvents }, dailySchedule, allDayEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false, operator.overtimeCalculation);
+            const { calculationStart, calculationEnd } = calculateHours({ date: day, events: effectiveEventsForDay }, dailySchedule, effectiveEventsForDay.find(e => e.type === 'entrata')?.ignoreContractualStart || false, operator.overtimeCalculation);
             
             details.push({
                 date: day,
@@ -514,7 +498,7 @@ export const processMonthlyData = (
                 request: null,
                 shift: {
                     allShifts: dayShifts,
-                    events: allDayEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()),
+                    events: sortedEvents,
                     contractualHours,
                     ordinaryHours: totalOrdinary,
                     overtimeHours: totalOvertime, 

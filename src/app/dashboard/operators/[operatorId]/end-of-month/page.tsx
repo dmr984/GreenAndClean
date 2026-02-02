@@ -554,10 +554,9 @@ export default function EndOfMonthPage() {
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
                                  const isSunday = getDay(detail.date) === 0;
-                                 const clockInEvent = detail.shift?.events.find(e => e.type === 'entrata');
-                                 const makeupDay = clockInEvent?.makeupOfDay;
-                                 const performedOnDate = detail.shift && detail.shift.events.length > 0 ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) : null;
-
+                                 const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                                     ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) 
+                                     : null;
 
                                 return (
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
@@ -566,7 +565,7 @@ export default function EndOfMonthPage() {
                                             {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                         </h4>
                                         <div className="flex items-center gap-1">
-                                             {!detail.shift && !detail.request && (
+                                             {!detail.shift && !detail.request && detail.status !== 'recupero_effettuato' && (
                                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setAddRequestContext({ date: detail.date, type: 'ferie' })}>
                                                     <PlusCircle className="h-4 w-4 text-primary" />
                                                 </Button>
@@ -582,7 +581,7 @@ export default function EndOfMonthPage() {
                                         </div>
                                     </div>
                                     
-                                     {makeupDay && performedOnDate && !isSameDay(parse(makeupDay, 'yyyy-MM-dd', new Date()), detail.date) && (
+                                     {performedOnDate && (
                                         <p className="text-sm font-semibold text-primary mt-1">
                                             Recupero eseguito il {performedOnDate}
                                         </p>
@@ -590,7 +589,11 @@ export default function EndOfMonthPage() {
 
                                     <div className="border-b my-2"></div>
                                     
-                                    {detail.note ? (
+                                    {detail.status === 'recupero_effettuato' ? (
+                                        <p className="text-muted-foreground font-semibold italic">
+                                            Effettuato un turno di recupero {detail.makeupPerformedFor ? `(vedi ${detail.makeupPerformedFor})` : ''}.
+                                        </p>
+                                    ) : detail.note && !detail.shift ? (
                                         <p className="text-muted-foreground font-semibold italic">"{detail.note}"</p>
                                      ) : detail.status === 'riposo' ? (
                                         <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
@@ -633,7 +636,7 @@ export default function EndOfMonthPage() {
                                             </div>
                                         </>
                                     ) : (
-                                        !detail.note && (
+                                        !detail.note && detail.status !== 'recupero_effettuato' && (
                                            <p className="text-muted-foreground font-semibold mt-1">
                                                 { detail.status === 'mancata_timbratura' ? 'Assenza' :
                                                   detail.status === 'ferie' ? 'Giorno di Ferie' :
