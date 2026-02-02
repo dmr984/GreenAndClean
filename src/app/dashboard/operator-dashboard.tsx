@@ -24,6 +24,7 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 import { isPublicHoliday } from '@/lib/holidays';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 type ClockingEvent = {
     id: string;
