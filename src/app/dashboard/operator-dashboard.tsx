@@ -411,28 +411,32 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         let makeupDayToCopy: string | undefined = undefined;
 
         if (type === 'uscita') {
-            const todayStart = startOfDay(new Date());
-            const todayEnd = endOfDay(new Date());
+            const lookbackDate = subDays(new Date(), 1); // Look back 24 hours
 
             const q = query(
                 collection(firestore, `app-users/${operator.id}/timbrature`),
-                where('timestamp', '>=', todayStart),
-                where('timestamp', '<=', todayEnd)
+                where('timestamp', '>=', lookbackDate),
+                orderBy('timestamp', 'desc')
             );
             const snapshot = await getDocs(q);
-            const todayEvents = snapshot.docs.map(d => ({id: d.id, ...d.data() as ClockingEvent}));
-            
-            const lastClockIn = [...todayEvents]
-                .filter(e => e.type === 'entrata')
-                .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0];
+            const recentEvents = snapshot.docs.map(d => ({id: d.id, ...d.data() as ClockingEvent}));
 
-            if (lastClockIn) {
-                const hasClockOut = todayEvents.some(e => e.type === 'uscita' && e.timestamp.toMillis() > (lastClockIn.timestamp.toMillis() || 0));
-
-                if (!hasClockOut) {
-                    shiftIdToUpdate = lastClockIn.shiftId;
-                    makeupDayToCopy = lastClockIn.makeupOfDay;
+            // Find the last clock-in that doesn't have a clock-out after it
+            let lastOpenClockIn: ClockingEvent | undefined = undefined;
+            for (const event of recentEvents) {
+                if (event.type === 'entrata') {
+                    // Check if there's a corresponding 'uscita' that happened after this 'entrata'
+                    const hasUscita = recentEvents.some(e => e.type === 'uscita' && e.timestamp.toMillis() > event.timestamp.toMillis());
+                    if (!hasUscita) {
+                        lastOpenClockIn = event;
+                        break; // Found the most recent open shift's entrata
+                    }
                 }
+            }
+
+            if (lastOpenClockIn) {
+                shiftIdToUpdate = lastOpenClockIn.shiftId;
+                makeupDayToCopy = lastOpenClockIn.makeupOfDay;
             }
         }
 
