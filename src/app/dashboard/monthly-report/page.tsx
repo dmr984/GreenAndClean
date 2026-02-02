@@ -169,7 +169,7 @@ const MonthlyReportPage = () => {
 
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
-                    getDocs(requestsSnap),
+                    getDocs(requestsQuery),
                     getDocs(straordinariQuery)
                 ]);
 
