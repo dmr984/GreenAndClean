@@ -142,13 +142,17 @@ const MonthlyReportPage = () => {
 
         const monthStart = startOfMonth(date);
         const monthEnd = dfnsEndOfMonth(date);
+        
+        // Widen query range to catch makeup shifts from adjacent months
+        const queryStart = subMonths(monthStart, 1);
+        const queryEnd = addMonths(monthEnd, 1);
 
         try {
             const promises = operators.map(async (op) => {
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${op.id}/timbrature`),
-                    where('timestamp', '>=', monthStart),
-                    where('timestamp', '<=', monthEnd)
+                    where('timestamp', '>=', queryStart),
+                    where('timestamp', '<=', queryEnd)
                 );
                 // Fetch all approved requests, not just those starting in the current month,
                 // as some might span across months (e.g., ferie).
@@ -158,14 +162,14 @@ const MonthlyReportPage = () => {
                 );
                 const straordinariQuery = query(
                     collection(firestore, `app-users/${op.id}/straordinari`),
-                    where('date', '>=', monthStart),
-                    where('date', '<=', monthEnd),
+                    where('date', '>=', queryStart),
+                    where('date', '<=', queryEnd),
                     orderBy('date', 'desc')
                 );
 
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
-                    getDocs(requestsQuery),
+                    getDocs(requestsSnap),
                     getDocs(straordinariQuery)
                 ]);
 

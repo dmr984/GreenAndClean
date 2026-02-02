@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent as NoteDialogContent, DialogHeader as NoteDialogHeader, DialogTitle as NoteDialogTitle, DialogDescription as NoteDialogDescription, DialogFooter as NoteDialogFooter } from '@/components/ui/dialog';
-import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse } from 'date-fns';
+import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -118,6 +118,7 @@ type ApprovalContext = {
     manualBreak?: ManualBreak;
     isOvertimeShift: boolean;
     ignoreContractualStart: boolean;
+    makeupOfDay: string; // New field for makeup day
 } | null;
 
 type Request = {
@@ -140,7 +141,6 @@ export default function ShiftApprovalPage() {
     const [allShifts, setAllShifts] = useState<Shift[]>([]);
     const [overtimeShifts, setOvertimeShifts] = useState<StraordinarioShift[]>([]);
     const [approvedRequests, setApprovedRequests] = useState<Request[]>([]);
-    const [bookedShiftDays, setBookedShiftDays] = useState<Date[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [detailShift, setDetailShift] = useState<Shift | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -156,6 +156,7 @@ export default function ShiftApprovalPage() {
     const [isConfirmingOvertimeDelete, setIsConfirmingOvertimeDelete] = useState(false);
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [editIgnoreContractual, setEditIgnoreContractual] = useState(false);
+    const [editMakeupDay, setEditMakeupDay] = useState('');
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
     const [shiftForBreak, setShiftForBreak] = useState<Shift | null>(null);
@@ -169,7 +170,7 @@ export default function ShiftApprovalPage() {
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
     const [newShiftIsMakeup, setNewShiftIsMakeup] = useState(false);
-    const [newShiftMakeupDay, setNewShiftMakeupDay] = useState<string>('');
+    const [newShiftMakeupDay, setNewShiftMakeupDay] = useState('');
     const [currentPage, setCurrentPage] = useState(0);
     const [overtimeShiftForBreak, setOvertimeShiftForBreak] = useState<StraordinarioShift | null>(null);
     const [isOvertimeMissingBreakConfirmOpen, setIsOvertimeMissingBreakConfirmOpen] = useState(false);
@@ -367,7 +368,6 @@ export default function ShiftApprovalPage() {
             })
 
             setAllShifts(groupedShifts);
-            setBookedShiftDays(groupedShifts.map(s => startOfDay(s.events[0].timestamp.toDate())));
             setIsLoading(false);
 
             const allProcessedEventIds = new Set<string>();
@@ -472,7 +472,7 @@ export default function ShiftApprovalPage() {
 const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     if (!currentContext || currentContext.isOvertimeShift || !firestore || !operator) return;
 
-    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak, ignoreContractualStart } = currentContext;
+    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak, ignoreContractualStart, makeupOfDay } = currentContext;
     const regularShift = shift as Shift;
     const approvedOrdinary = parseFloat(ordinaryHours) || 0;
     const approvedOvertime = parseFloat(overtimeHours) || 0;
@@ -514,6 +514,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         };
         if (event.type === 'entrata') {
             updateData.ignoreContractualStart = ignoreContractualStart;
+            if (makeupOfDay) {
+                updateData.makeupOfDay = makeupOfDay;
+            } else {
+                // Ensure field is removed if empty
+                updateData.makeupOfDay = null;
+            }
         }
         batch.update(docRef, updateData);
     });
@@ -622,6 +628,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         });
         setEditShiftTimes(times);
         setEditIgnoreContractual(shift.ignoreContractualStart || false);
+        setEditMakeupDay(shift.makeupOfDay || '');
         setIsEditShiftOpen(true);
     };
 
@@ -676,6 +683,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
+                updatePayload.makeupOfDay = editMakeupDay || null;
             }
 
             if (newEventDetails && existingEvent) { 
@@ -928,12 +936,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         if (!operator) return;
     
         let ordinary = 0, overtime = 0, leave = 0;
+        let makeupOfDay = '';
     
         if (isOvertimeShift) {
             const overtimeShift = shift as StraordinarioShift;
             overtime = calculatePureOvertime(overtimeShift, operator, manualBreak);
         } else {
             const regularShift = shift as Shift;
+            makeupOfDay = regularShift.makeupOfDay || '';
             const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
             const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
             const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
@@ -962,7 +972,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             manualBreak: manualBreak,
             createLeaveRequest: false, // Default to false
             isOvertimeShift: isOvertimeShift,
-            ignoreContractualStart: ignoreContractualStart
+            ignoreContractualStart: ignoreContractualStart,
+            makeupOfDay: makeupOfDay,
         });
         setIsApproveDialogOpen(true);
     };
@@ -972,18 +983,23 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             if (!prev) return null;
             const newContext = { ...prev, [field]: value };
             
-            if (field === 'ignoreContractualStart' && !newContext.isOvertimeShift) {
-                 const regularShift = newContext.shift as Shift;
-                 const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
-                 const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
-                 const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
-                 const schedule = operator!.workSchedule[dayToUse];
-                 
-                 const hoursResult = calculateHours(regularShift, schedule, value, operator!.overtimeCalculation);
+            if (field === 'ignoreContractualStart' || field === 'makeupOfDay') {
+                 if (!newContext.isOvertimeShift) {
+                    const regularShift = newContext.shift as Shift;
+                    
+                    const makeupDayString = field === 'makeupOfDay' ? value : newContext.makeupOfDay;
+                    const ignoreStart = field === 'ignoreContractualStart' ? value : newContext.ignoreContractualStart;
 
-                 newContext.ordinaryHours = String(hoursResult.ordinary);
-                 newContext.overtimeHours = String(hoursResult.overtime);
-                 newContext.leaveHours = String(hoursResult.leave);
+                    const dayToUseDate = makeupDayString ? parse(makeupDayString, 'yyyy-MM-dd', new Date()) : regularShift.date;
+                    const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
+                    const schedule = operator!.workSchedule[dayToUse];
+                    
+                    const hoursResult = calculateHours(regularShift, schedule, ignoreStart, operator!.overtimeCalculation);
+
+                    newContext.ordinaryHours = String(hoursResult.ordinary);
+                    newContext.overtimeHours = String(hoursResult.overtime);
+                    newContext.leaveHours = String(hoursResult.leave);
+                 }
             }
             
             return newContext;
@@ -1698,7 +1714,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                   }
                                 }}
                                 className="rounded-md border" 
-                                disabled={[(date) => date > new Date() && !isSameDay(date, new Date()), ...bookedShiftDays]}
+                                disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
                                 locale={it}
                            />
                            {newShiftDate && (
@@ -1746,16 +1762,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         {newShiftIsMakeup && (
                             <div className="space-y-2">
                                 <Label>Recupero di:</Label>
-                                 <Select value={newShiftMakeupDay} onValueChange={v => setNewShiftMakeupDay(v as string)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Seleziona il giorno da recuperare" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {Object.entries(weekDayLabels).map(([value, label]) => (
-                                            <SelectItem key={value} value={format(parse(label, 'EEEE', new Date(), {locale: it}), 'yyyy-MM-dd')}>{label}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                 <Input type="date" value={newShiftMakeupDay} onChange={e => setNewShiftMakeupDay(e.target.value)} />
                             </div>
                         )}
                     </div>
@@ -2079,12 +2086,19 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </div>
                         </div>
                         {isEditShiftOpen && (
-                             <div className="flex items-center space-x-2">
-                                <Checkbox id="edit-ignore-contractual" checked={editIgnoreContractual} onCheckedChange={(checked) => setEditIgnoreContractual(!!checked)} />
-                                <Label htmlFor="edit-ignore-contractual" className="text-sm font-normal">
-                                    Ignora orario di inizio contrattuale
-                                </Label>
-                            </div>
+                            <>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox id="edit-ignore-contractual" checked={editIgnoreContractual} onCheckedChange={(checked) => setEditIgnoreContractual(!!checked)} />
+                                    <Label htmlFor="edit-ignore-contractual" className="text-sm font-normal">
+                                        Ignora orario di inizio contrattuale
+                                    </Label>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-makeup-day">Recupero del Giorno (Opzionale)</Label>
+                                    <Input id="edit-makeup-day" type="date" value={editMakeupDay} onChange={e => setEditMakeupDay(e.target.value)} />
+                                    <p className="text-xs text-muted-foreground">Lascia vuoto se non è un recupero.</p>
+                                </div>
+                            </>
                         )}
                     </div>
                     <ResponsiveDialogFooter>
@@ -2103,6 +2117,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     {approvalContext && (
                         <div className="py-4 space-y-4">
                             {!approvalContext.isOvertimeShift && (
+                                <>
                                 <div className="flex items-center space-x-2">
                                     <Checkbox 
                                         id="ignore-contractual" 
@@ -2113,6 +2128,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                         Ignora orario di inizio contrattuale
                                     </Label>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="approve-makeup-day">Recupero del Giorno (Opzionale)</Label>
+                                    <Input id="approve-makeup-day" type="date" value={approvalContext.makeupOfDay} onChange={e => handleApprovalContextChange('makeupOfDay', e.target.value)} />
+                                </div>
+                                </>
                             )}
                             {!approvalContext.isOvertimeShift && (
                                 <div>

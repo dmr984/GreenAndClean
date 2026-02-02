@@ -371,6 +371,30 @@ export const processMonthlyData = (
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
 
+    // Filter timbrature relevant for this month's calculation
+    const timbratureForThisMonthCalc = monthlyData.timbrature.filter(t => {
+        const eventDate = t.timestamp.toDate();
+        if (t.makeupOfDay) {
+            const makeupDate = parse(t.makeupOfDay, 'yyyy-MM-dd', new Date());
+            return isWithinInterval(makeupDate, monthInterval); // Include if it's a makeup for a day in this month
+        }
+        return isWithinInterval(eventDate, monthInterval); // Not a makeup shift, include if it was performed in this month
+    });
+
+    // Group timbrature by their effective date (the day they count for)
+    const eventsByEffectiveDay: { [key: string]: Timbratura[] } = {};
+    timbratureForThisMonthCalc.forEach(timbratura => {
+        const effectiveDate = timbratura.makeupOfDay
+            ? parse(timbratura.makeupOfDay, 'yyyy-MM-dd', new Date())
+            : timbratura.timestamp.toDate();
+        
+        const dayString = startOfDay(effectiveDate).toISOString();
+        if (!eventsByEffectiveDay[dayString]) {
+            eventsByEffectiveDay[dayString] = [];
+        }
+        eventsByEffectiveDay[dayString].push(timbratura);
+    });
+
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
     const details: DailyDetail[] = [];
     
@@ -378,31 +402,17 @@ export const processMonthlyData = (
     for (const day of allDaysOfMonth) {
         if (day > today) continue;
 
-        let dailySchedule: DailySchedule | undefined;
-        let isMakeupShift = false;
+        const dayString = startOfDay(day).toISOString();
+        const workedEventsRaw = eventsByEffectiveDay[dayString] || [];
         
-        const workedEventsRaw = monthlyData.timbrature.filter(t => isSameDay(t.timestamp.toDate(), day));
-        const makeupShiftInfo = workedEventsRaw.find(e => e.type === 'entrata' && e.makeupOfDay);
-
-        if (makeupShiftInfo?.makeupOfDay) {
-            isMakeupShift = true;
-            const makeupDate = parse(makeupShiftInfo.makeupOfDay, 'yyyy-MM-dd', new Date());
-            const makeupDayName = dayIndexToName[getDay(makeupDate)];
-            dailySchedule = operator.workSchedule[makeupDayName];
-        } else {
-            const dayName = dayIndexToName[getDay(day)];
-            dailySchedule = operator.workSchedule[dayName];
-        }
-
+        const dayName = dayIndexToName[getDay(day)];
+        const dailySchedule = operator.workSchedule[dayName];
+        
         const contractualHours = dailySchedule?.totalHours || 0;
-        let isWorkDay = contractualHours > 0;
-        if(isMakeupShift) isWorkDay = true;
+        const isWorkDay = contractualHours > 0;
 
         const isMadeUpElsewhere = monthlyData.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
-        if (isMadeUpElsewhere) {
-            isWorkDay = false;
-        }
-
+        
         const leaveRequest = monthlyData.requests.find(r =>
             (r.type === 'ferie' || r.type === 'malattia') &&
             isWithinInterval(day, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) })
@@ -418,12 +428,13 @@ export const processMonthlyData = (
         } else if (isHoliday && workedEventsRaw.length === 0 && !dayStraordinario) {
              details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (workedEventsRaw.length > 0) {
+            const performedOnDate = workedEventsRaw[0].timestamp.toDate();
             const isShiftComplete = workedEventsRaw.some(e => e.type === 'uscita');
-            const isTodayAndInProgress = isSameDay(day, today) && !isShiftComplete;
+            const isTodayAndInProgress = isSameDay(performedOnDate, today) && !isShiftComplete;
 
             if (isTodayAndInProgress) {
                  details.push({
-                    date: day,
+                    date: day, // The effective day
                     status: 'in_corso',
                     request: null,
                     shift: {
@@ -527,7 +538,7 @@ export const processMonthlyData = (
                 },
                 note: dailyNote?.note
              });
-        } else if (isWorkDay && day < today) {
+        } else if (isWorkDay && day < today && !isMadeUpElsewhere) {
              details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
         } else if (!isWorkDay) {
              details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
@@ -579,7 +590,13 @@ export const processMonthlyData = (
     });
 
     const totalPermesso = monthlyData.requests
-        .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .filter(r => {
+            const requestDate = r.startDate.toDate();
+            // Check if request is for a single day within the current month
+            return r.type === 'permesso' &&
+                   isWithinInterval(requestDate, monthInterval) &&
+                   isSameDay(requestDate, r.endDate.toDate());
+        })
         .reduce((sum, r) => sum + (r.hours || 0), 0);
     
     // Holiday pay is calculated based on vacation days taken

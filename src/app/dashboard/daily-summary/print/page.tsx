@@ -7,7 +7,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'fireba
 import { Loader2, Printer, Download, Share2, X, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval } from 'date-fns';
+import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
@@ -72,12 +72,16 @@ const PrintPageContent = () => {
             const dayEnd = endOfDay(date);
             const monthStart = startOfMonth(date);
 
+            // Widen query range for makeup shifts
+            const queryStart = subMonths(monthStart, 1);
+            const queryEnd = addMonths(dayEnd, 1);
+
             try {
                 const promises = operators.map(async (op) => {
                     const timbratureQuery = query(
                         collection(firestore, `app-users/${op.id}/timbrature`),
-                        where('timestamp', '>=', monthStart),
-                        where('timestamp', '<=', dayEnd)
+                        where('timestamp', '>=', queryStart),
+                        where('timestamp', '<=', queryEnd)
                     );
                     const requestsQuery = query(
                         collection(firestore, `app-users/${op.id}/requests`),
@@ -85,8 +89,8 @@ const PrintPageContent = () => {
                     );
                      const straordinariQuery = query(
                         collection(firestore, `app-users/${op.id}/straordinari`),
-                        where('date', '>=', monthStart),
-                        where('date', '<=', dayEnd)
+                        where('date', '>=', queryStart),
+                        where('date', '<=', queryEnd)
                     );
                     const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                         getDocs(timbratureQuery),
@@ -339,6 +343,8 @@ const PrintPageContent = () => {
                          {operators.map(op => {
                             const detail = dailyData.get(op.id);
                             const cumulative = monthlyCumulative.get(op.id);
+                            const clockInEvent = detail?.shift?.events.find(e => e.type === 'entrata');
+                            const makeupDay = clockInEvent?.makeupOfDay;
                             
                             if (!detail) return null;
 
@@ -346,6 +352,7 @@ const PrintPageContent = () => {
                                 <div key={op.id} className="pt-2 pb-2 text-sm text-black print:break-inside-avoid border-b border-gray-300 last:border-b-0">
                                     <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
                                     <div className="text-sm space-y-1 pl-1 mt-1 text-black">
+                                        {makeupDay && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(new Date(makeupDay), 'PPP', {locale: it})}</p>}
                                         {detail.shift && detail.shift.allShifts ? (
                                              <>
                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {

@@ -7,7 +7,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, getDoc, doc }
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfMonth, endOfDay, isValid, endOfMonth as dfnsEndOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfDay, isValid, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
@@ -118,6 +118,10 @@ const PrintPageContent = () => {
 
             const monthStart = startOfMonth(date);
             const monthEnd = dfnsEndOfMonth(date);
+            // Widen query range
+            const queryStart = subMonths(monthStart, 1);
+            const queryEnd = addMonths(monthEnd, 1);
+
             const monthId = format(date, 'yyyy-MM');
             const newOverrides: Record<string, ManualTotals> = {};
 
@@ -132,8 +136,8 @@ const PrintPageContent = () => {
 
                     const timbratureQuery = query(
                         collection(firestore, `app-users/${op.id}/timbrature`),
-                        where('timestamp', '>=', monthStart),
-                        where('timestamp', '<=', monthEnd)
+                        where('timestamp', '>=', queryStart),
+                        where('timestamp', '<=', queryEnd)
                     );
                      const requestsQuery = query(
                         collection(firestore, `app-users/${op.id}/requests`),
@@ -141,8 +145,8 @@ const PrintPageContent = () => {
                     );
                     const straordinariQuery = query(
                         collection(firestore, `app-users/${op.id}/straordinari`),
-                        where('date', '>=', monthStart),
-                        where('date', '<=', monthEnd)
+                        where('date', '>=', queryStart),
+                        where('date', '<=', queryEnd)
                     );
 
                     const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([

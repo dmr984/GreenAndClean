@@ -788,14 +788,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
   const calendarDisabledMatcher = (day: Date) => {
-    const today = startOfDay(new Date());
-    // Disable past days that are not the current day
-    // if (day < today) return true;
-
-    // Check if it's a day with confirmed clock-ins (from clockings data)
-    const hasClockings = clockings?.some(c => isSameDay(c.timestamp.toDate(), day));
-    if (hasClockings) return true;
-
     // Check if it's a day with approved leave
     const onLeave = bookedDays.some(leaveDay => isSameDay(leaveDay, day));
     if (onLeave) return true;

@@ -137,6 +137,11 @@
         "ignoreContractualStart": {
             "type": "boolean",
             "description": "If true, the calculation will start from the actual clock-in time, not the contractual one."
+        },
+        "makeupOfDay": {
+            "type": "string",
+            "format": "date",
+            "description": "If this is a makeup shift, this field stores the date (YYYY-MM-DD) of the day being compensated."
         }
       },
       "required": ["userId", "timestamp", "type", "latitude", "longitude", "status"]
