@@ -9,7 +9,7 @@ import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTr
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, set, parse, startOfDay, endOfMonth as dfnsEndOfMonth, subMonths, addMonths, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -613,9 +613,14 @@ export default function EndOfMonthPage() {
                                                         return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
                                                     }).join(' | ');
 
+                                                    const firstEventDate = shiftBlock.events[0]?.timestamp.toDate();
+                                                    const isRecoveryDisplay = firstEventDate && !isSameDay(firstEventDate, detail.date);
+                                                    const recoveryDateString = isRecoveryDisplay ? ` (rec. il ${format(firstEventDate, 'dd/MM/yy')})` : '';
+
+
                                                     return (
                                                         <span key={idx} className="mr-2 inline-block mb-1 border-b pb-1">
-                                                            {`T${idx + 1}: ${timbratureString}`}
+                                                            {`T${idx + 1}: ${timbratureString}${recoveryDateString}`}
                                                         </span>
                                                     )
                                                 })}

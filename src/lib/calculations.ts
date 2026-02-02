@@ -439,51 +439,67 @@ export const processMonthlyData = (
             }
 
             // Day was worked, calculate details
-            const dayShifts: SingleShiftBlock[] = [];
-            let currentShiftEvents: Timbratura[] = [];
-            const sortedEvents = [...workedEventsRaw].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+            const performedOnDays: { [key: string]: Timbratura[] } = {};
+            workedEventsRaw.forEach(event => {
+                const performedDateString = startOfDay(event.timestamp.toDate()).toISOString();
+                if (!performedOnDays[performedDateString]) {
+                    performedOnDays[performedDateString] = [];
+                }
+                performedOnDays[performedDateString].push(event);
+            });
 
-            for (const event of sortedEvents) {
-                currentShiftEvents.push(event);
-                if (event.type === 'uscita') {
+            const dayShifts: SingleShiftBlock[] = [];
+            const allDayEvents: Timbratura[] = [];
+
+            const sortedPerformedDays = Object.keys(performedOnDays).sort();
+
+            for (const performedDayString of sortedPerformedDays) {
+                const eventsOnThisDay = performedOnDays[performedDayString];
+                
+                let currentShiftEvents: Timbratura[] = [];
+                const sortedEvents = eventsOnThisDay.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+                for (const event of sortedEvents) {
+                    currentShiftEvents.push(event);
+                    if (event.type === 'uscita') {
+                        const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
+                        if(clockInTime) {
+                            const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
+                            const { calculationStart, calculationEnd } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                            
+                            dayShifts.push({
+                                events: currentShiftEvents,
+                                calculationStart: calculationStart || undefined,
+                                calculationEnd: calculationEnd || undefined
+                            });
+                        }
+                        currentShiftEvents = []; 
+                    }
+                }
+                if (currentShiftEvents.length > 0) { // Incomplete shift
                     const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
                     if(clockInTime) {
                         const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                        const { calculationStart, calculationEnd } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
+                        const { calculationStart } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
                         
                         dayShifts.push({
                             events: currentShiftEvents,
                             calculationStart: calculationStart || undefined,
-                            calculationEnd: calculationEnd || undefined
+                            calculationEnd: undefined
                         });
                     }
-                    currentShiftEvents = []; 
                 }
+                allDayEvents.push(...eventsOnThisDay);
             }
-             if (currentShiftEvents.length > 0) {
-                const clockInTime = currentShiftEvents.find(e => e.type === 'entrata')?.timestamp.toDate();
-                if(clockInTime) {
-                    const ignoreContractualStart = currentShiftEvents.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
-                    const { calculationStart } = calculateHours({ date: day, events: currentShiftEvents }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
-                    
-                    dayShifts.push({
-                        events: currentShiftEvents,
-                        calculationStart: calculationStart || undefined,
-                        calculationEnd: undefined
-                    });
-                }
-            }
-
+            
             let totalOrdinary = 0;
             let totalOvertime = 0;
-            const allDayEvents: Timbratura[] = [];
             
             dayShifts.forEach(shiftBlock => {
                  const ignoreContractualStart = shiftBlock.events.find(e => e.type === 'entrata')?.ignoreContractualStart || false;
                  const hoursResult = calculateHours({ date: day, events: shiftBlock.events }, dailySchedule, ignoreContractualStart, operator.overtimeCalculation);
                  totalOrdinary += hoursResult.ordinary;
                  totalOvertime += hoursResult.overtime;
-                 allDayEvents.push(...shiftBlock.events);
             });
             
             const permissionHours = data.requests
