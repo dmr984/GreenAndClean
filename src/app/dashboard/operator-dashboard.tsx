@@ -1,21 +1,11 @@
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,15 +16,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
 import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { isPublicHoliday } from '@/lib/holidays';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 
@@ -126,19 +113,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isWorkDay, setIsWorkDay] = useState<boolean | null>(null);
   const [leaveStatus, setLeaveStatus] = useState<LeaveStatus>({ onLeave: false, type: null });
 
-  const [hasUnreadShifts, setHasUnreadShifts] = useState(false);
-  const [isShiftDetailsOpen, setIsShiftDetailsOpen] = useState(false);
-  
   const [unlockRequestSent, setUnlockRequestSent] = useState(false);
   const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
   const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
-  const [isMakeupShiftDialogOpen, setIsMakeupShiftDialogOpen] = useState(false);
-  const [shiftStartContext, setShiftStartContext] = useState<'normal' | 'extra'>('extra');
-  const [makeupShiftType, setMakeupShiftType] = useState<'overtime' | 'makeup' | 'normal' | null>(null);
+  
+  const [isMakeupDialogOpen, setIsMakeupDialogOpen] = useState(false);
   const [makeupDay, setMakeupDay] = useState<Date | undefined>(undefined);
-  const [bookedDays, setBookedDays] = useState<Date[]>([]);
-
 
   const [canClockIn, setCanClockIn] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -295,8 +276,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             let leaveType: LeaveStatus['type'] = null;
             let unlockRequestExists = false;
             
-            const newBookedDays = new Set<string>();
-
             snapshot.forEach(doc => {
                 const request = doc.data();
                 const startDate = request.startDate.toDate();
@@ -311,14 +290,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                        unlockRequestExists = true;
                     }
                 }
-                
-                 if(request.type === 'ferie' || request.type === 'malattia') {
-                     for (let day = startOfDay(startDate); day <= endOfDay(endDate); day.setDate(day.getDate() + 1)) {
-                        newBookedDays.add(format(day, 'yyyy-MM-dd'));
-                    }
-                }
             });
-            setBookedDays(Array.from(newBookedDays).map(d => new Date(d)));
             setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
             setUnlockRequestSent(unlockRequestExists);
         });
@@ -419,24 +391,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     });
-  };
-
-  const handleClocking = async (type: 'entrata' | 'uscita') => {
-    if (type === 'uscita') {
-        await performClocking(type);
-        return;
-    }
-
-    // ENTRATA LOGIC
-    const hasExistingShiftsToday = clockings && clockings.length > 0 && clockings.some(c => c.type === 'entrata');
-
-    if (isWorkDay && !hasExistingShiftsToday) {
-        setShiftStartContext('normal');
-    } else {
-        setShiftStartContext('extra');
-    }
-    setMakeupShiftType(null); // Reset selection
-    setIsMakeupShiftDialogOpen(true);
   };
 
   const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: string) => {
@@ -628,36 +582,20 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             throw error; // Re-throw for the submit handler
         }
     };
-
-  const handleMakeupShiftDialogSubmit = async () => {
-    if (!makeupShiftType || (makeupShiftType === 'makeup' && !makeupDay)) {
-        if (makeupShiftType === 'makeup' && !makeupDay) {
-            toast({ title: "Selezione mancante", description: "Seleziona il giorno che vuoi recuperare.", variant: "destructive" });
-        }
-        return; 
+  
+  const handleStartMakeupShift = async () => {
+    if (!makeupDay) {
+        toast({ title: "Data mancante", description: "Seleziona un giorno da recuperare.", variant: "destructive"});
+        return;
     }
-
     try {
-        if (makeupShiftType === 'normal') {
-            await performClocking('entrata');
-        } else if (makeupShiftType === 'overtime') {
-            await handleOvertimeClocking('entrata');
-        } else if (makeupShiftType === 'makeup' && makeupDay) {
-            await performClocking('entrata', format(makeupDay, 'yyyy-MM-dd'));
-        }
-
-        // Close dialog on success
-        setIsMakeupShiftDialogOpen(false);
-        setMakeupShiftType(null);
+        await performClocking('entrata', format(makeupDay, 'yyyy-MM-dd'));
+        setIsMakeupDialogOpen(false);
         setMakeupDay(undefined);
-
     } catch (error) {
-        // Errors are already toasted inside the clocking functions.
-        // We just prevent the dialog from closing by catching the error here.
-        console.error("Clocking failed", error);
+        console.error("Makeup clock-in failed", error);
     }
-  };
-
+  }
 
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
@@ -694,60 +632,33 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }
 
-  const renderNonWorkDayCard = () => {
-    const isHoliday = isPublicHoliday(new Date());
-    return (
-        <Card className="border-blue-500 bg-blue-500/10 text-center">
-            <CardHeader className="pb-4">
-                <div className="flex items-center justify-center gap-3">
-                    <Briefcase className="h-7 w-7 text-blue-600" />
-                    <CardTitle className="text-2xl text-blue-700">{isHoliday ? 'Oggi è un giorno festivo' : 'Oggi non è un giorno lavorativo'}</CardTitle>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-                <p className="text-blue-600">
-                    Puoi avviare un turno straordinario o recuperare un giorno lavorativo.
-                </p>
-                 <p className="text-xs text-blue-800/70 bg-blue-500/10 p-2 rounded-md">
-                    <span className='font-bold'>Nota:</span> i giorni di straordinari e recupero giorno, devono essere sempre concordati con il datore di lavoro prima della timbratura. Qualsiasi timbratura straordinaria non concordata non verrà presa in considerazione.
-                </p>
-            </CardContent>
-             <CardFooter>
-                <Button className="w-full" size="lg" onClick={() => handleClocking('entrata')}>
-                    <Play className="mr-2 h-5 w-5" /> Avvia Turno
-                </Button>
-            </CardFooter>
-        </Card>
-    );
-  }
-
-    const renderOvertimeClockingInterface = () => {
-        if (!currentOvertimeShift || !currentDate) return null;
-        
-        return (
-            <Card>
-                <CardHeader className="pb-4">
-                    <div className="flex items-center gap-3">
-                        <Clock className="h-6 w-6 text-primary" />
-                        <CardTitle className="text-2xl">Gestione Turno Straordinario</CardTitle>
-                         <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
-                            <Info className="h-5 w-5" />
-                        </Button>
-                    </div>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center gap-4">
-                    <div className="text-xl font-medium text-muted-foreground capitalize">
-                        {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
-                    </div>
-                </CardContent>
-                <CardFooter className="flex flex-col gap-4">
-                    <Button className="w-full" size="lg" variant="destructive" onClick={() => handleOvertimeClocking('uscita')}>
-                        <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
-                    </Button>
-                </CardFooter>
-            </Card>
-        );
-    };
+  const renderOvertimeClockingInterface = () => {
+      if (!currentOvertimeShift || !currentDate) return null;
+      
+      return (
+          <Card>
+              <CardHeader className="pb-4">
+                  <div className="flex items-center gap-3">
+                      <Clock className="h-6 w-6 text-primary" />
+                      <CardTitle className="text-2xl">Gestione Turno Straordinario</CardTitle>
+                       <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                          <Info className="h-5 w-5" />
+                      </Button>
+                  </div>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center gap-4">
+                  <div className="text-xl font-medium text-muted-foreground capitalize">
+                      {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                  </div>
+              </CardContent>
+              <CardFooter className="flex flex-col gap-4">
+                  <Button className="w-full" size="lg" variant="destructive" onClick={() => handleOvertimeClocking('uscita')}>
+                      <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
+                  </Button>
+              </CardFooter>
+          </Card>
+      );
+  };
 
   if (isUserLoading || operator === null || isWorkDay === null || !currentDate) {
       return <div className="flex items-center justify-center h-full">
@@ -758,75 +669,109 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         </div>;
   }
 
-  const renderClockingInterface = () => {
-      if (currentOvertimeShift) {
-          return renderOvertimeClockingInterface();
-      }
-      if (!isClockedIn && leaveStatus.onLeave) {
-          return renderLeaveCard();
-      }
-      // This is now handled by the dialog logic
-      // if (!isClockedIn && !isWorkDay) {
-      //     return renderNonWorkDayCard();
-      // }
-      return (
-         <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <Clock className="h-6 w-6 text-primary" />
-                <CardTitle className="text-2xl">Gestione Turno</CardTitle>
-                <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
-                    <Info className="h-5 w-5" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center gap-4">
-               <div className="text-xl font-medium text-muted-foreground capitalize">
-                  {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
-               </div>
-              {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
-            </CardContent>
-            <CardFooter className="flex flex-col gap-4">
-                 {isClockedIn ? (
-                     <Button 
+  const calendarDisabledMatcher = (day: Date) => {
+    if (operator?.workSchedule) {
+        const dayName = dayIndexToName[getDay(day)];
+        const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+        if (!isContractualDay && !isPublicHoliday(day)) return true;
+    }
+    return false;
+  };
+  
+  const renderMainContent = () => {
+    if (currentOvertimeShift || isClockedIn) {
+        return (
+             <Card>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-6 w-6 text-primary" />
+                    <CardTitle className="text-2xl">
+                        {currentOvertimeShift ? 'Gestione Turno Straordinario' : 'Gestione Turno'}
+                    </CardTitle>
+                    <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                        <Info className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center gap-4">
+                   <div className="text-xl font-medium text-muted-foreground capitalize">
+                      {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                   </div>
+                  {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
+                </CardContent>
+                <CardFooter className="flex flex-col gap-4">
+                    <Button 
                         className="w-full" 
                         size="lg" 
                         variant="destructive"
                         disabled={isProcessing} 
-                        onClick={() => performClocking('uscita')}
+                        onClick={() => currentOvertimeShift ? handleOvertimeClocking('uscita') : performClocking('uscita')}
                     >
-                         {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
-                         Termina Turno
+                        {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
+                        {currentOvertimeShift ? 'Termina Straordinario' : 'Termina Turno'}
                     </Button>
-                ) : (
+                </CardFooter>
+              </Card>
+        );
+    }
+    
+    if (leaveStatus.onLeave) {
+        return renderLeaveCard();
+    }
+
+    // Not clocked in, not on leave
+    return (
+        <>
+            <Card>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-6 w-6 text-primary" />
+                    <CardTitle className="text-2xl">Gestione Turno</CardTitle>
+                    <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                        <Info className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center gap-4">
+                   <div className="text-xl font-medium text-muted-foreground capitalize">
+                      {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                   </div>
+                  {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
+                   {!canClockIn && !isWorkDay && <p className="text-sm text-muted-foreground text-center">Puoi timbrare fino a 90 minuti prima dell'inizio del tuo turno.</p>}
+                </CardContent>
+                <CardFooter className="flex flex-col gap-4">
                     <Button 
                         className="w-full" 
                         size="lg"
                         disabled={isProcessing || !canClockIn} 
-                        onClick={() => handleClocking('entrata')}
+                        onClick={() => performClocking('entrata')}
                         style={{backgroundColor: '#22c55e', color: 'white'}}
                     >
                         {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
-                        Inizia Turno
+                        Inizia Turno Normale
                     </Button>
-                )}
-            </CardFooter>
-          </Card>
-      );
+                </CardFooter>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Turni Speciali</CardTitle>
+                    <CardDescription>Avvia un turno non standard come un recupero o uno straordinario.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                     <Button variant="outline" className="w-full" onClick={() => setIsMakeupDialogOpen(true)}>
+                        <History className="mr-2 h-4 w-4"/>
+                        Inizia Recupero
+                    </Button>
+                     <Button variant="outline" className="w-full" onClick={() => handleOvertimeClocking('entrata')}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Inizia Straordinario
+                    </Button>
+                </CardContent>
+            </Card>
+        </>
+    );
   }
-
-  const calendarDisabledMatcher = (day: Date) => {
-    // A day is disabled if it's not a contractual working day, or it's a holiday, or it's already booked for ferie/malattia
-    const isContractualWorkDay = (operator?.workSchedule?.[dayIndexToName[getDay(day)]]?.totalHours || 0) > 0;
-    if (!isContractualWorkDay) return true;
-
-    if (isPublicHoliday(day)) return true;
-    
-    // Allow selecting days with existing requests (ferie/malattia)
-    // The user explicitly asked to allow double shifts/makeup on any contractual day.
-    
-    return false;
-  };
 
   return (
     <>
@@ -835,83 +780,41 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>
 
-       {renderClockingInterface()}
+       {renderMainContent()}
       
     </div>
 
-    <ResponsiveDialog open={isMakeupShiftDialogOpen} onOpenChange={setIsMakeupShiftDialogOpen}>
+    <ResponsiveDialog open={isMakeupDialogOpen} onOpenChange={setIsMakeupDialogOpen}>
         <ResponsiveDialogContent>
              <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle>{shiftStartContext === 'normal' ? 'Inizia Turno' : 'Tipo di Turno'}</ResponsiveDialogTitle>
+                <ResponsiveDialogTitle>Inizia Turno di Recupero</ResponsiveDialogTitle>
                 <ResponsiveDialogDescription>
-                    {shiftStartContext === 'normal' 
-                        ? 'Stai iniziando il tuo turno. Se questo è un recupero, specificalo.'
-                        : 'Stai timbrando fuori dal tuo orario standard. Che tipo di turno vuoi iniziare?'
-                    }
+                    Seleziona il giorno che vuoi recuperare o anticipare. Le ore lavorate verranno attribuite a quel giorno.
                 </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
              <div className="py-4 space-y-4">
-                {shiftStartContext === 'normal' && (
-                    <Button 
-                        variant={makeupShiftType === 'normal' ? 'secondary' : 'outline'} 
-                        className="w-full justify-start text-left h-auto py-3"
-                        onClick={() => setMakeupShiftType('normal')}
-                    >
-                        <div>
-                            <p className="font-semibold">Turno Normale</p>
-                            <p className="text-xs text-muted-foreground">Registra un turno di lavoro standard per oggi.</p>
-                        </div>
-                    </Button>
-                )}
-                {shiftStartContext === 'extra' && (
-                    <Button 
-                        variant={makeupShiftType === 'overtime' ? 'secondary' : 'outline'} 
-                        className="w-full justify-start text-left h-auto py-3"
-                        onClick={() => setMakeupShiftType('overtime')}
-                    >
-                        <div>
-                            <p className="font-semibold">Turno Straordinario</p>
-                            <p className="text-xs text-muted-foreground">Le ore verranno calcolate come straordinario.</p>
-                        </div>
-                    </Button>
-                )}
-                <Button 
-                    variant={makeupShiftType === 'makeup' ? 'secondary' : 'outline'} 
-                    className="w-full justify-start text-left h-auto py-3"
-                    onClick={() => setMakeupShiftType('makeup')}
-                >
-                     <div>
-                        <p className="font-semibold">Recupero / Anticipo di un altro giorno</p>
-                        <p className="text-xs text-muted-foreground">Le ore verranno conteggiate sul giorno originale.</p>
-                    </div>
-                </Button>
-
-                {makeupShiftType === 'makeup' && (
-                    <div className="space-y-2 pt-2">
-                        <Label>Seleziona il giorno da recuperare/anticipare</Label>
-                         <Calendar
-                            mode="single"
-                            selected={makeupDay}
-                            onSelect={setMakeupDay}
-                            className="rounded-md border"
-                            locale={it}
-                            disabled={calendarDisabledMatcher}
-                            month={currentDate || new Date()}
-                            onMonthChange={(month) => setCurrentDate(month)}
-                            fromMonth={subMonths(new Date(), 2)}
-                            toMonth={addMonths(new Date(), 2)}
-                         />
-                         {makeupDay && (
-                            <p className="text-sm text-center text-primary font-semibold pt-2">
-                                Giorno selezionato: {format(makeupDay, 'PPP', { locale: it })}
-                            </p>
-                         )}
-                    </div>
-                )}
+                <Label>Giorno da recuperare/anticipare</Label>
+                 <Calendar
+                    mode="single"
+                    selected={makeupDay}
+                    onSelect={setMakeupDay}
+                    className="rounded-md border"
+                    locale={it}
+                    disabled={calendarDisabledMatcher}
+                    month={currentDate || new Date()}
+                    onMonthChange={(month) => setCurrentDate(month)}
+                    fromMonth={subMonths(new Date(), 2)}
+                    toMonth={addMonths(new Date(), 2)}
+                 />
+                 {makeupDay && (
+                    <p className="text-sm text-center text-primary font-semibold pt-2">
+                        Giorno selezionato: {format(makeupDay, 'PPP', { locale: it })}
+                    </p>
+                 )}
             </div>
             <ResponsiveDialogFooter>
-                <Button variant="outline" onClick={() => setIsMakeupShiftDialogOpen(false)}>Annulla</Button>
-                <Button onClick={handleMakeupShiftDialogSubmit} disabled={!makeupShiftType || (makeupShiftType === 'makeup' && !makeupDay)}>Avvia Turno</Button>
+                <Button variant="outline" onClick={() => setIsMakeupDialogOpen(false)}>Annulla</Button>
+                <Button onClick={handleStartMakeupShift} disabled={!makeupDay}>Conferma e Inizia Turno</Button>
             </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
     </ResponsiveDialog>
@@ -927,11 +830,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </ResponsiveDialogHeader>
             <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
                 <div>
-                    <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
+                    <h4 className="font-semibold mb-1">Inizio e Fine Turno Normale</h4>
                     <p className="text-muted-foreground">
-                        Usa i pulsanti per registrare la tua entrata e uscita. Questa azione registra anche la tua posizione per confermare la sede di lavoro.
-                        <br/><br/>
-                        <span className="font-bold">IMPORTANTE:</span> L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
+                        Usa il pulsante verde "Inizia Turno Normale" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-1">Turno di Recupero o Straordinario</h4>
+                    <p className="text-muted-foreground">
+                        Se devi recuperare un giorno o fare straordinari, usa i pulsanti nella sezione "Turni Speciali". Scegli "Inizia Recupero" e seleziona dal calendario il giorno che stai compensando, oppure "Inizia Straordinario" per registrare ore extra.
                     </p>
                 </div>
                  <div>
@@ -940,16 +847,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
                     </p>
                 </div>
-                 <div>
+                <div>
                     <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
                     <p className="text-muted-foreground">
                         Il sistema arrotonda gli orari di entrata e uscita per calcolare le ore ordinarie, che scattano ogni mezz'ora.
-                    </p>
-                </div>
-                <div>
-                    <h4 className="font-semibold mb-1">Turno Straordinario o Recupero</h4>
-                    <p className="text-muted-foreground">
-                        Se timbri in un giorno non lavorativo, il sistema ti chiederà se vuoi registrare un turno <span className="font-bold">Straordinario</span> o se stai facendo un <span className="font-bold">Recupero/Anticipo</span>. Se scegli recupero, potrai selezionare dal calendario il giorno esatto che stai sostituendo e le ore verranno calcolate come ordinarie in base a quel giorno.
                     </p>
                 </div>
                 <div>
