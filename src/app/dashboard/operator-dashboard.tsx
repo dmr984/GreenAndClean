@@ -399,20 +399,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     
     try {
         let currentLoc = { latitude: 0, longitude: 0 };
-        // If requireGps is explicitly false, we skip geolocation.
-        // If it's true or undefined (defaulting to true for safety), we get location.
         if (operator.requireGps !== false) {
             currentLoc = await getLocation();
         }
         
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
-
-        let shiftIdToUpdate: string | undefined = undefined;
         let makeupDayToCopy: string | undefined = undefined;
+        let shiftIdToUpdate: string | undefined = undefined;
 
         if (type === 'uscita') {
-            const lookbackDate = subDays(new Date(), 1); // Look back 24 hours
-
+            const lookbackDate = subDays(new Date(), 2); // 48h lookback
             const q = query(
                 collection(firestore, `app-users/${operator.id}/timbrature`),
                 where('timestamp', '>=', lookbackDate),
@@ -421,22 +417,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             const snapshot = await getDocs(q);
             const recentEvents = snapshot.docs.map(d => ({id: d.id, ...d.data() as ClockingEvent}));
 
-            // Find the last clock-in that doesn't have a clock-out after it
-            let lastOpenClockIn: ClockingEvent | undefined = undefined;
-            for (const event of recentEvents) {
-                if (event.type === 'entrata') {
-                    // Check if there's a corresponding 'uscita' that happened after this 'entrata'
-                    const hasUscita = recentEvents.some(e => e.type === 'uscita' && e.timestamp.toMillis() > event.timestamp.toMillis());
-                    if (!hasUscita) {
-                        lastOpenClockIn = event;
-                        break; // Found the most recent open shift's entrata
-                    }
-                }
-            }
+            const lastEntrata = recentEvents.find(e => e.type === 'entrata');
+            const lastUscita = recentEvents.find(e => e.type === 'uscita');
 
-            if (lastOpenClockIn) {
-                shiftIdToUpdate = lastOpenClockIn.shiftId;
-                makeupDayToCopy = lastOpenClockIn.makeupOfDay;
+            if (lastEntrata && (!lastUscita || lastEntrata.timestamp.toMillis() > lastUscita.timestamp.toMillis())) {
+                shiftIdToUpdate = lastEntrata.shiftId;
+                makeupDayToCopy = lastEntrata.makeupOfDay;
             }
         }
 
