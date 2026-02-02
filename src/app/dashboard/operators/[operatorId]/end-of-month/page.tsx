@@ -190,7 +190,7 @@ export default function EndOfMonthPage() {
     
             const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
                 getDocs(timbratureQuery),
-                getDocs(requestsSnapshot),
+                getDocs(requestsQuery),
                 getDocs(notesSnapshot),
                 getDocs(straordinariQuery)
             ]);
