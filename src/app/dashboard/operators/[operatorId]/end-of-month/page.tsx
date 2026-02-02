@@ -556,7 +556,7 @@ export default function EndOfMonthPage() {
                                  const isSunday = getDay(detail.date) === 0;
                                  const clockInEvent = detail.shift?.events.find(e => e.type === 'entrata');
                                  const makeupDay = clockInEvent?.makeupOfDay;
-                                 const performedOnDate = detail.shift ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) : null;
+                                 const performedOnDate = detail.shift && detail.shift.events.length > 0 ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) : null;
 
 
                                 return (
