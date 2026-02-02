@@ -672,6 +672,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         
         let newEventsForState: Timbratura[] = [...editingShift.events];
     
+        const makeupDayValue = editMakeupDay || null;
+
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
             const existingEvent = editingShift.events.find(e => e.type === type);
             const newEventDetails = newEventData[type];
@@ -679,11 +681,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             const updatePayload: any = { 
                 viewedByOperator: false, 
                 shiftId: shiftId,
-                status: 'sospesa'
+                status: 'sospesa',
+                makeupOfDay: makeupDayValue
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
-                updatePayload.makeupOfDay = editMakeupDay || null;
             }
 
             if (newEventDetails && existingEvent) { 
@@ -1139,6 +1141,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
              events.push({ type: 'fine_pausa', time: newShiftTimes.fine_pausa });
         }
     
+        const makeupDayValue = newShiftIsMakeup && newShiftMakeupDay ? newShiftMakeupDay : undefined;
+
         for (const event of events) {
             if (event.time) {
                 const newDocRef = doc(timbratureCollectionRef);
@@ -1150,12 +1154,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     viewedByOperator: false, 
                     isOvertime,
                     shiftId: manualShiftId,
+                    ...(makeupDayValue && { makeupOfDay: makeupDayValue })
                 };
                 if (event.type === 'entrata') {
                     eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
-                    if(newShiftIsMakeup && newShiftMakeupDay) {
-                        eventPayload.makeupOfDay = newShiftMakeupDay;
-                    }
                 }
                 batch.set(newDocRef, eventPayload);
             }

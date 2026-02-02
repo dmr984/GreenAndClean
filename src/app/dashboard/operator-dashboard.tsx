@@ -408,6 +408,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
 
         let shiftIdToUpdate: string | undefined = undefined;
+        let makeupDayToCopy: string | undefined = undefined;
+
         if (type === 'uscita') {
             const todayStart = startOfDay(new Date());
             const todayEnd = endOfDay(new Date());
@@ -424,10 +426,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 .filter(e => e.type === 'entrata')
                 .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0];
 
-            const hasClockOut = todayEvents.some(e => e.type === 'uscita' && e.timestamp.toMillis() > (lastClockIn?.timestamp.toMillis() || 0));
+            if (lastClockIn) {
+                const hasClockOut = todayEvents.some(e => e.type === 'uscita' && e.timestamp.toMillis() > (lastClockIn.timestamp.toMillis() || 0));
 
-            if (lastClockIn && !hasClockOut) {
-                shiftIdToUpdate = lastClockIn.shiftId;
+                if (!hasClockOut) {
+                    shiftIdToUpdate = lastClockIn.shiftId;
+                    makeupDayToCopy = lastClockIn.makeupOfDay;
+                }
             }
         }
 
@@ -444,6 +449,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         
         if (type === 'entrata' && makeupDayInfo) {
             newTimbratura.makeupOfDay = makeupDayInfo;
+        }
+        
+        if (type === 'uscita' && makeupDayToCopy) {
+            newTimbratura.makeupOfDay = makeupDayToCopy;
         }
 
         await addDoc(timbraturaRef, newTimbratura);
