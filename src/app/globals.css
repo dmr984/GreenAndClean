@@ -59,6 +59,9 @@
 }
 
 @media print {
+  @page {
+    margin: 0;
+  }
   body {
     background: white;
     color: black;
