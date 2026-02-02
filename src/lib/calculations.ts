@@ -288,7 +288,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 };
 
 export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
-    console.log(`[calculateHours] Inizio calcolo per turno del ${format(shift.date, 'yyyy-MM-dd')}`);
+    // console.log(`[calculateHours] Inizio calcolo per turno del ${format(shift.date, 'yyyy-MM-dd')}`);
 
     const clockInEvent = shift.events.find(e => e.type === 'entrata');
     
@@ -297,7 +297,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
         const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
         const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
         
-        console.log('[calculateHours] Trovate ore approvate manualmente.', { ordinary: approvedOrdinary, overtime: approvedOvertime });
+        // console.log('[calculateHours] Trovate ore approvate manualmente.', { ordinary: approvedOrdinary, overtime: approvedOvertime });
         
         return {
             ordinary: approvedOrdinary,
@@ -316,11 +316,11 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const isMakeupShift = !!clockInEvent?.makeupOfDay;
     const isWorkDay = isMakeupShift || contractualHours > 0;
     
-    console.log('[calculateHours] Dati turno:', { workedMinutes, contractualHours, isWorkDay, ignoreContractualStart });
+    // console.log('[calculateHours] Dati turno:', { workedMinutes, contractualHours, isWorkDay, ignoreContractualStart });
 
     if (!isWorkDay) {
         const overtime = roundOvertimeHours(workedMinutes, overtimeCalculation);
-        console.log('[calculateHours] Giorno non lavorativo. Calcolato come solo straordinario:', { overtime });
+        // console.log('[calculateHours] Giorno non lavorativo. Calcolato come solo straordinario:', { overtime });
         return { ordinary: 0, overtime, leave: 0, worked: workedMinutes, break: breakMinutes, calculationStart, calculationEnd };
     }
 
@@ -330,7 +330,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const overtimeHours = roundOvertimeHours(overtimeMinutes, overtimeCalculation);
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
 
-    console.log('[calculateHours] Risultato calcolo standard:', { ordinary: ordinaryHours, overtime: overtimeHours, leave: leaveHours });
+    // console.log('[calculateHours] Risultato calcolo standard:', { ordinary: ordinaryHours, overtime: overtimeHours, leave: leaveHours });
 
     return { 
         ordinary: ordinaryHours, 
@@ -361,8 +361,8 @@ export const processMonthlyData = (
     }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
-    console.clear(); // Pulisce la console per ogni nuovo calcolo
-    console.log(`--- Inizio Elaborazione Mese: ${format(currentMonth, 'MMMM yyyy')} per ${operator.workSchedule} ---`);
+    // console.clear(); // Pulisce la console per ogni nuovo calcolo
+    // console.log(`--- Inizio Elaborazione Mese: ${format(currentMonth, 'MMMM yyyy')} per ${operator.workSchedule} ---`);
 
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
@@ -386,8 +386,8 @@ export const processMonthlyData = (
     for (const day of allDaysOfMonth) {
         const dayISO = startOfDay(day).toISOString();
         const effectiveEventsForDay = eventsByEffectiveDay[dayISO] || [];
-        console.log(`--- Giorno: ${format(day, 'yyyy-MM-dd')} ---`);
-        console.log(`Timbrature per questo giorno: ${effectiveEventsForDay.length}`);
+        // console.log(`--- Giorno: ${format(day, 'yyyy-MM-dd')} ---`);
+        // console.log(`Timbrature per questo giorno: ${effectiveEventsForDay.length}`);
         
         const makeupShiftsPhysicallyPerformedOnDay = data.timbrature.filter(t => 
             t.makeupOfDay && 
@@ -400,23 +400,23 @@ export const processMonthlyData = (
         const contractualHours = dailySchedule?.totalHours || 0;
         const isWorkDay = contractualHours > 0;
         const isHoliday = isPublicHoliday(day);
-        console.log(`Contratto: ${contractualHours}h. È giorno lavorativo? ${isWorkDay}. È festivo? ${isHoliday}.`);
+        // console.log(`Contratto: ${contractualHours}h. È giorno lavorativo? ${isWorkDay}. È festivo? ${isHoliday}.`);
 
         const isMadeUpElsewhere = data.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
-        if (isMadeUpElsewhere) console.log('Questo giorno è stato recuperato in un\'altra data.');
+        // if (isMadeUpElsewhere) console.log('Questo giorno è stato recuperato in un\'altra data.');
         
         const leaveRequest = data.requests.find(r =>
             (r.type === 'ferie' || r.type === 'malattia') &&
             isWithinInterval(day, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) })
         );
-        if (leaveRequest) console.log(`Trovata richiesta di ${leaveRequest.type}.`);
+        // if (leaveRequest) console.log(`Trovata richiesta di ${leaveRequest.type}.`);
         
         const dailyNote = data.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
         const dayStraordinario = data.straordinari?.find(s => isSameDay(s.date.toDate(), day));
 
         if (effectiveEventsForDay.length === 0 && makeupShiftsPhysicallyPerformedOnDay.length > 0) {
             const targetDate = makeupShiftsPhysicallyPerformedOnDay[0].makeupOfDay;
-            console.log(`Questo giorno è stato usato per recuperare il ${targetDate}. Stato: recupero_effettuato.`);
+            // console.log(`Questo giorno è stato usato per recuperare il ${targetDate}. Stato: recupero_effettuato.`);
             details.push({
                 date: day,
                 status: 'recupero_effettuato',
@@ -429,7 +429,7 @@ export const processMonthlyData = (
         }
 
         if (leaveRequest) {
-            console.log(`Stato finale: ${leaveRequest.type}.`);
+            // console.log(`Stato finale: ${leaveRequest.type}.`);
             details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
         } else if (effectiveEventsForDay.length > 0) {
             const performedOnDate = effectiveEventsForDay[0].timestamp.toDate();
@@ -437,7 +437,7 @@ export const processMonthlyData = (
             const isTodayAndInProgress = isSameDay(performedOnDate, today) && !isShiftComplete;
 
             if (isTodayAndInProgress) {
-                 console.log('Turno rilevato come "in corso".');
+                 // console.log('Turno rilevato come "in corso".');
                  details.push({
                     date: day,
                     status: 'in_corso',
@@ -491,8 +491,8 @@ export const processMonthlyData = (
             
             const { calculationStart, calculationEnd } = calculateHours({ date: day, events: effectiveEventsForDay }, dailySchedule, effectiveEventsForDay.find(e => e.type === 'entrata')?.ignoreContractualStart || false, operator.overtimeCalculation);
             
-            console.log(`Calcolo ore per il giorno: Ordinarie=${totalOrdinary}, Straordinari=${totalOvertime}, Permesso=${permissionHours}`);
-            console.log('Stato finale: lavorato');
+            // console.log(`Calcolo ore per il giorno: Ordinarie=${totalOrdinary}, Straordinari=${totalOvertime}, Permesso=${permissionHours}`);
+            // console.log('Stato finale: lavorato');
 
             details.push({
                 date: day,
@@ -514,7 +514,7 @@ export const processMonthlyData = (
              const overtimeHours = dayStraordinario.status === 'approvato' 
                 ? (dayStraordinario.approvedHours ?? calculatePureOvertime(dayStraordinario, operator))
                 : calculatePureOvertime(dayStraordinario, operator);
-             console.log(`Trovato straordinario approvato: ${overtimeHours}h. Stato finale: lavorato`);
+             // console.log(`Trovato straordinario approvato: ${overtimeHours}h. Stato finale: lavorato`);
              details.push({
                 date: day,
                 status: 'lavorato',
@@ -530,13 +530,13 @@ export const processMonthlyData = (
                 note: dailyNote?.note
              });
         } else if (isHoliday && isWorkDay) {
-            console.log('Giorno festivo contrattuale. Stato finale: festa');
+            // console.log('Giorno festivo contrattuale. Stato finale: festa');
             details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
         } else if (isWorkDay && day < today && !isMadeUpElsewhere) {
-             console.log('Giorno lavorativo senza timbrature. Stato finale: mancata_timbratura');
+             // console.log('Giorno lavorativo senza timbrature. Stato finale: mancata_timbratura');
              details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
         } else if (!isWorkDay) {
-             console.log('Giorno non lavorativo. Stato finale: riposo');
+             // console.log('Giorno non lavorativo. Stato finale: riposo');
              details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
         }
     }
@@ -549,32 +549,32 @@ export const processMonthlyData = (
     let ferieHours = 0;
     let malattiaDays = 0;
 
-    console.log('--- Inizio Calcolo Riepilogo Mensile ---');
+    // console.log('--- Inizio Calcolo Riepilogo Mensile ---');
     details.forEach(detail => {
         if (!isWithinInterval(detail.date, monthInterval)) return;
         
-        console.log(`Riepilogo per ${format(detail.date, 'yyyy-MM-dd')}: Stato=${detail.status}`);
+        // console.log(`Riepilogo per ${format(detail.date, 'yyyy-MM-dd')}: Stato=${detail.status}`);
 
         switch (detail.status) {
             case 'recupero_effettuato':
                 break;
             case 'lavorato':
                 if (detail.shift) {
-                    const isConfirmed = detail.shift.events.every(e => e.status === 'confermata');
+                    // A shift is confirmed for summary if it's no longer pending action.
+                    const isConfirmed = !detail.shift.events.some(e => e.status === 'sospesa');
                     const isStraordinarioApproved = data.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
 
                     if (isConfirmed || isStraordinarioApproved) {
-                        totalOrdinaryHours += detail.shift.ordinaryHours;
-                        totalOvertimeHours += detail.shift.overtimeHours;
-                        
-                        if (detail.shift.ordinaryHours > 0) {
+                         if (detail.shift.ordinaryHours > 0) {
                             workedDays++;
-                            console.log(`Giorno lavorato aggiunto. Totale giorni: ${workedDays}. Ore ordinarie: ${detail.shift.ordinaryHours}`);
+                            totalOrdinaryHours += detail.shift.ordinaryHours;
+                            // console.log(`Giorno lavorato aggiunto. Totale giorni: ${workedDays}. Ore ordinarie: ${detail.shift.ordinaryHours}`);
                         } else if (detail.shift.overtimeHours > 0) {
-                             console.log('Giorno di solo straordinario, non conteggiato come giorno lavorato.');
+                             // console.log('Giorno di solo straordinario, non conteggiato come giorno lavorato.');
                         }
+                        totalOvertimeHours += detail.shift.overtimeHours;
                     } else {
-                        console.log('Turno non ancora confermato, ignorato per il riepilogo.');
+                        // console.log('Turno non ancora confermato, ignorato per il riepilogo.');
                     }
                 }
                 break;
@@ -583,15 +583,15 @@ export const processMonthlyData = (
                 const dayNameFerie = dayIndexToName[getDay(detail.date)];
                 const contractualHoursFerie = operator.workSchedule[dayNameFerie]?.totalHours || 8;
                 ferieHours += contractualHoursFerie;
-                console.log(`Giorno di ferie aggiunto. Totale ferie: ${ferieDays}`);
+                // console.log(`Giorno di ferie aggiunto. Totale ferie: ${ferieDays}`);
                 break;
             case 'malattia':
                 malattiaDays++;
-                console.log(`Giorno di malattia aggiunto. Totale malattia: ${malattiaDays}`);
+                // console.log(`Giorno di malattia aggiunto. Totale malattia: ${malattiaDays}`);
                 break;
             case 'mancata_timbratura':
                 absenceDays++;
-                console.log(`Giorno di assenza aggiunto. Totale assenze: ${absenceDays}`);
+                // console.log(`Giorno di assenza aggiunto. Totale assenze: ${absenceDays}`);
                 break;
             default:
                 break;
@@ -621,7 +621,7 @@ export const processMonthlyData = (
         malattiaDays,
     };
     
-    console.log('--- RIEPILOGO MENSILE FINALE ---', monthlySummary);
+    // console.log('--- RIEPILOGO MENSILE FINALE ---', monthlySummary);
 
     return {
         monthlySummary,
