@@ -193,13 +193,14 @@ const MonthlySummaryContent = () => {
 
     const canGoBack = useMemo(() => {
         if (!currentMonth) return false;
-        const realCurrentMonth = startOfMonth(new Date());
-        const previousMonth = startOfMonth(new Date(realCurrentMonth.setMonth(realCurrentMonth.getMonth() - 1)));
-        return isAfter(startOfMonth(currentMonth), previousMonth);
+        // The limit is one month before the current real-world month.
+        const limitMonth = subMonths(startOfMonth(new Date()), 1);
+        return isAfter(startOfMonth(currentMonth), limitMonth);
     }, [currentMonth]);
     
     const canGoForward = useMemo(() => {
         if (!currentMonth) return false;
+        // Can't go to a month that is after or the same as the current real-world month.
         const realCurrentMonth = startOfMonth(new Date());
         return isAfter(realCurrentMonth, startOfMonth(currentMonth));
     }, [currentMonth]);
@@ -226,7 +227,7 @@ const MonthlySummaryContent = () => {
             </CardHeader>
             <CardContent className="space-y-8">
                  <div className="flex items-center justify-between gap-2 p-2 border rounded-md">
-                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)}>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(-1)} disabled={!canGoBack}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex items-center gap-2">
@@ -235,7 +236,7 @@ const MonthlySummaryContent = () => {
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4" />}
                         </Button>
                     </div>
-                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)}>
+                    <Button variant="outline" size="icon" onClick={() => handleMonthChange(1)} disabled={!canGoForward}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -288,7 +289,7 @@ const MonthlySummaryContent = () => {
                                                 Recupero per: {detail.makeupActivityFor.join(', ')}
                                             </p>
                                             <p className="text-xs text-muted-foreground italic">
-                                                (Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)
+                                                (Le ore di questo turno sono attribuite al giorno di recupero.)
                                             </p>
                                         </div>
                                     )}
