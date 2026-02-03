@@ -620,7 +620,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         style={{backgroundColor: '#22c55e', color: 'white'}}
                     >
                         {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
-                        Inizia Turno Normale
+                        Inizia Turno
                     </Button>
                 </CardFooter>
             </Card>
@@ -698,15 +698,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             </ResponsiveDialogHeader>
             <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
                 <div>
-                    <h4 className="font-semibold mb-1">Inizio e Fine Turno Normale</h4>
+                    <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
                     <p className="text-muted-foreground">
-                        Usa il pulsante verde "Inizia Turno Normale" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
+                        Usa il pulsante verde "Inizia Turno" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
                     </p>
                 </div>
                 <div>
                     <h4 className="font-semibold mb-1">Turno di Recupero o Straordinario</h4>
                     <p className="text-muted-foreground">
-                        Se devi recuperare un giorno o fare straordinari, usa i pulsanti nella sezione "Turni Speciali". Scegli "Inizia Recupero" e seleziona dal calendario il giorno che stai compensando, oppure "Inizia Straordinario" per registrare ore extra.
+                        Se devi recuperare un giorno o fare straordinari in un giorno non lavorativo, usa il pulsante "Inizia Recupero" e seleziona dal calendario il giorno che stai compensando, oppure timbra normalmente con "Inizia Turno" per registrare ore extra.
                     </p>
                 </div>
                  <div>
