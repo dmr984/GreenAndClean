@@ -74,6 +74,7 @@ type Operator = {
     hourlyRate?: number;
     overtimeRate?: number;
     fixedSalary?: number;
+    sickLeaveRate?: number;
 };
 
 export default function ManageOperatorsPage() {
@@ -101,6 +102,7 @@ export default function ManageOperatorsPage() {
     const [newHourlyRate, setNewHourlyRate] = useState<number | string>('');
     const [newOvertimeRate, setNewOvertimeRate] = useState<number | string>('');
     const [newFixedSalary, setNewFixedSalary] = useState<number | string>('');
+    const [newSickLeaveRate, setNewSickLeaveRate] = useState<number | string>('');
 
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
@@ -113,6 +115,7 @@ export default function ManageOperatorsPage() {
     const [editingHourlyRate, setEditingHourlyRate] = useState<number | string>('');
     const [editingOvertimeRate, setEditingOvertimeRate] = useState<number | string>('');
     const [editingFixedSalary, setEditingFixedSalary] = useState<number | string>('');
+    const [editingSickLeaveRate, setEditingSickLeaveRate] = useState<number | string>('');
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -225,6 +228,7 @@ export default function ManageOperatorsPage() {
         const hourlyRate = action === 'add' ? newHourlyRate : editingHourlyRate;
         const overtimeRate = action === 'add' ? newOvertimeRate : editingOvertimeRate;
         const fixedSalary = action === 'add' ? newFixedSalary : editingFixedSalary;
+        const sickLeaveRate = action === 'add' ? newSickLeaveRate : editingSickLeaveRate;
 
         if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
@@ -275,6 +279,7 @@ export default function ManageOperatorsPage() {
             hourlyRate: salaryType === 'hourly' ? parseFloat(String(hourlyRate)) || 0 : 0,
             overtimeRate: parseFloat(String(overtimeRate)) || 0,
             fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary)) || 0 : 0,
+            sickLeaveRate: parseFloat(String(sickLeaveRate)) || 0,
         };
 
         if (action === 'add') {
@@ -293,6 +298,7 @@ export default function ManageOperatorsPage() {
                 setNewHourlyRate('');
                 setNewOvertimeRate('');
                 setNewFixedSalary('');
+                setNewSickLeaveRate('');
               }).catch((error: any) => {
                 if (error.code === 'permission-denied') {
                      errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'create', path: 'app-users', requestResourceData: operatorData }));
@@ -302,7 +308,7 @@ export default function ManageOperatorsPage() {
             });
         } else if (action === 'edit' && selectedOperator) {
             const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
-            updateDoc(operatorRef, operatorData)
+            updateDoc(operatorRef, operatorData as any)
             .then(() => {
                 toast({ title: "Successo", description: "Dati operatore aggiornati." });
                 setIsEditDialogOpen(false);
@@ -439,6 +445,8 @@ export default function ManageOperatorsPage() {
       setOvertimeRate: (val: string | number) => void,
       fixedSalary: string | number,
       setFixedSalary: (val: string | number) => void,
+      sickLeaveRate: string | number,
+      setSickLeaveRate: (val: string | number) => void,
       overtimeCalculation: 'hourly' | 'half_hourly',
       setOvertimeCalculation: (val: 'hourly' | 'half_hourly') => void
     ) => (
@@ -462,6 +470,10 @@ export default function ManageOperatorsPage() {
               <Label htmlFor={`${type}-hourlyRate`}>Tariffa Oraria (€)</Label>
               <Input id={`${type}-hourlyRate`} type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
             </div>
+             <div>
+                <Label htmlFor={`${type}-sickLeaveRate`}>Tariffa Malattia (€/h)</Label>
+                <Input id={`${type}-sickLeaveRate`} type="number" value={sickLeaveRate} onChange={(e) => setSickLeaveRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 7.00" />
+             </div>
             <div>
               <Label htmlFor={`${type}-overtime`}>Calcolo Straordinario</Label>
               <Select value={overtimeCalculation} onValueChange={(v) => setOvertimeCalculation(v as any)}>
@@ -483,7 +495,7 @@ export default function ManageOperatorsPage() {
         )}
         
         <div className={salaryType === 'hourly' ? '' : 'md:col-span-3'}>
-            <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€)</Label>
+            <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€/h)</Label>
             <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
         </div>
       </>
@@ -534,6 +546,7 @@ export default function ManageOperatorsPage() {
                                             newHourlyRate, setNewHourlyRate,
                                             newOvertimeRate, setNewOvertimeRate,
                                             newFixedSalary, setNewFixedSalary,
+                                            newSickLeaveRate, setNewSickLeaveRate,
                                             newOvertimeCalculation, setNewOvertimeCalculation
                                           )}
                                         </div>
@@ -595,7 +608,7 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setEditingSickLeaveRate(operator.sickLeaveRate || ''); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -643,6 +656,7 @@ export default function ManageOperatorsPage() {
                                     editingHourlyRate, setEditingHourlyRate,
                                     editingOvertimeRate, setEditingOvertimeRate,
                                     editingFixedSalary, setEditingFixedSalary,
+                                    editingSickLeaveRate, setEditingSickLeaveRate,
                                     editingOvertimeCalculation, setEditingOvertimeCalculation
                                   )}
                             </div>
@@ -685,3 +699,5 @@ export default function ManageOperatorsPage() {
         </>
     );
 }
+
+    

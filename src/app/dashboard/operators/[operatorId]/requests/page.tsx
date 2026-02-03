@@ -18,16 +18,30 @@ import { useParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { RequestForm } from '@/components/request-form';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, formatISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, formatISO, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
+
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+type DailySchedule = {
+    totalHours?: number;
+};
+type WorkSchedule = {
+    [key in DayOfWeek]?: DailySchedule;
+};
 
 type Operator = {
     id: string;
     username: string;
     firstName: string;
     lastName: string;
+    hourlyRate?: number;
+    sickLeaveRate?: number;
+    workSchedule: WorkSchedule;
 };
 
 type Request = {
@@ -40,6 +54,7 @@ type Request = {
     hours?: number;
     reason?: string;
     createdAt: Timestamp;
+    dailyCosts?: { [date: string]: number };
 };
 
 const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onSave: (data: Partial<Request>) => void; onClose: () => void; }) => {
@@ -156,6 +171,84 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     );
 };
 
+const ApprovalDialog = ({ request, operator, onConfirm, onClose }: { request: Request; operator: Operator; onConfirm: (costs: Record<string, number>) => void; onClose: () => void; }) => {
+    const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
+    const [costs, setCosts] = useState<Record<string, number>>({});
+
+    const handleApplyContractualRate = (checked: boolean) => {
+        if (checked) {
+            const newCosts: Record<string, number> = {};
+            days.forEach(day => {
+                const dayName = dayIndexToName[getDay(day)];
+                const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
+                let rate = 0;
+                if (request.type === 'ferie' || request.type === 'permesso') {
+                    rate = operator.hourlyRate || 0;
+                } else if (request.type === 'malattia') {
+                    rate = operator.sickLeaveRate || 0;
+                }
+                newCosts[formatISO(day, { representation: 'date' })] = contractualHours * rate;
+            });
+            setCosts(newCosts);
+        } else {
+            const resetCosts: Record<string, number> = {};
+            days.forEach(day => {
+                resetCosts[formatISO(day, { representation: 'date' })] = 0;
+            });
+            setCosts(resetCosts);
+        }
+    };
+    
+    const handleCostChange = (date: string, value: string) => {
+        setCosts(prev => ({...prev, [date]: parseFloat(value) || 0 }));
+    };
+
+    return (
+        <ResponsiveDialog open={true} onOpenChange={onClose}>
+            <ResponsiveDialogContent>
+                <ResponsiveDialogHeader>
+                    <ResponsiveDialogTitle>Approva e Definisci Costi</ResponsiveDialogTitle>
+                    <ResponsiveDialogDescription>
+                        Imposta il costo per ogni giorno di {request.type}. Questo valore verrà usato nel calcolo finale.
+                    </ResponsiveDialogDescription>
+                </ResponsiveDialogHeader>
+                 <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+                    <div className="flex items-center space-x-2">
+                        <Checkbox id="apply-contractual" onCheckedChange={handleApplyContractualRate} />
+                        <Label htmlFor="apply-contractual">Applica tariffa contrattuale</Label>
+                    </div>
+                    <Separator />
+                    {days.map(day => {
+                        const dateKey = formatISO(day, { representation: 'date' });
+                        return (
+                            <div key={dateKey} className="grid grid-cols-3 items-center gap-4">
+                                <Label htmlFor={`cost-${dateKey}`} className="capitalize">
+                                    {format(day, "eeee, dd/MM/yy", { locale: it })}
+                                </Label>
+                                <Input
+                                    id={`cost-${dateKey}`}
+                                    type="number"
+                                    className="col-span-2"
+                                    placeholder="Costo per il giorno"
+                                    value={costs[dateKey] ?? 0}
+                                    onChange={(e) => handleCostChange(dateKey, e.target.value)}
+                                    min="0"
+                                    step="0.01"
+                                />
+                            </div>
+                        )
+                    })}
+                </div>
+                <ResponsiveDialogFooter>
+                    <Button variant="outline" onClick={onClose}>Annulla</Button>
+                    <Button onClick={() => onConfirm(costs)}>Conferma Approvazione</Button>
+                </ResponsiveDialogFooter>
+            </ResponsiveDialogContent>
+        </ResponsiveDialog>
+    );
+};
+
+
 export default function LeaveRequestsPage() {
     const firestore = useFirestore();
     const { toast } = useToast();
@@ -167,6 +260,7 @@ export default function LeaveRequestsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [itemToDelete, setItemToDelete] = useState<Request | null>(null);
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
+    const [requestToApprove, setRequestToApprove] = useState<Request | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [isCleanHistoryConfirmOpen, setIsCleanHistoryConfirmOpen] = useState(false);
@@ -199,13 +293,32 @@ export default function LeaveRequestsPage() {
         return unsubscribe;
     }, [firestore, operatorId, toast]);
 
-    const handleUpdateRequestStatus = (requestId: string, newStatus: 'approvato' | 'rifiutato') => {
-        if (!firestore) return;
-        const docRef = doc(firestore, `app-users/${operatorId}/requests`, requestId);
-        updateDoc(docRef, { status: newStatus, viewedByOperator: false }).catch(err => {
+    const handleConfirmApproval = (costs: Record<string, number>) => {
+        if (!firestore || !requestToApprove) return;
+        const docRef = doc(firestore, `app-users/${operatorId}/requests`, requestToApprove.id);
+        updateDoc(docRef, { status: 'approvato', viewedByOperator: false, dailyCosts: costs })
+        .then(() => {
+            toast({ title: 'Successo', description: 'Richiesta approvata con costi salvati.' });
+        })
+        .catch(err => {
             console.error(err);
-            toast({ title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile approvare la richiesta.', variant: 'destructive' });
+        }).finally(() => {
+            setRequestToApprove(null);
         });
+    };
+    
+    const handleUpdateRequestStatus = (requestId: string, newStatus: 'approvato' | 'rifiutato') => {
+        if (newStatus === 'rifiutato' && firestore) {
+            const docRef = doc(firestore, `app-users/${operatorId}/requests`, requestId);
+            updateDoc(docRef, { status: newStatus, viewedByOperator: false }).catch(err => {
+                console.error(err);
+                toast({ title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive' });
+            });
+        } else {
+             const req = requests.find(r => r.id === requestId);
+             if (req) setRequestToApprove(req);
+        }
     };
     
     const handleDelete = async () => {
@@ -389,6 +502,16 @@ export default function LeaveRequestsPage() {
                     onClose={() => setEditingRequest(null)}
                 />
             )}
+
+            {requestToApprove && operator && (
+                 <ApprovalDialog
+                    request={requestToApprove}
+                    operator={operator}
+                    onConfirm={handleConfirmApproval}
+                    onClose={() => setRequestToApprove(null)}
+                />
+            )}
+
         </div>
          <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
             <ResponsiveDialogContent>
@@ -423,3 +546,5 @@ export default function LeaveRequestsPage() {
         </>
     );
 };
+
+    

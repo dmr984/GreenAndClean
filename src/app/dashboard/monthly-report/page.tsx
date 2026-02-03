@@ -32,8 +32,9 @@ type Operator = {
     hourlyRate?: number;
     overtimeRate?: number;
     fixedSalary?: number;
+    sickLeaveRate?: number;
 };
-type Request = { type: string; startDate: Timestamp; endDate: Timestamp; hours?: number; };
+type Request = { type: string; startDate: Timestamp; endDate: Timestamp; hours?: number; dailyCosts?: { [date: string]: number }; };
 type Timbratura = { type: string; timestamp: Timestamp; status: string; };
 
 type ManualTotals = {
@@ -53,7 +54,9 @@ type VisibilitySettings = {
     absenceDays: boolean;
     ordinaryCost: boolean;
     overtimeCost: boolean;
-    holidayCost: boolean;
+    ferieCost: boolean;
+    permessoCost: boolean;
+    malattiaCost: boolean;
 };
 
 
@@ -125,7 +128,9 @@ const MonthlyReportPage = () => {
                     absenceDays: true,
                     ordinaryCost: true,
                     overtimeCost: true,
-                    holidayCost: false,
+                    ferieCost: true,
+                    permessoCost: true,
+                    malattiaCost: true,
                 };
             });
             setVisibility(initialVisibility);
@@ -244,12 +249,16 @@ const MonthlyReportPage = () => {
             : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
         
         const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-        const holidayCost = (summary.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+        const ferieCost = summary.ferieCost || 0;
+        const permessoCost = summary.permessoCost || 0;
+        const malattiaCost = summary.malattiaCost || 0;
 
         let total = 0;
         if (visibilitySettings.ordinaryCost) total += ordinaryCost;
         if (visibilitySettings.overtimeCost) total += overtimeCost;
-        if (visibilitySettings.holidayCost) total += holidayCost;
+        if (visibilitySettings.ferieCost) total += ferieCost;
+        if (visibilitySettings.permessoCost) total += permessoCost;
+        if (visibilitySettings.malattiaCost) total += malattiaCost;
         
         return total;
     }
@@ -373,7 +382,7 @@ const MonthlyReportPage = () => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
                 workedDays: true, showWorkedHours: false, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
-                overtimeCost: true, holidayCost: true
+                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true,
             };
             return {
                 ...prev,
@@ -511,7 +520,9 @@ const MonthlyReportPage = () => {
                                     : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
 
                                 const overtimeCost = (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
-                                const holidayCost = (summary?.holidayHoursPayable || 0) * (op.hourlyRate || 0);
+                                const ferieCost = summary?.ferieCost || 0;
+                                const permessoCost = summary?.permessoCost || 0;
+                                const malattiaCost = summary?.malattiaCost || 0;
                                 
                                 const workedDaysValue = opVisibility.showWorkedHours && summary
                                     ? `${summary.workedDays} (${summary.ordinaryHours}h)`
@@ -542,9 +553,11 @@ const MonthlyReportPage = () => {
                                                 <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                 <InfoCard opId={op.id} title="Costo Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
+                                                <InfoCard opId={op.id} title="Costo Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
                                                 <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
+                                                <InfoCard opId={op.id} title="Costo Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
                                                 <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
-                                                <InfoCard opId={op.id} title="Costo Ferie" value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="holidayCost" />
+                                                <InfoCard opId={op.id} title="Costo Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
                                                 <InfoCard opId={op.id} title="Assenze (g)" value={summary.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
                                             </CardContent>
                                         )}
@@ -606,3 +619,5 @@ const MonthlyReportPage = () => {
 };
 
 export default MonthlyReportPage;
+
+    

@@ -136,7 +136,6 @@ export default function EndOfMonthPage() {
     const [noteContent, setNoteContent] = useState('');
     
     const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
-    const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
     const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
 
 
@@ -276,7 +275,7 @@ export default function EndOfMonthPage() {
         if (!currentMonth) return;
         const monthString = format(currentMonth, 'yyyy-MM');
         
-        const queryParams = new URLSearchParams({ month: monthString, holidayPay: String(includeHolidayPay) });
+        const queryParams = new URLSearchParams({ month: monthString });
         
         window.open(`/dashboard/operators/${operatorId}/end-of-month/print?${queryParams.toString()}`, '_blank');
     };
@@ -388,17 +387,15 @@ export default function EndOfMonthPage() {
 
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
-    const holidayCost = (monthlySummary.holidayHoursPayable || 0) * (operator.hourlyRate || 0);
-    const malattiaCost = (monthlySummary.malattiaCost || 0);
+    const ferieCost = monthlySummary.ferieCost || 0;
+    const permessoCost = monthlySummary.permessoCost || 0;
+    const malattiaCost = monthlySummary.malattiaCost || 0;
     
     let totalDue: number;
     if (operator.salaryType === 'fixed') {
-        totalDue = (operator.fixedSalary || 0) + overtimeCost + malattiaCost;
+        totalDue = (operator.fixedSalary || 0) + overtimeCost + malattiaCost + ferieCost + permessoCost;
     } else {
-        totalDue = ordinaryCost + overtimeCost + malattiaCost;
-        if (includeHolidayPay) {
-            totalDue += holidayCost;
-        }
+        totalDue = ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost;
     }
 
     
@@ -513,29 +510,23 @@ export default function EndOfMonthPage() {
                             title="Ferie (giorni)" 
                             value={`${finalFerieDays} (${finalFerieHours}h)`}
                             icon={Plane}
-                             actionButton={
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={() => setIncludeHolidayPay(prev => !prev)}
-                                >
-                                    <Wallet className={cn("h-4 w-4", includeHolidayPay ? 'text-green-500' : 'text-muted-foreground')} />
-                                </Button>
-                            }
                         />
-                         {operator.salaryType !== 'fixed' && (
-                           <SummaryCard 
-                                title="Costo Ore Ferie" 
-                                value={`${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                                icon={Euro}
-                                subtext={`${(monthlySummary.holidayHoursPayable || 0)}h x ${formatFullRate(operator.hourlyRate)} €/h`}
-                            />
-                         )}
+                        <SummaryCard 
+                            title="Costo Ferie" 
+                            value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext="Costo approvato manualmente"
+                        />
                         <SummaryCard 
                             title="Permessi (ore)" 
                             value={finalPermessoHours} 
                             icon={UserCheck}
+                        />
+                        <SummaryCard 
+                            title="Costo Permessi" 
+                            value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext="Costo approvato manualmente"
                         />
                          <SummaryCard 
                             title="Malattia (giorni)" 
@@ -546,7 +537,7 @@ export default function EndOfMonthPage() {
                             title="Costo Malattia" 
                             value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext={`Basato su ore contrattuali e tariffa malattia`}
+                            subtext={`Costo approvato manualmente`}
                         />
                         <SummaryCard
                             title="Assenze (giorni)"
@@ -800,3 +791,5 @@ export default function EndOfMonthPage() {
         </>
     );
 }
+
+    

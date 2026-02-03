@@ -216,6 +216,15 @@
         "viewedByOperator": {
           "type": "boolean",
           "description": "Indicates if the operator has seen the status change made by an admin."
+        },
+        "dailyCosts": {
+            "type": "object",
+            "description": "Stores the manually approved cost for each day of the leave/sickness period. Key is YYYY-MM-DD, value is the cost.",
+            "patternProperties": {
+                "^[0-9]{4}-[0-9]{2}-[0-9]{2}$": {
+                "type": "number"
+                }
+            }
         }
       },
       "required": ["userId", "type", "status", "startDate", "endDate", "createdAt"]
@@ -432,3 +441,5 @@
     "reasoning": "Updated the Timbratura entity description to reflect that break start/end events are now primarily added by administrators, not clocked by operators."
   }
 }
+
+    

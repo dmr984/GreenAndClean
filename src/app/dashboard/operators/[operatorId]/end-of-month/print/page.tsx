@@ -80,7 +80,6 @@ const PrintPageContent = () => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[] }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [] });
     const [manualTotals, setManualTotals] = useState({ ferie: -1, permessi: -1, malattia: -1 });
-    const [includeHolidayPay, setIncludeHolidayPay] = useState(true);
 
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -98,18 +97,12 @@ const PrintPageContent = () => {
         const ferie = searchParams.get('ferie');
         const permessi = searchParams.get('permessi');
         const malattia = searchParams.get('malattia');
-        const holidayPay = searchParams.get('holidayPay');
 
         setManualTotals({
             ferie: ferie ? parseFloat(ferie) : -1,
             permessi: permessi ? parseFloat(permessi) : -1,
             malattia: malattia ? parseFloat(malattia) : -1,
         });
-
-        if (holidayPay !== null) {
-            setIncludeHolidayPay(holidayPay === 'true');
-        }
-
 
     }, [searchParams]);
 
@@ -203,20 +196,18 @@ const PrintPageContent = () => {
     const finalMalattiaDays = manualTotals.malattia !== -1 ? manualTotals.malattia : (monthlySummary.malattiaDays ?? 0);
     
     const overtimeCost = finalOvertimeHours * (operator?.overtimeRate || 0);
-    const holidayCost = (monthlySummary.holidayHoursPayable || 0) * (operator?.hourlyRate || 0);
-    const malattiaCost = (monthlySummary.malattiaCost || 0);
+    const ferieCost = monthlySummary.ferieCost || 0;
+    const permessoCost = monthlySummary.permessoCost || 0;
+    const malattiaCost = monthlySummary.malattiaCost || 0;
     let totalDue: number;
     let ordinaryCost: number;
 
     if (operator?.salaryType === 'fixed') {
         ordinaryCost = operator.fixedSalary || 0;
-        totalDue = ordinaryCost + overtimeCost + malattiaCost;
+        totalDue = ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost;
     } else {
         ordinaryCost = finalOrdinaryHours * (operator?.hourlyRate || 0);
-        totalDue = ordinaryCost + overtimeCost + malattiaCost;
-         if (includeHolidayPay) {
-            totalDue += holidayCost;
-        }
+        totalDue = ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost;
     }
 
 
@@ -277,8 +268,11 @@ const PrintPageContent = () => {
 
         financialSummary.push([`${costLabel}: ${costValue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: `COSTO STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, styles: { halign: 'right' }}]);
         
-        if (includeHolidayPay && holidayCost > 0) {
-            financialSummary.push([`COSTO FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
+        if (ferieCost > 0) {
+            financialSummary.push([`COSTO FERIE: ${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
+        }
+        if (permessoCost > 0) {
+            financialSummary.push([`COSTO PERMESSI: ${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
         }
         if (malattiaCost > 0) {
             financialSummary.push([`COSTO MALATTIA: ${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
@@ -524,9 +518,14 @@ const PrintPageContent = () => {
                                     </td>
                                     <td className="py-1 text-right font-semibold">COSTO STRAORDINARI: <span className="font-normal">{overtimeCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                 </tr>
-                                {includeHolidayPay && holidayCost > 0 && (
+                                {ferieCost > 0 && (
                                      <tr>
-                                        <td className="py-1 font-semibold" colSpan={2}>COSTO FERIE: <span className="font-normal">{holidayCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                        <td className="py-1 font-semibold" colSpan={2}>COSTO FERIE: <span className="font-normal">{ferieCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    </tr>
+                                )}
+                                 {permessoCost > 0 && (
+                                     <tr>
+                                        <td className="py-1 font-semibold" colSpan={2}>COSTO PERMESSI: <span className="font-normal">{permessoCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                     </tr>
                                 )}
                                 {malattiaCost > 0 && (
@@ -614,3 +613,5 @@ export default function PrintPage() {
         </Suspense>
     );
 }
+
+    
