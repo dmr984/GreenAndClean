@@ -359,38 +359,7 @@ export const processMonthlyData = (
     }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
-    // Hybrid Grouping Logic to support legacy data
-    const newEventsWithShiftId = data.timbrature.filter(t => !!t.shiftId);
-    const legacyEvents = data.timbrature.filter(t => !t.shiftId);
-
-    const legacyEventsByDay: { [key: string]: Timbratura[] } = {};
-    if (legacyEvents.length > 0) {
-        legacyEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).forEach(event => {
-            const dayString = startOfDay(event.timestamp.toDate()).toISOString();
-            if (!legacyEventsByDay[dayString]) {
-                legacyEventsByDay[dayString] = [];
-            }
-            legacyEventsByDay[dayString].push(event);
-        });
-    }
-
-    const processedLegacyEvents: Timbratura[] = [];
-    for (const day in legacyEventsByDay) {
-        const dayEvents = legacyEventsByDay[day];
-        let currentShiftId: string | null = null;
-        for (const event of dayEvents) {
-            if (event.type === 'entrata') {
-                currentShiftId = `legacy_${event.id}`;
-            }
-            if (currentShiftId) {
-                processedLegacyEvents.push({ ...event, shiftId: currentShiftId });
-            } else {
-                processedLegacyEvents.push({ ...event, shiftId: `legacy_orphan_${event.id}`});
-            }
-        }
-    }
-    
-    const allTimbrature = [...newEventsWithShiftId, ...processedLegacyEvents];
+    const allTimbrature = data.timbrature.filter(t => t.shiftId);
     
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
@@ -399,10 +368,6 @@ export const processMonthlyData = (
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
 
     allDaysOfMonth.forEach(day => {
-        // This condition was incorrect. It should show future weekends if they have activity.
-        // It's better to filter at the end. For now, create an entry for every day.
-        // if(day > today && !isSameDay(day, today)) return;
-        
         const dayISO = startOfDay(day).toISOString();
         detailsMap.set(dayISO, {
             date: day,
@@ -439,6 +404,7 @@ export const processMonthlyData = (
             }
         }
     });
+
 
     for (const shiftId in shiftsById) {
         const events = shiftsById[shiftId].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -547,22 +513,21 @@ export const processMonthlyData = (
             const isWorkDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
             const isHoliday = isPublicHoliday(detail.date);
             
-            if (isHoliday && isWorkDay) detail.status = 'festa';
-            else if (isWorkDay && detail.date < today) detail.status = 'mancata_timbratura';
-            else if (!isWorkDay && detail.date <= today) {
-                const makeupNote = makeupTargets[startOfDay(detail.date).toISOString()];
-                if (makeupNote && makeupNote.length > 0) {
-                     detail.makeupActivityFor = makeupNote;
-                     detail.status = 'riposo';
-                } else {
-                    detail.status = 'riposo';
-                }
+            const makeupNote = makeupTargets[startOfDay(detail.date).toISOString()];
+            if (makeupNote && makeupNote.length > 0) {
+                detail.makeupActivityFor = makeupNote;
+                detail.status = 'riposo';
+            } else if (isHoliday && isWorkDay) {
+                detail.status = 'festa';
+            } else if (isWorkDay && detail.date < today) {
+                detail.status = 'mancata_timbratura';
+            } else if (!isWorkDay && detail.date <= today) {
+                detail.status = 'riposo';
             }
         }
     });
     
     const dailyDetails = Array.from(detailsMap.values()).filter(d => {
-        // Filter out future days that have no activity
         if (d.date > today && d.status === 'vuoto') return false;
         return true;
     });
@@ -574,16 +539,14 @@ export const processMonthlyData = (
     dailyDetails.forEach(detail => {
         if (!isWithinInterval(detail.date, monthInterval)) return;
         
+        if (detail.status === 'lavorato' && detail.shift && detail.shift.ordinaryHours > 0) {
+            workedDays++;
+        }
+        
+        totalOrdinaryHours += detail.shift?.ordinaryHours || 0;
+        totalOvertimeHours += detail.shift?.overtimeHours || 0;
+
         switch (detail.status) {
-            case 'lavorato':
-                if (detail.shift) {
-                    if (detail.shift.ordinaryHours > 0) {
-                        workedDays++;
-                    }
-                    totalOrdinaryHours += detail.shift.ordinaryHours;
-                    totalOvertimeHours += detail.shift.overtimeHours;
-                }
-                break;
             case 'ferie':
                 ferieDays++;
                 const dayNameFerie = dayIndexToName[getDay(detail.date)];

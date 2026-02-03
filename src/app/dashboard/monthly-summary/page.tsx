@@ -312,11 +312,15 @@ const MonthlySummaryContent = () => {
                                                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
                                                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                                     }).join(' | ');
+                                                    
+                                                    const firstEventDate = shiftBlock.events[0]?.timestamp.toDate();
+                                                    const isRecoveryDisplay = firstEventDate && !isSameDay(firstEventDate, detail.date);
+                                                    const recoveryDateString = isRecoveryDisplay ? ` (rec. il ${format(firstEventDate, 'dd/MM/yy')})` : '';
 
                                                      return (
                                                         <div key={idx} className="border-b pb-1 last:border-b-0">
                                                             <span className="font-medium mr-2 text-foreground">{`Turno ${idx + 1}:`}</span>
-                                                            <span className="text-muted-foreground">{timbratureString}</span>
+                                                            <span className="text-muted-foreground">{`${timbratureString}${recoveryDateString}`}</span>
                                                         </div>
                                                      )
                                                  })}
