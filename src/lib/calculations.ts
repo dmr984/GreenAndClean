@@ -294,15 +294,17 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
     const clockInEvent = shift.events.find(e => e.type === 'entrata');
     
+    // Check if the shift was manually approved with specific hours
     if (clockInEvent?.status === 'confermata' && typeof clockInEvent.approvedOrdinaryHours === 'number') {
         const approvedOrdinary = clockInEvent.approvedOrdinaryHours || 0;
         const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
+        // Still calculate the real worked minutes for display
         const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
         
         return {
             ordinary: approvedOrdinary,
             overtime: approvedOvertime,
-            leave: 0, 
+            leave: 0, // When manually setting hours, we assume leave is handled separately
             worked: workedMinutes,
             break: breakMinutes,
             calculationStart,
@@ -361,6 +363,7 @@ export const processMonthlyData = (
 
     const eventsByEffectiveDay: { [key: string]: Timbratura[] } = {};
     data.timbrature.forEach(timbratura => {
+        // If timbratura is part of a makeup shift, group it by the makeup day
         const effectiveDate = timbratura.makeupOfDay
             ? parse(timbratura.makeupOfDay, 'yyyy-MM-dd', new Date())
             : timbratura.timestamp.toDate();
@@ -379,6 +382,7 @@ export const processMonthlyData = (
         const dayISO = startOfDay(day).toISOString();
         const effectiveEventsForDay = eventsByEffectiveDay[dayISO] || [];
         
+        // Find shifts that were physically performed on this day but are for making up another day
         const makeupShiftsPhysicallyPerformedOnDay = data.timbrature.filter(t => 
             t.makeupOfDay && 
             isSameDay(t.timestamp.toDate(), day) &&
@@ -394,6 +398,7 @@ export const processMonthlyData = (
         const isWorkDay = contractualHours > 0;
         const isHoliday = isPublicHoliday(day);
         
+        // Check if this day's work was performed on a different date (i.e., it was made up elsewhere)
         const isMadeUpElsewhere = data.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
         
         const leaveRequest = data.requests.find(r =>
@@ -410,6 +415,7 @@ export const processMonthlyData = (
             makeupActivityFor: formattedTargets.length > 0 ? formattedTargets : undefined,
         };
 
+        // If this day was worked on as a makeup shift for another day, show a special status
         if (effectiveEventsForDay.length === 0 && makeupShiftsPhysicallyPerformedOnDay.length > 0) {
             const targetDate = makeupShiftsPhysicallyPerformedOnDay[0].makeupOfDay;
             details.push({
@@ -518,11 +524,12 @@ export const processMonthlyData = (
             details.push({ ...baseDetail, status: 'festa', request: null, shift: null });
         } else if (isWorkDay && day < today && !isMadeUpElsewhere) {
              details.push({ ...baseDetail, status: 'mancata_timbratura', request: null, shift: null });
-        } else if (!isWorkDay) {
+        } else if (!isWorkDay && day <= today) {
              details.push({ ...baseDetail, status: 'riposo', request: null, shift: null });
         }
     }
     
+    // --- Monthly Summary Calculation ---
     let totalOrdinaryHours = 0;
     let totalOvertimeHours = 0;
     let workedDays = 0;
@@ -532,17 +539,21 @@ export const processMonthlyData = (
     let malattiaDays = 0;
 
     details.forEach(detail => {
+        // Only count details that fall within the current month for the summary
         if (!isWithinInterval(detail.date, monthInterval)) return;
         
         switch (detail.status) {
             case 'recupero_effettuato':
+                // This day's activity is counted on the day being made up, so we ignore it here.
                 break;
             case 'lavorato':
                 if (detail.shift) {
+                    // Check if the shift is confirmed (not pending) or if it's approved overtime
                     const isConfirmed = !detail.shift.events.some(e => e.status === 'sospesa');
                     const isStraordinarioApproved = data.straordinari?.find(s => isSameDay(s.date.toDate(), detail.date))?.status === 'approvato';
 
                     if (isConfirmed || isStraordinarioApproved) {
+                         // A day is "worked" if any ordinary hours were performed on it.
                          if (detail.shift.ordinaryHours > 0) {
                             workedDays++;
                             totalOrdinaryHours += detail.shift.ordinaryHours;
@@ -554,7 +565,7 @@ export const processMonthlyData = (
             case 'ferie':
                 ferieDays++;
                 const dayNameFerie = dayIndexToName[getDay(detail.date)];
-                const contractualHoursFerie = operator.workSchedule[dayNameFerie]?.totalHours || 8;
+                const contractualHoursFerie = operator.workSchedule[dayNameFerie]?.totalHours || 8; // Default to 8 if not specified
                 ferieHours += contractualHoursFerie;
                 break;
             case 'malattia':
@@ -564,6 +575,7 @@ export const processMonthlyData = (
                 absenceDays++;
                 break;
             default:
+                // For 'riposo', 'festa', 'in_corso', etc., we don't add to these specific totals
                 break;
         }
     });
@@ -590,6 +602,7 @@ export const processMonthlyData = (
     const totalPermessoHours = data.requests
         .filter(r => {
             const requestDate = r.startDate.toDate();
+            // A request for a single day should be within the month
             return r.type === 'permesso' && isWithinInterval(requestDate, monthInterval);
         })
         .reduce((sum, r) => sum + (r.hours || 0), 0);
