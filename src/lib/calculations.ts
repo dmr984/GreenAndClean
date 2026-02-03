@@ -563,7 +563,7 @@ export const processMonthlyData = (
     
     const dailyDetails = Array.from(detailsMap.values()).filter(d => {
         // Filter out future days that have no activity
-        if (d.date > today) return false;
+        if (d.date > today && d.status === 'vuoto') return false;
         return true;
     });
 
@@ -577,7 +577,9 @@ export const processMonthlyData = (
         switch (detail.status) {
             case 'lavorato':
                 if (detail.shift) {
-                    if (detail.shift.ordinaryHours > 0 || detail.shift.overtimeHours > 0) workedDays++;
+                    if (detail.shift.ordinaryHours > 0) {
+                        workedDays++;
+                    }
                     totalOrdinaryHours += detail.shift.ordinaryHours;
                     totalOvertimeHours += detail.shift.overtimeHours;
                 }
