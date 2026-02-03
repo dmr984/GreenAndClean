@@ -590,3 +590,5 @@ export const processMonthlyData = (
         dailyDetails: dailyDetails.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
+
+    

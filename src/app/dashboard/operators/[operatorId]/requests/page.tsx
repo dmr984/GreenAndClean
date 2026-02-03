@@ -180,15 +180,24 @@ const ApprovalDialog = ({ request, operator, onConfirm, onClose }: { request: Re
         if (checked) {
             const newCosts: Record<string, number> = {};
             days.forEach(day => {
-                const dayName = dayIndexToName[getDay(day)];
-                const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
-                let rate = 0;
-                if (request.type === 'ferie' || request.type === 'permesso') {
-                    rate = operator.hourlyRate || 0;
-                } else if (request.type === 'malattia') {
-                    rate = operator.sickLeaveRate || 0;
+                const dateKey = formatISO(day, { representation: 'date' });
+                let cost = 0;
+                if (request.type === 'permesso') {
+                    const permissionHours = request.hours || 0;
+                    const rate = operator.hourlyRate || 0;
+                    cost = permissionHours * rate;
+                } else {
+                    const dayName = dayIndexToName[getDay(day)];
+                    const contractualHours = operator.workSchedule[dayName]?.totalHours || 0;
+                    let rate = 0;
+                    if (request.type === 'ferie') {
+                        rate = operator.hourlyRate || 0;
+                    } else if (request.type === 'malattia') {
+                        rate = operator.sickLeaveRate || 0;
+                    }
+                    cost = contractualHours * rate;
                 }
-                newCosts[formatISO(day, { representation: 'date' })] = contractualHours * rate;
+                newCosts[dateKey] = cost;
             });
             setCosts(newCosts);
         } else {
@@ -342,8 +351,8 @@ export default function LeaveRequestsPage() {
         if(!firestore || !editingRequest) return;
         
         const docRef = doc(firestore, `app-users/${operatorId}/requests`, editingRequest.id);
-        await updateDoc(docRef, {...editedData, viewedByOperator: false}).then(() => {
-            toast({title: 'Successo', description: 'Richiesta aggiornata'});
+        await updateDoc(docRef, {...editedData, status: 'in_attesa', viewedByOperator: false}).then(() => {
+            toast({title: 'Successo', description: 'Richiesta aggiornata e impostata come "in attesa". Richiede una nuova approvazione.'});
             setEditingRequest(null);
         }).catch(err => {
             toast({title: 'Errore', description: 'Impossibile aggiornare la richiesta.', variant: 'destructive'});
@@ -547,3 +556,5 @@ export default function LeaveRequestsPage() {
         </>
     );
 };
+
+    

@@ -43,6 +43,7 @@ type Operator = {
     overtimeCalculation?: 'hourly' | 'half_hourly';
     hourlyRate?: number;
     overtimeRate?: number;
+    sickLeaveRate?: number;
 };
 
 type Request = {
@@ -52,6 +53,7 @@ type Request = {
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    dailyCosts?: { [date: string]: number };
 };
 
 type Timbratura = {
@@ -368,3 +370,5 @@ export default function MonthlySummaryPage() {
         </Suspense>
     );
 }
+
+    
