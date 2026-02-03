@@ -1,4 +1,3 @@
-
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
@@ -386,6 +385,24 @@ export const processMonthlyData = (
         }
     });
 
+    const makeupTargets: { [key: string]: string[] } = {};
+    Object.values(shiftsById).forEach(events => {
+        const entrataEvent = events.find(e => e.type === 'entrata');
+        if (entrataEvent && entrataEvent.makeupOfDay) {
+            const physicalDate = entrataEvent.timestamp.toDate();
+            const physicalDateISO = startOfDay(physicalDate).toISOString();
+            const effectiveDate = parse(entrataEvent.makeupOfDay, 'yyyy-MM-dd', new Date());
+
+            if (!makeupTargets[physicalDateISO]) {
+                makeupTargets[physicalDateISO] = [];
+            }
+            const makeupNote = format(effectiveDate, 'dd MMM', { locale: it });
+            if (!makeupTargets[physicalDateISO].includes(makeupNote)) {
+                makeupTargets[physicalDateISO].push(makeupNote);
+            }
+        }
+    });
+
     for (const shiftId in shiftsById) {
         const events = shiftsById[shiftId].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
         const entrataEvent = events.find(e => e.type === 'entrata');
@@ -566,5 +583,3 @@ export const processMonthlyData = (
         dailyDetails: dailyDetails.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
-
-    
