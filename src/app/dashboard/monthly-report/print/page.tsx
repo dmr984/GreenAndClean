@@ -276,9 +276,6 @@ const PrintPageContent = () => {
                     : (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
 
                 const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-                const ferieCost = summary.ferieCost || 0;
-                const permessoCost = summary.permessoCost || 0;
-                const malattiaCost = summary.malattiaCost || 0;
                 
                 const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
 
@@ -289,11 +286,8 @@ const PrintPageContent = () => {
                     opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                     opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                    opVisibility.malattiaCost ? `COSTO MALATTIA: ${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                    opVisibility.permessoCost ? `COSTO PERMESSI: ${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : null,
-                    opVisibility.ferieCost ? `COSTO FERIE: ${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : null
                 ].filter(Boolean) as string[];
 
@@ -424,9 +418,6 @@ const PrintPageContent = () => {
                                 : (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
 
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-                            const ferieCost = summary.ferieCost || 0;
-                            const permessoCost = summary.permessoCost || 0;
-                            const malattiaCost = summary.malattiaCost || 0;
                             
                             const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
                             
@@ -436,11 +427,8 @@ const PrintPageContent = () => {
                                 opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                                 opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                                opVisibility.malattiaCost ? `COSTO MALATTIA: ${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                                opVisibility.permessoCost ? `COSTO PERMESSI: ${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : null,
-                                opVisibility.ferieCost ? `COSTO FERIE: ${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : null
                             ].filter(Boolean) as string[];
 
@@ -507,5 +495,3 @@ export default function PrintPage() {
         </div>
     );
 }
-
-    

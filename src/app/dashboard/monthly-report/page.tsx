@@ -549,15 +549,15 @@ const MonthlyReportPage = () => {
                                         {summary && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
                                                 <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
-                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Costo Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
+                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
                                                 <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
-                                                <InfoCard opId={op.id} title="Costo Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
+                                                <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
-                                                <InfoCard opId={op.id} title="Costo Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
+                                                <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
                                                 <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
-                                                <InfoCard opId={op.id} title="Costo Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
                                                 <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
-                                                <InfoCard opId={op.id} title="Costo Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
+                                                <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
                                                 <InfoCard opId={op.id} title="Assenze (g)" value={summary.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
                                             </CardContent>
                                         )}
@@ -619,5 +619,3 @@ const MonthlyReportPage = () => {
 };
 
 export default MonthlyReportPage;
-
-    
