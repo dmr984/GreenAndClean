@@ -6,7 +6,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'f
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, parse } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, parse, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -216,10 +216,6 @@ const DailySummaryPage = () => {
                                     ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
                                     : null;
 
-                                const makeupActivityNote = detail?.makeupActivityFor && detail.makeupActivityFor.length > 0
-                                    ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
-                                    : null;
-
                                 return (
                                     <Card key={op.id} className={cn(detail?.status === 'mancata_timbratura' && 'bg-red-500/5 border-red-500/20')}>
                                         <CardHeader>
@@ -233,7 +229,12 @@ const DailySummaryPage = () => {
                                         </CardHeader>
                                         <CardContent className="space-y-3">
                                             {performedOnDate && <p className="text-sm font-semibold text-primary mb-1">Recupero eseguito il {performedOnDate}</p>}
-                                            {makeupActivityNote && <p className="text-sm font-semibold text-purple-600 mb-1">{makeupActivityNote}</p>}
+                                            {detail?.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
+                                                <div>
+                                                    <p className="text-sm font-semibold text-purple-600 mb-1">Recupero per: {detail.makeupActivityFor.join(', ')}</p>
+                                                    <p className="text-xs text-muted-foreground italic mb-1">(Le ore di questo turno sono attribuite al giorno di recupero.)</p>
+                                                </div>
+                                            )}
 
                                             {detail?.shift && detail.shift.allShifts ? (
                                                 <div className='text-sm'>

@@ -559,10 +559,6 @@ export default function EndOfMonthPage() {
                                 const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
                                      ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) 
                                      : null;
-                                
-                                const makeupActivityNote = detail.makeupActivityFor && detail.makeupActivityFor.length > 0
-                                    ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
-                                    : null;
                                      
                                 if (detail.status === 'recupero_effettuato') {
                                     return (
@@ -606,10 +602,15 @@ export default function EndOfMonthPage() {
                                             Recupero eseguito il {performedOnDate}
                                         </p>
                                     )}
-                                    {makeupActivityNote && (
-                                        <p className="text-sm font-semibold text-purple-600 mt-1">
-                                            {makeupActivityNote}
-                                        </p>
+                                    {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
+                                        <div>
+                                            <p className="text-sm font-semibold text-purple-600 mt-1">
+                                                Recupero per: {detail.makeupActivityFor.join(', ')}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground italic">
+                                                (Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)
+                                            </p>
+                                        </div>
                                     )}
 
                                     <div className="border-b my-2"></div>

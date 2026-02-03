@@ -264,12 +264,7 @@ const MonthlySummaryContent = () => {
                                  const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
                                     ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
                                     : null;
-                                 const makeupActivityNote = detail.makeupActivityFor && detail.makeupActivityFor.length > 0
-                                    ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
-                                    : null;
-
-
-                                return (
+                                 return (
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
                                     <h4 className={cn("font-bold text-lg capitalize flex items-center gap-3", isSunday && "text-red-600")}>
                                         {detail.status === 'ferie' && <Plane className="h-5 w-5 text-green-500" />}
@@ -287,10 +282,15 @@ const MonthlySummaryContent = () => {
                                             Recupero eseguito il {performedOnDate}
                                         </p>
                                     )}
-                                     {makeupActivityNote && (
-                                        <p className="text-sm font-semibold text-purple-600 mt-1">
-                                            {makeupActivityNote}
-                                        </p>
+                                     {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
+                                        <div>
+                                            <p className="text-sm font-semibold text-purple-600 mt-1">
+                                                Recupero per: {detail.makeupActivityFor.join(', ')}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground italic">
+                                                (Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)
+                                            </p>
+                                        </div>
                                     )}
 
                                     <div className="border-b my-2"></div>
