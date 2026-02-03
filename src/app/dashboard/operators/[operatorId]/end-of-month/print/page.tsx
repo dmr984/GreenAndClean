@@ -348,6 +348,20 @@ const PrintPageContent = () => {
                 y += (splitNote.length * 5);
             }
 
+            if (detail.makeupActivityFor && detail.makeupActivityFor.length > 0) {
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(128, 0, 128); // purple-ish
+                doc.text(`Recupero per: ${detail.makeupActivityFor.join(', ')}`, margin, y);
+                y += 5;
+                doc.setFont('helvetica', 'italic');
+                doc.setTextColor(100);
+                const splitNote = doc.splitTextToSize("(Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)", pageWidth - margin * 2);
+                doc.text(splitNote, margin, y);
+                y += (splitNote.length * 4) + 2;
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(0,0,0);
+            }
+
             if (detail.shift && detail.shift.allShifts) {
                 const clockInEvent = detail.shift.events.find(e => e.type === 'entrata');
                 const makeupDay = clockInEvent?.makeupOfDay;
@@ -555,6 +569,13 @@ const PrintPageContent = () => {
                                         <span className="font-bold">{dateStr}</span>
                                     </p>
                                     {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
+                                    
+                                    {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
+                                        <div className="my-1">
+                                            <p className="text-purple-600 text-sm pl-1 leading-tight font-semibold">Recupero per: {detail.makeupActivityFor.join(', ')}</p>
+                                            <p className="text-gray-600 text-xs pl-1 leading-tight italic">(Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)</p>
+                                        </div>
+                                    )}
 
                                     {detail.shift && detail.shift.allShifts ? (
                                         <>
