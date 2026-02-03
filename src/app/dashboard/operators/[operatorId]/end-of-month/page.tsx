@@ -52,6 +52,7 @@ type Operator = {
     hourlyRate?: number;
     overtimeRate?: number;
     fixedSalary?: number;
+    sickLeaveRate?: number;
 };
 
 type Request = {
@@ -193,7 +194,7 @@ export default function EndOfMonthPage() {
             const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
-                getDocs(notesQuery),
+                getDocs(notesSnapshot),
                 getDocs(straordinariQuery)
             ]);
 
@@ -388,12 +389,13 @@ export default function EndOfMonthPage() {
     const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     const holidayCost = (monthlySummary.holidayHoursPayable || 0) * (operator.hourlyRate || 0);
+    const malattiaCost = (monthlySummary.malattiaCost || 0);
     
     let totalDue: number;
     if (operator.salaryType === 'fixed') {
-        totalDue = (operator.fixedSalary || 0) + overtimeCost;
+        totalDue = (operator.fixedSalary || 0) + overtimeCost + malattiaCost;
     } else {
-        totalDue = ordinaryCost + overtimeCost;
+        totalDue = ordinaryCost + overtimeCost + malattiaCost;
         if (includeHolidayPay) {
             totalDue += holidayCost;
         }
@@ -539,6 +541,12 @@ export default function EndOfMonthPage() {
                             title="Malattia (giorni)" 
                             value={finalMalattiaDays}
                             icon={Stethoscope}
+                        />
+                         <SummaryCard 
+                            title="Costo Malattia" 
+                            value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                            icon={Euro}
+                            subtext={`Basato su ore contrattuali e tariffa malattia`}
                         />
                         <SummaryCard
                             title="Assenze (giorni)"

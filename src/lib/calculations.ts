@@ -27,6 +27,7 @@ type Operator = {
     hourlyRate?: number;
     overtimeRate?: number;
     fixedSalary?: number;
+    sickLeaveRate?: number;
 };
 
 type Timbratura = {
@@ -99,6 +100,7 @@ export type MonthlySummary = {
     overtimeHours: number;
     holidayHoursPayable: number; 
     absenceDays: number;
+    malattiaCost: number;
 
     ferieDays: number;
     ferieHours: number; // Added to show total hours for ferie
@@ -403,7 +405,7 @@ export const processMonthlyData = (
         // console.log(`Contratto: ${contractualHours}h. È giorno lavorativo? ${isWorkDay}. È festivo? ${isHoliday}.`);
 
         const isMadeUpElsewhere = data.timbrature.some(t => t.makeupOfDay === format(day, 'yyyy-MM-dd'));
-        // if (isMadeUpElsewhere) console.log('Questo giorno è stato recuperato in un\'altra data.');
+        // if (isMadeUpElsewhere) console.log('Questo giorno è stato recuperato in un'altra data.');
         
         const leaveRequest = data.requests.find(r =>
             (r.type === 'ferie' || r.type === 'malattia') &&
@@ -548,6 +550,7 @@ export const processMonthlyData = (
     let ferieDays = 0;
     let ferieHours = 0;
     let malattiaDays = 0;
+    let totalMalattiaCost = 0;
 
     // console.log('--- Inizio Calcolo Riepilogo Mensile ---');
     details.forEach(detail => {
@@ -587,6 +590,9 @@ export const processMonthlyData = (
                 break;
             case 'malattia':
                 malattiaDays++;
+                const dayNameMalattia = dayIndexToName[getDay(detail.date)];
+                const contractualHoursMalattia = operator.workSchedule[dayNameMalattia]?.totalHours || 0;
+                totalMalattiaCost += contractualHoursMalattia * (operator.sickLeaveRate || 0);
                 // console.log(`Giorno di malattia aggiunto. Totale malattia: ${malattiaDays}`);
                 break;
             case 'mancata_timbratura':
@@ -619,6 +625,7 @@ export const processMonthlyData = (
         ferieHours,
         permessoHours: totalPermesso,
         malattiaDays,
+        malattiaCost: totalMalattiaCost,
     };
     
     // console.log('--- RIEPILOGO MENSILE FINALE ---', monthlySummary);

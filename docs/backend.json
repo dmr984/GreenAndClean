@@ -62,6 +62,10 @@
         "fixedSalary": {
             "type": "number",
             "description": "The fixed monthly salary amount. Applies if salaryType is 'fixed'."
+        },
+        "sickLeaveRate": {
+          "type": "number",
+          "description": "The hourly pay rate for sick leave days, based on contractual hours."
         }
       },
       "required": [

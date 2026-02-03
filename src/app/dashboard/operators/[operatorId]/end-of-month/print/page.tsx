@@ -41,6 +41,7 @@ type Operator = {
     hourlyRate?: number;
     overtimeRate?: number;
     fixedSalary?: number;
+    sickLeaveRate?: number;
 };
 
 type Request = {
@@ -158,7 +159,7 @@ const PrintPageContent = () => {
                 const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
-                    getDocs(notesQuery),
+                    getDocs(notesSnapshot),
                     getDocs(straordinariQuery)
                 ]);
 
@@ -203,15 +204,16 @@ const PrintPageContent = () => {
     
     const overtimeCost = finalOvertimeHours * (operator?.overtimeRate || 0);
     const holidayCost = (monthlySummary.holidayHoursPayable || 0) * (operator?.hourlyRate || 0);
+    const malattiaCost = (monthlySummary.malattiaCost || 0);
     let totalDue: number;
     let ordinaryCost: number;
 
     if (operator?.salaryType === 'fixed') {
         ordinaryCost = operator.fixedSalary || 0;
-        totalDue = ordinaryCost + overtimeCost;
+        totalDue = ordinaryCost + overtimeCost + malattiaCost;
     } else {
         ordinaryCost = finalOrdinaryHours * (operator?.hourlyRate || 0);
-        totalDue = ordinaryCost + overtimeCost;
+        totalDue = ordinaryCost + overtimeCost + malattiaCost;
          if (includeHolidayPay) {
             totalDue += holidayCost;
         }
@@ -277,6 +279,9 @@ const PrintPageContent = () => {
         
         if (includeHolidayPay && holidayCost > 0) {
             financialSummary.push([`COSTO FERIE: ${holidayCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
+        }
+        if (malattiaCost > 0) {
+            financialSummary.push([`COSTO MALATTIA: ${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: ``, styles: { halign: 'right' } }]);
         }
 
 
@@ -522,6 +527,11 @@ const PrintPageContent = () => {
                                 {includeHolidayPay && holidayCost > 0 && (
                                      <tr>
                                         <td className="py-1 font-semibold" colSpan={2}>COSTO FERIE: <span className="font-normal">{holidayCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    </tr>
+                                )}
+                                {malattiaCost > 0 && (
+                                     <tr>
+                                        <td className="py-1 font-semibold" colSpan={2}>COSTO MALATTIA: <span className="font-normal">{malattiaCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                     </tr>
                                 )}
                            </tbody>
