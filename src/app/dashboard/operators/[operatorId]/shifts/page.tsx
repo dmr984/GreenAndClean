@@ -850,32 +850,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     };
 
     const handleOpenAddBreakDialog = () => {
-        if (!shiftForBreak || !operator) return;
-
-        const shiftDate = shiftForBreak.events[0].timestamp.toDate();
-        const clockInEvent = shiftForBreak.events.find(e => e.type === 'entrata');
-        const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : shiftDate;
-        const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
-        const mandatoryBreakMinutes = operator.workSchedule[dayToUse]?.breakMinutes || 0;
-
-        const existingBreakStart = shiftForBreak.events.find(e => e.type === 'pausa');
-        
-        let prefilledStart = '12:30';
-        let prefilledEnd = '13:30'; 
-
-        if (existingBreakStart) {
-            prefilledStart = format(existingBreakStart.timestamp.toDate(), 'HH:mm');
-            const endTime = new Date(existingBreakStart.timestamp.toDate().getTime() + mandatoryBreakMinutes * 60000);
-            prefilledEnd = format(endTime, 'HH:mm');
-        } else if (mandatoryBreakMinutes) {
-            const startTime = set(shiftDate, { hours: 12, minutes: 30 });
-            const endTime = new Date(startTime.getTime() + mandatoryBreakMinutes * 60000);
-            prefilledEnd = format(endTime, 'HH:mm');
+        if (shiftForBreak) {
+            setBreakTimes({ start: '', end: '' });
+            setIsAddBreakDialogOpen(true);
+            setIsMissingBreakConfirmOpen(false);
         }
-
-        setBreakTimes({ start: prefilledStart, end: prefilledEnd });
-        setIsAddBreakDialogOpen(true);
-        setIsMissingBreakConfirmOpen(false);
     };
 
     const handleAddBreakAndReload = async () => {
@@ -2200,16 +2179,35 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 <ResponsiveDialogContent>
                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle>Aggiungi Pausa Manuale</ResponsiveDialogTitle>
-                        <ResponsiveDialogDescription>Inserisci gli orari di inizio e fine della pausa. I campi sono pre-compilati ma modificabili.</ResponsiveDialogDescription>
+                        <ResponsiveDialogDescription>Inserisci gli orari o usa l'opzione standard.</ResponsiveDialogDescription>
                     </ResponsiveDialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="break-start">Inizio Pausa</Label>
-                            <Input id="break-start" type="time" value={breakTimes.start} onChange={e => setBreakTimes(p => ({...p, start: e.target.value}))} />
+                        <div className="flex items-center space-x-2">
+                            <Checkbox
+                                id="standard-break"
+                                checked={breakTimes.start === '12:30' && breakTimes.end === '13:30'}
+                                onCheckedChange={(checked) => {
+                                    if (checked) {
+                                        setBreakTimes({ start: '12:30', end: '13:30' });
+                                    } else {
+                                        setBreakTimes({ start: '', end: '' });
+                                    }
+                                }}
+                            />
+                            <Label htmlFor="standard-break" className="text-sm font-normal cursor-pointer">
+                                Applica pausa standard (12:30 - 13:30)
+                            </Label>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="break-end">Fine Pausa</Label>
-                            <Input id="break-end" type="time" value={breakTimes.end} onChange={e => setBreakTimes(p => ({...p, end: e.target.value}))} />
+                        <Separator />
+                        <div className="grid grid-cols-2 gap-4">
+                             <div className="space-y-2">
+                                <Label htmlFor="break-start">Inizio Pausa</Label>
+                                <Input id="break-start" type="time" value={breakTimes.start} onChange={e => setBreakTimes(p => ({...p, start: e.target.value}))} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="break-end">Fine Pausa</Label>
+                                <Input id="break-end" type="time" value={breakTimes.end} onChange={e => setBreakTimes(p => ({...p, end: e.target.value}))} />
+                            </div>
                         </div>
                     </div>
                     <ResponsiveDialogFooter>
@@ -2236,16 +2234,35 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 <ResponsiveDialogContent>
                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle>Aggiungi Pausa Manuale (Straordinario)</ResponsiveDialogTitle>
-                        <ResponsiveDialogDescription>Inserisci gli orari di inizio e fine della pausa.</ResponsiveDialogDescription>
+                        <ResponsiveDialogDescription>Inserisci gli orari o usa l'opzione standard.</ResponsiveDialogDescription>
                     </ResponsiveDialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="overtime-break-start">Inizio Pausa</Label>
-                            <Input id="overtime-break-start" type="time" value={breakTimes.start} onChange={e => setBreakTimes(p => ({...p, start: e.target.value}))} />
+                         <div className="flex items-center space-x-2">
+                            <Checkbox
+                                id="standard-break-overtime"
+                                checked={breakTimes.start === '12:30' && breakTimes.end === '13:30'}
+                                onCheckedChange={(checked) => {
+                                    if (checked) {
+                                        setBreakTimes({ start: '12:30', end: '13:30' });
+                                    } else {
+                                        setBreakTimes({ start: '', end: '' });
+                                    }
+                                }}
+                            />
+                            <Label htmlFor="standard-break-overtime" className="text-sm font-normal cursor-pointer">
+                                Applica pausa standard (12:30 - 13:30)
+                            </Label>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="overtime-break-end">Fine Pausa</Label>
-                            <Input id="overtime-break-end" type="time" value={breakTimes.end} onChange={e => setBreakTimes(p => ({...p, end: e.target.value}))} />
+                        <Separator />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="overtime-break-start">Inizio Pausa</Label>
+                                <Input id="overtime-break-start" type="time" value={breakTimes.start} onChange={e => setBreakTimes(p => ({...p, start: e.target.value}))} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="overtime-break-end">Fine Pausa</Label>
+                                <Input id="overtime-break-end" type="time" value={breakTimes.end} onChange={e => setBreakTimes(p => ({...p, end: e.target.value}))} />
+                            </div>
                         </div>
                     </div>
                     <ResponsiveDialogFooter>
