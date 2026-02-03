@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
@@ -178,6 +179,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     longitude: 0,
                     status: 'rifiutata',
                     viewedByOperator: false,
+                    shiftId: lastEvent.shiftId,
                 };
                 
                 try {
@@ -214,13 +216,17 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const clockingsQuery = useMemoFirebase(() => {
     if (!firestore || !operator?.id) return null;
     
+    // Widen query to catch shifts that started yesterday but haven't ended.
+    const lookbackDate = subDays(new Date(), 1);
+    lookbackDate.setHours(0,0,0,0);
+    const lookbackTs = Timestamp.fromDate(lookbackDate);
+
     return query(
       collection(firestore, `app-users/${operator.id}/timbrature`),
-      where('timestamp', '>=', todayTimestamp),
-      where('timestamp', '<', tomorrowTimestamp),
+      where('timestamp', '>=', lookbackTs),
       orderBy('timestamp', 'asc')
     );
-  }, [firestore, operator, todayTimestamp, tomorrowTimestamp]);
+  }, [firestore, operator]);
   
     useEffect(() => {
         if (!firestore || !operator?.id) return;
@@ -363,48 +369,62 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         }
         
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
-        let makeupDayToCopy: string | undefined = undefined;
-        let shiftIdToUpdate: string | undefined = undefined;
+        
+        if (type === 'entrata') {
+            const shiftId = doc(timbraturaRef).id; // Generate new ID for the new shift
+            const newTimbratura: Omit<ClockingEvent, 'id'> = {
+                userId: operator.id,
+                type,
+                timestamp: serverTimestamp(),
+                status: 'sospesa' as const,
+                latitude: currentLoc.latitude,
+                longitude: currentLoc.longitude,
+                viewedByOperator: true,
+                shiftId: shiftId,
+                ...(makeupDayInfo && { makeupOfDay: makeupDayInfo })
+            };
+            await addDoc(timbraturaRef, newTimbratura);
 
-        if (type === 'uscita') {
-            const lookbackDate = subDays(new Date(), 2); // 48h lookback
+        } else if (type === 'uscita') {
+            // Find the last open shift
             const q = query(
                 collection(firestore, `app-users/${operator.id}/timbrature`),
-                where('timestamp', '>=', lookbackDate),
                 orderBy('timestamp', 'desc')
             );
             const snapshot = await getDocs(q);
             const recentEvents = snapshot.docs.map(d => ({id: d.id, ...d.data() as ClockingEvent}));
+            
+            let openShift: ClockingEvent | undefined = undefined;
 
-            const lastEntrata = recentEvents.find(e => e.type === 'entrata');
-            const lastUscita = recentEvents.find(e => e.type === 'uscita');
-
-            if (lastEntrata && (!lastUscita || lastEntrata.timestamp.toMillis() > lastUscita.timestamp.toMillis())) {
-                shiftIdToUpdate = lastEntrata.shiftId;
-                makeupDayToCopy = lastEntrata.makeupOfDay;
+            for (const event of recentEvents) {
+                if (event.type === 'entrata' && event.shiftId) {
+                    const isClosed = recentEvents.some(e => e.type === 'uscita' && e.shiftId === event.shiftId);
+                    if (!isClosed) {
+                        openShift = event;
+                        break;
+                    }
+                }
             }
+
+            if (!openShift || !openShift.shiftId) {
+                toast({ title: 'Errore', description: 'Nessun turno di entrata aperto trovato a cui associare questa uscita.', variant: 'destructive'});
+                throw new Error("No open shift found");
+            }
+            
+            const newTimbratura: Omit<ClockingEvent, 'id'> = {
+                userId: operator.id,
+                type,
+                timestamp: serverTimestamp(),
+                status: 'sospesa' as const,
+                latitude: currentLoc.latitude,
+                longitude: currentLoc.longitude,
+                viewedByOperator: true,
+                shiftId: openShift.shiftId,
+            };
+
+            await addDoc(timbraturaRef, newTimbratura);
         }
 
-        const newTimbratura: Omit<ClockingEvent, 'id'> = {
-            userId: operator.id,
-            type,
-            timestamp: serverTimestamp(),
-            status: 'sospesa' as const,
-            latitude: currentLoc.latitude,
-            longitude: currentLoc.longitude,
-            viewedByOperator: true,
-            ...(shiftIdToUpdate && { shiftId: shiftIdToUpdate })
-        };
-        
-        if (type === 'entrata' && makeupDayInfo) {
-            newTimbratura.makeupOfDay = makeupDayInfo;
-        }
-        
-        if (type === 'uscita' && makeupDayToCopy) {
-            newTimbratura.makeupOfDay = makeupDayToCopy;
-        }
-
-        await addDoc(timbraturaRef, newTimbratura);
         toast({
             title: "Successo!",
             description: `Timbratura di ${type.replace('_', ' ')} registrata correttamente. In attesa di approvazione.`,
@@ -769,3 +789,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     </>
   );
 }
+
+
+    

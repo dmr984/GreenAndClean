@@ -1,5 +1,6 @@
 
 
+
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
@@ -314,50 +315,24 @@ export default function ShiftApprovalPage() {
                 }
             });
             
-            const shiftsByDay: { [key: string]: Timbratura[] } = {};
+            const shiftsById: { [id: string]: Timbratura[] } = {};
 
             for (const event of allClockings) {
-                const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
-                if (!shiftsByDay[dayString]) {
-                    shiftsByDay[dayString] = [];
+                if (event.shiftId) {
+                    if (!shiftsById[event.shiftId]) {
+                        shiftsById[event.shiftId] = [];
+                    }
+                    shiftsById[event.shiftId].push(event);
                 }
-                shiftsByDay[dayString].push(event);
             }
     
             const groupedShifts: Shift[] = [];
     
-            for (const dayString in shiftsByDay) {
-                const dayEvents = shiftsByDay[dayString].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                
-                let currentShiftEvents: Timbratura[] = [];
-                for (const event of dayEvents) {
-                    if (event.type === 'entrata' && currentShiftEvents.length > 0 && currentShiftEvents.some(e => e.type === 'entrata')) {
-                        const oldShiftId = currentShiftEvents.find(e => e.shiftId) ?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `incomplete-${dayString}`;
-                        const processedOld = processShift(currentShiftEvents, leaveDays);
-                        if (processedOld) {
-                            groupedShifts.push({ id: oldShiftId, ...processedOld });
-                        }
-                        currentShiftEvents = [];
-                    }
-    
-                    currentShiftEvents.push(event);
-    
-                    if (event.type === 'uscita') {
-                        const shiftId = currentShiftEvents.find(e => e.shiftId)?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `shift-${dayString}`;
-                        const processed = processShift(currentShiftEvents, leaveDays);
-                        if (processed) {
-                            groupedShifts.push({ id: shiftId, ...processed });
-                        }
-                        currentShiftEvents = [];
-                    }
-                }
-                
-                if (currentShiftEvents.length > 0) {
-                    const shiftId = currentShiftEvents.find(e => e.shiftId)?.shiftId || currentShiftEvents.map(e => e.id).sort().join('-') || `final-shift-${dayString}`;
-                    const processed = processShift(currentShiftEvents, leaveDays);
-                    if (processed) {
-                        groupedShifts.push({ id: shiftId, ...processed });
-                    }
+            for (const shiftId in shiftsById) {
+                const dayEvents = shiftsById[shiftId].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                const processed = processShift(dayEvents, leaveDays);
+                if (processed) {
+                    groupedShifts.push({ id: shiftId, ...processed });
                 }
             }
 
@@ -478,7 +453,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     const approvedOvertime = parseFloat(overtimeHours) || 0;
     const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
 
-    const stableShiftId = regularShift.events.find(e => e.shiftId)?.shiftId || regularShift.events.find(e => e.type === 'entrata')?.id;
+    const stableShiftId = regularShift.id;
     
     if (!stableShiftId) {
         toast({ title: 'Errore Critico', description: 'Impossibile trovare un ID stabile per il turno.', variant: 'destructive' });
@@ -647,7 +622,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         const shiftDate = editingShift.events[0].timestamp.toDate();
         
-        const shiftId = editingShift.events.find(e => e.shiftId)?.shiftId || editingShift.id;
+        const shiftId = editingShift.id;
     
         const createTimestamp = (time: string): Timestamp | null => {
             if (!time) return null;
@@ -761,24 +736,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('timestamp', '>=', startOfShiftDay),
-                where('timestamp', '<=', endOfShiftDay)
+                where('shiftId', '==', shiftId)
             );
     
             try {
                 const dayEventsSnapshot = await getDocs(timbratureQuery);
-                const allDayEvents = dayEventsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
-                
-                const shiftEvents = allDayEvents.filter(e => {
-                     // If shiftId exists on the event, it must match.
-                    if (e.shiftId) {
-                        return e.shiftId === shiftId;
-                    }
-                    // Fallback for older data: check if event id is in the original shift's events.
-                    // This covers shifts created before the shiftId property was introduced.
-                    return shift.events.some(se => se.id === e.id);
-                });
-
+                const shiftEvents = dayEventsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
+               
                 if(shiftEvents.length > 0) {
                     const processedShift = processShift(shiftEvents, new Set());
                     if (processedShift) {
@@ -863,7 +827,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        const shiftId = shiftForBreak.events.find(e => e.shiftId)?.shiftId || shiftForBreak.events.find(e => e.type === 'entrata')?.id;
+        const shiftId = shiftForBreak.id;
 
         if (!shiftId) {
             toast({ title: 'Errore', description: 'Impossibile associare la pausa al turno. ID del turno non trovato.', variant: 'destructive' });
@@ -2350,5 +2314,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         </div>
     );
 };
+
+    
 
     
