@@ -92,6 +92,7 @@ export type DailyDetail = {
     request: Request | null;
     note?: string;
     makeupPerformedFor?: string;
+    makeupActivityFor?: string[];
 };
 
 
@@ -291,16 +292,12 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
 };
 
 export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
-    // console.log(`[calculateHours] Inizio calcolo per turno del ${format(shift.date, 'yyyy-MM-dd')}`);
-
     const clockInEvent = shift.events.find(e => e.type === 'entrata');
     
     if (clockInEvent?.status === 'confermata' && typeof clockInEvent.approvedOrdinaryHours === 'number') {
         const approvedOrdinary = clockInEvent.approvedOrdinaryHours || 0;
         const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
         const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
-        
-        // console.log('[calculateHours] Trovate ore approvate manualmente.', { ordinary: approvedOrdinary, overtime: approvedOvertime });
         
         return {
             ordinary: approvedOrdinary,
@@ -319,11 +316,8 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const isMakeupShift = !!clockInEvent?.makeupOfDay;
     const isWorkDay = isMakeupShift || contractualHours > 0;
     
-    // console.log('[calculateHours] Dati turno:', { workedMinutes, contractualHours, isWorkDay, ignoreContractualStart });
-
     if (!isWorkDay) {
         const overtime = roundOvertimeHours(workedMinutes, overtimeCalculation);
-        // console.log('[calculateHours] Giorno non lavorativo. Calcolato come solo straordinario:', { overtime });
         return { ordinary: 0, overtime, leave: 0, worked: workedMinutes, break: breakMinutes, calculationStart, calculationEnd };
     }
 
@@ -332,8 +326,6 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
     const overtimeHours = roundOvertimeHours(overtimeMinutes, overtimeCalculation);
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
-
-    // console.log('[calculateHours] Risultato calcolo standard:', { ordinary: ordinaryHours, overtime: overtimeHours, leave: leaveHours });
 
     return { 
         ordinary: ordinaryHours, 
@@ -392,6 +384,9 @@ export const processMonthlyData = (
             isSameDay(t.timestamp.toDate(), day) &&
             !isSameDay(parse(t.makeupOfDay, 'yyyy-MM-dd', new Date()), day)
         );
+        const makeupTargets = [...new Set(makeupShiftsPhysicallyPerformedOnDay.map(t => t.makeupOfDay!))];
+        const formattedTargets = makeupTargets.map(d => format(parse(d, 'yyyy-MM-dd', new Date()), 'dd MMM', { locale: it }));
+
 
         const dayName = dayIndexToName[getDay(day)];
         const dailySchedule = operator.workSchedule[dayName];
@@ -409,21 +404,26 @@ export const processMonthlyData = (
         const dailyNote = data.dailyNotes?.find(n => n.date === format(day, 'yyyy-MM-dd'));
         const dayStraordinario = data.straordinari?.find(s => isSameDay(s.date.toDate(), day));
 
+        const baseDetail: Omit<DailyDetail, 'status' | 'shift' | 'request' | 'makeupPerformedFor'> = {
+            date: day,
+            note: dailyNote?.note,
+            makeupActivityFor: formattedTargets.length > 0 ? formattedTargets : undefined,
+        };
+
         if (effectiveEventsForDay.length === 0 && makeupShiftsPhysicallyPerformedOnDay.length > 0) {
             const targetDate = makeupShiftsPhysicallyPerformedOnDay[0].makeupOfDay;
             details.push({
-                date: day,
+                ...baseDetail,
                 status: 'recupero_effettuato',
                 request: null,
                 shift: null,
-                note: dailyNote?.note,
                 makeupPerformedFor: targetDate ? format(parse(targetDate, 'yyyy-MM-dd', new Date()), 'dd MMM', { locale: it }) : undefined,
             });
             continue;
         }
 
         if (leaveRequest) {
-            details.push({ date: day, status: leaveRequest.type, request: leaveRequest, shift: null, note: dailyNote?.note });
+            details.push({ ...baseDetail, status: leaveRequest.type, request: leaveRequest, shift: null });
         } else if (effectiveEventsForDay.length > 0) {
             const performedOnDate = effectiveEventsForDay[0].timestamp.toDate();
             const isShiftComplete = effectiveEventsForDay.some(e => e.type === 'uscita');
@@ -431,7 +431,7 @@ export const processMonthlyData = (
 
             if (isTodayAndInProgress) {
                  details.push({
-                    date: day,
+                    ...baseDetail,
                     status: 'in_corso',
                     request: null,
                     shift: {
@@ -442,7 +442,6 @@ export const processMonthlyData = (
                         overtimeHours: 0,
                         permissionHours: 0,
                     },
-                    note: dailyNote?.note
                 });
                 continue;
             }
@@ -484,7 +483,7 @@ export const processMonthlyData = (
             const { calculationStart, calculationEnd } = calculateHours({ date: day, events: effectiveEventsForDay }, dailySchedule, effectiveEventsForDay.find(e => e.type === 'entrata')?.ignoreContractualStart || false, operator.overtimeCalculation);
             
             details.push({
-                date: day,
+                ...baseDetail,
                 status: 'lavorato',
                 request: null,
                 shift: {
@@ -497,14 +496,13 @@ export const processMonthlyData = (
                     calculationStart: calculationStart || undefined,
                     calculationEnd: calculationEnd || undefined
                 },
-                note: dailyNote?.note,
             });
         } else if (dayStraordinario) {
              const overtimeHours = dayStraordinario.status === 'approvato' 
                 ? (dayStraordinario.approvedHours ?? calculatePureOvertime(dayStraordinario, operator))
                 : calculatePureOvertime(dayStraordinario, operator);
              details.push({
-                date: day,
+                ...baseDetail,
                 status: 'lavorato',
                 request: null,
                 shift: {
@@ -515,14 +513,13 @@ export const processMonthlyData = (
                     overtimeHours: overtimeHours,
                     permissionHours: 0
                 },
-                note: dailyNote?.note
              });
         } else if (isHoliday && isWorkDay) {
-            details.push({ date: day, status: 'festa', request: null, shift: null, note: dailyNote?.note });
+            details.push({ ...baseDetail, status: 'festa', request: null, shift: null });
         } else if (isWorkDay && day < today && !isMadeUpElsewhere) {
-             details.push({ date: day, status: 'mancata_timbratura', request: null, shift: null, note: dailyNote?.note });
+             details.push({ ...baseDetail, status: 'mancata_timbratura', request: null, shift: null });
         } else if (!isWorkDay) {
-             details.push({ date: day, status: 'riposo', request: null, shift: null, note: dailyNote?.note });
+             details.push({ ...baseDetail, status: 'riposo', request: null, shift: null });
         }
     }
     
@@ -616,5 +613,3 @@ export const processMonthlyData = (
         dailyDetails: details.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
-
-    

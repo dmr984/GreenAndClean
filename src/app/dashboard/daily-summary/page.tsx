@@ -6,7 +6,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'f
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -82,7 +82,7 @@ const DailySummaryPage = () => {
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
-                    getDocs(straordinariQuery)
+                    getDocs(straordinariSnap)
                 ]);
 
                 const timbratureData = timbratureSnap.docs.map(d => ({...d.data(), id: d.id} as any));
@@ -211,8 +211,14 @@ const DailySummaryPage = () => {
                             {operators.map(op => {
                                 const detail = dailyData.get(op.id);
                                 const cumulative = monthlyCumulative.get(op.id);
-                                const clockInEvent = detail?.shift?.events.find(e => e.type === 'entrata');
-                                const makeupDay = clockInEvent?.makeupOfDay;
+                                
+                                const performedOnDate = detail?.shift && detail.shift.events.length > 0 && detail.date && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                                    ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
+                                    : null;
+
+                                const makeupActivityNote = detail?.makeupActivityFor && detail.makeupActivityFor.length > 0
+                                    ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
+                                    : null;
 
                                 return (
                                     <Card key={op.id} className={cn(detail?.status === 'mancata_timbratura' && 'bg-red-500/5 border-red-500/20')}>
@@ -226,9 +232,11 @@ const DailySummaryPage = () => {
                                             </div>
                                         </CardHeader>
                                         <CardContent className="space-y-3">
+                                            {performedOnDate && <p className="text-sm font-semibold text-primary mb-1">Recupero eseguito il {performedOnDate}</p>}
+                                            {makeupActivityNote && <p className="text-sm font-semibold text-purple-600 mb-1">{makeupActivityNote}</p>}
+
                                             {detail?.shift && detail.shift.allShifts ? (
                                                 <div className='text-sm'>
-                                                    {makeupDay && detail.shift && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(detail.shift.events[0].timestamp.toDate(), 'PPP', {locale: it})}</p>}
                                                     <p className='font-semibold'>Timbrature del giorno:</p>
                                                     <div className='text-muted-foreground'>
                                                         {detail.shift.allShifts.map((shiftBlock, idx) => (

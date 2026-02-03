@@ -156,7 +156,7 @@ const MonthlySummaryContent = () => {
             const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
-                getDocs(straordinariQuery)
+                getDocs(straordinariSnapshot)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
@@ -261,9 +261,12 @@ const MonthlySummaryContent = () => {
                         <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
                                  const isSunday = getDay(detail.date) === 0;
-                                 const clockInEvent = detail.shift?.events.find(e => e.type === 'entrata');
-                                 const makeupDay = clockInEvent?.makeupOfDay;
-                                 const performedOnDate = detail.shift ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) : null;
+                                 const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                                    ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
+                                    : null;
+                                 const makeupActivityNote = detail.makeupActivityFor && detail.makeupActivityFor.length > 0
+                                    ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
+                                    : null;
 
 
                                 return (
@@ -279,9 +282,14 @@ const MonthlySummaryContent = () => {
                                         {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                     </h4>
                                     
-                                     {makeupDay && performedOnDate && (
+                                     {performedOnDate && (
                                         <p className="text-sm font-semibold text-primary mt-1">
                                             Recupero eseguito il {performedOnDate}
+                                        </p>
+                                    )}
+                                     {makeupActivityNote && (
+                                        <p className="text-sm font-semibold text-purple-600 mt-1">
+                                            {makeupActivityNote}
                                         </p>
                                     )}
 

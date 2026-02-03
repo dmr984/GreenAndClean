@@ -7,7 +7,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'fireba
 import { Loader2, Printer, Download, Share2, X, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval, subMonths, addMonths } from 'date-fns';
+import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval, subMonths, addMonths, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
@@ -203,12 +203,22 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'normal');
 
                 if (detail.shift && detail.shift.allShifts) {
-                    const clockInEvent = detail.shift.events.find(e => e.type === 'entrata');
-                    const makeupDay = clockInEvent?.makeupOfDay;
-                    if(makeupDay) {
-                        doc.text(`Recupero del ${format(new Date(makeupDay), 'PPP', {locale: it})}`, margin, y);
+                    const performedOnDate = detail.shift && detail.shift.events.length > 0 && detail.date && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                        ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
+                        : null;
+                    const makeupActivityNote = detail.makeupActivityFor && detail.makeupActivityFor.length > 0
+                        ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
+                        : null;
+
+                    if (performedOnDate) {
+                        doc.text(`Recupero eseguito il ${performedOnDate}`, margin, y);
                         y += 6;
                     }
+                    if (makeupActivityNote) {
+                        doc.text(makeupActivityNote, margin, y);
+                        y += 6;
+                    }
+
 
                     detail.shift.allShifts.forEach((shiftBlock, idx) => {
                         const timbratureString = shiftBlock.events.map(e => {
@@ -349,16 +359,21 @@ const PrintPageContent = () => {
                          {operators.map(op => {
                             const detail = dailyData.get(op.id);
                             const cumulative = monthlyCumulative.get(op.id);
-                            const clockInEvent = detail?.shift?.events.find(e => e.type === 'entrata');
-                            const makeupDay = clockInEvent?.makeupOfDay;
-                            
                             if (!detail) return null;
+
+                            const performedOnDate = detail.shift && detail.shift.events.length > 0 && detail.date && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                                ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
+                                : null;
+                            const makeupActivityNote = detail.makeupActivityFor && detail.makeupActivityFor.length > 0
+                                ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
+                                : null;
 
                             return (
                                 <div key={op.id} className="pt-2 pb-2 text-sm text-black print:break-inside-avoid border-b border-gray-300 last:border-b-0">
                                     <p className="font-bold text-base text-black">{op.firstName} {op.lastName}</p>
                                     <div className="text-sm space-y-1 pl-1 mt-1 text-black">
-                                        {makeupDay && detail?.shift && <p className="text-sm font-semibold text-primary mb-1">Recupero del {format(detail.shift.events[0].timestamp.toDate(), 'PPP', {locale: it})}</p>}
+                                        {performedOnDate && <p className="text-sm font-semibold text-primary mb-1">Recupero eseguito il {performedOnDate}</p>}
+                                        {makeupActivityNote && <p className="text-sm font-semibold text-purple-600 mb-1">{makeupActivityNote}</p>}
                                         {detail.shift && detail.shift.allShifts ? (
                                              <>
                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {

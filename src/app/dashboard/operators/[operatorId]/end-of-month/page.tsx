@@ -515,7 +515,7 @@ export default function EndOfMonthPage() {
                             title="Costo Ferie" 
                             value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext="Costo approvato manualmente"
+                            subtext="Costo approvato manually"
                         />
                         <SummaryCard 
                             title="Permessi (ore)" 
@@ -526,7 +526,7 @@ export default function EndOfMonthPage() {
                             title="Costo Permessi" 
                             value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext="Costo approvato manualmente"
+                            subtext="Costo approvato manually"
                         />
                          <SummaryCard 
                             title="Malattia (giorni)" 
@@ -537,7 +537,7 @@ export default function EndOfMonthPage() {
                             title="Costo Malattia" 
                             value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext={`Costo approvato manualmente`}
+                            subtext={`Costo approvato manually`}
                         />
                         <SummaryCard
                             title="Assenze (giorni)"
@@ -555,6 +555,15 @@ export default function EndOfMonthPage() {
                         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
                             {dailyDetails.map(detail => {
                                 const isSunday = getDay(detail.date) === 0;
+                                
+                                const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
+                                     ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) 
+                                     : null;
+                                
+                                const makeupActivityNote = detail.makeupActivityFor && detail.makeupActivityFor.length > 0
+                                    ? `Recupero per: ${detail.makeupActivityFor.join(', ')}`
+                                    : null;
+                                     
                                 if (detail.status === 'recupero_effettuato') {
                                     return (
                                         <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
@@ -568,10 +577,6 @@ export default function EndOfMonthPage() {
                                         </div>
                                     )
                                 }
-                                
-                                const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
-                                     ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) 
-                                     : null;
                                      
                                 return (
                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSunday && "border-red-500/30 bg-red-500/5")}>
@@ -601,6 +606,12 @@ export default function EndOfMonthPage() {
                                             Recupero eseguito il {performedOnDate}
                                         </p>
                                     )}
+                                    {makeupActivityNote && (
+                                        <p className="text-sm font-semibold text-purple-600 mt-1">
+                                            {makeupActivityNote}
+                                        </p>
+                                    )}
+
                                     <div className="border-b my-2"></div>
                                     
                                     {detail.status === 'ferie' ? (
@@ -791,5 +802,3 @@ export default function EndOfMonthPage() {
         </>
     );
 }
-
-    
