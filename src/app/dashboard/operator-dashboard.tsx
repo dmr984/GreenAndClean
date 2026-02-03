@@ -88,20 +88,6 @@ type LeaveStatus = {
     type: 'ferie' | 'malattia' | null;
 }
 
-type StraordinarioEvent = {
-    type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
-    timestamp: Timestamp;
-    latitude?: number;
-    longitude?: number;
-}
-
-type StraordinarioShift = {
-    id?: string;
-    events: StraordinarioEvent[];
-    status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
-    date: Timestamp;
-}
-
 export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const { user: hookUser, isLoading: isUserLoading } = useUser();
   const authUser = propUser || hookUser;
@@ -117,8 +103,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [unlockRequestSent, setUnlockRequestSent] = useState(false);
   const [isSubmittingUnlock, setIsSubmittingUnlock] = useState(false);
 
-  const [currentOvertimeShift, setCurrentOvertimeShift] = useState<StraordinarioShift | null>(null);
-  
   const [isMakeupDialogOpen, setIsMakeupDialogOpen] = useState(false);
   const [makeupDay, setMakeupDay] = useState<Date | undefined>(undefined);
 
@@ -213,31 +197,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         checkAndVoidOpenShifts();
 
     }, [firestore, authUser, toast]);
-
-    useEffect(() => {
-        if (!firestore || !authUser?.id) return;
-        
-        const overtimeQuery = query(
-            collection(firestore, `app-users/${authUser.id}/straordinari`),
-            where('date', '>=', startOfDay(new Date())),
-            where('date', '<=', endOfDay(new Date())),
-        );
-
-        const unsubscribe = onSnapshot(overtimeQuery, (snapshot) => {
-            if (!snapshot.empty) {
-                const shiftDoc = snapshot.docs.find(d => d.data().status === 'in_corso');
-                if (shiftDoc) {
-                   setCurrentOvertimeShift({ id: shiftDoc.id, ...shiftDoc.data() } as StraordinarioShift);
-                } else {
-                   setCurrentOvertimeShift(null);
-                }
-            } else {
-                setCurrentOvertimeShift(null);
-            }
-        });
-
-        return () => unsubscribe();
-    }, [firestore, authUser]);
 
 
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
@@ -524,65 +483,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
   };
   
-  const handleOvertimeClocking = async (type: 'entrata' | 'uscita') => {
-        if (!firestore || !operator) return;
-        
-        try {
-            let currentLoc = { latitude: 0, longitude: 0 };
-            if (operator.requireGps !== false) {
-                currentLoc = await getLocation();
-            }
-
-            const newEvent: StraordinarioEvent = { 
-                type, 
-                timestamp: Timestamp.now(),
-                latitude: currentLoc.latitude,
-                longitude: currentLoc.longitude
-            };
-
-            let updatedShift: StraordinarioShift;
-
-            if (currentOvertimeShift) {
-                updatedShift = { ...currentOvertimeShift, events: [...currentOvertimeShift.events, newEvent] };
-            } else {
-                updatedShift = {
-                    events: [newEvent],
-                    status: 'in_corso',
-                    date: Timestamp.fromDate(startOfDay(new Date())),
-                };
-            }
-
-            if (type === 'uscita') {
-                updatedShift.status = 'in_attesa_di_approvazione';
-            }
-
-            const collectionRef = collection(firestore, `app-users/${operator.id}/straordinari`);
-            
-            if (updatedShift.id) {
-                const docRef = doc(collectionRef, updatedShift.id);
-                await updateDoc(docRef, { events: updatedShift.events, status: updatedShift.status });
-            } else {
-                const docRef = await addDoc(collectionRef, updatedShift);
-                updatedShift.id = docRef.id;
-            }
-            
-            setCurrentOvertimeShift(updatedShift);
-            
-            if (updatedShift.status === 'in_attesa_di_approvazione') {
-                toast({ title: "Turno Straordinario Inviato", description: "Il tuo turno è stato inviato per l'approvazione."});
-                setCurrentOvertimeShift(null);
-            }
-
-        } catch (error: any) {
-             toast({
-                variant: 'destructive',
-                title: 'Errore di Geolocalizzazione o Salvataggio',
-                description: error.message || "Non è stato possibile registrare il turno straordinario.",
-            });
-            throw error; // Re-throw for the submit handler
-        }
-    };
-  
   const handleStartMakeupShift = async () => {
     if (!makeupDay) {
         toast({ title: "Data mancante", description: "Seleziona un giorno da recuperare.", variant: "destructive"});
@@ -632,34 +532,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
   }
 
-  const renderOvertimeClockingInterface = () => {
-      if (!currentOvertimeShift || !currentDate) return null;
-      
-      return (
-          <Card>
-              <CardHeader className="pb-4">
-                  <div className="flex items-center gap-3">
-                      <Clock className="h-6 w-6 text-primary" />
-                      <CardTitle className="text-2xl">Gestione Turno Straordinario</CardTitle>
-                       <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
-                          <Info className="h-5 w-5" />
-                      </Button>
-                  </div>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center gap-4">
-                  <div className="text-xl font-medium text-muted-foreground capitalize">
-                      {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
-                  </div>
-              </CardContent>
-              <CardFooter className="flex flex-col gap-4">
-                  <Button className="w-full" size="lg" variant="destructive" onClick={() => handleOvertimeClocking('uscita')}>
-                      <Square className="mr-2 h-5 w-5" /> Termina Turno Straordinario
-                  </Button>
-              </CardFooter>
-          </Card>
-      );
-  };
-
   if (isUserLoading || operator === null || isWorkDay === null || !currentDate) {
       return <div className="flex items-center justify-center h-full">
           <div className="flex flex-col items-center gap-2">
@@ -679,14 +551,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
   
   const renderMainContent = () => {
-    if (currentOvertimeShift || isClockedIn) {
+    if (isClockedIn) {
         return (
              <Card>
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
                     <Clock className="h-6 w-6 text-primary" />
                     <CardTitle className="text-2xl">
-                        {currentOvertimeShift ? 'Gestione Turno Straordinario' : 'Gestione Turno'}
+                        Gestione Turno
                     </CardTitle>
                     <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
                         <Info className="h-5 w-5" />
@@ -705,10 +577,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         size="lg" 
                         variant="destructive"
                         disabled={isProcessing} 
-                        onClick={() => currentOvertimeShift ? handleOvertimeClocking('uscita') : performClocking('uscita')}
+                        onClick={() => performClocking('uscita')}
                     >
                         {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
-                        {currentOvertimeShift ? 'Termina Straordinario' : 'Termina Turno'}
+                        Termina Turno
                     </Button>
                 </CardFooter>
               </Card>
@@ -756,16 +628,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <Card>
                 <CardHeader>
                     <CardTitle>Turni Speciali</CardTitle>
-                    <CardDescription>Avvia un turno non standard come un recupero o uno straordinario.</CardDescription>
+                    <CardDescription>Avvia un turno per recuperare un giorno di lavoro non svolto.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
+                <CardContent className="grid gap-4">
                      <Button variant="outline" className="w-full" onClick={() => setIsMakeupDialogOpen(true)}>
                         <History className="mr-2 h-4 w-4"/>
                         Inizia Recupero
-                    </Button>
-                     <Button variant="outline" className="w-full" onClick={() => handleOvertimeClocking('entrata')}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Inizia Straordinario
                     </Button>
                 </CardContent>
             </Card>
