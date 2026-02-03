@@ -22,6 +22,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, formatISO, getDay 
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from '@/components/ui/separator';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -546,5 +547,3 @@ export default function LeaveRequestsPage() {
         </>
     );
 };
-
-    
