@@ -156,7 +156,7 @@ const MonthlySummaryContent = () => {
             const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
-                getDocs(straordinariSnapshot)
+                getDocs(straordinariQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
