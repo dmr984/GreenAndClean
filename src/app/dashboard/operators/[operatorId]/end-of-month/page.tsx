@@ -420,7 +420,7 @@ export default function EndOfMonthPage() {
             };
             defaultText = defaultTexts[detail.status] || '';
         }
-        const currentNote = detail.note || defaultText;
+        const currentNote = detail.note?.note || defaultText;
         setEditingNote({ date: detail.date, currentNote });
         setNoteContent(currentNote);
     };
@@ -619,7 +619,7 @@ export default function EndOfMonthPage() {
                                     {detail.status === 'ferie' ? (
                                         <p className="text-muted-foreground font-semibold">Giorno di Ferie</p>
                                     ) : detail.note && !detail.shift ? (
-                                        <p className="text-muted-foreground font-semibold italic">"{detail.note}"</p>
+                                        <p className="text-muted-foreground font-semibold italic">"{detail.note.note}"</p>
                                     ) : detail.status === 'riposo' ? (
                                         <p className="text-muted-foreground font-semibold">Giorno di Riposo</p>
                                     ) : null}

@@ -343,7 +343,7 @@ const PrintPageContent = () => {
 
             if (detail.note) {
                 doc.setFont('helvetica', 'italic');
-                const splitNote = doc.splitTextToSize(`"${detail.note}"`, pageWidth - margin * 2);
+                const splitNote = doc.splitTextToSize(`"${detail.note.note}"`, pageWidth - margin * 2);
                 doc.text(splitNote, margin, y);
                 y += (splitNote.length * 5);
             }
@@ -568,7 +568,7 @@ const PrintPageContent = () => {
                                     <p className="text-black text-sm capitalize leading-tight">
                                         <span className="font-bold">{dateStr}</span>
                                     </p>
-                                    {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note}"</p>}
+                                    {detail.note && <p className="text-black text-sm pl-1 leading-tight italic">"{detail.note.note}"</p>}
                                     
                                     {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
                                         <div className="my-1">
