@@ -67,6 +67,14 @@ type Timbratura = {
     makeupOfDay?: string; // Changed to ISO date string 'YYYY-MM-DD'
 };
 
+type DailyNote = {
+    date: string;
+    privateNote?: string;
+    publicNote?: string;
+    showOnMonthlyReport?: boolean;
+    showOnEOMReport?: boolean;
+};
+
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
     <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -95,7 +103,7 @@ const MonthlySummaryContent = () => {
     const [operator, setOperator] = useState<Operator | null>(null);
     const [isLoadingOperator, setIsLoadingOperator] = useState(true);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], straordinari: any[] }>({ timbrature: [], requests: [], straordinari: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], straordinari: any[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], straordinari: [], dailyNotes: [] });
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -154,18 +162,25 @@ const MonthlySummaryContent = () => {
                 where('date', '>=', queryStart),
                 where('date', '<=', queryEnd)
             );
+             const notesQuery = query(
+                collection(firestore, `app-users/${user.id}/daily-notes`),
+                 where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
+                 where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
+            );
     
-            const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot, notesSnapshot] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
-                getDocs(straordinariQuery)
+                getDocs(straordinariQuery),
+                getDocs(notesQuery)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
             const straordinariData = straordinariSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
+            const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
 
-            setMonthlyData({ timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData, straordinari: straordinariData, dailyNotes: notesData });
         } catch (error) {
             console.error("Error fetching monthly data:", error);
             toast({ title: 'Errore', description: "Impossibile caricare i dati del mese.", variant: 'destructive' });
@@ -318,7 +333,7 @@ const MonthlySummaryContent = () => {
                                                     
                                                     const firstEventDate = shiftBlock.events[0]?.timestamp.toDate();
                                                     const isRecoveryDisplay = firstEventDate && !isSameDay(firstEventDate, detail.date);
-                                                    const recoveryDateString = isRecoveryDisplay ? ` (rec. il ${format(firstEventDate, 'dd/MM/yy')})` : '';
+                                                    const recoveryDateString = detail.makeupPerformedFor ? ` (rec. il ${detail.makeupPerformedFor})` : '';
 
                                                      return (
                                                         <div key={idx} className="border-b pb-1 last:border-b-0">
@@ -348,6 +363,13 @@ const MonthlySummaryContent = () => {
                                     ) : detail.status === 'riposo' ? (
                                         <p className="text-gray-500 font-semibold mt-1">Giorno di riposo.</p>
                                     ) : null}
+
+                                     {detail.note?.publicNote && (
+                                        <div className="mt-3 pt-2 border-t">
+                                            <p className="text-sm font-semibold text-muted-foreground">Nota dall'amministratore:</p>
+                                            <p className="text-sm italic">"{detail.note.publicNote}"</p>
+                                        </div>
+                                    )}
 
                                 </div>
                             )})}

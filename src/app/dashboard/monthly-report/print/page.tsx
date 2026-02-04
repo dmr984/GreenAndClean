@@ -425,7 +425,7 @@ const PrintPageContent = () => {
                                 opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : null,
                                 opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
-                                opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+                                opVisibility.overtimeCost ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
                                 opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : null,
                                 opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : null,

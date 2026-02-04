@@ -56,9 +56,13 @@ type Request = {
 };
 
 type DailyNote = {
-    note: string;
     date: string;
-}
+    privateNote?: string;
+    publicNote?: string;
+    showOnMonthlyReport?: boolean;
+    showOnEOMReport?: boolean;
+};
+
 
 type Shift = {
     date: Date;
@@ -91,7 +95,7 @@ export type DailyDetail = {
         calculationEnd?: Date;
     } | null;
     request: Request | null;
-    note?: string;
+    note?: DailyNote;
     makeupPerformedFor?: string;
     makeupActivityFor?: string[];
 };
@@ -505,7 +509,7 @@ export const processMonthlyData = (
 
         const dailyNote = data.dailyNotes?.find(n => n.date === format(detail.date, 'yyyy-MM-dd'));
         if (dailyNote) {
-            detail.note = dailyNote.note;
+            detail.note = dailyNote;
         }
 
         if (detail.status === 'vuoto') {

@@ -306,14 +306,17 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Daily Note",
       "type": "object",
-      "description": "An admin-only note for a specific user on a specific day, typically for justifying a missed clock-in.",
+      "description": "Admin notes for a specific user on a specific day, with public/private visibility options.",
       "properties": {
         "userId": { "type": "string", "description": "The ID of the user this note pertains to." },
         "date": { "type": "string", "format": "date", "description": "The date for which the note is relevant (YYYY-MM-DD)." },
-        "note": { "type": "string", "description": "The content of the note." },
+        "privateNote": { "type": "string", "description": "An admin-only private note." },
+        "publicNote": { "type": "string", "description": "A note visible to the operator and on selected reports." },
+        "showOnMonthlyReport": { "type": "boolean", "description": "If true, the public note appears on the aggregated monthly report printout." },
+        "showOnEOMReport": { "type": "boolean", "description": "If true, the public note appears on the end-of-month calculation printout." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "The last time the note was updated." }
       },
-      "required": ["userId", "date", "note", "updatedAt"]
+      "required": ["userId", "date", "updatedAt"]
     },
     "MonthlyOverride": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -450,5 +453,3 @@
     "reasoning": "Updated the Timbratura entity description to reflect that break start/end events are now primarily added by administrators, not clocked by operators."
   }
 }
-
-    
