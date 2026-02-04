@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -419,6 +419,21 @@ export default function ShiftApprovalPage() {
         const pending = overtimeShifts.filter(s => s.status === 'in_attesa_di_approvazione' || s.status === 'in_corso');
         return { pendingOvertimeShifts: pending };
     }, [overtimeShifts]);
+    
+    const orphanedEventsByDay = useMemo(() => {
+        return orphanedEvents.reduce((acc, event) => {
+            if (!event.timestamp) return acc;
+            const day = startOfDay(event.timestamp.toDate()).toISOString();
+            if (!acc[day]) {
+                acc[day] = [];
+            }
+            if (!acc[day].some(e => e.id === event.id)) {
+                acc[day].push(event);
+            }
+            return acc;
+        }, {} as Record<string, Timbratura[]>);
+    }, [orphanedEvents]);
+
 
     const historicalShifts: CombinedShiftHistoryItem[] = useMemo(() => {
         const approvedRegularShifts = allShifts
@@ -1324,6 +1339,32 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             });
     };
 
+    const handleFixOrphanedShift = async (eventsToFix: Timbratura[]) => {
+        if (!firestore || !operatorId || eventsToFix.length === 0) return;
+    
+        const batch = writeBatch(firestore);
+        const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
+        const newShiftId = doc(timbratureCollectionRef).id;
+    
+        eventsToFix.forEach(event => {
+            const docRef = doc(timbratureCollectionRef, event.id);
+            batch.update(docRef, { shiftId: newShiftId, status: 'sospesa' });
+        });
+    
+        try {
+            await batch.commit();
+            toast({
+                title: "Successo!",
+                description: "Turno creato dagli eventi orfani. Ora puoi approvarlo dalla lista dei turni in attesa.",
+                duration: 7000
+            });
+        } catch (error) {
+            console.error("Error fixing orphaned shift:", error);
+            toast({ title: 'Errore', description: 'Impossibile creare il turno.', variant: 'destructive' });
+        }
+    };
+
+
     const handleDeleteOrphanedEvent = async () => {
         if (!firestore || !eventToDelete || !operatorId) return;
         const docRef = doc(firestore, `app-users/${operatorId}/timbrature`, eventToDelete.id);
@@ -1356,44 +1397,44 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    {orphanedEvents.length > 0 && (
-                        <Card className="mb-6 border-destructive bg-destructive/10">
+                    {Object.keys(orphanedEventsByDay).length > 0 && (
+                        <Card className="mb-6 border-amber-500 bg-amber-500/10">
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-destructive">
+                                <CardTitle className="flex items-center gap-2 text-amber-700">
                                     <AlertCircle className="h-5 w-5" />
-                                    ATTENZIONE: Risolvi Notifica Fantasma
+                                    Risolvi Timbrature Orfane
                                 </CardTitle>
-                                <CardDescription className="text-destructive/90">
-                                    Sono stati trovati {orphanedEvents.length} eventi di timbratura "orfani" che potrebbero causare notifiche errate.
-                                    Questi dati sono incompleti o non associati a un turno valido. Eliminali per risolvere il problema.
+                                <CardDescription className="text-amber-600">
+                                    Sono stati trovati eventi di timbratura non raggruppati. Puoi unirli per creare un turno valido o eliminarli singolarmente.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Data Evento</TableHead>
-                                            <TableHead>Tipo</TableHead>
-                                            <TableHead className="text-right">Azione</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {orphanedEvents.map((event) => (
-                                            <TableRow key={event.id} className="border-destructive/20">
-                                                <TableCell>
-                                                    {event.timestamp ? format(event.timestamp.toDate(), 'PPP p', { locale: it }) : <span className="text-destructive font-bold">Data non valida</span>}
-                                                </TableCell>
-                                                <TableCell className="capitalize">{event.type}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button variant="destructive" size="sm" onClick={() => setEventToDelete(event)}>
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Elimina
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
+                            <CardContent className="space-y-4">
+                                {Object.entries(orphanedEventsByDay).map(([dayISO, events]) => (
+                                    <div key={dayISO} className="p-3 border rounded-md bg-background">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-semibold">{format(new Date(dayISO), 'PPP', { locale: it })}</h4>
+                                            <Button size="sm" onClick={() => handleFixOrphanedShift(events)}>
+                                                <Wand2 className="mr-2 h-4 w-4" />
+                                                Unisci e Crea Turno
+                                            </Button>
+                                        </div>
+                                        <Table>
+                                            <TableBody>
+                                                {events.map(event => (
+                                                    <TableRow key={event.id}>
+                                                        <TableCell>{event.timestamp ? format(event.timestamp.toDate(), 'p', { locale: it }) : 'N/D'}</TableCell>
+                                                        <TableCell className="capitalize">{event.type}</TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button variant="ghost" size="icon" onClick={() => setEventToDelete(event)}>
+                                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                ))}
                             </CardContent>
                         </Card>
                     )}
@@ -1763,7 +1804,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Eliminare questo evento orfano?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Questa azione è permanente e non può essere annullata. Eliminando questo evento si risolverà la notifica fantasma.
+                            Questa azione è permanente e non può essere annullata.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
