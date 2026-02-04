@@ -1,6 +1,5 @@
 
 
-
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
@@ -314,10 +313,14 @@ export default function ShiftApprovalPage() {
                     }
                 }
             });
-            
-            const shiftsById: { [id: string]: Timbratura[] } = {};
 
-            for (const event of allClockings) {
+            // 1. Separate modern (with shiftId) and legacy (without shiftId) events
+            const modernEvents = allClockings.filter(e => e.shiftId);
+            const legacyEvents = allClockings.filter(e => !e.shiftId);
+
+            // 2. Process modern events
+            const shiftsById: { [id: string]: Timbratura[] } = {};
+            for (const event of modernEvents) {
                 if (event.shiftId) {
                     if (!shiftsById[event.shiftId]) {
                         shiftsById[event.shiftId] = [];
@@ -325,28 +328,48 @@ export default function ShiftApprovalPage() {
                     shiftsById[event.shiftId].push(event);
                 }
             }
-    
-            const groupedShifts: Shift[] = [];
-    
+            const modernShifts: Shift[] = [];
             for (const shiftId in shiftsById) {
-                const dayEvents = shiftsById[shiftId].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                const dayEvents = shiftsById[shiftId];
                 const processed = processShift(dayEvents, leaveDays);
                 if (processed) {
-                    groupedShifts.push({ id: shiftId, ...processed });
+                    modernShifts.push({ id: shiftId, ...processed });
                 }
             }
 
-            groupedShifts.sort((a,b) => {
+            // 3. Process legacy events
+            const legacyShiftsByDay: { [date: string]: Timbratura[] } = {};
+            for (const event of legacyEvents) {
+                const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+                if (!legacyShiftsByDay[dayString]) {
+                    legacyShiftsByDay[dayString] = [];
+                }
+                legacyShiftsByDay[dayString].push(event);
+            }
+            const legacyShifts: Shift[] = [];
+            for (const dayString in legacyShiftsByDay) {
+                const dayEvents = legacyShiftsByDay[dayString];
+                const processed = processShift(dayEvents, leaveDays);
+                if (processed) {
+                    const syntheticId = `legacy-${dayString}`;
+                    legacyShifts.push({ id: syntheticId, ...processed });
+                }
+            }
+
+            // 4. Combine and sort
+            const combinedShifts = [...modernShifts, ...legacyShifts];
+            combinedShifts.sort((a,b) => {
                 const dateA = a.events[0]?.timestamp.toMillis() || 0;
                 const dateB = b.events[0]?.timestamp.toMillis() || 0;
                 return dateB - dateA;
-            })
-
-            setAllShifts(groupedShifts);
+            });
+            
+            setAllShifts(combinedShifts);
             setIsLoading(false);
 
+            // 5. Update orphan detection
             const allProcessedEventIds = new Set<string>();
-            groupedShifts.forEach(shift => {
+            combinedShifts.forEach(shift => {
                 shift.events.forEach(event => allProcessedEventIds.add(event.id));
             });
 
@@ -358,14 +381,14 @@ export default function ShiftApprovalPage() {
                 event => !event.timestamp || typeof event.timestamp.toDate !== 'function'
             );
 
-            const combinedOrphans = [...malformedOrphans];
+            const allOrphans = [...malformedOrphans];
             logicalOrphans.forEach(lo => {
-                if (!combinedOrphans.some(mo => mo.id === lo.id)) {
-                    combinedOrphans.push(lo);
+                if (!allOrphans.some(mo => mo.id === lo.id)) {
+                    allOrphans.push(lo);
                 }
             });
 
-            setOrphanedEvents(combinedOrphans);
+            setOrphanedEvents(allOrphans);
 
         }, error => {
             console.error(error);
@@ -2314,7 +2337,3 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         </div>
     );
 };
-
-    
-
-    
