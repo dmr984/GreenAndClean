@@ -363,8 +363,6 @@ export const processMonthlyData = (
     }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
-    const allTimbrature = data.timbrature.filter(t => t.shiftId);
-    
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
 
@@ -381,18 +379,56 @@ export const processMonthlyData = (
         });
     });
 
-    const shiftsById: { [id: string]: Timbratura[] } = {};
-    allTimbrature.forEach(timbratura => {
+    const allTimbrature = data.timbrature.filter(t => t.timestamp && typeof t.timestamp.toDate === 'function');
+    
+    const modernEvents = allTimbrature.filter(e => e.shiftId);
+    const legacyEvents = allTimbrature.filter(e => !e.shiftId);
+
+    const shiftsToProcess: { events: Timbratura[], date: Date }[] = [];
+
+    // Process modern events by shiftId
+    const modernShiftsById: { [id: string]: Timbratura[] } = {};
+    modernEvents.forEach(timbratura => {
         if (timbratura.shiftId) {
-            if (!shiftsById[timbratura.shiftId]) {
-                shiftsById[timbratura.shiftId] = [];
+            if (!modernShiftsById[timbratura.shiftId]) {
+                modernShiftsById[timbratura.shiftId] = [];
             }
-            shiftsById[timbratura.shiftId].push(timbratura);
+            modernShiftsById[timbratura.shiftId].push(timbratura);
         }
     });
 
+    Object.values(modernShiftsById).forEach(events => {
+        const entrataEvent = events.find(e => e.type === 'entrata');
+        if (entrataEvent) {
+             const effectiveDate = entrataEvent.makeupOfDay
+                ? parse(entrataEvent.makeupOfDay, 'yyyy-MM-dd', new Date())
+                : entrataEvent.timestamp.toDate();
+            shiftsToProcess.push({ events, date: effectiveDate });
+        }
+    });
+
+    // Process legacy events by day
+    const legacyShiftsByDay: { [date: string]: Timbratura[] } = {};
+    legacyEvents.forEach(event => {
+        const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
+        if (!legacyShiftsByDay[dayString]) {
+            legacyShiftsByDay[dayString] = [];
+        }
+        legacyShiftsByDay[dayString].push(event);
+    });
+
+    Object.values(legacyShiftsByDay).forEach(events => {
+        const entrataEvent = events.find(e => e.type === 'entrata');
+         if (entrataEvent) {
+            const effectiveDate = entrataEvent.makeupOfDay
+                ? parse(entrataEvent.makeupOfDay, 'yyyy-MM-dd', new Date())
+                : entrataEvent.timestamp.toDate();
+            shiftsToProcess.push({ events, date: effectiveDate });
+        }
+    });
+    
     const makeupTargets: { [key: string]: string[] } = {};
-    Object.values(shiftsById).forEach(events => {
+    shiftsToProcess.forEach(({ events }) => {
         const entrataEvent = events.find(e => e.type === 'entrata');
         if (entrataEvent && entrataEvent.makeupOfDay) {
             const physicalDate = entrataEvent.timestamp.toDate();
@@ -410,28 +446,20 @@ export const processMonthlyData = (
     });
 
 
-    for (const shiftId in shiftsById) {
-        const events = shiftsById[shiftId].sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-        const entrataEvent = events.find(e => e.type === 'entrata');
-        if (!entrataEvent) continue;
-
-        const physicalDate = entrataEvent.timestamp.toDate();
-        const effectiveDate = entrataEvent.makeupOfDay
-            ? parse(entrataEvent.makeupOfDay, 'yyyy-MM-dd', new Date())
-            : physicalDate;
-
-        if (!isWithinInterval(effectiveDate, monthInterval)) {
-            continue;
+    shiftsToProcess.forEach(({ events, date }) => {
+        if (!isWithinInterval(date, monthInterval)) {
+            return;
         }
 
-        const effectiveDateISO = startOfDay(effectiveDate).toISOString();
+        const effectiveDateISO = startOfDay(date).toISOString();
         const detail = detailsMap.get(effectiveDateISO);
-        if (!detail) continue;
+        if (!detail) return;
 
-        const dayName = dayIndexToName[getDay(effectiveDate)];
+        const dayName = dayIndexToName[getDay(date)];
         const dailySchedule = operator.workSchedule[dayName];
         
         const isShiftComplete = events.some(e => e.type === 'uscita');
+        const physicalDate = events.find(e => e.type === 'entrata')!.timestamp.toDate();
         const isTodayAndInProgress = isSameDay(physicalDate, today) && !isShiftComplete;
 
         if (isTodayAndInProgress) {
@@ -440,7 +468,7 @@ export const processMonthlyData = (
             detail.status = 'lavorato';
         }
         
-        const hoursResult = calculateHours({ date: effectiveDate, events }, dailySchedule, entrataEvent.ignoreContractualStart, operator.overtimeCalculation);
+        const hoursResult = calculateHours({ date, events }, dailySchedule, events.find(e=>e.type==='entrata')?.ignoreContractualStart, operator.overtimeCalculation);
 
         if (!detail.shift) {
             detail.shift = {
@@ -459,18 +487,18 @@ export const processMonthlyData = (
         detail.shift.ordinaryHours += hoursResult.ordinary;
         detail.shift.overtimeHours += hoursResult.overtime;
         
-        if (entrataEvent.makeupOfDay) {
+        if (events.find(e => e.type === 'entrata')?.makeupOfDay) {
             detail.makeupPerformedFor = format(physicalDate, 'dd MMM', { locale: it });
             const physicalDateISO = startOfDay(physicalDate).toISOString();
             const physicalDayDetail = detailsMap.get(physicalDateISO);
             if (physicalDayDetail) {
                 physicalDayDetail.makeupActivityFor = physicalDayDetail.makeupActivityFor || [];
-                if (!physicalDayDetail.makeupActivityFor.includes(format(effectiveDate, 'dd MMM', { locale: it }))) {
-                    physicalDayDetail.makeupActivityFor.push(format(effectiveDate, 'dd MMM', { locale: it }));
+                if (!physicalDayDetail.makeupActivityFor.includes(format(date, 'dd MMM', { locale: it }))) {
+                    physicalDayDetail.makeupActivityFor.push(format(date, 'dd MMM', { locale: it }));
                 }
             }
         }
-    }
+    });
 
     data.straordinari?.forEach(straordinario => {
         const day = straordinario.date.toDate();
@@ -594,5 +622,3 @@ export const processMonthlyData = (
         dailyDetails: dailyDetails.sort((a, b) => a.date.getTime() - b.date.getTime()),
     };
 };
-
-    
