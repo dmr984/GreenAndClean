@@ -79,57 +79,19 @@ export function AdminDashboard() {
 
         operators.forEach(op => {
             // --- Listener for Shifts (Timbrature) ---
-            const shiftsQuery = collection(firestore, `app-users/${op.id}/timbrature`);
+            const shiftsQuery = query(collection(firestore, `app-users/${op.id}/timbrature`), where('status', '==', 'sospesa'));
             const unsubShifts = onSnapshot(shiftsQuery, (shiftSnapshot) => {
-                const allTimbrature = shiftSnapshot.docs.map(d => ({id: d.id, ...d.data() as Timbratura}));
-                
-                const shiftsByDay: { [key: string]: Timbratura[] } = {};
-                
-                for (const event of allTimbrature) {
-                     if (!event.timestamp || typeof event.timestamp.toDate !== 'function') {
-                        continue; // Skip malformed/deleted data
+                const pendingDays = new Set(shiftSnapshot.docs.map(d => {
+                    const data = d.data() as Timbratura;
+                    if (data.timestamp?.toDate) {
+                       return format(data.timestamp.toDate(), 'yyyy-MM-dd');
                     }
-                    const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
-                    if (!shiftsByDay[dayString]) shiftsByDay[dayString] = [];
-                    shiftsByDay[dayString].push(event);
-                }
-
-                const groupedShifts: Shift[] = [];
-                for (const dayString in shiftsByDay) {
-                    const events = shiftsByDay[dayString];
-                    if (events.length === 0) continue;
-                    
-                    const hasEntrata = events.some(e => e.type === 'entrata');
-                    if (!hasEntrata) continue;
-
-                    let status: Shift['status'];
-                    const isComplete = events.some(e => e.type === 'uscita');
-                    const hasSuspended = events.some(e => e.status === 'sospesa');
-
-                    if (isComplete) {
-                        // A completed shift is pending only if it has suspended events.
-                        if (hasSuspended) {
-                            status = 'in_sospeso';
-                        } else {
-                            status = 'confermato'; // Not pending
-                        }
-                    } else {
-                        // An incomplete shift is "in_corso" and pending only if it has suspended events.
-                        if (hasSuspended) {
-                            status = 'in_corso';
-                        } else {
-                            status = 'confermato'; // Not pending from an admin's perspective.
-                        }
-                    }
-                    
-                    groupedShifts.push({ id: dayString, status, events });
-                }
-                
-                const pendingShiftsCount = groupedShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso').length;
+                    return null;
+                }).filter(Boolean));
 
                 setPendingCounts(prev => ({
                     ...prev,
-                    [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingShiftsCount }
+                    [op.id]: { ...(prev[op.id] || {shifts: 0, leaves: 0, overtime: 0}), shifts: pendingDays.size }
                 }));
             });
             unsubscribers.push(unsubShifts);

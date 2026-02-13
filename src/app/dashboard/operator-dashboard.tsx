@@ -320,12 +320,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         return;
       }
       
-      setIsProcessing(true);
       setLocationError(null);
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setIsProcessing(false);
           const coords = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -333,7 +331,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
           resolve(coords);
         },
         (error) => {
-          setIsProcessing(false);
           let message = "Impossibile ottenere la posizione.";
           const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 
@@ -362,6 +359,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: string) => {
     if (!firestore || !operator || isProcessing) return;
     
+    setIsProcessing(true);
+
     try {
         let currentLoc = { latitude: 0, longitude: 0 };
         if (operator.requireGps !== false) {
