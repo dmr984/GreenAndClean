@@ -75,7 +75,9 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
             type,
             startDate: Timestamp.fromDate(startDate),
             endDate: Timestamp.fromDate(endDate),
-            reason
+            reason,
+            status: 'in_attesa', // Force re-approval
+            viewedByOperator: false,
         };
         if(type === 'permesso' || type === 'straordinario') {
             editedData.hours = parseFloat(hours) || 0;
@@ -274,6 +276,9 @@ export default function LeaveRequestsPage() {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [isCleanHistoryConfirmOpen, setIsCleanHistoryConfirmOpen] = useState(false);
+
+    const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
+    const [isBatchApproving, setIsBatchApproving] = useState(false);
     
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -351,7 +356,7 @@ export default function LeaveRequestsPage() {
         if(!firestore || !editingRequest) return;
         
         const docRef = doc(firestore, `app-users/${operatorId}/requests`, editingRequest.id);
-        await updateDoc(docRef, {...editedData, status: 'in_attesa', viewedByOperator: false}).then(() => {
+        await updateDoc(docRef, editedData).then(() => {
             toast({title: 'Successo', description: 'Richiesta aggiornata e impostata come "in attesa". Richiede una nuova approvazione.'});
             setEditingRequest(null);
         }).catch(err => {
@@ -385,48 +390,143 @@ export default function LeaveRequestsPage() {
             setIsCleanHistoryConfirmOpen(false);
         }
     };
+
+    const handleApproveSelected = async () => {
+        if (!firestore || !operator || selectedRequests.size === 0) return;
+
+        setIsBatchApproving(true);
+
+        const batch = writeBatch(firestore);
+        const requestsToApprove = requests.filter(r => selectedRequests.has(r.id));
+
+        for (const request of requestsToApprove) {
+            const docRef = doc(firestore, `app-users/${operatorId}/requests`, request.id);
+            const dailyCosts: Record<string, number> = {};
+            const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
+
+            if (request.type === 'permesso') {
+                const cost = (request.hours || 0) * (operator.hourlyRate || 0);
+                if (days.length > 0) {
+                    const dateKey = formatISO(days[0], { representation: 'date' });
+                    dailyCosts[dateKey] = cost;
+                }
+            } else if (request.type === 'ferie' || request.type === 'malattia') {
+                days.forEach(day => {
+                    const dateKey = formatISO(day, { representation: 'date' });
+                    const dayName = dayIndexToName[getDay(day)];
+                    const contractualHours = operator.workSchedule?.[dayName]?.totalHours || 0;
+                    let rate = 0;
+                    if (request.type === 'ferie') {
+                        rate = operator.hourlyRate || 0;
+                    } else if (request.type === 'malattia') {
+                        rate = operator.sickLeaveRate || 0;
+                    }
+                    dailyCosts[dateKey] = contractualHours * rate;
+                });
+            }
+            
+            batch.update(docRef, { status: 'approvato', viewedByOperator: false, dailyCosts });
+        }
+
+        try {
+            await batch.commit();
+            toast({ title: 'Successo', description: `${selectedRequests.size} richieste approvate con costo contrattuale.` });
+            setSelectedRequests(new Set());
+        } catch (error) {
+            console.error("Error approving selected requests:", error);
+            toast({ title: 'Errore', description: 'Impossibile approvare le richieste selezionate.', variant: 'destructive' });
+        } finally {
+            setIsBatchApproving(false);
+        }
+    };
     
     const pendingRequests = requests.filter(r => r.status === 'in_attesa');
     const historicalRequests = requests.filter(r => r.status !== 'in_attesa');
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
 
-    const renderTable = (reqs: Request[], isHistory: boolean = false) => (
-        <Table>
-            <TableHeader><TableRow><TableHead>Tipo</TableHead><TableHead>Dal</TableHead><TableHead>Al</TableHead><TableHead>Ore</TableHead>{isHistory ? <TableHead>Stato</TableHead> : null}<TableHead className='text-right'>Azioni</TableHead></TableRow></TableHeader>
-            <TableBody>
-                {reqs.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
-                ) : reqs.map(req => (
-                    <TableRow key={req.id}>
-                        <TableCell className="capitalize font-medium">{req.type.replace('_', ' ')}</TableCell>
-                        <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                        <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                        <TableCell>{req.hours || '-'}</TableCell>
-                        {isHistory && 
-                            <TableCell>
-                                <Badge variant={req.status === 'approvato' ? 'secondary' : 'destructive'}>
-                                    {req.status}
-                                </Badge>
-                            </TableCell>
-                        }
-                        <TableCell className='text-right'>
-                            <div className="flex gap-2 justify-end">
-                                {req.status === 'in_attesa' && 
-                                    <>
-                                        <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'approvato')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'rifiutato')}><XCircle className="h-5 w-5 text-red-500" /></Button>
-                                    </>
-                                }
-                                <Button variant="ghost" size="icon" onClick={() => handleEditRequest(req)}><Pencil className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
-                            </div>
-                        </TableCell>
+    const renderTable = (reqs: Request[], isPending: boolean) => {
+
+        const handleSelectAll = (checked: boolean) => {
+            if (checked) {
+                setSelectedRequests(new Set(reqs.map(r => r.id)));
+            } else {
+                setSelectedRequests(new Set());
+            }
+        };
+
+        const handleSelectOne = (reqId: string, checked: boolean) => {
+            const newSet = new Set(selectedRequests);
+            if (checked) {
+                newSet.add(reqId);
+            } else {
+                newSet.delete(reqId);
+            }
+            setSelectedRequests(newSet);
+        };
+
+        return (
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        {isPending && (
+                            <TableHead className="w-12">
+                                <Checkbox
+                                    checked={reqs.length > 0 && selectedRequests.size === reqs.length}
+                                    onCheckedChange={handleSelectAll}
+                                />
+                            </TableHead>
+                        )}
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Dal</TableHead>
+                        <TableHead>Al</TableHead>
+                        <TableHead>Ore</TableHead>
+                        { !isPending && <TableHead>Stato</TableHead> }
+                        <TableHead className='text-right'>Azioni</TableHead>
                     </TableRow>
-                ))}
-            </TableBody>
-        </Table>
-    )
+                </TableHeader>
+                <TableBody>
+                    {reqs.length === 0 ? (
+                        <TableRow><TableCell colSpan={isPending ? 6 : 5} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
+                    ) : reqs.map(req => (
+                        <TableRow key={req.id}>
+                            {isPending && (
+                                <TableCell>
+                                    <Checkbox 
+                                        checked={selectedRequests.has(req.id)}
+                                        onCheckedChange={(checked) => handleSelectOne(req.id, !!checked)}
+                                    />
+                                </TableCell>
+                            )}
+                            <TableCell className="capitalize font-medium">{req.type.replace('_', ' ')}</TableCell>
+                            <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
+                            <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
+                            <TableCell>{req.hours || '-'}</TableCell>
+                            {!isPending && 
+                                <TableCell>
+                                    <Badge variant={req.status === 'approvato' ? 'secondary' : 'destructive'}>
+                                        {req.status}
+                                    </Badge>
+                                </TableCell>
+                            }
+                            <TableCell className='text-right'>
+                                <div className="flex gap-2 justify-end">
+                                    {req.status === 'in_attesa' && 
+                                        <>
+                                            <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'approvato')}><CheckCircle className="h-5 w-5 text-green-500" /></Button>
+                                            <Button variant="ghost" size="icon" onClick={() => handleUpdateRequestStatus(req.id, 'rifiutato')}><XCircle className="h-5 w-5 text-red-500" /></Button>
+                                        </>
+                                    }
+                                    <Button variant="ghost" size="icon" onClick={() => handleEditRequest(req)}><Pencil className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => setItemToDelete(req)}><Trash2 className="h-5 w-5 text-destructive" /></Button>
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        );
+    }
 
     return (
         <>
@@ -440,26 +540,34 @@ export default function LeaveRequestsPage() {
                         </div>
                         <p className="text-muted-foreground">Gestione Richieste (Codice: {operator.username})</p>
                     </div>
-                     <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button>
-                                <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Richiesta
+                     <div className="flex items-center gap-2">
+                        {selectedRequests.size > 0 && (
+                            <Button onClick={handleApproveSelected} disabled={isBatchApproving}>
+                                {isBatchApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-2 h-4 w-4" />}
+                                Approva Selezionate ({selectedRequests.size})
                             </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-xl">
-                             <DialogHeader>
-                                <DialogTitle>Crea Nuova Richiesta per {operator.username}</DialogTitle>
-                                <DialogDescription>
-                                    Compila il modulo per inviare una nuova richiesta per conto dell'operatore.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <RequestForm userId={operator.id} onFinished={() => setIsAddDialogOpen(false)} role="admin" />
-                        </DialogContent>
-                    </Dialog>
+                        )}
+                         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Richiesta
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-xl">
+                                 <DialogHeader>
+                                    <DialogTitle>Crea Nuova Richiesta per {operator.username}</DialogTitle>
+                                    <DialogDescription>
+                                        Compila il modulo per inviare una nuova richiesta per conto dell'operatore.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <RequestForm userId={operator.id} onFinished={() => setIsAddDialogOpen(false)} role="admin" />
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <h3 className="text-lg font-medium mb-2">In Attesa</h3>
-                    {renderTable(pendingRequests)}
+                    {renderTable(pendingRequests, true)}
                 </CardContent>
             </Card>
 
@@ -471,7 +579,7 @@ export default function LeaveRequestsPage() {
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    {renderTable(historicalRequests, true)}
+                    {renderTable(historicalRequests, false)}
                 </CardContent>
             </Card>
 
@@ -538,6 +646,12 @@ export default function LeaveRequestsPage() {
                             Nella tabella "In Attesa", puoi approvare o rifiutare una richiesta usando i pulsanti <CheckCircle className="h-4 w-4 inline-block text-green-500"/> (approva) e <XCircle className="h-4 w-4 inline-block text-red-500"/> (rifiuta). L'operatore riceverà una notifica sul cambio di stato.
                         </p>
                     </div>
+                     <div>
+                        <h4 className="font-semibold mb-1">Approvazione Multipla</h4>
+                        <p className="text-muted-foreground">
+                            Seleziona più richieste usando le caselle di controllo e clicca su "Approva Selezionate" per approvarle tutte in una volta. Il sistema calcolerà automaticamente i costi in base al contratto.
+                        </p>
+                    </div>
                     <div>
                         <h4 className="font-semibold mb-1">Aggiungere una Richiesta</h4>
                         <p className="text-muted-foreground">
@@ -557,4 +671,3 @@ export default function LeaveRequestsPage() {
     );
 };
 
-    
