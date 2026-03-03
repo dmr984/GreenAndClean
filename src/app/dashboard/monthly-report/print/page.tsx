@@ -288,7 +288,7 @@ const PrintPageContent = () => {
                 }
 
                 // --- DETAILED MODE FOR PDF (Max 3 per page) ---
-                if (itemsOnCurrentPage === 3 || y > pageHeight - 70) {
+                if (itemsOnCurrentPage === 3 || y > pageHeight - 65) {
                     doc.addPage();
                     y = 20;
                     addHeader(false); 
@@ -348,7 +348,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 30; // Increased extra space after signature from 15 to 30
+                y += 20; // Re-adjusted from 30 to 20 to fit 3 per page reliably
                 itemsOnCurrentPage++;
             });
 
@@ -487,13 +487,12 @@ const PrintPageContent = () => {
                                 bodyData.push([allItems[i], allItems[i + 1] || '']);
                             }
 
-                            // Calculate if we need a page break after this operator
-                            // Forced break every 3 operators in detailed view
+                            // Forced break every 3 operators in detailed view to keep layout consistent
                             const needsPageBreak = (index + 1) % 3 === 0 && (index + 1) < filteredOperators.length;
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-sm text-black print:break-inside-avoid pb-24", // Increased pb-12 to pb-24 for even more space
+                                    "text-sm text-black print:break-inside-avoid pb-16", // Reduced pb from 24 to 16 to help 3 fit
                                     needsPageBreak && "print:break-after-page"
                                 )}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
