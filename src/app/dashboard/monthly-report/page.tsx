@@ -1,4 +1,3 @@
-// src/app/dashboard/monthly-report/page.tsx
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
@@ -121,7 +120,7 @@ const MonthlyReportPage = () => {
             ops.forEach(op => {
                 initialVisibility[op.id] = {
                     workedDays: true,
-                    showWorkedHours: true, // Default to true as requested
+                    showWorkedHours: true, // Selected by default
                     ordinaryHours: true,
                     overtimeHours: true,
                     ferieDays: true,
@@ -467,7 +466,7 @@ const MonthlyReportPage = () => {
                     <div>
                         <CardTitle className="text-2xl">
                             {globalCompactMode 
-                                ? `Elenco Competenze - ${format(currentMonth, 'MMMM yyyy', { locale: it })}` 
+                                ? format(currentMonth, 'MMMM yyyy', { locale: it }) 
                                 : 'Report Mensile Aggregato'}
                         </CardTitle>
                         <CardDescription>Visualizza i totali di tutti gli operatori per il mese selezionato.</CardDescription>

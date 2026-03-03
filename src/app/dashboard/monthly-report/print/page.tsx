@@ -233,7 +233,7 @@ const PrintPageContent = () => {
                  if (isFirstPage) {
                     doc.setFontSize(14);
                     doc.setFont('helvetica', 'bold');
-                    const title = globalCompact ? `ELENCO COMPETENZE - ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}` : "Report Mensile Operatori";
+                    const title = globalCompact ? format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase() : "Report Mensile Operatori";
                     doc.text(title, pageWidth / 2, y, { align: 'center' });
                     y += 7;
                     if (!globalCompact) {
@@ -435,7 +435,7 @@ const PrintPageContent = () => {
                     <div className="mb-6 text-center">
                         <h2 className="text-xl font-bold text-black uppercase">
                             {globalCompact 
-                                ? `ELENCO COMPETENZE - ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`
+                                ? format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()
                                 : "Report Mensile Operatori"}
                         </h2>
                         {!globalCompact && <p className="text-gray-600 capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>}
