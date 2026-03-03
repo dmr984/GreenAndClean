@@ -121,7 +121,7 @@ const MonthlyReportPage = () => {
             ops.forEach(op => {
                 initialVisibility[op.id] = {
                     workedDays: true,
-                    showWorkedHours: false,
+                    showWorkedHours: true, // Default to true as requested
                     ordinaryHours: true,
                     overtimeHours: true,
                     ferieDays: true,
@@ -195,7 +195,7 @@ const MonthlyReportPage = () => {
 
         } catch (error) {
             console.error("Error fetching monthly report data:", error);
-            toast({ title: 'Errore', description: 'Impossibile caricare il report mensile.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile caricare le report mensile.', variant: 'destructive' });
         } finally {
             setIsLoading(false);
         }
@@ -380,7 +380,7 @@ const MonthlyReportPage = () => {
     const handleVisibilityChange = (operatorId: string, key: keyof VisibilitySettings) => {
         setVisibility(prev => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
-                workedDays: true, showWorkedHours: false, ordinaryHours: true, overtimeHours: true, ferieDays: true,
+                workedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
                 overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, compactMode: false,
             };
@@ -421,7 +421,7 @@ const MonthlyReportPage = () => {
     }) => {
         const opVisibility = visibility[opId];
         const isVisible = opVisibility ? opVisibility[visibilityKey] : true;
-        const isExtraSwitchVisible = extraSwitchKey ? (opVisibility ? opVisibility[extraSwitchKey] : false) : false;
+        const isExtraSwitchVisible = extraSwitchKey ? (opVisibility ? opVisibility[extraSwitchKey] : true) : false;
 
         return (
             <div className={cn("flex flex-col p-2 border rounded-md transition-all", !isVisible && "bg-muted/50")}>
