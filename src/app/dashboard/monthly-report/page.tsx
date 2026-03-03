@@ -1,9 +1,10 @@
+
 // src/app/dashboard/monthly-report/page.tsx
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch, orderBy } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil, Wallet, Trash2, Clock, Plus, UserCheck } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil, Wallet, Trash2, Clock, Plus, UserCheck, LayoutList } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
@@ -45,7 +46,7 @@ type ManualTotals = {
 
 type VisibilitySettings = {
     workedDays: boolean;
-    showWorkedHours: boolean; // New setting
+    showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
     ferieDays: boolean;
@@ -57,6 +58,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
+    compactMode: boolean; // New setting
 };
 
 
@@ -114,7 +116,7 @@ const MonthlyReportPage = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
-            // Configure visibilities, but do not select all by default anymore
+            // Configure visibilities
             const initialVisibility: Record<string, VisibilitySettings> = {};
             ops.forEach(op => {
                 initialVisibility[op.id] = {
@@ -131,6 +133,7 @@ const MonthlyReportPage = () => {
                     ferieCost: true,
                     permessoCost: true,
                     malattiaCost: true,
+                    compactMode: false,
                 };
             });
             setVisibility(initialVisibility);
@@ -148,7 +151,6 @@ const MonthlyReportPage = () => {
         const monthStart = startOfMonth(date);
         const monthEnd = dfnsEndOfMonth(date);
         
-        // Widen query range to catch makeup shifts from adjacent months
         const queryStart = subMonths(monthStart, 1);
         const queryEnd = addMonths(monthEnd, 1);
 
@@ -159,8 +161,6 @@ const MonthlyReportPage = () => {
                     where('timestamp', '>=', queryStart),
                     where('timestamp', '<=', queryEnd)
                 );
-                // Fetch all approved requests, not just those starting in the current month,
-                // as some might span across months (e.g., ferie).
                 const requestsQuery = query(
                     collection(firestore, `app-users/${op.id}/requests`),
                     where('status', '==', 'approvato')
@@ -316,13 +316,13 @@ const MonthlyReportPage = () => {
                 // Monthly Overrides
                 const monthId = format(currentMonth, 'yyyy-MM');
                 const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
-                batch.delete(overrideDocRef); // It's okay if it doesn't exist.
+                batch.delete(overrideDocRef);
             }
 
             await batch.commit();
             toast({ title: "Successo!", description: `I dati per gli operatori selezionati sono stati eliminati per ${format(currentMonth, 'MMMM yyyy', { locale: it })}.` });
-            fetchDataForMonth(currentMonth); // Refresh data
-            setSelectedOperatorIds(new Set()); // Clear selection
+            fetchDataForMonth(currentMonth);
+            setSelectedOperatorIds(new Set());
         } catch (error) {
             console.error("Errore pulizia mese:", error);
             toast({ title: "Errore", description: "Impossibile completare la pulizia.", variant: "destructive" });
@@ -364,7 +364,6 @@ const MonthlyReportPage = () => {
                 setTotalContent('');
             });
         
-         // Optimistic update
         setManualOverrides(prev => ({
             ...prev,
             [operatorId]: {
@@ -382,7 +381,7 @@ const MonthlyReportPage = () => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
                 workedDays: true, showWorkedHours: false, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
-                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true,
+                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, compactMode: false,
             };
             return {
                 ...prev,
@@ -508,7 +507,7 @@ const MonthlyReportPage = () => {
                             {operators.map(op => {
                                 const summary = summaries.get(op.id);
                                 const override = manualOverrides[op.id];
-                                const opVisibility = visibility[op.id] || {} as VisibilitySettings;
+                                const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
                                 const totalDue = calculateTotalDue(op, summary, opVisibility);
                                 
                                 const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
@@ -529,7 +528,7 @@ const MonthlyReportPage = () => {
                                     : summary?.workedDays || 0;
 
                                 return (
-                                    <Card key={op.id}>
+                                    <Card key={op.id} className={cn(opVisibility.compactMode && "border-primary/20")}>
                                         <CardHeader>
                                             <div className='flex justify-between items-start'>
                                                 <div className="flex items-center gap-4">
@@ -543,10 +542,21 @@ const MonthlyReportPage = () => {
                                                         <CardDescription>Codice: {op.username}</CardDescription>
                                                     </Link>
                                                 </div>
-                                                <div className='font-semibold text-lg flex items-center gap-2'><Euro className="h-5 w-5" />{totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                <div className="flex flex-col items-end gap-2">
+                                                    <div className='font-bold text-lg flex items-center gap-2'><Euro className="h-5 w-5" />{totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground">Vista Sintetica</Label>
+                                                        <Switch
+                                                            id={`compact-${op.id}`}
+                                                            checked={opVisibility.compactMode}
+                                                            onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
+                                                            className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </CardHeader>
-                                        {summary && (
+                                        {summary && !opVisibility.compactMode && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
                                                 <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />

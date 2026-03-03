@@ -1,3 +1,4 @@
+
 // src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
@@ -47,6 +48,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
+    compactMode: boolean; // Added compactMode
 };
 
 const PrintPageContent = () => {
@@ -67,7 +69,7 @@ const PrintPageContent = () => {
         const month = searchParams.get('month'); // YYYY-MM
         if (month) {
             const [year, monthIndex] = month.split('-').map(Number);
-            const parsedDate = new Date(Date.UTC(year, monthIndex - 1, 15)); // Use 15th to be safe
+            const parsedDate = new Date(Date.UTC(year, monthIndex - 1, 15));
             if (isValid(parsedDate)) {
                 setCurrentMonth(parsedDate);
             }
@@ -121,7 +123,6 @@ const PrintPageContent = () => {
 
             const monthStart = startOfMonth(date);
             const monthEnd = dfnsEndOfMonth(date);
-            // Widen query range
             const queryStart = subMonths(monthStart, 1);
             const queryEnd = addMonths(monthEnd, 1);
 
@@ -130,7 +131,6 @@ const PrintPageContent = () => {
 
             try {
                 const promises = filteredOperators.map(async (op) => {
-                    // Fetch overrides for each operator
                     const overrideDocRef = doc(firestore, `app-users/${op.id}/monthly-overrides`, monthId);
                     const overrideSnap = await getDoc(overrideDocRef);
                     if (overrideSnap.exists()) {
@@ -203,11 +203,11 @@ const PrintPageContent = () => {
         const malattiaCost = summary.malattiaCost || 0;
 
         let total = 0;
-        if (finalVisibility.ordinaryCost) total += ordinaryCost;
-        if (finalVisibility.overtimeCost) total += overtimeCost;
-        if (finalVisibility.ferieCost) total += ferieCost;
-        if (finalVisibility.permessoCost) total += permessoCost;
-        if (finalVisibility.malattiaCost) total += malattiaCost;
+        if (finalVisibility.ordinaryCost !== false) total += ordinaryCost;
+        if (finalVisibility.overtimeCost !== false) total += overtimeCost;
+        if (finalVisibility.ferieCost !== false) total += ferieCost;
+        if (finalVisibility.permessoCost !== false) total += permessoCost;
+        if (finalVisibility.malattiaCost !== false) total += malattiaCost;
         
         return total;
     }, []);
@@ -255,7 +255,36 @@ const PrintPageContent = () => {
 
                 const totalDue = calculateTotalDue(op, summary, opVisibility);
 
-                if (y > pageHeight - 60) { // Check if space is enough
+                if (opVisibility.compactMode) {
+                    // --- COMPACT MODE FOR PDF ---
+                    if (y > pageHeight - 15) {
+                        doc.addPage();
+                        y = 20;
+                        addHeader(false);
+                    }
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(`${op.firstName} ${op.lastName}`.toUpperCase(), margin, y);
+                    
+                    doc.setFont('helvetica', 'normal');
+                    const dots = ".".repeat(100);
+                    const dotsWidth = doc.getTextWidth(dots);
+                    const nameWidth = doc.getTextWidth(`${op.firstName} ${op.lastName} `);
+                    const totalText = `TOTALE: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
+                    const totalWidth = doc.getTextWidth(totalText);
+                    
+                    doc.setTextColor(150);
+                    doc.text("....................................................................................................", margin + nameWidth, y);
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(totalText, pageWidth - margin, y, { align: 'right' });
+                    y += 8;
+                    return;
+                }
+
+                // --- DETAILED MODE FOR PDF ---
+                if (y > pageHeight - 60) {
                     doc.addPage();
                     y = 20;
                     addHeader(false); 
@@ -279,16 +308,15 @@ const PrintPageContent = () => {
                 
                 const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
 
-                // --- Dynamic Body Data ---
                 const allItems = [
-                    opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : null,
-                    opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                    opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
-                    opVisibility.overtimeCost ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                    opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                    opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                    opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : null,
-                    opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : null
+                    opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
+                    opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+                    opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
+                    opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+                    opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
+                    opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
+                    opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
+                    opVisibility.absenceDays !== false ? `ASSENZE: ${summary.absenceDays}` : null
                 ].filter(Boolean) as string[];
 
                 const bodyData: [string, string][] = [];
@@ -308,7 +336,7 @@ const PrintPageContent = () => {
                     }
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
-                    y += 5; // space between rows
+                    y += 5;
                 });
                 
                 y += 2;
@@ -320,7 +348,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 8;
+                y += 10;
             });
 
 
@@ -421,15 +449,27 @@ const PrintPageContent = () => {
                             
                             const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
                             
+                            if (opVisibility.compactMode) {
+                                return (
+                                    <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-2 border-b border-dashed border-gray-300">
+                                        <div className="flex justify-between items-baseline gap-2">
+                                            <p className="font-bold text-base text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
+                                            <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
+                                            <p className="font-bold text-base text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
                             const allItems = [
-                                opVisibility.workedDays ? `GIORNI LAVORATI: ${workedDaysText}` : null,
-                                opVisibility.ordinaryCost ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.overtimeHours ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
-                                opVisibility.overtimeCost ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.malattiaDays ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                                opVisibility.permessoHours ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                                opVisibility.ferieDays ? `FERIE: ${finalFerieDays}` : null,
-                                opVisibility.absenceDays ? `ASSENZE: ${summary.absenceDays}` : null
+                                opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
+                                opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+                                opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
+                                opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+                                opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
+                                opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
+                                opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
+                                opVisibility.absenceDays !== false ? `ASSENZE: ${summary.absenceDays}` : null
                             ].filter(Boolean) as string[];
 
                             const bodyData: [string, string][] = [];
