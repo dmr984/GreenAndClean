@@ -1,4 +1,3 @@
-
 // src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
@@ -232,21 +231,7 @@ const PrintPageContent = () => {
             let y = 20;
 
             const addHeader = (isFirstPage: boolean) => {
-                 if (isFirstPage) {
-                    doc.setFontSize(14);
-                    doc.setFont('helvetica', 'bold');
-                    const title = globalCompact ? format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase() : "Report Mensile Operatori";
-                    doc.text(title, pageWidth / 2, y, { align: 'center' });
-                    y += 7;
-                    if (!globalCompact) {
-                        doc.setFontSize(10);
-                        doc.setFont('helvetica', 'normal');
-                        doc.setTextColor(100);
-                        const dateStr = format(currentMonth, 'MMMM yyyy', { locale: it });
-                        doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth / 2, y, { align: 'center' });
-                        y += 5;
-                    }
-                }
+                // No title added as per request
             };
 
             addHeader(true);
@@ -274,7 +259,6 @@ const PrintPageContent = () => {
                     doc.text(`${op.firstName} ${op.lastName}`.toUpperCase(), margin, y);
                     
                     doc.setFont('helvetica', 'normal');
-                    const dots = ".".repeat(100);
                     const nameWidth = doc.getTextWidth(`${op.firstName} ${op.lastName} `);
                     const totalText = `TOTALE: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
                     
@@ -348,7 +332,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 20; // Re-adjusted from 30 to 20 to fit 3 per page reliably
+                y += 20; 
                 itemsOnCurrentPage++;
             });
 
@@ -429,15 +413,6 @@ const PrintPageContent = () => {
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
-                    <div className="mb-6 text-center">
-                        <h2 className="text-xl font-bold text-black uppercase">
-                            {globalCompact 
-                                ? format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()
-                                : "Report Mensile Operatori"}
-                        </h2>
-                        {!globalCompact && <p className="text-gray-600 capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>}
-                    </div>
-
                     <div className="space-y-4">
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
@@ -487,12 +462,11 @@ const PrintPageContent = () => {
                                 bodyData.push([allItems[i], allItems[i + 1] || '']);
                             }
 
-                            // Forced break every 3 operators in detailed view to keep layout consistent
                             const needsPageBreak = (index + 1) % 3 === 0 && (index + 1) < filteredOperators.length;
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-sm text-black print:break-inside-avoid pb-16", // Reduced pb from 24 to 16 to help 3 fit
+                                    "text-sm text-black print:break-inside-avoid pb-16", 
                                     needsPageBreak && "print:break-after-page"
                                 )}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
