@@ -1,3 +1,4 @@
+
 // src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
@@ -12,6 +13,7 @@ import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
 import { Toaster } from '@/components/ui/toaster';
+import { cn } from '@/lib/utils';
 
 type Operator = {
     id: string;
@@ -249,16 +251,14 @@ const PrintPageContent = () => {
 
             addHeader(true);
             
+            let itemsOnCurrentPage = 0;
+
             filteredOperators.forEach((op) => {
                 const summary = summaries.get(op.id);
                 if (!summary) return;
                 const override = manualOverrides[op.id] || {};
                 const opVisibility = visibility[op.id] || {};
                 
-                const finalFerieDays = override.ferieDays ?? summary.ferieDays;
-                const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
-                const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
-
                 const totalDue = calculateTotalDue(op, summary, opVisibility);
 
                 if (globalCompact || opVisibility.compactMode) {
@@ -287,11 +287,12 @@ const PrintPageContent = () => {
                     return;
                 }
 
-                // --- DETAILED MODE FOR PDF ---
-                if (y > pageHeight - 60) {
+                // --- DETAILED MODE FOR PDF (Max 3 per page) ---
+                if (itemsOnCurrentPage === 3 || y > pageHeight - 70) {
                     doc.addPage();
                     y = 20;
                     addHeader(false); 
+                    itemsOnCurrentPage = 0;
                 }
 
                 doc.setFontSize(14);
@@ -317,9 +318,9 @@ const PrintPageContent = () => {
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                     opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                    opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                    opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                    opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
+                    opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${override.malattiaDays ?? summary.malattiaDays}`: null,
+                    opVisibility.permessoHours !== false ? `ORE PERMESSI: ${override.permessoHours ?? summary.permessoHours}` : null,
+                    opVisibility.ferieDays !== false ? `FERIE: ${override.ferieDays ?? summary.ferieDays}` : null,
                     opVisibility.absenceDays !== false ? `ASSENZE: ${summary.absenceDays}` : null
                 ].filter(Boolean) as string[];
 
@@ -333,26 +334,22 @@ const PrintPageContent = () => {
                 doc.setTextColor(0,0,0);
 
                 bodyData.forEach(row => {
-                    if (y > pageHeight - 20) {
-                        doc.addPage();
-                        y = 20;
-                        addHeader(false);
-                    }
+                    y += 5;
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
-                    y += 5;
                 });
                 
                 y += 2;
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
-                y += 5;
+                doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 5, { align: 'right' });
+                y += 10;
 
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 10;
+                y += 15; // Extra space after signature
+                itemsOnCurrentPage++;
             });
 
 
@@ -490,9 +487,15 @@ const PrintPageContent = () => {
                                 bodyData.push([allItems[i], allItems[i + 1] || '']);
                             }
 
+                            // Calculate if we need a page break after this operator
+                            // Forced break every 3 operators in detailed view
+                            const needsPageBreak = (index + 1) % 3 === 0 && (index + 1) < filteredOperators.length;
 
                             return (
-                                <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-1">
+                                <div key={op.id} className={cn(
+                                    "text-sm text-black print:break-inside-avoid pb-12", // Added pb-12 for more space between operators
+                                    needsPageBreak && "print:break-after-page"
+                                )}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
                                     <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
                                     
@@ -511,7 +514,7 @@ const PrintPageContent = () => {
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='pt-1'>
+                                    <div className='pt-2'>
                                         <p className="text-base text-black">FIRMA: _____________________________</p>
                                     </div>
                                     
