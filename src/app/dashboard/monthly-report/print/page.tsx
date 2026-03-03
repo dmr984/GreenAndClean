@@ -144,8 +144,8 @@ const PrintPageContent = () => {
 
                     const timbratureQuery = query(
                         collection(firestore, `app-users/${op.id}/timbrature`),
-                        where('timestamp', '>=', queryStart),
-                        where('timestamp', '<=', queryEnd)
+                        where('timestamp', '>=', monthStart),
+                        where('timestamp', '<=', monthEnd)
                     );
                      const requestsQuery = query(
                         collection(firestore, `app-users/${op.id}/requests`),
@@ -348,7 +348,7 @@ const PrintPageContent = () => {
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 15; // Extra space after signature
+                y += 30; // Increased extra space after signature from 15 to 30
                 itemsOnCurrentPage++;
             });
 
@@ -493,7 +493,7 @@ const PrintPageContent = () => {
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-sm text-black print:break-inside-avoid pb-12", // Added pb-12 for more space between operators
+                                    "text-sm text-black print:break-inside-avoid pb-24", // Increased pb-12 to pb-24 for even more space
                                     needsPageBreak && "print:break-after-page"
                                 )}>
                                     <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
