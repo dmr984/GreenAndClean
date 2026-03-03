@@ -1,4 +1,3 @@
-
 // src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
@@ -48,7 +47,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
-    compactMode: boolean; // Added compactMode
+    compactMode: boolean;
 };
 
 const PrintPageContent = () => {
@@ -64,6 +63,7 @@ const PrintPageContent = () => {
     const [visibility, setVisibility] = useState<Record<string, Partial<VisibilitySettings>>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [globalCompact, setGlobalCompact] = useState(false);
 
     useEffect(() => {
         const month = searchParams.get('month'); // YYYY-MM
@@ -76,6 +76,9 @@ const PrintPageContent = () => {
         } else {
             setCurrentMonth(new Date());
         }
+
+        const isGlobalCompact = searchParams.get('globalCompact') === 'true';
+        setGlobalCompact(isGlobalCompact);
 
         const visibilitySettings: Record<string, Partial<VisibilitySettings>> = {};
         for (const [key, value] of searchParams.entries()) {
@@ -230,14 +233,17 @@ const PrintPageContent = () => {
                  if (isFirstPage) {
                     doc.setFontSize(14);
                     doc.setFont('helvetica', 'bold');
-                    doc.text("Report Mensile Operatori", pageWidth / 2, y, { align: 'center' });
+                    const title = globalCompact ? `ELENCO COMPETENZE - ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}` : "Report Mensile Operatori";
+                    doc.text(title, pageWidth / 2, y, { align: 'center' });
                     y += 7;
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    doc.setTextColor(100);
-                    const dateStr = format(currentMonth, 'MMMM yyyy', { locale: it });
-                    doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth / 2, y, { align: 'center' });
-                    y += 5;
+                    if (!globalCompact) {
+                        doc.setFontSize(10);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setTextColor(100);
+                        const dateStr = format(currentMonth, 'MMMM yyyy', { locale: it });
+                        doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageWidth / 2, y, { align: 'center' });
+                        y += 5;
+                    }
                 }
             };
 
@@ -255,7 +261,7 @@ const PrintPageContent = () => {
 
                 const totalDue = calculateTotalDue(op, summary, opVisibility);
 
-                if (opVisibility.compactMode) {
+                if (globalCompact || opVisibility.compactMode) {
                     // --- COMPACT MODE FOR PDF ---
                     if (y > pageHeight - 15) {
                         doc.addPage();
@@ -269,10 +275,8 @@ const PrintPageContent = () => {
                     
                     doc.setFont('helvetica', 'normal');
                     const dots = ".".repeat(100);
-                    const dotsWidth = doc.getTextWidth(dots);
                     const nameWidth = doc.getTextWidth(`${op.firstName} ${op.lastName} `);
                     const totalText = `TOTALE: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
-                    const totalWidth = doc.getTextWidth(totalText);
                     
                     doc.setTextColor(150);
                     doc.text("....................................................................................................", margin + nameWidth, y);
@@ -363,7 +367,7 @@ const PrintPageContent = () => {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast, visibility]);
+    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast, visibility, globalCompact]);
 
     const handlePrint = () => {
         window.print();
@@ -428,6 +432,15 @@ const PrintPageContent = () => {
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
+                    <div className="mb-6 text-center">
+                        <h2 className="text-xl font-bold text-black uppercase">
+                            {globalCompact 
+                                ? `ELENCO COMPETENZE - ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`
+                                : "Report Mensile Operatori"}
+                        </h2>
+                        {!globalCompact && <p className="text-gray-600 capitalize">{format(currentMonth, 'MMMM yyyy', { locale: it })}</p>}
+                    </div>
+
                     <div className="space-y-4">
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
@@ -449,7 +462,7 @@ const PrintPageContent = () => {
                             
                             const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
                             
-                            if (opVisibility.compactMode) {
+                            if (globalCompact || opVisibility.compactMode) {
                                 return (
                                     <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-2 border-b border-dashed border-gray-300">
                                         <div className="flex justify-between items-baseline gap-2">

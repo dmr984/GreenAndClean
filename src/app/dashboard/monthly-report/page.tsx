@@ -1,4 +1,3 @@
-
 // src/app/dashboard/monthly-report/page.tsx
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -7,7 +6,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, 
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil, Wallet, Trash2, Clock, Plus, UserCheck, LayoutList } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfDay, isWithinInterval, startOfDay, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -58,7 +57,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
-    compactMode: boolean; // New setting
+    compactMode: boolean;
 };
 
 
@@ -71,6 +70,7 @@ const MonthlyReportPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(new Set());
     const [visibility, setVisibility] = useState<Record<string, VisibilitySettings>>({});
+    const [globalCompactMode, setGlobalCompactMode] = useState(false);
 
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
@@ -228,6 +228,7 @@ const MonthlyReportPage = () => {
         const queryParams = new URLSearchParams({
             month: monthString,
             operators: operatorIdsString,
+            globalCompact: String(globalCompactMode)
         });
 
         // Add visibility params
@@ -464,7 +465,11 @@ const MonthlyReportPage = () => {
             <Card>
                 <CardHeader className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
                     <div>
-                        <CardTitle className="text-2xl">Report Mensile Aggregato</CardTitle>
+                        <CardTitle className="text-2xl">
+                            {globalCompactMode 
+                                ? `Elenco Competenze - ${format(currentMonth, 'MMMM yyyy', { locale: it })}` 
+                                : 'Report Mensile Aggregato'}
+                        </CardTitle>
                         <CardDescription>Visualizza i totali di tutti gli operatori per il mese selezionato.</CardDescription>
                     </div>
                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -495,19 +500,31 @@ const MonthlyReportPage = () => {
                         <p className="text-center text-muted-foreground py-10">Nessun operatore trovato. Aggiungine uno dalla sezione "Gestione Operatori".</p>
                     ) : (
                         <>
-                        <div className="flex items-center space-x-2 mb-4 p-2 border rounded-md">
-                           <Checkbox
-                                id="select-all"
-                                checked={selectedOperatorIds.size === operators.length && operators.length > 0}
-                                onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
-                            />
-                            <Label htmlFor="select-all" className="font-semibold">Seleziona/Deseleziona Tutto</Label>
+                        <div className="flex flex-wrap items-center gap-4 mb-4 p-2 border rounded-md bg-muted/20">
+                           <div className="flex items-center space-x-2">
+                               <Checkbox
+                                    id="select-all"
+                                    checked={selectedOperatorIds.size === operators.length && operators.length > 0}
+                                    onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                                />
+                                <Label htmlFor="select-all" className="font-semibold cursor-pointer">Seleziona Tutto</Label>
+                            </div>
+                            <Separator orientation="vertical" className="hidden sm:block h-6" />
+                            <div className="flex items-center space-x-2">
+                                <Switch 
+                                    id="global-compact" 
+                                    checked={globalCompactMode} 
+                                    onCheckedChange={setGlobalCompactMode} 
+                                />
+                                <Label htmlFor="global-compact" className="font-semibold cursor-pointer text-primary">Vista Sintetica Globale</Label>
+                            </div>
                         </div>
                         <div className="space-y-4">
                             {operators.map(op => {
                                 const summary = summaries.get(op.id);
                                 const override = manualOverrides[op.id];
                                 const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
+                                const isCompact = globalCompactMode || opVisibility.compactMode;
                                 const totalDue = calculateTotalDue(op, summary, opVisibility);
                                 
                                 const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
@@ -528,8 +545,8 @@ const MonthlyReportPage = () => {
                                     : summary?.workedDays || 0;
 
                                 return (
-                                    <Card key={op.id} className={cn(opVisibility.compactMode && "border-primary/20")}>
-                                        <CardHeader>
+                                    <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
+                                        <CardHeader className={cn(isCompact && "py-3")}>
                                             <div className='flex justify-between items-start'>
                                                 <div className="flex items-center gap-4">
                                                     <Checkbox
@@ -538,25 +555,27 @@ const MonthlyReportPage = () => {
                                                         onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
                                                     />
                                                     <Link href={`/dashboard/operators/${op.id}/end-of-month`}>
-                                                        <CardTitle className="hover:underline">{op.firstName} {op.lastName}</CardTitle>
-                                                        <CardDescription>Codice: {op.username}</CardDescription>
+                                                        <CardTitle className="hover:underline text-lg">{op.firstName} {op.lastName}</CardTitle>
+                                                        {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
                                                     </Link>
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2">
                                                     <div className='font-bold text-lg flex items-center gap-2'><Euro className="h-5 w-5" />{totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground">Vista Sintetica</Label>
-                                                        <Switch
-                                                            id={`compact-${op.id}`}
-                                                            checked={opVisibility.compactMode}
-                                                            onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
-                                                            className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
-                                                        />
-                                                    </div>
+                                                    {!globalCompactMode && (
+                                                        <div className="flex items-center gap-2">
+                                                            <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground">Vista Sintetica</Label>
+                                                            <Switch
+                                                                id={`compact-${op.id}`}
+                                                                checked={opVisibility.compactMode}
+                                                                onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
+                                                                className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardHeader>
-                                        {summary && !opVisibility.compactMode && (
+                                        {summary && !isCompact && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
                                                 <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
