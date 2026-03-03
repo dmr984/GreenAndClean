@@ -23,6 +23,7 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -279,6 +280,8 @@ export default function LeaveRequestsPage() {
 
     const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
     const [isBatchApproving, setIsBatchApproving] = useState(false);
+    const [isBatchConfirmOpen, setIsBatchConfirmOpen] = useState(false);
+    const [batchApplyContractual, setBatchApplyContractual] = useState(true);
     
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -402,27 +405,30 @@ export default function LeaveRequestsPage() {
         for (const request of requestsToApprove) {
             const docRef = doc(firestore, `app-users/${operatorId}/requests`, request.id);
             const dailyCosts: Record<string, number> = {};
-            const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
+            
+            if (batchApplyContractual) {
+                const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
 
-            if (request.type === 'permesso') {
-                const cost = (request.hours || 0) * (operator.hourlyRate || 0);
-                if (days.length > 0) {
-                    const dateKey = formatISO(days[0], { representation: 'date' });
-                    dailyCosts[dateKey] = cost;
-                }
-            } else if (request.type === 'ferie' || request.type === 'malattia') {
-                days.forEach(day => {
-                    const dateKey = formatISO(day, { representation: 'date' });
-                    const dayName = dayIndexToName[getDay(day)];
-                    const contractualHours = operator.workSchedule?.[dayName]?.totalHours || 0;
-                    let rate = 0;
-                    if (request.type === 'ferie') {
-                        rate = operator.hourlyRate || 0;
-                    } else if (request.type === 'malattia') {
-                        rate = operator.sickLeaveRate || 0;
+                if (request.type === 'permesso') {
+                    const cost = (request.hours || 0) * (operator.hourlyRate || 0);
+                    if (days.length > 0) {
+                        const dateKey = formatISO(days[0], { representation: 'date' });
+                        dailyCosts[dateKey] = cost;
                     }
-                    dailyCosts[dateKey] = contractualHours * rate;
-                });
+                } else if (request.type === 'ferie' || request.type === 'malattia') {
+                    days.forEach(day => {
+                        const dateKey = formatISO(day, { representation: 'date' });
+                        const dayName = dayIndexToName[getDay(day)];
+                        const contractualHours = operator.workSchedule?.[dayName]?.totalHours || 0;
+                        let rate = 0;
+                        if (request.type === 'ferie') {
+                            rate = operator.hourlyRate || 0;
+                        } else if (request.type === 'malattia') {
+                            rate = operator.sickLeaveRate || 0;
+                        }
+                        dailyCosts[dateKey] = contractualHours * rate;
+                    });
+                }
             }
             
             batch.update(docRef, { status: 'approvato', viewedByOperator: false, dailyCosts });
@@ -430,8 +436,9 @@ export default function LeaveRequestsPage() {
 
         try {
             await batch.commit();
-            toast({ title: 'Successo', description: `${selectedRequests.size} richieste approvate con costo contrattuale.` });
+            toast({ title: 'Successo', description: `${selectedRequests.size} richieste approvate ${batchApplyContractual ? 'con costo contrattuale' : ''}.` });
             setSelectedRequests(new Set());
+            setIsBatchConfirmOpen(false);
         } catch (error) {
             console.error("Error approving selected requests:", error);
             toast({ title: 'Errore', description: 'Impossibile approvare le richieste selezionate.', variant: 'destructive' });
@@ -542,7 +549,7 @@ export default function LeaveRequestsPage() {
                     </div>
                      <div className="flex items-center gap-2">
                         {selectedRequests.size > 0 && (
-                            <Button onClick={handleApproveSelected} disabled={isBatchApproving}>
+                            <Button onClick={() => setIsBatchConfirmOpen(true)} disabled={isBatchApproving}>
                                 {isBatchApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-2 h-4 w-4" />}
                                 Approva Selezionate ({selectedRequests.size})
                             </Button>
@@ -613,6 +620,32 @@ export default function LeaveRequestsPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
+            <AlertDialog open={isBatchConfirmOpen} onOpenChange={setIsBatchConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Approva {selectedRequests.size} Richieste</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Stai per approvare tutte le richieste selezionate. Vuoi applicare i costi contrattuali automaticamente?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="flex items-center space-x-2 py-4">
+                        <Switch 
+                            id="batch-apply-contractual" 
+                            checked={batchApplyContractual} 
+                            onCheckedChange={setBatchApplyContractual}
+                        />
+                        <Label htmlFor="batch-apply-contractual">Applica tariffa contrattuale</Label>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleApproveSelected} disabled={isBatchApproving}>
+                            {isBatchApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                            Conferma Approvazione
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {editingRequest && (
                 <EditRequestDialog 
                     request={editingRequest} 
@@ -670,4 +703,3 @@ export default function LeaveRequestsPage() {
         </>
     );
 };
-
