@@ -271,23 +271,25 @@ const PrintPageContent = () => {
                     return;
                 }
 
-                // --- DETAILED MODE FOR PDF (Max 3 per page) ---
-                if (itemsOnCurrentPage === 3 || y > pageHeight - 65) {
+                // --- DETAILED MODE FOR PDF (Max 2 per page) ---
+                if (itemsOnCurrentPage === 2 || y > pageHeight - 100) {
                     doc.addPage();
                     y = 20;
                     addHeader(false); 
                     itemsOnCurrentPage = 0;
                 }
 
-                doc.setFontSize(14);
+                const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
+
+                doc.setFontSize(16);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.setFontSize(10);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
-                doc.text(`MESE: ${format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase()}`, pageWidth - margin, y, { align: 'right' });
-                y += 2;
+                doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
+                y += 5;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -313,26 +315,35 @@ const PrintPageContent = () => {
                     bodyData.push([allItems[i], allItems[i + 1] || '']);
                 }
                 
-                doc.setFontSize(10);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0,0,0);
 
                 bodyData.forEach(row => {
-                    y += 5;
+                    y += 6;
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
                 });
                 
-                y += 2;
-                doc.setFontSize(12);
+                y += 4;
+                doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
                 doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 5, { align: 'right' });
-                y += 10;
+                y += 15;
 
+                // Declaration
                 doc.setFontSize(10);
+                doc.setFont('helvetica', 'italic');
+                doc.setTextColor(0, 0, 0);
+                const declarationText = `Io sottoscritto, ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare gli importi indicati.`;
+                const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
+                doc.text(splitDeclaration, margin, y);
+                y += (splitDeclaration.length * 5) + 5;
+
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 20; 
+                y += 35; // Large spacing for next operator
                 itemsOnCurrentPage++;
             });
 
@@ -462,33 +473,42 @@ const PrintPageContent = () => {
                                 bodyData.push([allItems[i], allItems[i + 1] || '']);
                             }
 
-                            const needsPageBreak = (index + 1) % 3 === 0 && (index + 1) < filteredOperators.length;
+                            const needsPageBreak = (index + 1) % 2 === 0 && (index + 1) < filteredOperators.length;
+                            const periodText = format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase();
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-sm text-black print:break-inside-avoid pb-16", 
+                                    "text-sm text-black print:break-inside-avoid pb-24 pt-4", 
                                     needsPageBreak && "print:break-after-page"
                                 )}>
-                                    <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                    <p className='text-sm text-gray-600'>MESE: {format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase()}</p>
+                                    <div className='flex justify-between items-start mb-2'>
+                                        <p className="font-bold text-xl text-black uppercase">{op.firstName} {op.lastName}</p>
+                                        <p className='text-sm text-gray-600 font-semibold'>MESE: {periodText}</p>
+                                    </div>
                                     
-                                    <table className="w-full text-base mt-1">
+                                    <table className="w-full text-lg mt-2 mb-4">
                                         <tbody>
                                             {bodyData.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td className="py-0">{row[0]}</td>
-                                                    <td className="py-0 text-right">{row[1]}</td>
+                                                    <td className="py-1 border-b border-gray-100">{row[0]}</td>
+                                                    <td className="py-1 text-right border-b border-gray-100">{row[1]}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                     
-                                     <div className="text-right font-bold text-lg mt-1 pt-1 text-black">
+                                     <div className="text-right font-bold text-2xl mt-4 pt-2 text-black border-t-2 border-gray-200">
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='pt-2'>
-                                        <p className="text-base text-black">FIRMA: _____________________________</p>
+                                    <div className='mt-8 mb-6 p-4 bg-gray-50 rounded-md border border-gray-200 italic text-gray-800 text-base'>
+                                        <p>
+                                            Io sottoscritto, <span className='font-bold'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
+                                        </p>
+                                    </div>
+
+                                    <div className='pt-4'>
+                                        <p className="text-lg text-black font-semibold">FIRMA: __________________________________________</p>
                                     </div>
                                     
                                 </div>
