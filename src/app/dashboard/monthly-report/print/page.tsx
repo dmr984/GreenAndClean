@@ -7,7 +7,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, getDoc, doc }
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfMonth, endOfDay, isValid, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
+import { format, startOfMonth, endOfDay, isValid, endOfMonth as dfnsEndOfMonth, subMonths, addMonths, parse } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
@@ -230,12 +230,6 @@ const PrintPageContent = () => {
             const margin = 15;
             let y = 20;
 
-            const addHeader = (isFirstPage: boolean) => {
-                // No title added as per request
-            };
-
-            addHeader(true);
-            
             let itemsOnCurrentPage = 0;
 
             filteredOperators.forEach((op) => {
@@ -251,7 +245,6 @@ const PrintPageContent = () => {
                     if (y > pageHeight - 15) {
                         doc.addPage();
                         y = 20;
-                        addHeader(false);
                     }
                     doc.setFontSize(11);
                     doc.setFont('helvetica', 'bold');
@@ -272,20 +265,19 @@ const PrintPageContent = () => {
                 }
 
                 // --- DETAILED MODE FOR PDF (Max 2 per page) ---
-                if (itemsOnCurrentPage === 2 || y > pageHeight - 100) {
+                if (itemsOnCurrentPage === 2) {
                     doc.addPage();
                     y = 20;
-                    addHeader(false); 
                     itemsOnCurrentPage = 0;
                 }
 
                 const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
 
-                doc.setFontSize(16);
+                doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.setFontSize(11);
+                doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
@@ -315,35 +307,35 @@ const PrintPageContent = () => {
                     bodyData.push([allItems[i], allItems[i + 1] || '']);
                 }
                 
-                doc.setFontSize(11);
+                doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0,0,0);
 
                 bodyData.forEach(row => {
-                    y += 6;
+                    y += 5;
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
                 });
                 
                 y += 4;
-                doc.setFontSize(14);
+                doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
                 doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 5, { align: 'right' });
-                y += 15;
+                y += 12;
 
                 // Declaration
-                doc.setFontSize(10);
+                doc.setFontSize(9);
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(0, 0, 0);
                 const declarationText = `Io sottoscritto, ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare gli importi indicati.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 5) + 5;
+                y += (splitDeclaration.length * 4) + 4;
 
-                doc.setFontSize(11);
+                doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
                 doc.text('FIRMA: _____________________________', margin, y);
-                y += 35; // Large spacing for next operator
+                y += 25; // Spacing for next operator
                 itemsOnCurrentPage++;
             });
 
@@ -478,37 +470,37 @@ const PrintPageContent = () => {
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-sm text-black print:break-inside-avoid pb-24 pt-4", 
+                                    "text-sm text-black print:break-inside-avoid pb-8 pt-4", 
                                     needsPageBreak && "print:break-after-page"
                                 )}>
                                     <div className='flex justify-between items-start mb-2'>
-                                        <p className="font-bold text-xl text-black uppercase">{op.firstName} {op.lastName}</p>
-                                        <p className='text-sm text-gray-600 font-semibold'>MESE: {periodText}</p>
+                                        <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
+                                        <p className='text-xs text-gray-600 font-semibold'>MESE: {periodText}</p>
                                     </div>
                                     
-                                    <table className="w-full text-lg mt-2 mb-4">
+                                    <table className="w-full text-base mt-1 mb-2">
                                         <tbody>
                                             {bodyData.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td className="py-1 border-b border-gray-100">{row[0]}</td>
-                                                    <td className="py-1 text-right border-b border-gray-100">{row[1]}</td>
+                                                    <td className="py-0.5 border-b border-gray-100">{row[0]}</td>
+                                                    <td className="py-0.5 text-right border-b border-gray-100">{row[1]}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                     
-                                     <div className="text-right font-bold text-2xl mt-4 pt-2 text-black border-t-2 border-gray-200">
+                                     <div className="text-right font-bold text-xl mt-2 pt-1 text-black border-t border-gray-300">
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='mt-8 mb-6 p-4 bg-gray-50 rounded-md border border-gray-200 italic text-gray-800 text-base'>
+                                    <div className='mt-4 mb-4 italic text-gray-800 text-sm leading-tight'>
                                         <p>
                                             Io sottoscritto, <span className='font-bold'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
                                         </p>
                                     </div>
 
-                                    <div className='pt-4'>
-                                        <p className="text-lg text-black font-semibold">FIRMA: __________________________________________</p>
+                                    <div className='pt-2'>
+                                        <p className="text-sm text-black font-semibold">FIRMA: __________________________________________</p>
                                     </div>
                                     
                                 </div>
