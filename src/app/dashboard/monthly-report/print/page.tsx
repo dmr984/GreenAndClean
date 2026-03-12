@@ -1,3 +1,4 @@
+
 // src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
@@ -246,7 +247,7 @@ const PrintPageContent = () => {
                         doc.addPage();
                         y = 20;
                     }
-                    doc.setFontSize(11);
+                    doc.setFontSize(12);
                     doc.setFont('helvetica', 'bold');
                     doc.setTextColor(0, 0, 0);
                     doc.text(`${op.firstName} ${op.lastName}`.toUpperCase(), margin, y);
@@ -260,11 +261,11 @@ const PrintPageContent = () => {
                     doc.setTextColor(0, 0, 0);
                     doc.setFont('helvetica', 'bold');
                     doc.text(totalText, pageWidth - margin, y, { align: 'right' });
-                    y += 8;
+                    y += 10;
                     return;
                 }
 
-                // --- DETAILED MODE FOR PDF (Max 2 per page) ---
+                // --- DETAILED MODE FOR PDF (Exactly 2 per page) ---
                 if (itemsOnCurrentPage === 2) {
                     doc.addPage();
                     y = 20;
@@ -273,15 +274,15 @@ const PrintPageContent = () => {
 
                 const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
 
-                doc.setFontSize(14);
+                doc.setFontSize(16);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.setFontSize(10);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
-                y += 5;
+                y += 8;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -307,35 +308,35 @@ const PrintPageContent = () => {
                     bodyData.push([allItems[i], allItems[i + 1] || '']);
                 }
                 
-                doc.setFontSize(10);
+                doc.setFontSize(12);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0,0,0);
 
                 bodyData.forEach(row => {
-                    y += 5;
+                    y += 7;
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
                 });
                 
-                y += 4;
-                doc.setFontSize(12);
+                y += 6;
+                doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
                 doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 5, { align: 'right' });
-                y += 12;
+                y += 15;
 
                 // Declaration
-                doc.setFontSize(9);
+                doc.setFontSize(10);
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(0, 0, 0);
                 const declarationText = `Io sottoscritto, ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare gli importi indicati.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 4) + 4;
+                y += (splitDeclaration.length * 5) + 6;
 
-                doc.setFontSize(10);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'normal');
-                doc.text('FIRMA: _____________________________', margin, y);
-                y += 25; // Spacing for next operator
+                doc.text('FIRMA: __________________________________________', margin, y);
+                y += 35; // Wider spacing for next operator
                 itemsOnCurrentPage++;
             });
 
@@ -415,7 +416,7 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
+                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
                     <div className="space-y-4">
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
@@ -439,11 +440,11 @@ const PrintPageContent = () => {
                             
                             if (globalCompact || opVisibility.compactMode) {
                                 return (
-                                    <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-2 border-b border-dashed border-gray-300">
+                                    <div key={op.id} className="text-base text-black print:break-inside-avoid pb-4 border-b border-dashed border-gray-300">
                                         <div className="flex justify-between items-baseline gap-2">
-                                            <p className="font-bold text-base text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
+                                            <p className="font-bold text-lg text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
-                                            <p className="font-bold text-base text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                            <p className="font-bold text-lg text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
                                         </div>
                                     </div>
                                 )
@@ -470,37 +471,37 @@ const PrintPageContent = () => {
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-sm text-black print:break-inside-avoid pb-8 pt-4", 
+                                    "text-black print:break-inside-avoid pb-20 pt-6", 
                                     needsPageBreak && "print:break-after-page"
                                 )}>
-                                    <div className='flex justify-between items-start mb-2'>
-                                        <p className="font-bold text-lg text-black uppercase">{op.firstName} {op.lastName}</p>
-                                        <p className='text-xs text-gray-600 font-semibold'>MESE: {periodText}</p>
+                                    <div className='flex justify-between items-start mb-4'>
+                                        <p className="font-bold text-xl text-black uppercase">{op.firstName} {op.lastName}</p>
+                                        <p className='text-sm text-gray-600 font-bold'>MESE: {periodText}</p>
                                     </div>
                                     
-                                    <table className="w-full text-base mt-1 mb-2">
+                                    <table className="w-full text-lg mt-2 mb-4">
                                         <tbody>
                                             {bodyData.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td className="py-0.5 border-b border-gray-100">{row[0]}</td>
-                                                    <td className="py-0.5 text-right border-b border-gray-100">{row[1]}</td>
+                                                    <td className="py-1 border-b border-gray-100">{row[0]}</td>
+                                                    <td className="py-1 text-right border-b border-gray-100">{row[1]}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                     
-                                     <div className="text-right font-bold text-xl mt-2 pt-1 text-black border-t border-gray-300">
+                                     <div className="text-right font-bold text-2xl mt-4 pt-2 text-black border-t-2 border-gray-300">
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='mt-4 mb-4 italic text-gray-800 text-sm leading-tight'>
+                                    <div className='mt-8 mb-8 italic text-gray-800 text-base leading-relaxed'>
                                         <p>
                                             Io sottoscritto, <span className='font-bold'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
                                         </p>
                                     </div>
 
-                                    <div className='pt-2'>
-                                        <p className="text-sm text-black font-semibold">FIRMA: __________________________________________</p>
+                                    <div className='pt-4'>
+                                        <p className="text-base text-black font-bold">FIRMA: __________________________________________________</p>
                                     </div>
                                     
                                 </div>
