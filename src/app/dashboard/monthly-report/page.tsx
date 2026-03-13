@@ -1,15 +1,16 @@
+
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch, orderBy } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee, ChevronLeft, ChevronRight, Euro, AlertTriangle, Pencil, Wallet, Trash2, Clock, Plus, UserCheck, LayoutList } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
+import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfMonth, endOfDay, isWithinInterval, startOfDay, subMonths, addMonths, endOfMonth as dfnsEndOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { processMonthlyData, DailyDetail, MonthlySummary } from '@/lib/calculations';
+import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -33,13 +34,12 @@ type Operator = {
     fixedSalary?: number;
     sickLeaveRate?: number;
 };
-type Request = { type: string; startDate: Timestamp; endDate: Timestamp; hours?: number; dailyCosts?: { [date: string]: number }; };
-type Timbratura = { type: string; timestamp: Timestamp; status: string; };
 
 type ManualTotals = {
     ferieDays?: number;
     permessoHours?: number;
     malattiaDays?: number;
+    totalDueOverride?: number;
 };
 
 type VisibilitySettings = {
@@ -120,7 +120,7 @@ const MonthlyReportPage = () => {
             ops.forEach(op => {
                 initialVisibility[op.id] = {
                     workedDays: true,
-                    showWorkedHours: true, // Selected by default
+                    showWorkedHours: true, 
                     ordinaryHours: true,
                     overtimeHours: true,
                     ferieDays: true,
@@ -157,8 +157,8 @@ const MonthlyReportPage = () => {
             const promises = operators.map(async (op) => {
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${op.id}/timbrature`),
-                    where('timestamp', '>=', queryStart),
-                    where('timestamp', '<=', queryEnd)
+                    where('timestamp', '>=', monthStart),
+                    where('timestamp', '<=', monthEnd)
                 );
                 const requestsQuery = query(
                     collection(firestore, `app-users/${op.id}/requests`),
@@ -241,7 +241,12 @@ const MonthlyReportPage = () => {
         window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
-    const calculateTotalDue = (op: Operator, summary: MonthlySummary | undefined, visibilitySettings: VisibilitySettings | undefined) => {
+    const calculateTotalDue = (opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: VisibilitySettings | undefined) => {
+        const override = manualOverrides[opId];
+        if (override?.totalDueOverride !== undefined) {
+            return override.totalDueOverride;
+        }
+        
         if (!summary || !visibilitySettings) return 0;
         
         const ordinaryCost = (op.salaryType === 'fixed' 
@@ -371,7 +376,7 @@ const MonthlyReportPage = () => {
                 [type]: newValue
             }
         }));
-        toast({ title: 'Totale Rettificato', description: 'Il nuovo valore è stato salvato in modo permanente.'});
+        toast({ title: 'Rettifica Salvata', description: 'Il nuovo valore è stato salvato in modo permanente per questo mese.'});
         setEditingTotal(null);
         setTotalContent('');
     };
@@ -395,7 +400,8 @@ const MonthlyReportPage = () => {
             case 'ferieDays': return 'Rettifica Ferie (giorni)';
             case 'permessoHours': return 'Rettifica Permessi (ore)';
             case 'malattiaDays': return 'Rettifica Malattia (giorni)';
-            default: return 'Rettifica Totale';
+            case 'totalDueOverride': return 'Rettifica Totale Dovuto (€)';
+            default: return 'Rettifica Valore';
         }
     }
 
@@ -524,7 +530,7 @@ const MonthlyReportPage = () => {
                                 const override = manualOverrides[op.id];
                                 const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
                                 const isCompact = globalCompactMode || opVisibility.compactMode;
-                                const totalDue = calculateTotalDue(op, summary, opVisibility);
+                                const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
                                 
                                 const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
                                 const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
@@ -559,7 +565,23 @@ const MonthlyReportPage = () => {
                                                     </Link>
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2">
-                                                    <div className='font-bold text-lg flex items-center gap-2'><Euro className="h-5 w-5" />{totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                    <div className='font-bold text-lg flex items-center gap-2'>
+                                                        <Euro className="h-5 w-5" />
+                                                        <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
+                                                            {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </span>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="h-6 w-6 ml-1" 
+                                                            onClick={() => {
+                                                                setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
+                                                                setTotalContent(String(totalDue));
+                                                            }}
+                                                        >
+                                                            <Pencil className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
                                                     {!globalCompactMode && (
                                                         <div className="flex items-center gap-2">
                                                             <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground">Vista Sintetica</Label>
@@ -608,13 +630,15 @@ const MonthlyReportPage = () => {
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                    <Label htmlFor="total-content" className="capitalize">{`Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}</Label>
+                    <Label htmlFor="total-content" className="capitalize">
+                        {editingTotal?.type === 'totalDueOverride' ? 'Nuovo Totale Dovuto (€)' : `Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}
+                    </Label>
                     <Input
                         id="total-content"
                         type="number"
                         value={totalContent}
                         onChange={(e) => setTotalContent(e.target.value)}
-                        placeholder="Es: 10"
+                        placeholder="Es: 1500.00"
                     />
                 </div>
                 <DialogFooter>

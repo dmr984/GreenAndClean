@@ -326,7 +326,8 @@
       "properties": {
         "ferieDays": { "type": "number" },
         "permessoHours": { "type": "number" },
-        "malattiaDays": { "type": "number" }
+        "malattiaDays": { "type": "number" },
+        "totalDueOverride": { "type": "number" }
       }
     }
   },
@@ -449,7 +450,6 @@
           ]
         }
       }
-    ],
-    "reasoning": "Updated the Timbratura entity description to reflect that break start/end events are now primarily added by administrators, not clocked by operators."
+    ]
   }
 }

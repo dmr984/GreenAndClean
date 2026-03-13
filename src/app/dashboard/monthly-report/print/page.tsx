@@ -8,7 +8,7 @@ import { collection, query, where, Timestamp, getDocs, onSnapshot, getDoc, doc }
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfMonth, endOfDay, isValid, endOfMonth as dfnsEndOfMonth, subMonths, addMonths, parse } from 'date-fns';
+import { format, startOfMonth, isValid, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
@@ -33,6 +33,7 @@ type ManualTotals = {
     ferieDays?: number;
     permessoHours?: number;
     malattiaDays?: number;
+    totalDueOverride?: number;
 };
 
 type VisibilitySettings = {
@@ -193,7 +194,12 @@ const PrintPageContent = () => {
         }
     }, [currentMonth, filteredOperators, firestore, toast]);
 
-    const calculateTotalDue = useCallback((op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
+    const calculateTotalDue = useCallback((opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
+        const override = manualOverrides[opId];
+        if (override?.totalDueOverride !== undefined) {
+            return override.totalDueOverride;
+        }
+        
         if (!summary) return 0;
         
         const finalVisibility = visibilitySettings || {};
@@ -215,7 +221,7 @@ const PrintPageContent = () => {
         if (finalVisibility.malattiaCost !== false) total += malattiaCost;
         
         return total;
-    }, []);
+    }, [manualOverrides]);
     
     const generatePdf = useCallback(async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
@@ -239,15 +245,14 @@ const PrintPageContent = () => {
                 const override = manualOverrides[op.id] || {};
                 const opVisibility = visibility[op.id] || {};
                 
-                const totalDue = calculateTotalDue(op, summary, opVisibility);
+                const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
 
                 if (globalCompact || opVisibility.compactMode) {
-                    // --- COMPACT MODE FOR PDF ---
                     if (y > pageHeight - 15) {
                         doc.addPage();
                         y = 20;
                     }
-                    doc.setFontSize(12);
+                    doc.setFontSize(14);
                     doc.setFont('helvetica', 'bold');
                     doc.setTextColor(0, 0, 0);
                     doc.text(`${op.firstName} ${op.lastName}`.toUpperCase(), margin, y);
@@ -261,11 +266,10 @@ const PrintPageContent = () => {
                     doc.setTextColor(0, 0, 0);
                     doc.setFont('helvetica', 'bold');
                     doc.text(totalText, pageWidth - margin, y, { align: 'right' });
-                    y += 10;
+                    y += 12;
                     return;
                 }
 
-                // --- DETAILED MODE FOR PDF (Exactly 2 per page) ---
                 if (itemsOnCurrentPage === 2) {
                     doc.addPage();
                     y = 20;
@@ -274,15 +278,15 @@ const PrintPageContent = () => {
 
                 const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
 
-                doc.setFontSize(16);
+                doc.setFontSize(18);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.setFontSize(11);
-                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
                 doc.setTextColor(100);
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
-                y += 8;
+                y += 10;
                 
                 const ordinaryCost = op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
@@ -313,30 +317,29 @@ const PrintPageContent = () => {
                 doc.setTextColor(0,0,0);
 
                 bodyData.forEach(row => {
-                    y += 7;
+                    y += 8;
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
                 });
                 
-                y += 6;
-                doc.setFontSize(14);
+                y += 8;
+                doc.setFontSize(16);
                 doc.setFont('helvetica', 'bold');
                 doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 5, { align: 'right' });
                 y += 15;
 
-                // Declaration
-                doc.setFontSize(10);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(0, 0, 0);
                 const declarationText = `Io sottoscritto, ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare gli importi indicati.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 5) + 6;
+                y += (splitDeclaration.length * 6) + 8;
 
-                doc.setFontSize(11);
-                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
                 doc.text('FIRMA: __________________________________________', margin, y);
-                y += 35; // Wider spacing for next operator
+                y += 20; 
                 itemsOnCurrentPage++;
             });
 
@@ -417,6 +420,13 @@ const PrintPageContent = () => {
 
             <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
+                    
+                    {globalCompact && currentMonth && (
+                        <div className="mb-10 text-center border-b-2 border-black pb-4">
+                            <h1 className="text-3xl font-bold uppercase">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h1>
+                        </div>
+                    )}
+
                     <div className="space-y-4">
                          {filteredOperators.map((op, index) => {
                             const summary = summaries.get(op.id);
@@ -424,7 +434,7 @@ const PrintPageContent = () => {
 
                             const override = manualOverrides[op.id] || {};
                             const opVisibility = visibility[op.id] || {};
-                            const totalDue = calculateTotalDue(op, summary, opVisibility);
+                            const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
                             
                             const finalFerieDays = override.ferieDays ?? summary.ferieDays;
                             const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
@@ -442,9 +452,9 @@ const PrintPageContent = () => {
                                 return (
                                     <div key={op.id} className="text-base text-black print:break-inside-avoid pb-4 border-b border-dashed border-gray-300">
                                         <div className="flex justify-between items-baseline gap-2">
-                                            <p className="font-bold text-lg text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
+                                            <p className="font-bold text-xl text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
-                                            <p className="font-bold text-lg text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                            <p className="font-bold text-xl text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
                                         </div>
                                     </div>
                                 )
@@ -474,34 +484,34 @@ const PrintPageContent = () => {
                                     "text-black print:break-inside-avoid pb-20 pt-6", 
                                     needsPageBreak && "print:break-after-page"
                                 )}>
-                                    <div className='flex justify-between items-start mb-4'>
-                                        <p className="font-bold text-xl text-black uppercase">{op.firstName} {op.lastName}</p>
-                                        <p className='text-sm text-gray-600 font-bold'>MESE: {periodText}</p>
+                                    <div className='flex justify-between items-start mb-6'>
+                                        <p className="font-bold text-2xl text-black uppercase">{op.firstName} {op.lastName}</p>
+                                        <p className='text-base text-gray-600 font-bold'>MESE: {periodText}</p>
                                     </div>
                                     
-                                    <table className="w-full text-lg mt-2 mb-4">
+                                    <table className="w-full text-lg mt-2 mb-6">
                                         <tbody>
                                             {bodyData.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td className="py-1 border-b border-gray-100">{row[0]}</td>
-                                                    <td className="py-1 text-right border-b border-gray-100">{row[1]}</td>
+                                                    <td className="py-2 border-b border-gray-100">{row[0]}</td>
+                                                    <td className="py-2 text-right border-b border-gray-100">{row[1]}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                     
-                                     <div className="text-right font-bold text-2xl mt-4 pt-2 text-black border-t-2 border-gray-300">
+                                     <div className="text-right font-bold text-3xl mt-6 pt-4 text-black border-t-2 border-gray-300">
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                     </div>
 
-                                    <div className='mt-8 mb-8 italic text-gray-800 text-base leading-relaxed'>
+                                    <div className='mt-10 mb-10 italic text-gray-800 text-lg leading-relaxed'>
                                         <p>
                                             Io sottoscritto, <span className='font-bold'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
                                         </p>
                                     </div>
 
-                                    <div className='pt-4'>
-                                        <p className="text-base text-black font-bold">FIRMA: __________________________________________________</p>
+                                    <div className='pt-6'>
+                                        <p className="text-lg text-black font-bold">FIRMA: __________________________________________________</p>
                                     </div>
                                     
                                 </div>
