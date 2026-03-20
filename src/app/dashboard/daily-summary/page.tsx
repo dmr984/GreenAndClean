@@ -1,11 +1,11 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, subMonths, addMonths, isSameDay } from 'date-fns';
+import { format, startOfDay, isSameDay, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -40,15 +40,13 @@ const DailySummaryPage = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
+            if (ops.length === 0) setIsLoading(false);
         });
         return () => unsubscribe();
     }, [firestore]);
 
     const fetchDataForDay = useCallback(async (date: Date) => {
-        if (!firestore || operators.length === 0) {
-            if (operators.length > 0) setIsLoading(false);
-            return;
-        }
+        if (!firestore || operators.length === 0) return;
         setIsLoading(true);
 
         const dayStart = startOfDay(date);
@@ -94,6 +92,7 @@ const DailySummaryPage = () => {
             setDailyData(newDailyData);
             setMonthlyCumulative(newMonthlyCumulative);
         } catch (error) {
+            console.error("Error fetching data:", error);
             toast({ title: 'Errore', description: 'Impossibile caricare i dati.', variant: 'destructive' });
         } finally {
             setIsLoading(false);

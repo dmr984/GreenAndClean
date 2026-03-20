@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { Loader2, Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfDay, endOfDay, isValid, isWithinInterval, subMonths, addMonths, isSameDay } from 'date-fns';
+import { format, startOfDay, isValid, isSameDay, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
@@ -50,6 +50,10 @@ const PrintPageContent = () => {
             const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
+            if (ops.length === 0) setIsLoading(false);
+        }, (err) => {
+            console.error("Error fetching operators:", err);
+            setIsLoading(false);
         });
         return () => unsubscribe();
     }, [firestore]);
@@ -97,13 +101,16 @@ const PrintPageContent = () => {
                 setDailyData(newDailyData);
                 setMonthlyCumulative(newMonthlyCumulative);
             } catch (error) {
+                console.error("Error fetching data:", error);
                 toast({ title: 'Errore', description: 'Impossibile caricare i dati.', variant: 'destructive' });
             } finally {
                 setIsLoading(false);
             }
         };
 
-        if (selectedDate && operators.length > 0) fetchData(selectedDate);
+        if (selectedDate && operators.length > 0) {
+            fetchData(selectedDate);
+        }
     }, [selectedDate, operators, firestore, toast]);
 
     if (isLoading || !selectedDate) {
@@ -111,7 +118,7 @@ const PrintPageContent = () => {
     }
     
     return (
-        <div className="bg-background text-foreground min-h-screen">
+        <div className="bg-background text-black min-h-screen">
             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                 <div className="flex-1"></div>
                 <div className="flex flex-1 items-center justify-center gap-2">
@@ -122,8 +129,8 @@ const PrintPageContent = () => {
                 </div>
             </header>
 
-            <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
+            <main className="flex justify-center p-4 sm:p-8 bg-gray-100 print:bg-white print:p-0">
+                <div className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
                     <div className="w-full mb-10 border-b-2 border-black pb-4">
                         <table className="w-full">
                             <tbody>
@@ -138,7 +145,7 @@ const PrintPageContent = () => {
                         </table>
                     </div>
 
-                    <div className="space-y-10">
+                    <div className="space-y-12">
                         {operators.map(op => {
                             const detail = dailyData.get(op.id);
                             const cumulative = monthlyCumulative.get(op.id);
@@ -147,19 +154,19 @@ const PrintPageContent = () => {
                             const isWorkDay = detail.status === 'lavorato' || detail.status === 'in_corso';
 
                             return (
-                                <div key={op.id} className="print:break-inside-avoid border-b border-gray-200 pb-4">
-                                    <div className="flex justify-between items-baseline mb-2">
+                                <div key={op.id} className="print:break-inside-avoid border-b border-gray-200 pb-6">
+                                    <div className="flex justify-between items-baseline mb-4">
                                         <h3 className="text-xl font-bold text-black uppercase">{op.firstName} {op.lastName}</h3>
                                         <p className="text-black font-bold uppercase">{format(selectedDate, 'dd/MM/yyyy')}</p>
                                     </div>
 
-                                    <div className="text-left mb-2">
-                                        <p className="text-black font-bold text-lg uppercase">
+                                    <div className="text-left mb-4">
+                                        <p className="text-black font-bold text-lg uppercase mb-2">
                                             {isWorkDay ? 'Presente' : detail.status.replace('_', ' ').toUpperCase()}
                                         </p>
                                         
                                         {detail.shift?.allShifts && (
-                                            <div className="text-black text-sm mt-1 space-y-1">
+                                            <div className="text-black text-sm space-y-1">
                                                 {detail.shift.allShifts.map((s, idx) => (
                                                     <p key={idx}>
                                                         {s.events.map(e => {
@@ -175,7 +182,7 @@ const PrintPageContent = () => {
                                         )}
                                     </div>
 
-                                    <div className="flex justify-between items-center text-black text-sm font-bold mt-4">
+                                    <div className="flex justify-between items-center text-black text-sm font-bold mt-6 pt-2">
                                         <div>
                                             ORD: {detail.shift?.ordinaryHours || 0}h | STR: {detail.shift?.overtimeHours || 0}h
                                         </div>

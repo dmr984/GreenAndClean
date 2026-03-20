@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'firebase/firestore';
-import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { Loader2, Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
-import { format, startOfDay, endOfDay, isValid, startOfMonth, isWithinInterval, subMonths, addMonths, startOfWeek, eachDayOfInterval, addDays, isSameDay } from 'date-fns';
+import { format, startOfDay, isValid, isSameDay, subMonths, addMonths, startOfWeek, eachDayOfInterval, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, DailyDetail } from '@/lib/calculations';
@@ -31,7 +31,6 @@ const WeeklyPrintPageContent = () => {
     const [weeklyData, setWeeklyData] = useState<Map<string, DailyDetail[]>>(new Map());
     const [monthlyCumulative, setMonthlyCumulative] = useState<Map<string, Map<string, { ordinary: number, overtime: number }>>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
         const start = searchParams.get('startDate');
@@ -44,23 +43,25 @@ const WeeklyPrintPageContent = () => {
     useEffect(() => {
         if (!firestore) return;
         const opIds = searchParams.get('operators')?.split(',') || [];
-        if (opIds.length === 0) return;
+        if (opIds.length === 0) {
+            setIsLoading(false);
+            return;
+        }
 
-        const q = query(collection(firestore, 'app-users'), where('id', 'in', opIds));
+        const q = query(collection(firestore, 'app-users'), where('role', '==', 'operator'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const ops = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
-            ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
-            setOperators(ops);
+            const allOps = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Operator));
+            const filtered = allOps.filter(op => opIds.includes(op.id));
+            filtered.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
+            setOperators(filtered);
+            if (filtered.length === 0) setIsLoading(false);
         });
         return () => unsubscribe();
     }, [firestore, searchParams]);
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!firestore || operators.length === 0 || !startDate) {
-                if (operators.length > 0) setIsLoading(false);
-                return;
-            }
+            if (!firestore || operators.length === 0 || !startDate) return;
             setIsLoading(true);
 
             const weekDays = eachDayOfInterval({ 
@@ -120,7 +121,9 @@ const WeeklyPrintPageContent = () => {
             }
         };
 
-        fetchData();
+        if (operators.length > 0 && startDate) {
+            fetchData();
+        }
     }, [firestore, operators, startDate, toast]);
 
     if (isLoading || !startDate) {
@@ -128,7 +131,7 @@ const WeeklyPrintPageContent = () => {
     }
 
     return (
-        <div className="bg-background text-foreground min-h-screen">
+        <div className="bg-background text-black min-h-screen">
             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                 <div className="flex-1"></div>
                 <div className="flex flex-1 items-center justify-center gap-2">
@@ -139,8 +142,8 @@ const WeeklyPrintPageContent = () => {
                 </div>
             </header>
 
-            <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-8 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
+            <main className="flex justify-center p-4 sm:p-8 bg-gray-100 print:bg-white print:p-0">
+                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm', minHeight: '297mm' }}>
                     <div className="w-full mb-10 border-b-2 border-black pb-4">
                         <table className="w-full">
                             <tbody>
@@ -162,18 +165,18 @@ const WeeklyPrintPageContent = () => {
 
                             return (
                                 <div key={op.id} className="print:break-inside-avoid">
-                                    <div className="border-b-2 border-black mb-4 pb-1">
+                                    <div className="border-b-2 border-black mb-6 pb-1">
                                         <h3 className="text-xl font-bold text-black uppercase">{op.firstName} {op.lastName}</h3>
                                     </div>
 
-                                    <div className="space-y-6">
+                                    <div className="space-y-8">
                                         {details.map((detail, idx) => {
                                             const cum = opCumulative?.get(detail.date.toISOString());
                                             const isWorkDay = detail.status === 'lavorato' || detail.status === 'in_corso';
 
                                             return (
-                                                <div key={idx} className="border-b border-gray-200 pb-3">
-                                                    <div className="flex justify-between items-baseline mb-1">
+                                                <div key={idx} className="border-b border-gray-200 pb-4">
+                                                    <div className="flex justify-between items-baseline mb-2">
                                                         <p className="text-black font-bold text-lg uppercase">
                                                             {isWorkDay ? 'Presente' : detail.status.replace('_', ' ').toUpperCase()}
                                                         </p>
@@ -181,7 +184,7 @@ const WeeklyPrintPageContent = () => {
                                                     </div>
 
                                                     {detail.shift?.allShifts && (
-                                                        <div className="text-black text-sm mb-2 space-y-1">
+                                                        <div className="text-black text-sm mb-3 space-y-1 text-left">
                                                             {detail.shift.allShifts.map((s, sIdx) => (
                                                                 <p key={sIdx}>
                                                                     {s.events.map(e => {
@@ -196,7 +199,7 @@ const WeeklyPrintPageContent = () => {
                                                         </div>
                                                     )}
 
-                                                    <div className="flex justify-between items-center text-black text-sm font-bold mt-2">
+                                                    <div className="flex justify-between items-center text-black text-sm font-bold mt-4 pt-1">
                                                         <div>
                                                             ORD: {detail.shift?.ordinaryHours || 0}h | STR: {detail.shift?.overtimeHours || 0}h
                                                         </div>
