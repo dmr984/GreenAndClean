@@ -2,19 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Circle, Calculator, Video, CalendarDays, ExternalLink, FileText } from 'lucide-react';
+import { ArrowLeft, Menu, LogOut, Users, Home, Loader2, Calendar, Plane, Settings, ListChecks, Circle, Calculator, Video, CalendarDays, ExternalLink, FileText, LayoutList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useUser } from '@/hooks/use-user';
-import { AdminDashboard } from './admin-dashboard';
-import { OperatorDashboard } from './operator-dashboard';
-import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { useFirestore } from '@/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { ChangeCodeDialog } from '@/components/change-code-dialog';
 
 type Operator = {
   id: string;
@@ -146,6 +144,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                            <Link href="/dashboard/daily-summary" passHref>
                             <Button variant={pathname.startsWith('/dashboard/daily-summary') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <CalendarDays className="h-5 w-5" /> Report Giornaliero
+                            </Button>
+                          </Link>
+                           <Link href="/dashboard/weekly-report" passHref>
+                            <Button variant={pathname.startsWith('/dashboard/weekly-report') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <LayoutList className="h-5 w-5" /> Report Settimanale
                             </Button>
                           </Link>
                            <Link href="/dashboard/monthly-report" passHref>

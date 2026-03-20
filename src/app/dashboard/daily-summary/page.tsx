@@ -1,12 +1,11 @@
-// src/app/dashboard/daily-summary/page.tsx
 'use client';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, getDocs, onSnapshot } from 'firebase/firestore';
 import { Loader2, Calendar as CalendarIcon, Printer, User, Briefcase, Plane, Stethoscope, Coffee } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, subMonths, addMonths, parse, isSameDay } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, subMonths, addMonths, isSameDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -15,17 +14,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 
-// Simplified types for this page
 type Operator = {
     id: string;
     username: string;
     firstName: string;
     lastName: string;
-    workSchedule: any; // Using 'any' for simplicity, defined in calculations
+    workSchedule: any;
     overtimeCalculation?: 'hourly' | 'half_hourly';
 };
-type Request = { type: string; startDate: Timestamp; endDate: Timestamp; hours?: number; };
-type Timbratura = { type: string; timestamp: Timestamp; status: string; };
 
 const DailySummaryPage = () => {
     const firestore = useFirestore();
@@ -56,40 +52,21 @@ const DailySummaryPage = () => {
         setIsLoading(true);
 
         const dayStart = startOfDay(date);
-        const dayEnd = endOfDay(date);
-        
-        // Widen query range for makeup shifts
         const queryStart = subMonths(dayStart, 1);
-        const queryEnd = addMonths(dayEnd, 1);
+        const queryEnd = addMonths(dayStart, 1);
 
         try {
             const promises = operators.map(async (op) => {
-                const timbratureQuery = query(
-                    collection(firestore, `app-users/${op.id}/timbrature`),
-                    where('timestamp', '>=', queryStart),
-                    where('timestamp', '<=', queryEnd)
-                );
-                const requestsQuery = query(
-                    collection(firestore, `app-users/${op.id}/requests`),
-                    where('status', '==', 'approvato')
-                );
-                const straordinariQuery = query(
-                    collection(firestore, `app-users/${op.id}/straordinari`),
-                    where('date', '>=', queryStart),
-                    where('date', '<=', queryEnd)
-                );
-
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
-                    getDocs(timbratureQuery),
-                    getDocs(requestsQuery),
-                    getDocs(straordinariQuery)
+                    getDocs(query(collection(firestore, `app-users/${op.id}/timbrature`), where('timestamp', '>=', queryStart), where('timestamp', '<=', queryEnd))),
+                    getDocs(query(collection(firestore, `app-users/${op.id}/requests`), where('status', '==', 'approvato'))),
+                    getDocs(query(collection(firestore, `app-users/${op.id}/straordinari`), where('date', '>=', queryStart), where('date', '<=', queryEnd)))
                 ]);
 
                 const timbratureData = timbratureSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                 const requestsData = requestsSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                 const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
 
-                // Cumulative data for the month up to the selected day
                 const { dailyDetails: monthDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
                 
                 const cumulative = monthDetails
@@ -101,14 +78,11 @@ const DailySummaryPage = () => {
                         return acc;
                     }, { ordinary: 0, overtime: 0, leave: 0 });
 
-                // Specific data for the selected day
-                const dayDetail = monthDetails.find(d => isWithinInterval(dayStart, { start: startOfDay(d.date), end: endOfDay(d.date) }));
-                
+                const dayDetail = monthDetails.find(d => isSameDay(d.date, dayStart));
                 return { opId: op.id, dayDetail, cumulative };
             });
 
             const results = await Promise.all(promises);
-            
             const newDailyData = new Map<string, DailyDetail>();
             const newMonthlyCumulative = new Map<string, { ordinary: number, overtime: number, leave: number }>();
 
@@ -119,40 +93,19 @@ const DailySummaryPage = () => {
 
             setDailyData(newDailyData);
             setMonthlyCumulative(newMonthlyCumulative);
-
         } catch (error) {
-            console.error("Error fetching daily summary data:", error);
-            toast({ title: 'Errore', description: 'Impossibile caricare il report giornaliero.', variant: 'destructive' });
+            toast({ title: 'Errore', description: 'Impossibile caricare i dati.', variant: 'destructive' });
         } finally {
             setIsLoading(false);
         }
     }, [firestore, operators, toast]);
 
     useEffect(() => {
-        if (selectedDate && operators.length > 0) {
-            fetchDataForDay(selectedDate);
-        } else if (operators.length === 0) {
-             // Maybe no operators yet, stop loading
-             setIsLoading(false);
-        }
+        if (selectedDate && operators.length > 0) fetchDataForDay(selectedDate);
     }, [selectedDate, operators, fetchDataForDay]);
 
-    const handleDateSelect = (date: Date | undefined) => {
-        if (date) {
-            setSelectedDate(date);
-        }
-        setIsCalendarOpen(false);
-    };
-    
-    const handleOpenPrintPreview = () => {
-        if (!selectedDate) return;
-        const dateString = format(selectedDate, 'yyyy-MM-dd');
-        window.open(`/dashboard/daily-summary/print?date=${dateString}`, '_blank');
-    };
-
     const renderStatus = (detail: DailyDetail | undefined) => {
-        if (!detail || detail.status === 'riposo') return <div className="flex items-center gap-2 text-muted-foreground"><Coffee className="h-4 w-4"/>Riposo Contrattuale</div>;
-        
+        if (!detail || detail.status === 'riposo') return <div className="flex items-center gap-2 text-muted-foreground"><Coffee className="h-4 w-4"/>Riposo</div>;
         switch (detail.status) {
             case 'lavorato': return <div className="flex items-center gap-2 text-green-600"><Briefcase className="h-4 w-4"/>Presente</div>;
             case 'festa': return <div className="flex items-center gap-2 text-purple-600"><Briefcase className="h-4 w-4"/>Festivo</div>;
@@ -166,12 +119,12 @@ const DailySummaryPage = () => {
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader className='flex-row items-center justify-between'>
+                <CardHeader className='flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
                     <div>
                         <CardTitle className="text-2xl">Report Giornaliero</CardTitle>
-                        <CardDescription>Visualizza lo stato di tutti gli operatori per un giorno specifico.</CardDescription>
+                        <CardDescription>Visualizza lo stato degli operatori per un giorno specifico.</CardDescription>
                     </div>
-                     <Button onClick={handleOpenPrintPreview} disabled={isLoading}>
+                     <Button onClick={() => window.open(`/dashboard/daily-summary/print?date=${format(selectedDate!, 'yyyy-MM-dd')}`, '_blank')} disabled={isLoading}>
                         <Printer className="mr-2 h-4 w-4" /> Crea Report
                     </Button>
                 </CardHeader>
@@ -186,98 +139,41 @@ const DailySummaryPage = () => {
                         <DialogContent className="w-auto p-0">
                              <DialogHeader className="p-4 pb-0">
                                <DialogTitle>Seleziona una data</DialogTitle>
-                               <DialogDescription>
-                                   Scegli il giorno per cui visualizzare il report.
-                               </DialogDescription>
+                               <DialogDescription>Scegli il giorno per il report.</DialogDescription>
                              </DialogHeader>
-                            <Calendar
-                                mode="single"
-                                selected={selectedDate}
-                                onSelect={handleDateSelect}
-                                initialFocus
-                                locale={it}
-                            />
+                            <Calendar mode="single" selected={selectedDate} onSelect={(d) => { if(d){setSelectedDate(d); setIsCalendarOpen(false);}}} initialFocus locale={it} />
                         </DialogContent>
                     </Dialog>
                     
                     {isLoading ? (
-                         <div className="flex items-center justify-center h-64">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    ) : operators.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-10">Nessun operatore trovato. Aggiungine uno dalla sezione "Gestione Operatori".</p>
+                         <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                     ) : (
                         <div className="space-y-4">
                             {operators.map(op => {
                                 const detail = dailyData.get(op.id);
                                 const cumulative = monthlyCumulative.get(op.id);
-                                
-                                const performedOnDate = detail?.shift && detail.shift.events.length > 0 && detail.date && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
-                                    ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it })
-                                    : null;
-
                                 return (
                                     <Card key={op.id} className={cn(detail?.status === 'mancata_timbratura' && 'bg-red-500/5 border-red-500/20')}>
-                                        <CardHeader>
+                                        <CardHeader className="py-4">
                                             <div className='flex justify-between items-start'>
                                                 <div>
-                                                    <CardTitle>{op.firstName} {op.lastName}</CardTitle>
+                                                    <CardTitle className="text-lg">{op.firstName} {op.lastName}</CardTitle>
                                                     <CardDescription>Codice: {op.username}</CardDescription>
                                                 </div>
                                                 <div className='font-semibold'>{renderStatus(detail)}</div>
                                             </div>
                                         </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            {performedOnDate && <p className="text-sm font-semibold text-primary mb-1">Recupero eseguito il {performedOnDate}</p>}
-                                            {detail?.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
-                                                <div>
-                                                    <p className="text-sm font-semibold text-purple-600 mb-1">Recupero per: {detail.makeupActivityFor.join(', ')}</p>
-                                                    <p className="text-xs text-muted-foreground italic mb-1">(Le ore di questo turno sono attribuite al giorno di recupero.)</p>
-                                                </div>
-                                            )}
-
-                                            {detail?.shift && detail.shift.allShifts ? (
-                                                <div className='text-sm'>
-                                                    <p className='font-semibold'>Timbrature del giorno:</p>
-                                                    <div className='text-muted-foreground'>
-                                                        {detail.shift.allShifts.map((shiftBlock, idx) => (
-                                                            <div key={idx} className="mb-1">
-                                                                <span className="font-medium mr-2">{`Turno ${idx + 1}:`}</span>
-                                                                <span>
-                                                                    {shiftBlock.events.map(e => {
-                                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                                        let referenceTime = '';
-
-                                                                        if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                                                                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
-                                                                        } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                                                                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
-                                                                        }
-                                                                        const formattedType = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                                        return `${formattedType}: ${originalTime} ${referenceTime}`.trim();
-                                                                    }).join(' | ')}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ) : null}
-                                             <div className='grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2'>
+                                        <CardContent className="pb-4">
+                                             <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2'>
                                                 <div className="p-3 border rounded-md">
-                                                    <p className="text-sm font-semibold">Dettaglio Giorno</p>
+                                                    <p className="text-xs font-bold uppercase mb-1">Dettaglio Giorno</p>
                                                     <Separator className="my-1"/>
-                                                    <p className='text-xs'>Ore Ordinarie: <span className='font-bold'>{detail?.shift?.ordinaryHours || 0}h</span></p>
-                                                    <p className='text-xs'>Straordinari: <span className='font-bold'>{detail?.shift?.overtimeHours || 0}h</span></p>
-                                                    <p className='text-xs'>Permessi: <span className='font-bold'>{detail?.shift?.permissionHours || 0}h</span></p>
+                                                    <p className='text-sm'>ORD: <span className='font-bold'>{detail?.shift?.ordinaryHours || 0}h</span> | STR: <span className='font-bold'>{detail?.shift?.overtimeHours || 0}h</span></p>
                                                 </div>
-                                                <div className="p-3 border rounded-md sm:col-span-2">
-                                                    <p className="text-sm font-semibold">Cumulativo mese (fino ad oggi)</p>
+                                                <div className="p-3 border rounded-md">
+                                                    <p className="text-xs font-bold uppercase mb-1">Cumulativo Mese</p>
                                                      <Separator className="my-1"/>
-                                                    <div className='grid grid-cols-1 sm:grid-cols-3 gap-x-4'>
-                                                        <p className='text-xs'>Ore Ordinarie: <span className='font-bold'>{cumulative?.ordinary || 0}h</span></p>
-                                                        <p className='text-xs'>Straordinari: <span className='font-bold'>{cumulative?.overtime || 0}h</span></p>
-                                                        <p className='text-xs'>Permessi: <span className='font-bold'>{cumulative?.leave || 0}h</span></p>
-                                                    </div>
+                                                    <p className='text-sm'>ORD: <span className='font-bold'>{cumulative?.ordinary || 0}h</span> | STR: <span className='font-bold'>{cumulative?.overtime || 0}h</span></p>
                                                 </div>
                                              </div>
                                         </CardContent>
