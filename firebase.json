@@ -20,5 +20,9 @@
   "functions": {
     "source": ".",
     "runtime": "nodejs18"
+  },
+  "apphosting": {
+    "backendId": "workforce-hub",
+    "rootDir": "."
   }
 }

@@ -3,14 +3,21 @@ description: Start the project's local preview server
 ---
 # Preview Project Workflow
 
-Execute these steps to start the web application locally:
+Launch the project locally to see the changes in the browser:
 
-1. **Start NextJS Development Server**
-   Start the dev server normally. 
+1. **Verify Dependencies**
+   Ensure all dependencies are up to date:
+// turbo
+   ```bash
+   npm install
+   ```
+
+2. **Start the Development Server**
+   Start the Next.js development server:
+// turbo
    ```bash
    npm run dev
    ```
 
-2. **Verify App is Running**
-   - Check the terminal output to find the local server URL (usually `http://localhost:3000`).
-   - Open that URL in your browser to test your app's frontend.
+3. **Open Preview**
+   Navigate to the local server URL (usually http://localhost:3000) to view your application.
