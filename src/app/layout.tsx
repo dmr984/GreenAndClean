@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase';
 import { UserProvider } from '@/providers/user-provider';
 import { InstallPWA } from '@/components/install-pwa';
+import { PWAManager } from '@/components/pwa-manager';
 
 export const metadata: Metadata = {
   title: 'SERVECO GREEN & CLEAN',
@@ -30,6 +31,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#1a1a1a" />
       </head>
       <body className="font-body antialiased">
+        <PWAManager />
         <FirebaseClientProvider>
           <UserProvider>
             {children}

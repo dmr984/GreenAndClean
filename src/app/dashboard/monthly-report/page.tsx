@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
-import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck } from 'lucide-react';
+import { Loader2, Printer, Download, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfMonth, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
+import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
 
 
 type Operator = {
@@ -65,7 +66,7 @@ const MonthlyReportPage = () => {
     const { toast } = useToast();
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [operators, setOperators] = useState<Operator[]>([]);
-    const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
+    const [summaries, setSummaries] = useState<Map<string, { summary: MonthlySummary, details: any[] }>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
     const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(new Set());
     const [visibility, setVisibility] = useState<Record<string, VisibilitySettings>>({});
@@ -77,6 +78,7 @@ const MonthlyReportPage = () => {
 
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
 
 
     const fetchOverridesForMonth = useCallback(async (date: Date) => {
@@ -180,14 +182,14 @@ const MonthlyReportPage = () => {
                 const requestsData = requestsSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                 const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
 
-                const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
-                return { opId: op.id, summary: monthlySummary };
+                const { monthlySummary, dailyDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
+                return { opId: op.id, summary: monthlySummary, details: dailyDetails };
             });
 
             const results = await Promise.all(promises);
-            const newSummaries = new Map<string, MonthlySummary>();
-            results.forEach(({ opId, summary }) => {
-                if (summary) newSummaries.set(opId, summary);
+            const newSummaries = new Map<string, { summary: MonthlySummary, details: any[] }>();
+            results.forEach(({ opId, summary, details }) => {
+                if (summary) newSummaries.set(opId, { summary, details });
             });
             setSummaries(newSummaries);
             await fetchOverridesForMonth(date);
@@ -221,24 +223,56 @@ const MonthlyReportPage = () => {
             toast({ title: 'Nessun operatore selezionato', description: 'Seleziona almeno un operatore da includere nel report.', variant: 'destructive'});
             return;
         }
+
         const monthString = format(currentMonth, 'yyyy-MM');
-        const operatorIdsString = Array.from(selectedOperatorIds).join(',');
         
-        const queryParams = new URLSearchParams({
-            month: monthString,
-            operators: operatorIdsString,
-            globalCompact: String(globalCompactMode)
+        // Apertura report separati dettagliati (Fine Mese Operatore)
+        Array.from(selectedOperatorIds).forEach(operatorId => {
+            const queryParams = new URLSearchParams({
+                month: monthString
+            });
+
+            // Reindirizziamo alla rotta del report di fine mese dettagliato per l'operatore specifico
+            window.open(`/dashboard/operators/${operatorId}/end-of-month/print?${queryParams.toString()}`, '_blank');
         });
+    };
 
-        // Add visibility params
-        for (const operatorId of selectedOperatorIds) {
-             const opVisibility = visibility[operatorId] || {};
-             for (const key in opVisibility) {
-                queryParams.append(`${key}_${operatorId}`, String(opVisibility[key as keyof VisibilitySettings]));
-             }
+    const handleDownloadSelectedPdfs = async () => {
+        if (selectedOperatorIds.size === 0) return;
+        setIsDownloading(true);
+        try {
+            const selectedOperators = operators.filter(op => selectedOperatorIds.has(op.id));
+            for (const op of selectedOperators) {
+                const data = summaries.get(op.id);
+                if (data) {
+                    const result = await generateDetailedOperatorPdf(
+                        currentMonth,
+                        op,
+                        data.summary,
+                        data.details,
+                        visibility[op.id] || {},
+                        manualOverrides[op.id] || {}
+                    );
+                    if (result) {
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(result.blob);
+                        a.download = result.fileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(a.href);
+                        // Small delay to prevent browser download throttling
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                }
+            }
+            toast({ title: 'Download completato', description: `${selectedOperatorIds.size} report scaricati correttamente.` });
+        } catch (error) {
+            console.error("Error downloading PDFs:", error);
+            toast({ title: 'Errore durante il download', variant: 'destructive' });
+        } finally {
+            setIsDownloading(false);
         }
-
-        window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
     const calculateTotalDue = (opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: VisibilitySettings | undefined) => {
@@ -248,15 +282,16 @@ const MonthlyReportPage = () => {
         }
         
         if (!summary || !visibilitySettings) return 0;
+        const summaryData = (summary as any).summary || summary; // Handle both old and new format during transition
         
         const ordinaryCost = (op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
-            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+            : (summaryData.ordinaryHours || 0) * (op.hourlyRate || 0));
         
-        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-        const ferieCost = summary.ferieCost || 0;
-        const permessoCost = summary.permessoCost || 0;
-        const malattiaCost = summary.malattiaCost || 0;
+        const overtimeCost = (summaryData.overtimeHours || 0) * (op.overtimeRate || 0);
+        const ferieCost = summaryData.ferieCost || 0;
+        const permessoCost = summaryData.permessoCost || 0;
+        const malattiaCost = summaryData.malattiaCost || 0;
 
         let total = 0;
         if (visibilitySettings.ordinaryCost) total += ordinaryCost;
@@ -478,8 +513,11 @@ const MonthlyReportPage = () => {
                         <CardDescription>Visualizza i totali di tutti gli operatori per il mese selezionato.</CardDescription>
                     </div>
                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <Button onClick={handleDownloadSelectedPdfs} disabled={isLoading || selectedOperatorIds.size === 0 || isDownloading} variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} Scarica PDF Selezionati
+                        </Button>
                         <Button onClick={handleOpenPrintPreview} disabled={isLoading || selectedOperatorIds.size === 0}>
-                            <Printer className="mr-2 h-4 w-4" /> Crea Report
+                            <Printer className="mr-2 h-4 w-4" /> Anteprima di Stampa
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isLoading || selectedOperatorIds.size === 0}>
                             <Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese
@@ -526,28 +564,29 @@ const MonthlyReportPage = () => {
                         </div>
                         <div className="space-y-4">
                             {operators.map(op => {
-                                const summary = summaries.get(op.id);
+                                const data = summaries.get(op.id);
+                                const summaryData = data?.summary;
                                 const override = manualOverrides[op.id];
                                 const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
                                 const isCompact = globalCompactMode || opVisibility.compactMode;
-                                const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
+                                const totalDue = calculateTotalDue(op.id, op, data, opVisibility);
                                 
-                                const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
-                                const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
-                                const finalMalattiaDays = override?.malattiaDays ?? summary?.malattiaDays ?? 0;
+                                const finalFerieDays = override?.ferieDays ?? summaryData?.ferieDays ?? 0;
+                                const finalPermessoHours = override?.permessoHours ?? summaryData?.permessoHours ?? 0;
+                                const finalMalattiaDays = override?.malattiaDays ?? summaryData?.malattiaDays ?? 0;
 
                                 const ordinaryCost = (op.salaryType === 'fixed' 
                                     ? (op.fixedSalary || 0) 
-                                    : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
+                                    : (summaryData?.ordinaryHours || 0) * (op.hourlyRate || 0));
 
-                                const overtimeCost = (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
-                                const ferieCost = summary?.ferieCost || 0;
-                                const permessoCost = summary?.permessoCost || 0;
-                                const malattiaCost = summary?.malattiaCost || 0;
+                                const overtimeCost = (summaryData?.overtimeHours || 0) * (op.overtimeRate || 0);
+                                const ferieCost = summaryData?.ferieCost || 0;
+                                const permessoCost = summaryData?.permessoCost || 0;
+                                const malattiaCost = summaryData?.malattiaCost || 0;
                                 
-                                const workedDaysValue = opVisibility.showWorkedHours && summary
-                                    ? `${summary.workedDays} (${summary.ordinaryHours}h)`
-                                    : summary?.workedDays || 0;
+                                const workedDaysValue = opVisibility.showWorkedHours && summaryData
+                                    ? `${summaryData.workedDays} (${summaryData.ordinaryHours}h)`
+                                    : summaryData?.workedDays || 0;
 
                                 return (
                                     <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
@@ -596,11 +635,11 @@ const MonthlyReportPage = () => {
                                                 </div>
                                             </div>
                                         </CardHeader>
-                                        {summary && !isCompact && (
+                                        {summaryData && !isCompact && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
                                                 <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
-                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
+                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={summaryData.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                 <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
                                                 <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
@@ -608,7 +647,7 @@ const MonthlyReportPage = () => {
                                                 <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
                                                 <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
                                                 <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
-                                                <InfoCard opId={op.id} title="Assenze (g)" value={summary.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
+                                                <InfoCard opId={op.id} title="Assenze (g)" value={summaryData.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
                                             </CardContent>
                                         )}
                                     </Card>

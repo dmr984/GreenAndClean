@@ -138,6 +138,7 @@ export default function EndOfMonthPage() {
     
     const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
     const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
 
 
     useEffect(() => {
@@ -279,6 +280,36 @@ export default function EndOfMonthPage() {
         const queryParams = new URLSearchParams({ month: monthString });
         
         window.open(`/dashboard/operators/${operatorId}/end-of-month/print?${queryParams.toString()}`, '_blank');
+    };
+
+    const handleDownloadPdf = async () => {
+        if (!operator || !currentMonth || !monthlySummary) return;
+        setIsDownloading(true);
+        try {
+            const result = await generateOperatorPdf(
+                currentMonth,
+                operator,
+                monthlySummary,
+                {}, // visibility
+                {}, // overrides
+                false // compact
+            );
+            if (result) {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(result.blob);
+                a.download = result.fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            }
+            toast({ title: 'Download completato', description: `Report scaricato correttamente.` });
+        } catch (error) {
+            console.error("Error downloading PDF:", error);
+            toast({ title: 'Errore durante il download', variant: 'destructive' });
+        } finally {
+            setIsDownloading(false);
+        }
     };
     
     const handleSaveNote = async () => {
@@ -435,7 +466,10 @@ export default function EndOfMonthPage() {
                         <p className="text-muted-foreground">Calcolo Fine Mese (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                         <Button variant="outline" onClick={handleOpenPrintPreview}>
+                        <Button variant="outline" onClick={handleDownloadPdf} disabled={isLoading || isDownloading} className="border-primary text-primary hover:bg-primary/10">
+                            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} Scarica PDF
+                        </Button>
+                        <Button variant="outline" onClick={handleOpenPrintPreview}>
                             <Printer className="mr-2 h-4 w-4" /> Crea Report
                         </Button>
                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)}>

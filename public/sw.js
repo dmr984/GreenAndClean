@@ -8,7 +8,7 @@ function openDB() {
     request.onerror = () => reject("Errore nell'apertura del DB");
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
+      const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'key' });
       }
