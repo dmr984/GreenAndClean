@@ -122,25 +122,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <Users className="h-5 w-5" /> Gestione Operatori
                             </Button>
                            </Link>
-                           <Accordion type="single" collapsible className="w-full">
-                            <AccordionItem value="item-1" className="border-b-0">
-                              <AccordionTrigger className="py-2 px-3 text-base hover:bg-muted rounded-md hover:no-underline justify-start gap-2">
-                                  <Calculator className="h-5 w-5" />
-                                  <span>Calcolo per Operatore</span>
-                              </AccordionTrigger>
-                              <AccordionContent className="pl-8 pr-2">
-                                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                                {operators.map(op => (
-                                  <Link key={op.id} href={`/dashboard/operators/${op.id}/end-of-month`} passHref>
-                                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setIsSidebarOpen(false)}>
-                                      {op.firstName} {op.lastName}
-                                    </Button>
-                                  </Link>
-                                ))}
-                                </div>
-                              </AccordionContent>
-                            </AccordionItem>
-                          </Accordion>
+                           <Link href="/dashboard/operator-calculations" passHref>
+                            <Button variant={pathname.startsWith('/dashboard/operator-calculations') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <Calculator className="h-5 w-5" /> Situazione Attuale Operatori
+                            </Button>
+                           </Link>
                            <Link href="/dashboard/daily-summary" passHref>
                             <Button variant={pathname.startsWith('/dashboard/daily-summary') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
                                 <CalendarDays className="h-5 w-5" /> Report Giornaliero

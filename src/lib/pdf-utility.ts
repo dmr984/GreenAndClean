@@ -83,8 +83,8 @@ export const generateDetailedOperatorPdf = async (
 ): Promise<{ blob: Blob; fileName: string } | null> => {
     try {
         const { default: jsPDF } = await import('jspdf');
-        // @ts-ignore
-        await import('jspdf-autotable');
+        const autoTableModule = await import('jspdf-autotable');
+        const autoTable = autoTableModule.default ? autoTableModule.default : autoTableModule;
 
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageWidth = doc.internal.pageSize.width;
@@ -135,7 +135,7 @@ export const generateDetailedOperatorPdf = async (
             [`ORE STRAORDINARIE: ${summary.overtimeHours}`, { content: `GIORNI MALATTIA: ${finalMalattiaDays}`, styles: { halign: 'right' }}],
         ];
 
-        (doc as any).autoTable({
+        autoTable(doc, {
             startY: y,
             theme: 'plain',
             body: summaryBody,
@@ -164,7 +164,7 @@ export const generateDetailedOperatorPdf = async (
             ]);
         }
 
-        (doc as any).autoTable({
+        autoTable(doc, {
             startY: y,
             theme: 'plain',
             body: costBody,

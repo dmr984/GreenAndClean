@@ -1,8 +1,10 @@
+﻿
+// src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, Timestamp, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
@@ -51,7 +53,7 @@ type VisibilitySettings = {
     compactMode: boolean;
 };
 
-export default function MonthlyReportPrintClient() {
+const PrintPageContent = () => {
     const firestore = useFirestore();
     const searchParams = useSearchParams();
     const { toast } = useToast();
@@ -109,10 +111,8 @@ export default function MonthlyReportPrintClient() {
     useEffect(() => {
         const operatorIds = searchParams.get('operators');
         if (operatorIds) {
-            const ids = operatorIds.split(',');
-            const idSet = new Set(ids);
-            const filtered = allOperators.filter(op => idSet.has(op.id));
-            setFilteredOperators(filtered);
+            const idSet = new Set(operatorIds.split(','));
+            setFilteredOperators(allOperators.filter(op => idSet.has(op.id)));
         } else {
             setFilteredOperators(allOperators);
         }
@@ -227,6 +227,7 @@ export default function MonthlyReportPrintClient() {
         setIsGenerating(true);
         try {
             const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
 
             if (!currentMonth || !document) return null;
 
@@ -299,7 +300,7 @@ export default function MonthlyReportPrintClient() {
                     opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
-                    opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+                    opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${override.malattiaDays ?? summary.malattiaDays}`: null,
                     opVisibility.permessoHours !== false ? `ORE PERMESSI: ${override.permessoHours ?? summary.permessoHours}` : null,
                     opVisibility.ferieDays !== false ? `FERIE: ${override.ferieDays ?? summary.ferieDays}` : null,
@@ -344,11 +345,7 @@ export default function MonthlyReportPrintClient() {
 
 
             const blob = doc.output('blob');
-            let fileName = `Report_Mensile_${format(currentMonth, 'yyyy-MM')}.pdf`;
-            if (filteredOperators.length === 1) {
-                const op = filteredOperators[0];
-                fileName = `${op.firstName.trim()}_${op.lastName.trim()}_${format(currentMonth, 'yyyy-MM')}.pdf`;
-            }
+            const fileName = `Report_Mensile_${format(currentMonth, 'yyyy-MM')}.pdf`;
 
             return { blob, fileName };
         } catch (error) {
@@ -524,6 +521,29 @@ export default function MonthlyReportPrintClient() {
                 </div>
             </main>
              <Toaster />
+        </div>
+    );
+};
+
+const PrintPageWrapper = () => (
+    <Suspense fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    }>
+        <PrintPageContent />
+    </Suspense>
+);
+
+export default function PrintPage() {
+    const [isClient, setIsClient] = useState(false);
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
+
+    return isClient ? <PrintPageWrapper /> : (
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
         </div>
     );
 }
