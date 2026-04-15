@@ -3,24 +3,6 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "hosting": {
-    "public": "out",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "function": "server"
-      }
-    ]
-  },
-  "functions": {
-    "source": ".",
-    "runtime": "nodejs20"
-  },
   "apphosting": {
     "backendId": "studio",
     "rootDir": "."
