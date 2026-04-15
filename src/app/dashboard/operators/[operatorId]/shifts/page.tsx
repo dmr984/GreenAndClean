@@ -53,6 +53,11 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: WorkSchedule;
+    entryTolerance?: number;
+    ordinaryHalfHourTrigger?: number;
+    ordinaryHourTrigger?: number;
+    scheduleType?: 'daily' | 'monthly';
+    monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
 };

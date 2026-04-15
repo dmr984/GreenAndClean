@@ -31,6 +31,11 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: WorkSchedule;
+    entryTolerance?: number;
+    ordinaryHalfHourTrigger?: number;
+    ordinaryHourTrigger?: number;
+    scheduleType?: 'daily' | 'monthly';
+    monthlyContractualHours?: number;
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
     overtimeHalfHourTrigger?: number;

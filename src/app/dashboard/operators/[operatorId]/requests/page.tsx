@@ -44,6 +44,11 @@ type Operator = {
     hourlyRate?: number;
     sickLeaveRate?: number;
     workSchedule: WorkSchedule;
+    entryTolerance?: number;
+    ordinaryHalfHourTrigger?: number;
+    ordinaryHourTrigger?: number;
+    scheduleType?: 'daily' | 'monthly';
+    monthlyContractualHours?: number;
 };
 
 type Request = {

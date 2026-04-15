@@ -579,7 +579,7 @@ const OperatorCalculationsPage = () => {
                                 const override = manualOverrides[op.id];
                                 const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
                                 const isCompact = globalCompactMode || opVisibility.compactMode;
-                                const totalDue = calculateTotalDue(op.id, op, data, opVisibility);
+                                const totalDue = calculateTotalDue(op.id, op, data?.summary, opVisibility);
                                 
                                 const finalFerieDays = override?.ferieDays ?? summaryData?.ferieDays ?? 0;
                                 const finalPermessoHours = override?.permessoHours ?? summaryData?.permessoHours ?? 0;
