@@ -28,7 +28,8 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: any;
-    overtimeCalculation?: 'hourly' | 'half_hourly';
+    overtimeHalfHourTrigger?: number;
+    overtimeHourTrigger?: number;
     salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;

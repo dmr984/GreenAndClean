@@ -69,7 +69,8 @@ type Operator = {
     role: 'operator';
     requireGps?: boolean;
     workSchedule: WorkSchedule;
-    overtimeCalculation?: 'hourly' | 'half_hourly';
+    overtimeHalfHourTrigger?: number;
+    overtimeHourTrigger?: number;
     salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;
@@ -97,7 +98,8 @@ export default function ManageOperatorsPage() {
     const [newLastName, setNewLastName] = useState("");
     const [newRequireGps, setNewRequireGps] = useState(true);
     const [newWorkSchedule, setNewWorkSchedule] = useState<WorkSchedule>({});
-    const [newOvertimeCalculation, setNewOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+    const [newOvertimeHalfHourTrigger, setNewOvertimeHalfHourTrigger] = useState<number | string>(25);
+    const [newOvertimeHourTrigger, setNewOvertimeHourTrigger] = useState<number | string>(45);
     const [newSalaryType, setNewSalaryType] = useState<'hourly' | 'fixed'>('hourly');
     const [newHourlyRate, setNewHourlyRate] = useState<number | string>('');
     const [newOvertimeRate, setNewOvertimeRate] = useState<number | string>('');
@@ -110,7 +112,8 @@ export default function ManageOperatorsPage() {
     const [editingLastName, setEditingLastName] = useState("");
     const [editingRequireGps, setEditingRequireGps] = useState(true);
     const [editingWorkSchedule, setEditingWorkSchedule] = useState<WorkSchedule>({});
-    const [editingOvertimeCalculation, setEditingOvertimeCalculation] = useState<'hourly' | 'half_hourly'>('hourly');
+    const [editingOvertimeHalfHourTrigger, setEditingOvertimeHalfHourTrigger] = useState<number | string>('');
+    const [editingOvertimeHourTrigger, setEditingOvertimeHourTrigger] = useState<number | string>('');
     const [editingSalaryType, setEditingSalaryType] = useState<'hourly' | 'fixed'>('hourly');
     const [editingHourlyRate, setEditingHourlyRate] = useState<number | string>('');
     const [editingOvertimeRate, setEditingOvertimeRate] = useState<number | string>('');
@@ -223,7 +226,8 @@ export default function ManageOperatorsPage() {
         const lastName = action === 'add' ? newLastName : editingLastName;
         const requireGps = action === 'add' ? newRequireGps : editingRequireGps;
         const workSchedule = action === 'add' ? newWorkSchedule : editingWorkSchedule;
-        const overtimeCalculation = action === 'add' ? newOvertimeCalculation : editingOvertimeCalculation;
+        const overtimeHalfHourTrigger = action === 'add' ? newOvertimeHalfHourTrigger : editingOvertimeHalfHourTrigger;
+        const overtimeHourTrigger = action === 'add' ? newOvertimeHourTrigger : editingOvertimeHourTrigger;
         const salaryType = action === 'add' ? newSalaryType : editingSalaryType;
         const hourlyRate = action === 'add' ? newHourlyRate : editingHourlyRate;
         const overtimeRate = action === 'add' ? newOvertimeRate : editingOvertimeRate;
@@ -274,7 +278,8 @@ export default function ManageOperatorsPage() {
             lastName,
             requireGps,
             workSchedule: finalWorkSchedule,
-            overtimeCalculation: overtimeCalculation,
+            overtimeHalfHourTrigger: overtimeHalfHourTrigger ? parseFloat(String(overtimeHalfHourTrigger)) : undefined,
+            overtimeHourTrigger: overtimeHourTrigger ? parseFloat(String(overtimeHourTrigger)) : undefined,
             salaryType,
             hourlyRate: salaryType === 'hourly' ? parseFloat(String(hourlyRate)) || 0 : 0,
             overtimeRate: parseFloat(String(overtimeRate)) || 0,
@@ -293,7 +298,8 @@ export default function ManageOperatorsPage() {
                 setNewLastName("");
                 setNewRequireGps(true);
                 setNewWorkSchedule({});
-                setNewOvertimeCalculation('hourly');
+                setNewOvertimeHalfHourTrigger(25);
+                setNewOvertimeHourTrigger(45);
                 setNewSalaryType('hourly');
                 setNewHourlyRate('');
                 setNewOvertimeRate('');
@@ -447,8 +453,10 @@ export default function ManageOperatorsPage() {
       setFixedSalary: (val: string | number) => void,
       sickLeaveRate: string | number,
       setSickLeaveRate: (val: string | number) => void,
-      overtimeCalculation: 'hourly' | 'half_hourly',
-      setOvertimeCalculation: (val: 'hourly' | 'half_hourly') => void
+      overtimeHalfHourTrigger: string | number,
+      setOvertimeHalfHourTrigger: (val: string | number) => void,
+      overtimeHourTrigger: string | number,
+      setOvertimeHourTrigger: (val: string | number) => void
     ) => (
       <>
         <div className='md:col-span-3'>
@@ -474,18 +482,6 @@ export default function ManageOperatorsPage() {
                 <Label htmlFor={`${type}-sickLeaveRate`}>Tariffa Malattia (€/h)</Label>
                 <Input id={`${type}-sickLeaveRate`} type="number" value={sickLeaveRate} onChange={(e) => setSickLeaveRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 7.00" />
              </div>
-            <div>
-              <Label htmlFor={`${type}-overtime`}>Calcolo Straordinario</Label>
-              <Select value={overtimeCalculation} onValueChange={(v) => setOvertimeCalculation(v as any)}>
-                <SelectTrigger id={`${type}-overtime`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="hourly">Orario (scatto al 50° min)</SelectItem>
-                  <SelectItem value="half_hourly">A Mezz'ora (scatto al 25°/55° min)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </>
         ) : (
           <div className="md:col-span-3">
@@ -494,9 +490,17 @@ export default function ManageOperatorsPage() {
           </div>
         )}
         
-        <div className={salaryType === 'hourly' ? '' : 'md:col-span-3'}>
+        <div>
             <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€/h)</Label>
             <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
+        </div>
+        <div>
+          <Label htmlFor={`${type}-halfHourTrigger`}>Scatto Mezz'ora (minuti)</Label>
+          <Input id={`${type}-halfHourTrigger`} type="number" value={overtimeHalfHourTrigger} onChange={(e) => setOvertimeHalfHourTrigger(e.target.value)} min="0" max="60" placeholder="Es: 25 (default)" />
+        </div>
+        <div>
+          <Label htmlFor={`${type}-hourTrigger`}>Scatto Ora intera (minuti)</Label>
+          <Input id={`${type}-hourTrigger`} type="number" value={overtimeHourTrigger} onChange={(e) => setOvertimeHourTrigger(e.target.value)} min="0" max="60" placeholder="Es: 45 (default)" />
         </div>
       </>
     );
@@ -547,7 +551,8 @@ export default function ManageOperatorsPage() {
                                             newOvertimeRate, setNewOvertimeRate,
                                             newFixedSalary, setNewFixedSalary,
                                             newSickLeaveRate, setNewSickLeaveRate,
-                                            newOvertimeCalculation, setNewOvertimeCalculation
+                                            newOvertimeHalfHourTrigger, setNewOvertimeHalfHourTrigger,
+                                            newOvertimeHourTrigger, setNewOvertimeHourTrigger
                                           )}
                                         </div>
                                         <div className="flex items-center space-x-2">
@@ -608,7 +613,7 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeCalculation(operator.overtimeCalculation || 'hourly'); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setEditingSickLeaveRate(operator.sickLeaveRate || ''); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeHalfHourTrigger(operator.overtimeHalfHourTrigger ?? 25); setEditingOvertimeHourTrigger(operator.overtimeHourTrigger ?? 45); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setEditingSickLeaveRate(operator.sickLeaveRate || ''); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
@@ -657,7 +662,8 @@ export default function ManageOperatorsPage() {
                                     editingOvertimeRate, setEditingOvertimeRate,
                                     editingFixedSalary, setEditingFixedSalary,
                                     editingSickLeaveRate, setEditingSickLeaveRate,
-                                    editingOvertimeCalculation, setEditingOvertimeCalculation
+                                    editingOvertimeHalfHourTrigger, setEditingOvertimeHalfHourTrigger,
+                                    editingOvertimeHourTrigger, setEditingOvertimeHourTrigger
                                   )}
                             </div>
                             <div className="flex items-center space-x-2">

@@ -22,7 +22,8 @@ type WorkSchedule = {
 
 type Operator = {
     workSchedule: WorkSchedule;
-    overtimeCalculation?: 'hourly' | 'half_hourly';
+    overtimeHalfHourTrigger?: number;
+    overtimeHourTrigger?: number;
     salaryType?: 'hourly' | 'fixed';
     hourlyRate?: number;
     overtimeRate?: number;
@@ -123,19 +124,20 @@ export const roundOrdinaryHours = (minutes: number): number => {
 };
 
 
-export const roundOvertimeHours = (minutes: number, overtimeCalculation: 'hourly' | 'half_hourly' = 'hourly'): number => {
+export const roundOvertimeHours = (minutes: number, halfHourTrigger: number = 25, hourTrigger: number = 45): number => {
     if (minutes <= 0) return 0;
     
-    if (overtimeCalculation === 'half_hourly') {
-        const totalHalfHours = Math.floor(minutes / 30);
-        const remainingMinutes = minutes % 30;
-        return (totalHalfHours / 2) + (remainingMinutes >= 25 ? 0.5 : 0);
+    const totalHours = Math.floor(minutes / 60);
+    const extraMinutes = minutes % 60;
+    
+    let extraHours = 0;
+    if (extraMinutes >= hourTrigger) {
+        extraHours = 1;
+    } else if (extraMinutes >= halfHourTrigger) {
+        extraHours = 0.5;
     }
     
-    // Default 'hourly'
-    const totalHours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return totalHours + (remainingMinutes >= 50 ? 1 : 0);
+    return totalHours + extraHours;
 };
 
 export const calculatePureOvertime = (
@@ -185,12 +187,12 @@ export const calculatePureOvertime = (
     const effectiveMillis = clockOutTime.getTime() - referenceStartTime.getTime() - breakDurationMillis;
     const effectiveMinutes = effectiveMillis > 0 ? Math.floor(effectiveMillis / (1000 * 60)) : 0;
 
-    return roundOvertimeHours(effectiveMinutes, operator.overtimeCalculation);
+    return roundOvertimeHours(effectiveMinutes, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
 }
 
 
 
-export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null } => {
+export const calculateShiftDetails = (events: Timbratura[], schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, halfHourTrigger: number = 25, hourTrigger: number = 45): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
 
@@ -240,22 +242,12 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     const clockOutMinutes = clockOutTime.getMinutes();
     let calculationEndTime = set(clockOutTime, { seconds: 0, milliseconds: 0 });
 
-    if(overtimeCalculation === 'half_hourly') {
-        if(clockOutMinutes >= 25 && clockOutMinutes < 55) {
-            calculationEndTime.setMinutes(30);
-        } else if (clockOutMinutes >= 55) {
-            calculationEndTime.setHours(calculationEndTime.getHours() + 1, 0);
-        } else {
-            calculationEndTime.setMinutes(0);
-        }
-    } else { // 'hourly' or undefined
-        if (clockOutMinutes >= 50) {
-            calculationEndTime.setHours(calculationEndTime.getHours() + 1, 0);
-        } else if (clockOutMinutes >= 25) {
-             calculationEndTime.setMinutes(30);
-        } else {
-            calculationEndTime.setMinutes(0);
-        }
+    if (clockOutMinutes >= hourTrigger) {
+        calculationEndTime.setHours(calculationEndTime.getHours() + 1, 0);
+    } else if (clockOutMinutes >= halfHourTrigger) {
+        calculationEndTime.setMinutes(30);
+    } else {
+        calculationEndTime.setMinutes(0);
     }
 
     // 3. Determine Contractual End Time
@@ -296,7 +288,7 @@ export const calculateShiftDetails = (events: Timbratura[], schedule: DailySched
     };
 };
 
-export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, overtimeCalculation?: 'hourly' | 'half_hourly'): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
+export const calculateHours = (shift: { date: Date, events: Timbratura[] }, schedule: DailySchedule | undefined, ignoreContractualStart: boolean = false, halfHourTrigger: number = 25, hourTrigger: number = 45): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
     const clockInEvent = shift.events.find(e => e.type === 'entrata');
     
     // Check if the shift was manually approved with specific hours
@@ -304,7 +296,7 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
         const approvedOrdinary = clockInEvent.approvedOrdinaryHours || 0;
         const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
         // Still calculate the real worked minutes for display
-        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
+        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, halfHourTrigger, hourTrigger);
         
         return {
             ordinary: approvedOrdinary,
@@ -317,21 +309,21 @@ export const calculateHours = (shift: { date: Date, events: Timbratura[] }, sche
         };
     }
 
-    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, overtimeCalculation);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, halfHourTrigger, hourTrigger);
     const contractualHours = schedule?.totalHours || 0;
     const contractualMinutes = contractualHours * 60;
     const isMakeupShift = !!clockInEvent?.makeupOfDay;
     const isWorkDay = isMakeupShift || contractualHours > 0;
     
     if (!isWorkDay) {
-        const overtime = roundOvertimeHours(workedMinutes, overtimeCalculation);
+        const overtime = roundOvertimeHours(workedMinutes, halfHourTrigger, hourTrigger);
         return { ordinary: 0, overtime, leave: 0, worked: workedMinutes, break: breakMinutes, calculationStart, calculationEnd };
     }
 
     const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes);
-    const overtimeHours = roundOvertimeHours(overtimeMinutes, overtimeCalculation);
+    const overtimeHours = roundOvertimeHours(overtimeMinutes, halfHourTrigger, hourTrigger);
     const leaveHours = isWorkDay && ordinaryHours < contractualHours ? contractualHours - ordinaryHours : 0;
 
     return { 
@@ -468,7 +460,7 @@ export const processMonthlyData = (
             detail.status = 'lavorato';
         }
         
-        const hoursResult = calculateHours({ date, events }, dailySchedule, events.find(e=>e.type==='entrata')?.ignoreContractualStart, operator.overtimeCalculation);
+        const hoursResult = calculateHours({ date, events }, dailySchedule, events.find(e=>e.type==='entrata')?.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
 
         if (!detail.shift) {
             detail.shift = {

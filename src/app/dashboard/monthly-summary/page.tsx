@@ -40,7 +40,8 @@ type Operator = {
     workSchedule: WorkSchedule;
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
-    overtimeCalculation?: 'hourly' | 'half_hourly';
+    overtimeHalfHourTrigger?: number;
+    overtimeHourTrigger?: number;
     hourlyRate?: number;
     overtimeRate?: number;
     sickLeaveRate?: number;

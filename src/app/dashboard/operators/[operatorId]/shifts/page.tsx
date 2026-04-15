@@ -53,7 +53,8 @@ type Operator = {
     firstName: string;
     lastName: string;
     workSchedule: WorkSchedule;
-    overtimeCalculation?: 'hourly' | 'half_hourly';
+    overtimeHalfHourTrigger?: number;
+    overtimeHourTrigger?: number;
 };
 
 type Timbratura = {
@@ -941,7 +942,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                  eventsForCalc.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start) } as Timbratura, { type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end)} as Timbratura);
             }
 
-            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeCalculation);
+            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
             ordinary = hoursResult.ordinary;
             overtime = hoursResult.overtime;
             leave = hoursResult.leave;
@@ -977,7 +978,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                     const schedule = operator!.workSchedule[dayToUse];
                     
-                    const hoursResult = calculateHours(regularShift, schedule, ignoreStart, operator!.overtimeCalculation);
+                    const hoursResult = calculateHours(regularShift, schedule, ignoreStart, operator!.overtimeHalfHourTrigger, operator!.overtimeHourTrigger);
 
                     newContext.ordinaryHours = String(hoursResult.ordinary);
                     newContext.overtimeHours = String(hoursResult.overtime);
@@ -1594,7 +1595,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                                             const schedule = operator.workSchedule[dayToUse];
                                             
-                                            const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator.overtimeCalculation);
+                                            const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
                                             
                                             effectiveDurationString = formatMinutes(worked);
 
@@ -1632,7 +1633,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             const shiftDate = overtimeShift.date.toDate();
                                             const dayName = dayIndexToName[getDayFns(shiftDate)];
                                             const schedule = operator.workSchedule[dayName];
-                                            const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator.overtimeCalculation);
+                                            const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
                                             
                                             timbratureString = sortedEvents.map(e => {
                                                  const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -1856,7 +1857,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                         const schedule = operator.workSchedule[dayToUse];
                         
-                        const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeCalculation);
+                        const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
 
                         const associatedLeaveRequest = detailShift.status === 'confermato' 
                             ? approvedRequests.find(r => r.associatedShiftId === detailShift.id && r.type === 'permesso')
@@ -1915,7 +1916,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     if (!detailShift) return null;
                                     
                                     const displayEvents = [...detailShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, operator.workSchedule[dayIndexToName[getDayFns(detailShift.date)]], detailShift.ignoreContractualStart, operator.overtimeCalculation);
+                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, operator.workSchedule[dayIndexToName[getDayFns(detailShift.date)]], detailShift.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
 
                                     return displayEvents.map(t => {
                                         const originalTime = format(t.timestamp.toDate(), 'HH:mm:ss');
@@ -2016,7 +2017,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </TableHeader>
                             <TableBody>
                                 {detailOvertimeShift && operator && (() => {
-                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], operator.workSchedule[dayIndexToName[getDayFns(detailOvertimeShift.date.toDate())]], false, operator.overtimeCalculation);
+                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], operator.workSchedule[dayIndexToName[getDayFns(detailOvertimeShift.date.toDate())]], false, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
 
                                     return detailOvertimeShift.events.map((e, i) => {
                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
