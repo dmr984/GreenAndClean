@@ -111,8 +111,8 @@ export default function ManageOperatorsPage() {
     const [newFixedSalary, setNewFixedSalary] = useState<number | string>('');
     const [newSickLeaveRate, setNewSickLeaveRate] = useState<number | string>('');
     const [newEntryTolerance, setNewEntryTolerance] = useState<number | string>(15);
-    const [newOrdinaryHalfHourTrigger, setNewOrdinaryHalfHourTrigger] = useState<number | string>('');
-    const [newOrdinaryHourTrigger, setNewOrdinaryHourTrigger] = useState<number | string>('');
+    const [newOrdinaryHalfHourTrigger, setNewOrdinaryHalfHourTrigger] = useState<number | string>(25);
+    const [newOrdinaryHourTrigger, setNewOrdinaryHourTrigger] = useState<number | string>(45);
     const [newScheduleType, setNewScheduleType] = useState<'daily' | 'monthly'>('daily');
     const [newMonthlyContractualHours, setNewMonthlyContractualHours] = useState<number | string>('');
 
@@ -332,8 +332,8 @@ export default function ManageOperatorsPage() {
                 setNewFixedSalary('');
                 setNewSickLeaveRate('');
                 setNewEntryTolerance(15);
-                setNewOrdinaryHalfHourTrigger('');
-                setNewOrdinaryHourTrigger('');
+                setNewOrdinaryHalfHourTrigger(25);
+                setNewOrdinaryHourTrigger(45);
                 setNewScheduleType('daily');
                 setNewMonthlyContractualHours('');
               }).catch((error: any) => {
@@ -700,7 +700,7 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeHalfHourTrigger(operator.overtimeHalfHourTrigger ?? 25); setEditingOvertimeHourTrigger(operator.overtimeHourTrigger ?? 45); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setEditingSickLeaveRate(operator.sickLeaveRate || ''); setEditingEntryTolerance(operator.entryTolerance ?? 15); setEditingOrdinaryHalfHourTrigger(operator.ordinaryHalfHourTrigger ?? ''); setEditingOrdinaryHourTrigger(operator.ordinaryHourTrigger ?? ''); setEditingScheduleType(operator.scheduleType || 'daily'); setEditingMonthlyContractualHours(operator.monthlyContractualHours || ''); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeHalfHourTrigger(operator.overtimeHalfHourTrigger ?? 25); setEditingOvertimeHourTrigger(operator.overtimeHourTrigger ?? 45); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setEditingSickLeaveRate(operator.sickLeaveRate || ''); setEditingEntryTolerance(operator.entryTolerance ?? 15); setEditingOrdinaryHalfHourTrigger(operator.ordinaryHalfHourTrigger ?? 25); setEditingOrdinaryHourTrigger(operator.ordinaryHourTrigger ?? 45); setEditingScheduleType(operator.scheduleType || 'daily'); setEditingMonthlyContractualHours(operator.monthlyContractualHours || ''); setIsEditDialogOpen(true);}}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
