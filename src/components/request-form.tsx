@@ -38,6 +38,7 @@ type WorkSchedule = {
 };
 type Operator = {
     workSchedule?: WorkSchedule;
+    scheduleType?: 'daily' | 'monthly';
 };
 
 
@@ -228,7 +229,9 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="ferie">Ferie</SelectItem>
-                                    <SelectItem value="permesso">Permesso</SelectItem>
+                                    {!(role === 'operator' && operator?.scheduleType === 'monthly') && (
+                                        <SelectItem value="permesso">Permesso</SelectItem>
+                                    )}
                                     {role === 'admin' && <SelectItem value="malattia">Malattia</SelectItem>}
                                 </SelectContent>
                             </Select>

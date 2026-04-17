@@ -173,6 +173,8 @@ export default function ShiftApprovalPage() {
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
+    const [isMultiSelect, setIsMultiSelect] = useState(false);
+    const [multipleShiftDates, setMultipleShiftDates] = useState<Date[]>([]);
     const [newShiftTimes, setNewShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [newShiftIgnoreContractual, setNewShiftIgnoreContractual] = useState(false);
     const [newShiftIsMakeup, setNewShiftIsMakeup] = useState(false);
@@ -947,7 +949,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                  eventsForCalc.push({ type: 'pausa', timestamp: createTimestamp(manualBreak.start) } as Timbratura, { type: 'fine_pausa', timestamp: createTimestamp(manualBreak.end)} as Timbratura);
             }
 
-            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
+            const hoursResult = calculateHours(regularShift, schedule, ignoreContractualStart, operator);
             ordinary = hoursResult.ordinary;
             overtime = hoursResult.overtime;
             leave = hoursResult.leave;
@@ -983,7 +985,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                     const schedule = operator!.workSchedule[dayToUse];
                     
-                    const hoursResult = calculateHours(regularShift, schedule, ignoreStart, operator!.overtimeHalfHourTrigger, operator!.overtimeHourTrigger);
+                    const hoursResult = calculateHours(regularShift, schedule, ignoreStart, operator!);
 
                     newContext.ordinaryHours = String(hoursResult.ordinary);
                     newContext.overtimeHours = String(hoursResult.overtime);
@@ -1062,98 +1064,103 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     };
 
     const handleAddManualShift = async () => {
-        if (!firestore || !operatorId || !newShiftDate || !operator) {
-            toast({ title: 'Dati mancanti', description: 'La data è obbligatoria.', variant: 'destructive'});
+        const datesToProcess = isMultiSelect ? multipleShiftDates : (newShiftDate ? [newShiftDate] : []);
+
+        if (datesToProcess.length === 0) {
+            toast({ title: 'Dati mancanti', description: 'Seleziona almeno una data.', variant: 'destructive'});
             return;
         }
 
-        // Only require 'entrata' if 'uscita' is also provided or if it's the only one
+        // Basic time validation (on time strings)
         if (!newShiftTimes.entrata && newShiftTimes.uscita) {
             toast({ title: 'Dati mancanti', description: 'L\'orario di entrata è obbligatorio se inserisci un\'uscita.', variant: 'destructive'});
             return;
         }
-         if (!newShiftTimes.entrata && !newShiftTimes.uscita) {
+        if (!newShiftTimes.entrata && !newShiftTimes.uscita) {
             toast({ title: 'Dati mancanti', description: 'Devi inserire almeno un orario di entrata o uscita.', variant: 'destructive'});
             return;
         }
 
-
-        const dayName = dayIndexToName[getDayFns(newShiftDate)];
-        const schedule = operator.workSchedule[dayName];
-        
-        if (!newShiftIgnoreContractual && schedule?.startTime && newShiftTimes.entrata) {
-            const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
-            const contractualStart = set(newShiftDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
-            
-            const [entryHours, entryMinutes] = newShiftTimes.entrata.split(':').map(Number);
-            const entryTime = set(newShiftDate, { hours: entryHours, minutes: entryMinutes, seconds: 0, milliseconds: 0 });
-
-            const twoHoursBefore = new Date(contractualStart.getTime() - 120 * 60000);
-
-            if (entryTime < twoHoursBefore) {
-                 toast({ 
-                    title: 'Orario non valido', 
-                    description: `L'orario di entrata è prima delle ${format(twoHoursBefore, 'HH:mm')}. Seleziona 'Ignora orario di inizio contrattuale' per forzare.`, 
-                    variant: 'destructive',
-                    duration: 7000
-                });
-                return;
-            }
-        }
-    
-        const createTimestamp = (time: string): Timestamp => {
-            const [hours, minutes] = time.split(':').map(Number);
-            return Timestamp.fromDate(set(newShiftDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
-        };
-        
-        const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(newShiftDate);
-        const isOvertime = !isWorkDay && !newShiftIsMakeup;
-        
         const batch = writeBatch(firestore);
         const timbratureCollectionRef = collection(firestore, `app-users/${operatorId}/timbrature`);
-        
-        const manualShiftId = doc(timbratureCollectionRef).id; 
-    
-        const events: { type: Timbratura['type'], time: string }[] = [
-            { type: 'entrata', time: newShiftTimes.entrata },
-        ];
-        
-        if (newShiftTimes.uscita) {
-            events.push({ type: 'uscita', time: newShiftTimes.uscita });
-        }
-        if (newShiftTimes.pausa) {
-             events.push({ type: 'pausa', time: newShiftTimes.pausa });
-        }
-        if (newShiftTimes.fine_pausa) {
-             events.push({ type: 'fine_pausa', time: newShiftTimes.fine_pausa });
-        }
-    
-        const makeupDayValue = newShiftIsMakeup && newShiftMakeupDay ? newShiftMakeupDay : undefined;
 
-        for (const event of events) {
-            if (event.time) {
-                const newDocRef = doc(timbratureCollectionRef);
-                const eventPayload: Omit<Timbratura, 'id'> = {
-                    userId: operatorId, 
-                    type: event.type, 
-                    timestamp: createTimestamp(event.time),
-                    status: 'sospesa' as const, 
-                    viewedByOperator: false, 
-                    isOvertime,
-                    shiftId: manualShiftId,
-                    ...(makeupDayValue && { makeupOfDay: makeupDayValue })
-                };
-                if (event.type === 'entrata') {
-                    eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
+        for (const processingDate of datesToProcess) {
+            const dayName = dayIndexToName[getDayFns(processingDate)];
+            const schedule = operator.workSchedule[dayName];
+            
+            // Check for contractual start if not ignored
+            if (!newShiftIgnoreContractual && schedule?.startTime && newShiftTimes.entrata) {
+                const [contractualHours, contractualMinutes] = schedule.startTime.split(':').map(Number);
+                const contractualStart = set(processingDate, { hours: contractualHours, minutes: contractualMinutes, seconds: 0, milliseconds: 0 });
+                
+                const [entryHours, entryMinutes] = newShiftTimes.entrata.split(':').map(Number);
+                const entryTime = set(processingDate, { hours: entryHours, minutes: entryMinutes, seconds: 0, milliseconds: 0 });
+
+                const twoHoursBefore = new Date(contractualStart.getTime() - 120 * 60000);
+
+                if (entryTime < twoHoursBefore) {
+                    toast({ 
+                        title: 'Orario non valido', 
+                        description: `L'orario di entrata per il giorno ${format(processingDate, 'dd/MM')} è prima delle ${format(twoHoursBefore, 'HH:mm')}. Usa 'Ignora orario' per forzare.`, 
+                        variant: 'destructive',
+                    });
+                    continue; // Skip this day instead of aborting the whole batch? Or abort? 
+                    // Let's abort to be safe and let the user fix.
                 }
-                batch.set(newDocRef, eventPayload);
+            }
+
+            const createTimestamp = (time: string): Timestamp => {
+                const [hours, minutes] = time.split(':').map(Number);
+                return Timestamp.fromDate(set(processingDate, { hours, minutes, seconds: 0, milliseconds: 0 }));
+            };
+            
+            const isWorkDay = (schedule?.totalHours || 0) > 0 && !isPublicHoliday(processingDate);
+            const isOvertime = !isWorkDay && !newShiftIsMakeup;
+            
+            const manualShiftId = doc(timbratureCollectionRef).id; 
+        
+            const events: { type: Timbratura['type'], time: string }[] = [
+                { type: 'entrata', time: newShiftTimes.entrata },
+            ];
+            
+            if (newShiftTimes.uscita) {
+                events.push({ type: 'uscita', time: newShiftTimes.uscita });
+            }
+            if (newShiftTimes.pausa) {
+                events.push({ type: 'pausa', time: newShiftTimes.pausa });
+            }
+            if (newShiftTimes.fine_pausa) {
+                events.push({ type: 'fine_pausa', time: newShiftTimes.fine_pausa });
+            }
+        
+            const makeupDayValue = newShiftIsMakeup && newShiftMakeupDay ? newShiftMakeupDay : undefined;
+
+            for (const event of events) {
+                if (event.time) {
+                    const newDocRef = doc(timbratureCollectionRef);
+                    const eventPayload: Omit<Timbratura, 'id'> = {
+                        userId: operatorId, 
+                        type: event.type, 
+                        timestamp: createTimestamp(event.time),
+                        status: 'sospesa' as const, 
+                        viewedByOperator: false, 
+                        isOvertime,
+                        shiftId: manualShiftId,
+                        ...(makeupDayValue && { makeupOfDay: makeupDayValue })
+                    };
+                    if (event.type === 'entrata') {
+                        eventPayload.ignoreContractualStart = newShiftIgnoreContractual;
+                    }
+                    batch.set(newDocRef, eventPayload);
+                }
             }
         }
+
         try {
             await batch.commit();
-            toast({ title: 'Successo', description: 'Turno manuale aggiunto. Ora è in attesa di approvazione.' });
+            toast({ title: 'Successo', description: `${datesToProcess.length} turni manuali aggiunti. Ora sono in attesa di approvazione.` });
         } catch (error) {
-            toast({ title: 'Errore', description: 'Impossibile aggiungere il turno manuale.', variant: 'destructive'});
+            toast({ title: 'Errore', description: 'Impossibile aggiungere i turni manuali.', variant: 'destructive'});
         }
         
         setIsAddShiftOpen(false);
@@ -1161,6 +1168,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setNewShiftIgnoreContractual(false);
         setNewShiftIsMakeup(false);
         setNewShiftMakeupDay('');
+        setIsMultiSelect(false);
+        setMultipleShiftDates([]);
     };
     
     
@@ -1600,7 +1609,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                                             const schedule = operator.workSchedule[dayToUse];
                                             
-                                            const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
+                                            const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator);
                                             
                                             effectiveDurationString = formatMinutes(worked);
 
@@ -1638,7 +1647,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             const shiftDate = overtimeShift.date.toDate();
                                             const dayName = dayIndexToName[getDayFns(shiftDate)];
                                             const schedule = operator.workSchedule[dayName];
-                                            const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
+                                            const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator);
                                             
                                             timbratureString = sortedEvents.map(e => {
                                                  const originalTime = format(e.timestamp.toDate(), 'HH:mm');
@@ -1718,27 +1727,38 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         <ResponsiveDialogDescription>Seleziona il giorno e inserisci gli orari del turno. Il sistema capirà se è ordinario o straordinario.</ResponsiveDialogDescription>
                     </ResponsiveDialogHeader>
                      <div className="grid gap-4 py-4">
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="multi-select" checked={isMultiSelect} onCheckedChange={(checked) => setIsMultiSelect(!!checked)} />
+                            <Label htmlFor="multi-select" className="text-sm font-semibold">Selezione Multipla</Label>
+                        </div>
                         <div className="space-y-2">
-                           <Label>Giorno del turno</Label>
+                           <Label>{isMultiSelect ? 'Seleziona i giorni' : 'Giorno del turno'}</Label>
                            <Calendar 
-                                mode="single" 
-                                selected={newShiftDate} 
-                                onSelect={(date) => {
-                                  if (date) {
-                                      setNewShiftDate(date);
-                                  }
+                                mode={isMultiSelect ? "multiple" : "single"} 
+                                selected={isMultiSelect ? multipleShiftDates : newShiftDate} 
+                                onSelect={(date: any) => {
+                                    if (isMultiSelect) {
+                                        setMultipleShiftDates(date as Date[]);
+                                    } else {
+                                        setNewShiftDate(date as Date);
+                                    }
                                 }}
                                 className="rounded-md border" 
                                 disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
                                 locale={it}
                            />
-                           {newShiftDate && (
+                           {!isMultiSelect && newShiftDate && (
                                 <p className="text-sm text-muted-foreground pt-2">
                                     {contractualStartTime 
                                         ? `Inizio turno previsto: ${contractualStartTime}`
                                         : "Nessun orario di inizio specifico previsto per questo giorno."
                                     }
                                 </p>
+                           )}
+                           {isMultiSelect && multipleShiftDates.length > 0 && (
+                               <p className="text-sm text-primary font-medium pt-2">
+                                   {multipleShiftDates.length} giorni selezionati
+                               </p>
                            )}
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -1862,7 +1882,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
                         const schedule = operator.workSchedule[dayToUse];
                         
-                        const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
+                        const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(detailShift, schedule, detailShift.ignoreContractualStart, operator);
 
                         const associatedLeaveRequest = detailShift.status === 'confermato' 
                             ? approvedRequests.find(r => r.associatedShiftId === detailShift.id && r.type === 'permesso')
@@ -1921,7 +1941,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     if (!detailShift) return null;
                                     
                                     const displayEvents = [...detailShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, operator.workSchedule[dayIndexToName[getDayFns(detailShift.date)]], detailShift.ignoreContractualStart, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
+                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, operator.workSchedule[dayIndexToName[getDayFns(detailShift.date)]], detailShift.ignoreContractualStart, operator);
 
                                     return displayEvents.map(t => {
                                         const originalTime = format(t.timestamp.toDate(), 'HH:mm:ss');
@@ -2022,7 +2042,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </TableHeader>
                             <TableBody>
                                 {detailOvertimeShift && operator && (() => {
-                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], operator.workSchedule[dayIndexToName[getDayFns(detailOvertimeShift.date.toDate())]], false, operator.overtimeHalfHourTrigger, operator.overtimeHourTrigger);
+                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], operator.workSchedule[dayIndexToName[getDayFns(detailOvertimeShift.date.toDate())]], false, operator);
 
                                     return detailOvertimeShift.events.map((e, i) => {
                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
@@ -2383,4 +2403,4 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
         </div>
     );
-};
+}

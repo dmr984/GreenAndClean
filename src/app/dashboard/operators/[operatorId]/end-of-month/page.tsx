@@ -558,17 +558,21 @@ export default function EndOfMonthPage() {
                             icon={Euro}
                             subtext="Costo approvato manually"
                         />
-                        <SummaryCard 
-                            title="Permessi (ore)" 
-                            value={finalPermessoHours} 
-                            icon={UserCheck}
-                        />
-                        <SummaryCard 
-                            title="Costo Permessi" 
-                            value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
-                            icon={Euro}
-                            subtext="Costo approvato manually"
-                        />
+                        {!(operator.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                            <>
+                                <SummaryCard 
+                                    title="Permessi (ore)" 
+                                    value={finalPermessoHours} 
+                                    icon={UserCheck}
+                                />
+                                <SummaryCard 
+                                    title="Costo Permessi" 
+                                    value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                    icon={Euro}
+                                    subtext="Costo approvato manually"
+                                />
+                            </>
+                        )}
                          <SummaryCard 
                             title="Malattia (giorni)" 
                             value={finalMalattiaDays}

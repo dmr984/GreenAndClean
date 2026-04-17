@@ -35,6 +35,7 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    scheduleType?: 'daily' | 'monthly';
 };
 
 type ManualTotals = {
@@ -656,8 +657,12 @@ const OperatorCalculationsPage = () => {
                                                 <InfoCard opId={op.id} title="Ferie (h)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" subtext={summaryData.ferieHours ? `(${summaryData.ferieHours}h)` : ''} />
                                                 <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
                                                 
-                                                <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
-                                                <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                                                    <>
+                                                        <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
+                                                        <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                    </>
+                                                )}
                                                 
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
                                                 <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />

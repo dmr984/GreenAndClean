@@ -30,7 +30,7 @@ export default function RootLayout({
         />
         <meta name="theme-color" content="#1a1a1a" />
       </head>
-      <body className="font-body antialiased">
+      <body className="font-body antialiased" suppressHydrationWarning>
         <PWAManager />
         <FirebaseClientProvider>
           <UserProvider>

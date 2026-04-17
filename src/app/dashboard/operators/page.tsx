@@ -313,9 +313,15 @@ export default function ManageOperatorsPage() {
             sickLeaveRate: parseFloat(String(sickLeaveRate)) || 0,
         };
 
+
+        const cleanedData = Object.fromEntries(
+            Object.entries(operatorData).filter(([_, v]) => v !== undefined)
+        );
+
         if (action === 'add') {
-             addDoc(collection(firestore, 'app-users'), operatorData)
+             addDoc(collection(firestore, 'app-users'), cleanedData)
               .then(() => {
+
                 toast({ title: "Successo", description: `Operatore con codice "${operatorCode}" aggiunto.` });
                 setIsAddDialogOpen(false);
                 // Reset form fields
@@ -345,7 +351,7 @@ export default function ManageOperatorsPage() {
             });
         } else if (action === 'edit' && selectedOperator) {
             const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
-            updateDoc(operatorRef, operatorData as any)
+            updateDoc(operatorRef, cleanedData as any)
             .then(() => {
                 toast({ title: "Successo", description: "Dati operatore aggiornati." });
                 setIsEditDialogOpen(false);

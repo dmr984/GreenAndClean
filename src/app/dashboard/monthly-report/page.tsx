@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
@@ -34,6 +34,7 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    scheduleType?: 'daily' | 'monthly';
 };
 
 type ManualTotals = {
@@ -377,7 +378,7 @@ const MonthlyReportPage = () => {
                 [type]: newValue
             }
         }));
-        toast({ title: 'Rettifica Salvata', description: 'Il nuovo valore ├¿ stato salvato in modo permanente per questo mese.'});
+        toast({ title: 'Rettifica Salvata', description: 'Il nuovo valore è stato salvato in modo permanente per questo mese.'});
         setEditingTotal(null);
         setTotalContent('');
     };
@@ -401,7 +402,7 @@ const MonthlyReportPage = () => {
             case 'ferieDays': return 'Rettifica Ferie (giorni)';
             case 'permessoHours': return 'Rettifica Permessi (ore)';
             case 'malattiaDays': return 'Rettifica Malattia (giorni)';
-            case 'totalDueOverride': return 'Rettifica Totale Dovuto (Ôé¼)';
+            case 'totalDueOverride': return 'Rettifica Totale Dovuto (€)';
             default: return 'Rettifica Valore';
         }
     }
@@ -605,8 +606,14 @@ const MonthlyReportPage = () => {
                                                 <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
                                                 <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
                                                 <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
-                                                <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
-                                                <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                
+                                                {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                                                    <>
+                                                        <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
+                                                        <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                    </>
+                                                )}
+                                                
                                                 <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
                                                 <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
                                                 <InfoCard opId={op.id} title="Assenze (g)" value={summary.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
@@ -627,12 +634,12 @@ const MonthlyReportPage = () => {
                  <DialogHeader>
                     <DialogTitle className='capitalize'>{getDialogTitleForType(editingTotal?.type)}</DialogTitle>
                      <DialogDescription>
-                        Inserisci il valore totale che vuoi assegnare per questo mese. Questa modifica ├¿ permanente per questo mese.
+                        Inserisci il valore totale che vuoi assegnare per questo mese. Questa modifica è permanente per questo mese.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="total-content" className="capitalize">
-                        {editingTotal?.type === 'totalDueOverride' ? 'Nuovo Totale Dovuto (Ôé¼)' : `Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}
+                        {editingTotal?.type === 'totalDueOverride' ? 'Nuovo Totale Dovuto (€)' : `Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}
                     </Label>
                     <Input
                         id="total-content"
@@ -654,7 +661,7 @@ const MonthlyReportPage = () => {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Questa azione ├¿ irreversibile. Verranno eliminati TUTTI i dati (turni, richieste, note, etc.) per gli operatori selezionati nel mese di{' '}
+                        Questa azione è irreversibile. Verranno eliminati TUTTI i dati (turni, richieste, note, etc.) per gli operatori selezionati nel mese di{' '}
                         <span className="font-bold">{currentMonth ? format(currentMonth, 'MMMM yyyy', { locale: it }) : ''}</span>.
                     </AlertDialogDescription>
                 </AlertDialogHeader>

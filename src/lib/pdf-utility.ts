@@ -15,6 +15,7 @@ export type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    scheduleType?: 'daily' | 'monthly';
 };
 
 export type ManualTotals = {
@@ -130,9 +131,12 @@ export const generateDetailedOperatorPdf = async (
         const finalPermessoHours = overrides.permessoHours ?? summary.permessoHours ?? 0;
         const finalMalattiaDays = overrides.malattiaDays ?? summary.malattiaDays ?? 0;
 
+        const isMonthly = op.scheduleType === 'monthly';
+        const showPermessi = !(isMonthly && finalPermessoHours === 0);
+
         const summaryBody = [
             [`GIORNI LAVORATI: ${summary.workedDays}`, { content: `FERIE: ${finalFerieDays}`, styles: { halign: 'right' }} ],
-            [`ORE ORDINARIE: ${summary.ordinaryHours}`, { content: `ORE PERMESSI: ${finalPermessoHours}`, styles: { halign: 'right' }}],
+            [`ORE ORDINARIE: ${summary.ordinaryHours}`, { content: showPermessi ? `ORE PERMESSI: ${finalPermessoHours}` : '', styles: { halign: 'right' }}],
             [`ORE STRAORDINARIE: ${summary.overtimeHours}`, { content: `GIORNI MALATTIA: ${finalMalattiaDays}`, styles: { halign: 'right' }}],
         ];
 
@@ -235,7 +239,7 @@ export const generateDetailedOperatorPdf = async (
                     y += 5;
                 });
                 
-                const stats = `Ore Previste: ${detail.shift.contractualHours}h | Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`;
+                const stats = `Ore Previste: ${detail.shift.contractualHours}h | Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h${showPermessi ? ` | Permesso: ${detail.shift.permissionHours}h` : ''}`;
                 doc.text(stats, margin, y);
                 y += 6;
             } else if (!detail.note) {

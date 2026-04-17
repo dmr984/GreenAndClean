@@ -358,6 +358,8 @@ export const calculateHours = (
     const overtimeHours = roundOvertimeHours(overtimeMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger);
     
     // Monthly workers never accrue daily leave (Infinity check prevents it), skip if IS monthly
+    // Per gli operatori mensili non calcoliamo automaticamente i permessi per coprire i "buchi" giornalieri.
+    // Il calcolo si basa sul monte ore mensile totale.
     const leaveHours = (!isMonthly && isWorkDay && ordinaryHours < contractualHours) ? contractualHours - ordinaryHours : 0;
 
     return { 
