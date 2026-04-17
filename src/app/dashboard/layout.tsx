@@ -142,8 +142,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <FileText className="h-5 w-5" /> Report del Mese
                             </Button>
                           </Link>
-
-
+                           <Link href="/dashboard/foglio-presenze" passHref>
+                            <Button variant={pathname.startsWith('/dashboard/foglio-presenze') ? 'secondary': 'ghost'} className="justify-start gap-2 w-full" onClick={() => setIsSidebarOpen(false)}>
+                                <ListChecks className="h-5 w-5" /> Foglio Presenze
+                            </Button>
+                          </Link>
                         </>
                     )}
                  </nav>
