@@ -60,8 +60,13 @@ service cloud.firestore {
         allow read, write: if true;
     }
 
-    match /scheduled-notifications/{notificationId} {
-      // Allow read and write access to scheduled notifications.
+    match /scheduled-notifications/{docId} {
+      // Garantisce accesso totale per sviluppo alle notifiche programmate
+      allow read, write, list: if true;
+    }
+
+    // Regola di backup per garantire che eventuali percorsi mancanti non blocchino l'app
+    match /{allPaths=**} {
       allow read, write: if true;
     }
   }
