@@ -59,5 +59,10 @@ service cloud.firestore {
         // Allow anyone to read or write reports.
         allow read, write: if true;
     }
+
+    match /scheduled-notifications/{notificationId} {
+      // Allow read and write access to scheduled notifications.
+      allow read, write: if true;
+    }
   }
 }
