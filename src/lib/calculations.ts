@@ -34,6 +34,7 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    employmentStartDate?: Timestamp;
 };
 
 type Timbratura = {
@@ -390,12 +391,16 @@ export const processMonthlyData = (
             status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato'; 
             date: Timestamp; 
             approvedHours?: number 
-        }[] 
+        }[],
+        employmentStartDate?: Date
     }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
+
+    // Prioritize explicitly passed start date, otherwise use operator field if it exists
+    const effectiveEmploymentStartDate = data.employmentStartDate || (operator.employmentStartDate ? operator.employmentStartDate.toDate() : undefined);
 
     const detailsMap = new Map<string, DailyDetail>();
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
@@ -577,15 +582,20 @@ export const processMonthlyData = (
         }
 
         if (detail.status === 'vuoto') {
+            const isBeforeEmployment = effectiveEmploymentStartDate && startOfDay(detail.date) < startOfDay(effectiveEmploymentStartDate);
+
             const dayName = dayIndexToName[getDay(detail.date)];
             const isWorkDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
             const isHoliday = isPublicHoliday(detail.date);
             
             const makeupNote = makeupTargets[startOfDay(detail.date).toISOString()];
-            if (makeupNote && makeupNote.length > 0) {
+            
+            if (isBeforeEmployment) {
+                detail.status = 'vuoto';
+            } else if (makeupNote && makeupNote.length > 0) {
                 detail.makeupActivityFor = makeupNote;
                 detail.status = 'riposo';
-            } else if (isHoliday && isWorkDay) {
+            } else if (isHoliday) {
                 detail.status = 'festa';
             } else if (isWorkDay && detail.date < today) {
                 detail.status = 'mancata_timbratura';
@@ -695,11 +705,17 @@ export const processMonthlyData = (
     };
 
     // Calculate estimated cost
+    let rate = operator.hourlyRate || 0;
+    if (operator.salaryType === 'fixed' && !operator.hourlyRate && operator.fixedSalary) {
+        // Fallback for calculating overtime rate if hourlyRate isn't specified
+        const monthlyHours = operator.monthlyContractualHours || expectedMonthlyHours || 160; 
+        rate = operator.fixedSalary / monthlyHours;
+    }
+    const overtimeRate = operator.overtimeRate || (rate * 1.2); // Default 20% increase if not specified
+
     if (operator.salaryType === 'fixed' && operator.fixedSalary) {
-        monthlySummary.estimatedTotalCost = operator.fixedSalary;
+        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate);
     } else {
-        const rate = operator.hourlyRate || 0;
-        const overtimeRate = operator.overtimeRate || (rate * 1.2); // Default 20% increase if not specified
         monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate);
     }
 

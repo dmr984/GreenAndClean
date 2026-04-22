@@ -1,4 +1,4 @@
-import { startOfDay } from 'date-fns';
+import { format, startOfDay } from 'date-fns';
 
 // Note: Easter and Easter Monday are calculated dynamically.
 // Other holidays are fixed. This list includes major Italian public holidays.
@@ -19,26 +19,27 @@ const getEasterSunday = (year: number): Date => {
     const m = Math.floor((a + 11 * h + 22 * l) / 451);
     const month = Math.floor((h + l - 7 * m + 114) / 31);
     const day = ((h + l - 7 * m + 114) % 31) + 1;
-    return new Date(Date.UTC(year, month - 1, day));
+    // Return local date at midnight
+    return new Date(year, month - 1, day);
 };
 
 const generateHolidaysForYear = (year: number): Date[] => {
     const easterSunday = getEasterSunday(year);
     const easterMonday = new Date(easterSunday);
-    easterMonday.setUTCDate(easterSunday.getUTCDate() + 1);
+    easterMonday.setDate(easterSunday.getDate() + 1);
 
     return [
-        // Fixed holidays (using UTC to avoid timezone issues)
-        new Date(Date.UTC(year, 0, 1)),   // Capodanno
-        new Date(Date.UTC(year, 0, 6)),   // Epifania
-        new Date(Date.UTC(year, 3, 25)),  // Festa della Liberazione
-        new Date(Date.UTC(year, 4, 1)),   // Festa dei Lavoratori
-        new Date(Date.UTC(year, 5, 2)),   // Festa della Repubblica
-        new Date(Date.UTC(year, 7, 15)),  // Ferragosto
-        new Date(Date.UTC(year, 10, 1)),  // Ognissanti
-        new Date(Date.UTC(year, 11, 8)),  // Immacolata Concezione
-        new Date(Date.UTC(year, 11, 25)), // Natale
-        new Date(Date.UTC(year, 11, 26)), // Santo Stefano
+        // Fixed holidays
+        new Date(year, 0, 1),   // Capodanno
+        new Date(year, 0, 6),   // Epifania
+        new Date(year, 3, 25),  // Festa della Liberazione
+        new Date(year, 4, 1),   // Festa dei Lavoratori
+        new Date(year, 5, 2),   // Festa della Repubblica
+        new Date(year, 7, 15),  // Ferragosto
+        new Date(year, 10, 1),  // Ognissanti
+        new Date(year, 11, 8),  // Immacolata Concezione
+        new Date(year, 11, 25), // Natale
+        new Date(year, 11, 26), // Santo Stefano
 
         // Dynamic holidays
         easterSunday,
@@ -50,11 +51,11 @@ const generateHolidaysForYear = (year: number): Date[] => {
 const years = Array.from({ length: 27 }, (_, i) => 2024 + i); // 2024 to 2050
 const allHolidays = years.flatMap(year => generateHolidaysForYear(year));
 
-// Combine and export a set of date strings for efficient lookup
+// Use YYYY-MM-DD format for efficient and timezone-safe lookup
 const holidaySet = new Set(
-    allHolidays.map(d => startOfDay(d).toISOString())
+    allHolidays.map(d => format(d, 'yyyy-MM-dd'))
 );
 
 export const isPublicHoliday = (date: Date): boolean => {
-    return holidaySet.has(startOfDay(date).toISOString());
+    return holidaySet.has(format(date, 'yyyy-MM-dd'));
 };

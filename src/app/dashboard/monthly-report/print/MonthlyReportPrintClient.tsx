@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, getDoc, doc, orderBy, limit } from 'firebase/firestore';
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
@@ -159,6 +159,7 @@ export default function MonthlyReportPrintClient() {
                         where('date', '<=', queryEnd)
                     );
 
+
                     const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                         getDocs(timbratureQuery),
                         getDocs(requestsQuery),
@@ -168,7 +169,12 @@ export default function MonthlyReportPrintClient() {
                     const requestsData = requestsSnap.docs.map(d => ({ ...d.data(), id: d.id } as any));
                     const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                     
-                    const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
+                    let employmentStartDate: Date | undefined;
+                    if ((op as any).employmentStartDate) {
+                        employmentStartDate = (op as any).employmentStartDate.toDate();
+                    }
+
+                    const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData }, employmentStartDate);
                     return { opId: op.id, summary: monthlySummary };
                 });
 

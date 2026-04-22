@@ -2,7 +2,7 @@
 'use client';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch, orderBy, limit } from 'firebase/firestore';
 import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -172,6 +172,7 @@ const MonthlyReportPage = () => {
                     where('date', '<=', queryEnd)
                 );
 
+
                 const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
@@ -182,8 +183,12 @@ const MonthlyReportPage = () => {
                 const requestsData = requestsSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                 const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
 
-                const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
-                return { opId: op.id, summary: monthlySummary };
+                let employmentStartDate: Date | undefined;
+                if ((op as any).employmentStartDate) {
+                    employmentStartDate = (op as any).employmentStartDate.toDate();
+                }
+                const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData }, employmentStartDate);
+                return { opId: op.id, summary: monthlySummary, employmentStartDate };
             });
 
             const results = await Promise.all(promises);

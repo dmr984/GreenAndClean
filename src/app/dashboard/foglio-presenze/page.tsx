@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, onSnapshot, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, Timestamp, orderBy, limit, doc, getDoc, setDoc } from 'firebase/firestore';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSaturday, isSunday } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { Loader2, Printer, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
@@ -28,7 +28,7 @@ export default function FoglioPresenzePage() {
     const [attendanceData, setAttendanceData] = useState<Record<string, { dailyDetails: DailyDetail[] }>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [overrides, setOverrides] = useState<Record<string, string>>({});
-
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     const daysOfMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -46,6 +46,36 @@ export default function FoglioPresenzePage() {
     }, [firestore]);
 
     useEffect(() => {
+        if (!firestore) return;
+        setInitialLoadDone(false);
+        const fetchOverrides = async () => {
+            const docRef = doc(firestore, 'reports', `foglio-presenze-overrides-${format(currentMonth, 'yyyy-MM')}`);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setOverrides(docSnap.data().overrides || {});
+            } else {
+                setOverrides({});
+            }
+            setInitialLoadDone(true);
+        };
+        fetchOverrides();
+    }, [firestore, currentMonth]);
+
+    useEffect(() => {
+        if (!initialLoadDone || !firestore) return;
+        const saveOverrides = async () => {
+            try {
+                const docRef = doc(firestore, 'reports', `foglio-presenze-overrides-${format(currentMonth, 'yyyy-MM')}`);
+                await setDoc(docRef, { overrides }, { merge: true });
+            } catch (e) {
+                console.error("Failed to save overrides", e);
+            }
+        };
+        const timeout = setTimeout(saveOverrides, 1000);
+        return () => clearTimeout(timeout);
+    }, [overrides, firestore, currentMonth, initialLoadDone]);
+
+    useEffect(() => {
         const fetchAllData = async () => {
             if (!firestore || operators.length === 0) return;
             setIsLoading(true);
@@ -54,11 +84,21 @@ export default function FoglioPresenzePage() {
             const data: Record<string, { dailyDetails: DailyDetail[] }> = {};
             for (const op of operators) {
                 if (!selectedOperatorIds.includes(op.id)) continue;
+                
+                let employmentStartDate = (op as any).employmentStartDate?.toDate();
+
                 const tQuery = query(collection(firestore, `app-users/${op.id}/timbrature`), where('timestamp', '>=', start), where('timestamp', '<=', end));
-                const tSnap = await getDocs(tQuery);
+                const rQuery = query(collection(firestore, `app-users/${op.id}/requests`), where('status', '==', 'approvato'));
+                
+                const [tSnap, rSnap] = await Promise.all([
+                    getDocs(tQuery),
+                    getDocs(rQuery)
+                ]);
+
                 data[op.id] = processMonthlyData(currentMonth, op as any, { 
                     timbrature: tSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)), 
-                    requests: [] 
+                    requests: rSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)),
+                    employmentStartDate
                 });
             }
             setAttendanceData(data);
@@ -82,7 +122,12 @@ export default function FoglioPresenzePage() {
                         <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button>
                         <span className="font-bold w-36 text-center capitalize text-lg">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>
                         <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                        <Button variant="outline" onClick={() => setOverrides({})} className="ml-2 text-destructive border-destructive hover:bg-destructive/10"><RotateCcw className="mr-2 h-4 w-4" /> Reset</Button>
+                        <Button variant="outline" onClick={async () => {
+                            setOverrides({});
+                            if (firestore) {
+                                await setDoc(doc(firestore, 'reports', `foglio-presenze-overrides-${format(currentMonth, 'yyyy-MM')}`), { overrides: {} }, { merge: true });
+                            }
+                        }} className="ml-2 text-destructive border-destructive hover:bg-destructive/10"><RotateCcw className="mr-2 h-4 w-4" /> Reset</Button>
                         <Button variant="default" onClick={() => window.print()} className="ml-2 bg-[#4a6da7] hover:bg-[#3a5d97]"><Printer className="mr-2 h-4 w-4" /> Stampa</Button>
                     </div>
                 </CardHeader>
@@ -178,15 +223,21 @@ export default function FoglioPresenzePage() {
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-O-${day}`];
                                                 if (m === undefined) {
-                                                    if (dayDate && (isSaturday(dayDate) || isSunday(dayDate))) m = '/';
-                                                    else if (dayDate) {
+                                                    if (dayDate) {
                                                         const d = processed?.dailyDetails?.find(dd => isSameDay(dd.date, dayDate!));
+                                                        const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayDate.getDay()];
+                                                        const isWorkDay = (op.workSchedule[dayName]?.totalHours || 0) > 0;
+                                                        const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
+                                                        
                                                         if (d) {
                                                             if (d.status === 'lavorato') m = 'P';
+                                                            else if (isWeekend) m = '/';
                                                             else if (d.status === 'festa') m = 'FG';
                                                             else if (d.status === 'ferie') m = 'F';
                                                             else if (d.status === 'malattia') m = 'M';
-                                                            else if (d.status === 'mancata_timbratura' && op.scheduleType === 'daily') m = 'A';
+                                                            else if (d.status === 'mancata_timbratura') m = 'A';
+                                                        } else if (isWeekend) {
+                                                            m = '/';
                                                         }
                                                     }
                                                 }

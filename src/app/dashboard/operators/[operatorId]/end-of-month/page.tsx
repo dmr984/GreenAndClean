@@ -4,7 +4,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc, deleteDoc, orderBy, limit } from 'firebase/firestore';
 import { Loader2, Briefcase, Clock, Plus, Plane, UserCheck, Stethoscope, AlertTriangle, Printer, RefreshCw, Archive, Share2, FileText, Download, X, ChevronLeft, ChevronRight, Euro, Pencil, PlusCircle, Wallet, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -230,7 +230,12 @@ export default function EndOfMonthPage() {
         if (!operator || isLoading || !currentMonth) {
             return { monthlySummary: {} as MonthlySummary, dailyDetails: [] as DailyDetail[] };
         }
-        return processMonthlyData(currentMonth, operator, monthlyData);
+        
+        const employmentDate = (operator as any).employmentStartDate 
+            ? (operator as any).employmentStartDate.toDate() 
+            : undefined;
+
+        return processMonthlyData(currentMonth, operator, monthlyData, employmentDate);
     }, [operator, currentMonth, monthlyData, isLoading]);
 
 

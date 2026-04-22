@@ -76,11 +76,9 @@ type Operator = {
     monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
-    salaryType?: 'hourly' | 'fixed';
-    hourlyRate?: number;
-    overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    employmentStartDate?: Timestamp;
 };
 
 export default function ManageOperatorsPage() {
@@ -115,6 +113,7 @@ export default function ManageOperatorsPage() {
     const [newOrdinaryHourTrigger, setNewOrdinaryHourTrigger] = useState<number | string>(45);
     const [newScheduleType, setNewScheduleType] = useState<'daily' | 'monthly'>('daily');
     const [newMonthlyContractualHours, setNewMonthlyContractualHours] = useState<number | string>('');
+    const [newEmploymentStartDate, setNewEmploymentStartDate] = useState<string>('');
 
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
@@ -134,6 +133,7 @@ export default function ManageOperatorsPage() {
     const [editingOrdinaryHourTrigger, setEditingOrdinaryHourTrigger] = useState<number | string>('');
     const [editingScheduleType, setEditingScheduleType] = useState<'daily' | 'monthly'>('daily');
     const [editingMonthlyContractualHours, setEditingMonthlyContractualHours] = useState<number | string>('');
+    const [editingEmploymentStartDate, setEditingEmploymentStartDate] = useState<string>('');
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -254,6 +254,7 @@ export default function ManageOperatorsPage() {
         const ordinaryHourTrigger = action === 'add' ? newOrdinaryHourTrigger : editingOrdinaryHourTrigger;
         const scheduleType = action === 'add' ? newScheduleType : editingScheduleType;
         const monthlyContractualHours = action === 'add' ? newMonthlyContractualHours : editingMonthlyContractualHours;
+        const employmentStartDateStr = action === 'add' ? newEmploymentStartDate : editingEmploymentStartDate;
 
         if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
@@ -311,6 +312,7 @@ export default function ManageOperatorsPage() {
             overtimeRate: parseFloat(String(overtimeRate)) || 0,
             fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary)) || 0 : 0,
             sickLeaveRate: parseFloat(String(sickLeaveRate)) || 0,
+            employmentStartDate: employmentStartDateStr ? Timestamp.fromDate(new Date(employmentStartDateStr)) : undefined,
         };
 
 
@@ -342,6 +344,7 @@ export default function ManageOperatorsPage() {
                 setNewOrdinaryHourTrigger(45);
                 setNewScheduleType('daily');
                 setNewMonthlyContractualHours('');
+                setNewEmploymentStartDate('');
               }).catch((error: any) => {
                 if (error.code === 'permission-denied') {
                      errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'create', path: 'app-users', requestResourceData: operatorData }));
@@ -537,6 +540,19 @@ export default function ManageOperatorsPage() {
           </div>
         )}
         
+        <div className='md:col-span-3 mt-4 mb-2'>
+            <h4 className="font-semibold text-lg">Informazioni Contrattuali</h4>
+        </div>
+        <div className='md:col-span-1'>
+            <Label htmlFor={`${type}-employmentStartDate`}>Data Assunzione</Label>
+            <Input 
+                id={`${type}-employmentStartDate`} 
+                type="date" 
+                value={type === 'new' ? newEmploymentStartDate : editingEmploymentStartDate} 
+                onChange={(e) => type === 'new' ? setNewEmploymentStartDate(e.target.value) : setEditingEmploymentStartDate(e.target.value)} 
+            />
+        </div>
+
         <div>
             <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€/h)</Label>
             <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
@@ -706,7 +722,28 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => { setSelectedOperator(operator); setEditingOperatorCode(operator.username); setEditingFirstName(operator.firstName); setEditingLastName(operator.lastName); setEditingRequireGps(operator.requireGps ?? true); setEditingWorkSchedule(operator.workSchedule || {}); setEditingOvertimeHalfHourTrigger(operator.overtimeHalfHourTrigger ?? 25); setEditingOvertimeHourTrigger(operator.overtimeHourTrigger ?? 45); setEditingSalaryType(operator.salaryType || 'hourly'); setEditingHourlyRate(operator.hourlyRate || ''); setEditingOvertimeRate(operator.overtimeRate || ''); setEditingFixedSalary(operator.fixedSalary || ''); setEditingSickLeaveRate(operator.sickLeaveRate || ''); setEditingEntryTolerance(operator.entryTolerance ?? 15); setEditingOrdinaryHalfHourTrigger(operator.ordinaryHalfHourTrigger ?? 25); setEditingOrdinaryHourTrigger(operator.ordinaryHourTrigger ?? 45); setEditingScheduleType(operator.scheduleType || 'daily'); setEditingMonthlyContractualHours(operator.monthlyContractualHours || ''); setIsEditDialogOpen(true);}}>
+                                                    <Button variant="ghost" size="icon" onClick={() => { 
+                                                        setSelectedOperator(operator); 
+                                                        setEditingOperatorCode(operator.username); 
+                                                        setEditingFirstName(operator.firstName); 
+                                                        setEditingLastName(operator.lastName); 
+                                                        setEditingRequireGps(operator.requireGps ?? true); 
+                                                        setEditingWorkSchedule(operator.workSchedule || {}); 
+                                                        setEditingOvertimeHalfHourTrigger(operator.overtimeHalfHourTrigger ?? 25); 
+                                                        setEditingOvertimeHourTrigger(operator.overtimeHourTrigger ?? 45); 
+                                                        setEditingSalaryType(operator.salaryType || 'hourly'); 
+                                                        setEditingHourlyRate(operator.hourlyRate || ''); 
+                                                        setEditingOvertimeRate(operator.overtimeRate || ''); 
+                                                        setEditingFixedSalary(operator.fixedSalary || ''); 
+                                                        setEditingSickLeaveRate(operator.sickLeaveRate || ''); 
+                                                        setEditingEntryTolerance(operator.entryTolerance ?? 15); 
+                                                        setEditingOrdinaryHalfHourTrigger(operator.ordinaryHalfHourTrigger ?? 25); 
+                                                        setEditingOrdinaryHourTrigger(operator.ordinaryHourTrigger ?? 45); 
+                                                        setEditingScheduleType(operator.scheduleType || 'daily'); 
+                                                        setEditingMonthlyContractualHours(operator.monthlyContractualHours || ''); 
+                                                        setEditingEmploymentStartDate(operator.employmentStartDate ? format(operator.employmentStartDate.toDate(), 'yyyy-MM-dd') : '');
+                                                        setIsEditDialogOpen(true);
+                                                    }}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => setOperatorToDelete(operator)}>
