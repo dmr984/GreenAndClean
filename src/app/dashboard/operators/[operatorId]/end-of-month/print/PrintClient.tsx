@@ -81,7 +81,7 @@ export default function PrintClient() {
 
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[] }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[], overrides?: any }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [], overrides: {} });
     const [manualTotals, setManualTotals] = useState({ ferie: -1, permessi: -1, malattia: -1 });
 
     const [isLoading, setIsLoading] = useState(true);
@@ -161,19 +161,30 @@ export default function PrintClient() {
                     where('date', '<=', queryEnd)
                 );
 
-                const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
+                const monthId = format(currentMonth, 'yyyy-MM');
+                const overridesRef = doc(firestore, 'reports', `foglio-presenze-overrides-${monthId}`);
+
+                const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap, overridesSnap] = await Promise.all([
                     getDocs(timbratureQuery),
                     getDocs(requestsQuery),
                     getDocs(notesQuery),
-                    getDocs(straordinariQuery)
+                    getDocs(straordinariQuery),
+                    getDoc(overridesRef)
                 ]);
 
                 const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura)).filter(t => t.status === 'confermata');
                 const requestsData = requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Request));
                 const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
                 const straordinariData = straordinariSnap.docs.map(d => ({id: d.id, ...d.data()} as any));
+                const centralOverrides = overridesSnap.exists() ? (overridesSnap.data().overrides || {}) : {};
                 
-                setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData, straordinari: straordinariData });
+                setMonthlyData({ 
+                    timbrature: timbratureData, 
+                    requests: requestsData, 
+                    dailyNotes: notesData, 
+                    straordinari: straordinariData,
+                    overrides: centralOverrides 
+                });
 
             } catch (error) {
                  console.error("Error fetching data for print:", error);

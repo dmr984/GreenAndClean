@@ -392,7 +392,8 @@ export const processMonthlyData = (
             date: Timestamp; 
             approvedHours?: number 
         }[],
-        employmentStartDate?: Date
+        employmentStartDate?: Date,
+        overrides?: any
     }
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
@@ -603,11 +604,24 @@ export const processMonthlyData = (
                 detail.status = 'riposo';
             }
         }
+
+        // Apply manual overrides from Foglio Presenze (Viceversa Sync)
+        const opId = operator.id;
+        const day = format(detail.date, 'd');
+        const manualStatus = data.overrides?.[`${opId}-O-${day}`];
+        if (manualStatus) {
+            if (manualStatus === 'P') detail.status = 'lavorato';
+            else if (manualStatus === 'A') detail.status = 'mancata_timbratura';
+            else if (manualStatus === 'M') detail.status = 'malattia';
+            else if (manualStatus === 'F') detail.status = 'ferie';
+            else if (manualStatus === 'FG') detail.status = 'festa';
+            else if (manualStatus === '/') detail.status = 'riposo';
+        }
     });
     
     const dailyDetails = Array.from(detailsMap.values()).filter(d => {
-        if (d.date > today && d.status === 'vuoto') return false;
-        return true;
+        // Only include days up to today. Future days should not appear in any report/calculation.
+        return d.date <= today;
     });
 
 
@@ -703,6 +717,34 @@ export const processMonthlyData = (
         estimatedTotalCost: 0, // Will calculate below
         expectedMonthlyHours
     };
+
+    // Apply summary overrides from Foglio Presenze or Manual Rettifiche (Viceversa Sync)
+    const opId = operator.id;
+    if (data.overrides) {
+        // Map Foglio Presenze Sum Columns to Summary Fields
+        // Index 2: Per ferie (Hours), Index 9: Retribuiti (Ferie Days), Index 5: Carenza (Malattia Days)
+        if (data.overrides[`${opId}-S-sum-9`] !== undefined) {
+            const val = parseFloat(data.overrides[`${opId}-S-sum-9`]);
+            if (!isNaN(val)) monthlySummary.ferieDays = val;
+        }
+        if (data.overrides[`${opId}-S-sum-2`] !== undefined) {
+            const val = parseFloat(data.overrides[`${opId}-S-sum-2`]);
+            if (!isNaN(val)) monthlySummary.ferieHours = val;
+        }
+        if (data.overrides[`${opId}-S-sum-5`] !== undefined) {
+            const val = parseFloat(data.overrides[`${opId}-S-sum-5`]);
+            if (!isNaN(val)) monthlySummary.malattiaDays = val;
+        }
+        if (data.overrides[`${opId}-S-sum-1`] !== undefined) {
+            const val = parseFloat(data.overrides[`${opId}-S-sum-1`]);
+            if (!isNaN(val)) monthlySummary.permessoHours = val;
+        }
+        // Direct property overrides from Situazione Attuale
+        if (data.overrides[`${opId}-ferieDays`] !== undefined) monthlySummary.ferieDays = data.overrides[`${opId}-ferieDays`];
+        if (data.overrides[`${opId}-malattiaDays`] !== undefined) monthlySummary.malattiaDays = data.overrides[`${opId}-malattiaDays`];
+        if (data.overrides[`${opId}-permessoHours`] !== undefined) monthlySummary.permessoHours = data.overrides[`${opId}-permessoHours`];
+        if (data.overrides[`${opId}-totalDueOverride`] !== undefined) monthlySummary.totalDueOverride = data.overrides[`${opId}-totalDueOverride`];
+    }
 
     // Calculate estimated cost
     let rate = operator.hourlyRate || 0;

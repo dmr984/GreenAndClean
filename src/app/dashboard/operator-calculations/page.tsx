@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 
 
 type Operator = {
@@ -83,33 +84,7 @@ const OperatorCalculationsPage = () => {
     const [isDownloading, setIsDownloading] = useState(false);
 
 
-    const fetchOverridesForMonth = useCallback(async (date: Date) => {
-        if (!firestore || operators.length === 0) return;
 
-        const monthId = format(date, 'yyyy-MM');
-        const newOverrides: Record<string, ManualTotals> = {};
-
-        for (const op of operators) {
-            const overrideDocRef = doc(firestore, `app-users/${op.id}/monthly-overrides`, monthId);
-            try {
-                const docSnap = await getDoc(overrideDocRef);
-                if (docSnap.exists()) {
-                    newOverrides[op.id] = docSnap.data();
-                }
-            } catch (error: any) {
-                 if (error.code === 'permission-denied') {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({
-                        operation: 'get',
-                        path: overrideDocRef.path
-                    }));
-                } else {
-                    console.error(`Error fetching override for operator ${op.id}:`, error);
-                }
-            }
-        }
-        setManualOverrides(newOverrides);
-
-    }, [firestore, operators]);
 
 
     useEffect(() => {
@@ -153,11 +128,17 @@ const OperatorCalculationsPage = () => {
 
         const monthStart = startOfMonth(date);
         const monthEnd = dfnsEndOfMonth(date);
+        const monthId = format(date, 'yyyy-MM');
         
         const queryStart = subMonths(monthStart, 1);
         const queryEnd = addMonths(monthEnd, 1);
 
         try {
+            // Fetch central overrides once
+            const overridesRef = doc(firestore, 'reports', `foglio-presenze-overrides-${monthId}`);
+            const overridesSnap = await getDoc(overridesRef);
+            const centralOverrides = overridesSnap.exists() ? (overridesSnap.data().overrides || {}) : {};
+
             const promises = operators.map(async (op) => {
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${op.id}/timbrature`),
@@ -184,7 +165,12 @@ const OperatorCalculationsPage = () => {
                 const requestsData = requestsSnap.docs.map(d => ({...d.data(), id: d.id} as any));
                 const straordinariData = straordinariSnap.docs.map(d => ({...d.data(), id: d.id} as any));
 
-                const { monthlySummary, dailyDetails } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData });
+                const { monthlySummary, dailyDetails } = processMonthlyData(date, op, { 
+                    timbrature: timbratureData, 
+                    requests: requestsData, 
+                    straordinari: straordinariData,
+                    overrides: centralOverrides
+                });
                 return { opId: op.id, summary: monthlySummary, details: dailyDetails };
             });
 
@@ -194,7 +180,19 @@ const OperatorCalculationsPage = () => {
                 if (summary) newSummaries.set(opId, { summary, details });
             });
             setSummaries(newSummaries);
-            await fetchOverridesForMonth(date);
+
+            // Populate manualOverrides state from central overrides for UI highlighting
+            const newManualOverrides: Record<string, ManualTotals> = {};
+            operators.forEach(op => {
+                const opId = op.id;
+                newManualOverrides[opId] = {
+                    ferieDays: centralOverrides[`${opId}-ferieDays`] ?? (centralOverrides[`${opId}-S-sum-9`] ? parseFloat(centralOverrides[`${opId}-S-sum-9`]) : undefined),
+                    malattiaDays: centralOverrides[`${opId}-malattiaDays`] ?? (centralOverrides[`${opId}-S-sum-5`] ? parseFloat(centralOverrides[`${opId}-S-sum-5`]) : undefined),
+                    permessoHours: centralOverrides[`${opId}-permessoHours`] ?? (centralOverrides[`${opId}-S-sum-1`] ? parseFloat(centralOverrides[`${opId}-S-sum-1`]) : undefined),
+                    totalDueOverride: centralOverrides[`${opId}-totalDueOverride`]
+                };
+            });
+            setManualOverrides(newManualOverrides);
 
         } catch (error) {
             console.error("Error fetching monthly report data:", error);
@@ -202,7 +200,7 @@ const OperatorCalculationsPage = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [firestore, operators, toast, fetchOverridesForMonth]);
+    }, [firestore, operators, toast]);
 
     useEffect(() => {
         if (operators.length > 0) {
@@ -378,7 +376,7 @@ const OperatorCalculationsPage = () => {
         if (!editingTotal || !firestore) return;
         const { operatorId, type } = editingTotal;
         const monthId = format(currentMonth, 'yyyy-MM');
-        const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
+        const overrideDocRef = doc(firestore, 'reports', `foglio-presenze-overrides-${monthId}`);
 
         const newValue = parseFloat(totalContent);
         if (isNaN(newValue)) {
@@ -386,36 +384,21 @@ const OperatorCalculationsPage = () => {
             return;
         }
         
-        const updateData = { [type]: newValue };
+        const updateKey = `overrides.${operatorId}-${type}`;
+        const updateData = { [updateKey]: newValue };
 
         setDoc(overrideDocRef, updateData, { merge: true })
             .catch(error => {
-                if (error.code === 'permission-denied') {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({
-                        operation: 'write',
-                        path: overrideDocRef.path,
-                        requestResourceData: updateData
-                    }));
-                } else {
-                    console.error("Error saving override:", error);
-                    toast({ title: 'Errore', description: 'Impossibile salvare la rettifica.', variant: 'destructive' });
-                }
+                console.error("Error saving override:", error);
+                toast({ title: 'Errore', description: 'Impossibile salvare la rettifica.', variant: 'destructive' });
             })
             .finally(() => {
                 setEditingTotal(null);
                 setTotalContent('');
+                fetchDataForMonth(currentMonth); // Refresh to show new totals
             });
         
-        setManualOverrides(prev => ({
-            ...prev,
-            [operatorId]: {
-                ...(prev[operatorId] || {}),
-                [type]: newValue
-            }
-        }));
-        toast({ title: 'Rettifica Salvata', description: 'Il nuovo valore è stato salvato in modo permanente per questo mese.'});
-        setEditingTotal(null);
-        setTotalContent('');
+        toast({ title: 'Rettifica Salvata', description: 'Il nuovo valore è stato salvato e sincronizzato.'});
     };
 
     const handleVisibilityChange = (operatorId: string, key: keyof VisibilitySettings) => {
@@ -573,7 +556,7 @@ const OperatorCalculationsPage = () => {
                                 <Label htmlFor="global-compact" className="font-semibold cursor-pointer text-primary">Vista Sintetica Globale</Label>
                             </div>
                         </div>
-                        <div className="space-y-4">
+                        <Accordion type="single" collapsible className="w-full space-y-4">
                             {operators.map(op => {
                                 const data = summaries.get(op.id);
                                 const summaryData = data?.summary;
@@ -600,41 +583,44 @@ const OperatorCalculationsPage = () => {
                                     : summaryData?.ordinaryWorkedDays || 0;
 
                                 return (
-                                    <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
-                                        <CardHeader className={cn(isCompact && "py-3")}>
-                                            <div className='flex justify-between items-start'>
-                                                <div className="flex items-center gap-4">
-                                                    <Checkbox
-                                                        id={`select-${op.id}`}
-                                                        checked={selectedOperatorIds.has(op.id)}
-                                                        onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
-                                                    />
-                                                    <Link href={`/dashboard/operators/${op.id}/end-of-month`}>
-                                                        <CardTitle className="hover:underline text-lg">{op.firstName} {op.lastName}</CardTitle>
-                                                        {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
-                                                    </Link>
-                                                </div>
-                                                <div className="flex flex-col items-end gap-2">
-                                                    <div className='font-bold text-lg flex items-center gap-2'>
-                                                        <Euro className="h-5 w-5" />
-                                                        <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
-                                                            {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </span>
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
-                                                            className="h-6 w-6 ml-1" 
-                                                            onClick={() => {
-                                                                setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
-                                                                setTotalContent(String(totalDue));
-                                                            }}
-                                                        >
-                                                            <Pencil className="h-3 w-3" />
-                                                        </Button>
+                                    <AccordionItem key={op.id} value={op.id} className={cn("border rounded-xl bg-card text-card-foreground shadow-sm overflow-hidden", isCompact && "border-primary/20 bg-muted/10")}>
+                                        <div className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between p-6", isCompact && "py-4")}>
+                                            <div className="flex items-center gap-4 w-full sm:w-auto">
+                                                <Checkbox
+                                                    id={`select-${op.id}`}
+                                                    checked={selectedOperatorIds.has(op.id)}
+                                                    onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
+                                                />
+                                                <AccordionTrigger className="py-0 hover:no-underline [&>svg]:ml-3 flex-1 sm:flex-none justify-start text-left">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-lg font-semibold">{op.firstName} {op.lastName}</span>
+                                                        {!isCompact && <span className="text-sm text-muted-foreground font-normal">Codice: {op.username}</span>}
                                                     </div>
+                                                </AccordionTrigger>
+                                            </div>
+                                            <div className="flex items-center justify-between w-full sm:w-auto mt-4 sm:mt-0 ml-8 sm:ml-0 gap-4">
+                                                <div className='font-bold text-lg flex items-center gap-2'>
+                                                    <Euro className="h-5 w-5 text-muted-foreground" />
+                                                    <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
+                                                        {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-7 w-7 ml-1" 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
+                                                            setTotalContent(String(totalDue));
+                                                        }}
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    </Button>
+                                                </div>
+                                                <div className="flex items-center gap-2">
                                                     {!globalCompactMode && (
-                                                        <div className="flex items-center gap-2">
-                                                            <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground">Vista Sintetica</Label>
+                                                        <div className="hidden md:flex items-center gap-2 mr-2">
+                                                            <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground cursor-pointer">Sintetica</Label>
                                                             <Switch
                                                                 id={`compact-${op.id}`}
                                                                 checked={opVisibility.compactMode}
@@ -643,37 +629,42 @@ const OperatorCalculationsPage = () => {
                                                             />
                                                         </div>
                                                     )}
+                                                    <Link href={`/dashboard/operators/${op.id}/end-of-month`} onClick={(e) => e.stopPropagation()}>
+                                                        <Button variant="outline" size="sm" className="h-8 text-xs">Dettagli</Button>
+                                                    </Link>
                                                 </div>
                                             </div>
-                                        </CardHeader>
-                                        {summaryData && !isCompact && (
-                                            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-0 pb-4">
-                                                <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={ordinaryWorkedDaysValue} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
-                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
-                                                
-                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={summaryData.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
-                                                <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
-                                                
-                                                <InfoCard opId={op.id} title="Ferie (h)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" subtext={summaryData.ferieHours ? `(${summaryData.ferieHours}h)` : ''} />
-                                                <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
-                                                
-                                                {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
-                                                    <>
-                                                        <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
-                                                        <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
-                                                    </>
-                                                )}
-                                                
-                                                <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
-                                                <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
-                                                
-                                                <InfoCard opId={op.id} title="Assenze (g)" value={summaryData.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
-                                            </CardContent>
-                                        )}
-                                    </Card>
+                                        </div>
+                                        <AccordionContent>
+                                            {summaryData && !isCompact && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 px-6 pt-2 pb-6 border-t mt-2">
+                                                    <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={ordinaryWorkedDaysValue} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
+                                                    <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
+                                                    
+                                                    <InfoCard opId={op.id} title="Ore Straordinarie" value={summaryData.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
+                                                    <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
+                                                    
+                                                    <InfoCard opId={op.id} title="Ferie (h)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" subtext={summaryData.ferieHours ? `(${summaryData.ferieHours}h)` : ''} />
+                                                    <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
+                                                    
+                                                    {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                                                        <>
+                                                            <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
+                                                            <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                        </>
+                                                    )}
+                                                    
+                                                    <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
+                                                    <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
+                                                    
+                                                    <InfoCard opId={op.id} title="Assenze (g)" value={summaryData.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
+                                                </div>
+                                            )}
+                                        </AccordionContent>
+                                    </AccordionItem>
                                 )
                             })}
-                        </div>
+                        </Accordion>
                         </>
                     )}
                 </CardContent>

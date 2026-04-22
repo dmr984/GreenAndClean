@@ -98,14 +98,15 @@ export default function FoglioPresenzePage() {
                 data[op.id] = processMonthlyData(currentMonth, op as any, { 
                     timbrature: tSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)), 
                     requests: rSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)),
-                    employmentStartDate
+                    employmentStartDate,
+                    overrides: overrides
                 });
             }
             setAttendanceData(data);
             setIsLoading(false);
         };
         fetchAllData();
-    }, [firestore, operators, currentMonth, selectedOperatorIds]);
+    }, [firestore, operators, currentMonth, selectedOperatorIds, overrides]);
 
     const handleOverride = (key: string, value: string) => {
         setOverrides(prev => ({ ...prev, [key]: value }));
@@ -223,7 +224,9 @@ export default function FoglioPresenzePage() {
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-O-${day}`];
                                                 if (m === undefined) {
-                                                    if (dayDate) {
+                                                    const today = new Date();
+                                                    today.setHours(0, 0, 0, 0);
+                                                    if (dayDate && dayDate <= today) {
                                                         const d = processed?.dailyDetails?.find(dd => isSameDay(dd.date, dayDate!));
                                                         const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayDate.getDay()];
                                                         const isWorkDay = (op.workSchedule[dayName]?.totalHours || 0) > 0;
@@ -265,7 +268,11 @@ export default function FoglioPresenzePage() {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-S-${day}`];
-                                                if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) m = '/';
+                                                                                                if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
+                                                    const today = new Date();
+                                                    today.setHours(0, 0, 0, 0);
+                                                    if (dayDate <= today) m = '/';
+                                                }
                                                 return (
                                                     <td key={i} className={`border border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
                                                         <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-S-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
@@ -286,7 +293,11 @@ export default function FoglioPresenzePage() {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-B-${day}`];
-                                                if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) m = '/';
+                                                                                                if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
+                                                    const today = new Date();
+                                                    today.setHours(0, 0, 0, 0);
+                                                    if (dayDate <= today) m = '/';
+                                                }
                                                 return (
                                                     <td key={i} className={`border border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
                                                         <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-B-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
