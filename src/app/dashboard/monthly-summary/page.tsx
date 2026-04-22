@@ -14,7 +14,7 @@ import { it } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { isPublicHoliday } from '@/lib/holidays';
-import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours } from '@/lib/calculations';
+import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours, type DailyNote } from '@/lib/calculations';
 
 
 // Type definitions are now in calculations.ts
@@ -73,13 +73,6 @@ type Timbratura = {
     makeupOfDay?: string; // Changed to ISO date string 'YYYY-MM-DD'
 };
 
-type DailyNote = {
-    date: string;
-    privateNote?: string;
-    publicNote?: string;
-    showOnMonthlyReport?: boolean;
-    showOnEOMReport?: boolean;
-};
 
 const SummaryCard = ({ title, value, icon: Icon }: { title: string, value: string | number, icon: React.ElementType }) => (
     <Card>
@@ -269,7 +262,7 @@ const MonthlySummaryContent = () => {
                 ) : (
                 <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <SummaryCard title="Giorni Lavorati" value={monthlySummary.workedDays || 0} icon={Briefcase} />
+                    <SummaryCard title="Giorni Ordinari Lavorati" value={monthlySummary.ordinaryWorkedDays || 0} icon={Briefcase} />
                     <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
                     <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
                     <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />

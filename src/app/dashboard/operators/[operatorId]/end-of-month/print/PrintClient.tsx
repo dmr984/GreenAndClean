@@ -110,6 +110,15 @@ export default function PrintClient() {
     }, [searchParams]);
 
     useEffect(() => {
+        if (!isLoading && operator && searchParams.get('autoPrint') === 'true') {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading, operator, searchParams]);
+
+    useEffect(() => {
         if (!firestore || !operatorId) return;
 
         const loadAllData = async () => {
@@ -331,7 +340,7 @@ export default function PrintClient() {
                         <table className="w-full">
                            <tbody className="text-black">
                                 <tr>
-                                    <td className="py-1 font-semibold">GIORNI LAVORATI: <span className="font-normal">{monthlySummary.workedDays || 0}</span></td>
+                                    <td className="py-1 font-semibold">GIORNI ORDINARI LAVORATI: <span className="font-normal">{monthlySummary.ordinaryWorkedDays || 0}</span></td>
                                     <td className="py-1 text-right font-semibold">FERIE: <span className="font-normal">{finalFerieDays}</span></td>
                                 </tr>
                                  <tr>

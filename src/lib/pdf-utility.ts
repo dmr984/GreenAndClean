@@ -26,7 +26,7 @@ export type ManualTotals = {
 };
 
 export type VisibilitySettings = {
-    workedDays: boolean;
+    ordinaryWorkedDays: boolean;
     showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
@@ -86,7 +86,7 @@ export const generateDetailedOperatorPdf = async (
     try {
         const { default: jsPDF } = await import('jspdf');
         const autoTableModule = await import('jspdf-autotable');
-        const autoTable = autoTableModule.default ? autoTableModule.default : autoTableModule;
+        const autoTable = (autoTableModule.default ? autoTableModule.default : autoTableModule) as any;
 
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageWidth = doc.internal.pageSize.width;
@@ -135,7 +135,7 @@ export const generateDetailedOperatorPdf = async (
         const showPermessi = !(isMonthly && finalPermessoHours === 0);
 
         const summaryBody = [
-            [`GIORNI LAVORATI: ${summary.workedDays}`, { content: `FERIE: ${finalFerieDays}`, styles: { halign: 'right' }} ],
+            [`GIORNI ORDINARI LAVORATI: ${summary.ordinaryWorkedDays}`, { content: `FERIE: ${finalFerieDays}`, styles: { halign: 'right' }} ],
             [`ORE ORDINARIE: ${summary.ordinaryHours}`, { content: showPermessi ? `ORE PERMESSI: ${finalPermessoHours}` : '', styles: { halign: 'right' }}],
             [`ORE STRAORDINARIE: ${summary.overtimeHours}`, { content: `GIORNI MALATTIA: ${finalMalattiaDays}`, styles: { halign: 'right' }}],
         ];

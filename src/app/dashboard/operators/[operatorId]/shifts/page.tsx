@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2 } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Plane, UserCheck, Stethoscope, AlertTriangle, Euro } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,8 @@ import { Label } from '@/components/ui/label';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter, ResponsiveDialogClose } from '@/components/ui/responsive-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent as NoteDialogContent, DialogHeader as NoteDialogHeader, DialogTitle as NoteDialogTitle, DialogDescription as NoteDialogDescription, DialogFooter as NoteDialogFooter } from '@/components/ui/dialog';
-import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse, addMonths, subMonths } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse, addMonths, subMonths, startOfMonth, endOfMonth, isSunday } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -23,8 +24,11 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isPublicHoliday } from '@/lib/holidays';
-import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours, calculatePureOvertime } from '@/lib/calculations';
+import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours, calculatePureOvertime, processMonthlyData, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
+import { Switch } from '@/components/ui/switch';
+import { FirestorePermissionError, errorEmitter } from '@/firebase';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -64,6 +68,7 @@ type Operator = {
 
 type Timbratura = {
     id: string;
+    userId: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
     status: 'sospesa' | 'confermata' | 'rifiutata';
@@ -76,6 +81,9 @@ type Timbratura = {
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
     approvedOrdinaryHours?: number;
     approvedOvertimeHours?: number;
+    approvedLeaveHours?: number;
+    createLeaveRequest?: boolean;
+    viewedByOperator: boolean;
 };
 
 type Shift = {
@@ -94,6 +102,8 @@ type Shift = {
 type StraordinarioEvent = {
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
     timestamp: Timestamp;
+    latitude?: number;
+    longitude?: number;
 };
 
 type StraordinarioShift = {
@@ -129,12 +139,46 @@ type ApprovalContext = {
 
 type Request = {
     id: string;
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    status: 'approvato';
+    startDate: Timestamp;
+    endDate: Timestamp;
     hours?: number;
-    type: string;
     associatedShiftId?: string;
-}
+    dailyCosts?: { [date: string]: number };
+};
+
+type AddRequestContext = {
+    date: Date;
+    type: 'ferie' | 'permesso' | 'malattia';
+    hours?: string;
+    reason?: string;
+} | null;
 
 const ITEMS_PER_PAGE = 5;
+
+const SummaryCard = ({ title, value, icon: Icon, subtext, className, actionButton }: { title: string, value: string | number, icon: React.ElementType, subtext?: string, className?: string, actionButton?: React.ReactNode }) => (
+    <Card className={className}>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">{title}</CardTitle>
+            <div className='flex items-center gap-1'>
+                 {actionButton}
+                <Icon className="h-4 w-4 text-muted-foreground" />
+            </div>
+        </CardHeader>
+        <CardContent>
+            <div className="text-2xl font-bold">{value}</div>
+            {subtext && <p className="text-xs text-muted-foreground">{subtext}</p>}
+        </CardContent>
+    </Card>
+);
+
+const InfoBox = ({ label, value }: { label: string, value: string }) => (
+    <div>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="font-semibold">{value}</p>
+    </div>
+);
 
 export default function ShiftApprovalPage() {
     const firestore = useFirestore();
@@ -187,6 +231,14 @@ export default function ShiftApprovalPage() {
     const [isConfirmingNoLeave, setIsConfirmingNoLeave] = useState(false);
     const [orphanedEvents, setOrphanedEvents] = useState<Timbratura[]>([]);
     const [eventToDelete, setEventToDelete] = useState<Timbratura | null>(null);
+
+    // Monthly Data States (from end-of-month)
+    const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
+    const [addRequestContext, setAddRequestContext] = useState<AddRequestContext>(null);
+    const [requestToDelete, setRequestToDelete] = useState<Request | null>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
 
 
     const [dailyNotes, setDailyNotes] = useState<DailyNote[]>([]);
@@ -311,7 +363,7 @@ export default function ShiftApprovalPage() {
             const requestSnapshot = await getDocs(requestsQuery);
             const leaveDays = new Set<string>();
             
-            setApprovedRequests(requestSnapshot.docs.map(d => ({id: d.id, ...d.data() as Request})));
+            setApprovedRequests(requestSnapshot.docs.map(d => ({ ...d.data() as Request, id: d.id })));
 
             requestSnapshot.forEach(doc => {
                 const req = doc.data();
@@ -462,6 +514,41 @@ export default function ShiftApprovalPage() {
     
         return combined;
     }, [allShifts, overtimeShifts]);
+
+    const monthlyDataForProcess = useMemo(() => {
+        // We need to format the data as expected by processMonthlyData
+        return {
+            timbrature: allShifts.flatMap(s => s.events),
+            requests: approvedRequests as Request[],
+            dailyNotes: dailyNotes,
+            straordinari: overtimeShifts
+        };
+    }, [allShifts, approvedRequests, dailyNotes, overtimeShifts]);
+
+    const { monthlySummary, dailyDetails } = useMemo(() => {
+        if (!operator || isLoading || !currentMonth) {
+            return { 
+                monthlySummary: {
+                    ordinaryWorkedDays: 0,
+                    ordinaryHours: 0,
+                    overtimeHours: 0,
+                    ferieCost: 0,
+                    permessoCost: 0,
+                    absenceDays: 0,
+                    malattiaCost: 0,
+                    ferieDays: 0,
+                    ferieHours: 0,
+                    permessoHours: 0,
+                    malattiaDays: 0,
+                    festiveHours: 0,
+                    estimatedTotalCost: 0,
+                    expectedMonthlyHours: 0
+                } as MonthlySummary, 
+                dailyDetails: [] as DailyDetail[] 
+            };
+        }
+        return processMonthlyData(currentMonth, operator, monthlyDataForProcess);
+    }, [operator, currentMonth, monthlyDataForProcess, isLoading]);
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
@@ -772,13 +859,17 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         });
     };
 
-    const handleOpenDetailDialog = async (shift: CombinedShiftHistoryItem) => {
+    const handleOpenDetailDialog = async (item: CombinedShiftHistoryItem) => {
         if (!firestore || !operatorId) return;
-        if (shift.type === 'regular') {
+        if (item.type === 'regular') {
+            const shift = item as Shift;
             const shiftId = shift.id;
-            const shiftDate = shift.events[0].timestamp.toDate();
-            const startOfShiftDay = startOfDay(shiftDate);
-            const endOfShiftDay = endOfDay(shiftDate);
+            const shiftDate = shift.events[0]?.timestamp.toDate();
+            if (!shiftDate) {
+                 setDetailShift(shift);
+                 setIsDetailOpen(true);
+                 return;
+            }
     
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
@@ -807,10 +898,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     
             setIsDetailOpen(true);
         } else {
-            setDetailOvertimeShift(shift);
+            setDetailOvertimeShift(item as StraordinarioShift);
             setIsDetailOvertimeOpen(true);
         }
-    }
+    };
     
     const getContractualHoursForShift = (shift: Shift | null): number => {
         if (!shift || !operator?.workSchedule) return 0;
@@ -969,7 +1060,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setIsApproveDialogOpen(true);
     };
 
-    const handleApprovalContextChange = (field: keyof ApprovalContext, value: any) => {
+    const handleApprovalContextChange = (field: keyof NonNullable<ApprovalContext>, value: any) => {
         setApprovalContext(prev => {
             if (!prev) return null;
             const newContext = { ...prev, [field]: value };
@@ -1022,9 +1113,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 });
 
                 if (leaveRequestToModify) {
-                    const leaveReqRef = doc(firestore, `app-users/${operatorId}/requests`, leaveRequestToModify.id);
-                    const { startDate, endDate } = leaveRequestToModify.data;
-
+                    const toModify = leaveRequestToModify as {id: string, data: any};
+                    const leaveReqRef = doc(firestore, `app-users/${operatorId}/requests`, toModify.id);
+                    const { startDate, endDate } = toModify.data;
+                    
                     if (isSameDay(startDate.toDate(), endDate.toDate())) {
                         transaction.delete(leaveReqRef);
                     } else if (isSameDay(dayToUnlock, startDate.toDate())) {
@@ -1034,7 +1126,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     } else {
                         transaction.update(leaveReqRef, { endDate: Timestamp.fromDate(subDays(dayToUnlock, 1)) });
                         const newRequestRef = doc(collection(firestore, `app-users/${operatorId}/requests`));
-                        const { id, ...restOfRequest } = leaveRequestToModify.data;
+                        const { id, ...restOfRequest } = toModify.data;
                         transaction.set(newRequestRef, {
                             ...restOfRequest,
                             startDate: Timestamp.fromDate(addDays(dayToUnlock, 1)),
@@ -1050,10 +1142,166 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             });
             toast({ title: 'Successo', description: "Sblocco approvato. L'operatore ora può timbrare." });
         } catch (error) {
-            console.error("Error approving unlock request:", error);
-            toast({ title: 'Errore', description: 'Impossibile approvare lo sblocco.', variant: 'destructive' });
+            console.error("Error in transaction:", error);
         }
     };
+
+    // --- FINE MESE HANDLERS ---
+    
+    const handleMonthChange = (action: 'prev' | 'next' | 'current') => {
+        if (action === 'current') {
+            setCurrentMonth(new Date());
+        } else {
+            const offset = action === 'next' ? 1 : -1;
+            setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+        }
+    };
+    
+    const handleCleanMonth = async () => {
+        if (!firestore || !operatorId || !currentMonth) return;
+        setIsCleaning(true);
+
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+
+        const batch = writeBatch(firestore);
+
+        const timbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), where('timestamp', '>=', monthStart), where('timestamp', '<=', monthEnd));
+        const timbratureSnap = await getDocs(timbratureQuery);
+        timbratureSnap.forEach(doc => batch.delete(doc.ref));
+
+        const straordinariQuery = query(collection(firestore, `app-users/${operatorId}/straordinari`), where('date', '>=', monthStart), where('date', '<=', monthEnd));
+        const straordinariSnap = await getDocs(straordinariQuery);
+        straordinariSnap.forEach(doc => batch.delete(doc.ref));
+
+        const requestsQuery = query(collection(firestore, `app-users/${operatorId}/requests`), where('startDate', '>=', monthStart), where('startDate', '<=', monthEnd));
+        const requestsSnap = await getDocs(requestsQuery);
+        requestsSnap.forEach(doc => batch.delete(doc.ref));
+        
+        const notesQuery = query(collection(firestore, `app-users/${operatorId}/daily-notes`), where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')), where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd')));
+        const notesSnap = await getDocs(notesQuery);
+        notesSnap.forEach(doc => batch.delete(doc.ref));
+
+        const monthId = format(currentMonth, 'yyyy-MM');
+        const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
+        batch.delete(overrideDocRef);
+
+        try {
+            await batch.commit();
+            toast({ title: "Successo!", description: `I dati di ${format(currentMonth, 'MMMM yyyy', { locale: it })} sono stati eliminati.` });
+        } catch (error) {
+            console.error("Errore pulizia mese:", error);
+            toast({ title: "Errore", description: "Impossibile completare la pulizia del mese.", variant: "destructive" });
+        } finally {
+            setIsCleaning(false);
+            setIsCleanConfirmOpen(false);
+        }
+    };
+    
+    const handleOpenPrintPreview = () => {
+        if (!currentMonth) return;
+        const monthString = format(currentMonth, 'yyyy-MM');
+        const queryParams = new URLSearchParams({ month: monthString, autoPrint: 'true' });
+        window.open(`/dashboard/operators/${operatorId}/end-of-month/print?${queryParams.toString()}`, '_blank');
+    };
+
+    const handleDownloadPdf = async () => {
+        if (!operator || !currentMonth || !monthlySummary) return;
+        setIsDownloading(true);
+        try {
+            const result = await generateDetailedOperatorPdf(
+                currentMonth,
+                operator,
+                monthlySummary,
+                dailyDetails,
+                {}, // visibility
+                {}  // overrides
+            );
+            if (result) {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(result.blob);
+                a.download = result.fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            }
+            toast({ title: 'Download completato', description: `Report scaricato correttamente.` });
+        } catch (error) {
+            console.error("Error downloading PDF:", error);
+            toast({ title: 'Errore durante il download', variant: 'destructive' });
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+    
+
+    const handleAddRequest = async () => {
+        if (!firestore || !operatorId || !addRequestContext) return;
+
+        const { date, type, hours, reason } = addRequestContext;
+
+        const newRequestData: any = {
+            userId: operatorId,
+            type: type,
+            status: 'approvato',
+            startDate: Timestamp.fromDate(startOfDay(date)),
+            endDate: Timestamp.fromDate(startOfDay(date)),
+            reason: reason || "",
+            createdAt: serverTimestamp(),
+            viewedByOperator: false,
+        };
+
+        if (type === 'permesso') {
+            if (!hours || parseFloat(hours) <= 0) {
+                toast({ title: 'Ore mancanti', description: 'Per un permesso, le ore sono obbligatorie.', variant: 'destructive'});
+                return;
+            }
+            newRequestData.hours = parseFloat(hours);
+        }
+
+        try {
+            await addDoc(collection(firestore, `app-users/${operatorId}/requests`), newRequestData);
+            toast({ title: 'Successo', description: 'Richiesta aggiunta e approvata.'});
+        } catch (error) {
+            console.error("Error adding request:", error);
+            toast({ title: 'Errore', description: 'Impossibile aggiungere la richiesta.', variant: 'destructive'});
+        } finally {
+            setAddRequestContext(null);
+        }
+    };
+    
+    const handleDeleteRequest = async () => {
+        if (!firestore || !operatorId || !requestToDelete) return;
+        const requestRef = doc(firestore, `app-users/${operatorId}/requests`, requestToDelete.id);
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Richiesta eliminata', description: 'La richiesta è stata rimossa con successo.' });
+        } catch (error) {
+            console.error('Error deleting request:', error);
+            toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
+        } finally {
+            setRequestToDelete(null);
+        }
+    };
+
+    const handleEditNoteClick = (detail: DailyDetail) => {
+        let defaultText = '';
+        if (!detail.shift && !detail.note) {
+            const defaultTexts: Record<string, string> = {
+                mancata_timbratura: 'Assenza',
+                ferie: 'Giorno di Ferie',
+                malattia: 'Giorno di Malattia',
+                festa: 'Giorno Festivo',
+                riposo: 'Giorno di Riposo'
+            };
+            defaultText = defaultTexts[detail.status] || '';
+        }
+        const currentNote = detail.note?.note || defaultText;
+        setEditingNote({ date: detail.date, currentNote });
+        setNoteContent(currentNote);
+    };
+
 
 
     const formatMinutes = (minutes: number) => {
@@ -1397,7 +1645,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
     return (
         <div className="space-y-6">
-
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
@@ -1411,7 +1658,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale
                     </Button>
                 </CardHeader>
-                <CardContent>
+            </Card>
+
+            <Tabs defaultValue="shifts" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-8">
+                    <TabsTrigger value="shifts">Gestione Turni</TabsTrigger>
+                    <TabsTrigger value="report">Dashboard Fine Mese</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="shifts" className="space-y-6">
                     {Object.keys(orphanedEventsByDay).length > 0 && (
                         <Card className="mb-6 border-amber-500 bg-amber-500/10">
                             <CardHeader>
@@ -1454,271 +1709,444 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         </Card>
                     )}
                     {pendingShifts.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno in attesa di approvazione.</p>
+                        <Card>
+                            <CardContent className="flex flex-col items-center justify-center py-12">
+                                <CheckCircle className="h-12 w-12 text-green-500 mb-4 opacity-20" />
+                                <p className="text-sm text-muted-foreground text-center">Nessun turno in attesa di approvazione.</p>
+                            </CardContent>
+                        </Card>
                     ) : (
-                        <div className="border rounded-lg overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data Turno</TableHead>
-                                        <TableHead>Inizio</TableHead>
-                                        <TableHead>Fine</TableHead>
-                                        <TableHead>Durata</TableHead>
-                                        <TableHead>Stato</TableHead>
-                                        <TableHead className="text-right">Azioni</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {pendingShifts.map((shift, index) => {
-                                        const startTime = shift.events[0]?.timestamp;
-                                        const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
-                                        return (
-                                            <TableRow key={index}>
-                                                <TableCell className='flex items-center gap-2 whitespace-nowrap'>
-                                                  {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
-                                                  {formatDate(startTime)}
-                                                  {shift.makeupOfDay && <Badge variant="outline">Recupero</Badge>}
-                                                </TableCell>
-                                                <TableCell className="whitespace-nowrap">{startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
-                                                <TableCell className="whitespace-nowrap">
-                                                    <Badge variant={
-                                                        shift.status === 'in_sospeso' ? 'default'
-                                                        : shift.status === 'confermato' ? 'secondary'
-                                                        : 'outline'
-                                                    } className={cn(
-                                                        shift.status === 'in_sospeso' && 'bg-yellow-500 text-white',
-                                                        shift.status === 'in_corso' && 'bg-blue-500 text-white'
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Turni in Attesa</CardTitle>
+                                <CardDescription>Revisiona e approva i turni registrati dall'operatore.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="border rounded-lg overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Data Turno</TableHead>
+                                                <TableHead>Inizio</TableHead>
+                                                <TableHead>Fine</TableHead>
+                                                <TableHead>Durata</TableHead>
+                                                <TableHead>Stato</TableHead>
+                                                <TableHead className="text-right">Azioni</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {pendingShifts.map((shift, index) => {
+                                                const startTime = shift.events[0]?.timestamp;
+                                                const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+                                                return (
+                                                    <TableRow key={index}>
+                                                        <TableCell className='flex items-center gap-2 whitespace-nowrap'>
+                                                          {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
+                                                          {formatDate(startTime)}
+                                                          {shift.makeupOfDay && <Badge variant="outline">Recupero</Badge>}
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap">{startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">{endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            <Badge variant={
+                                                                shift.status === 'in_sospeso' ? 'default'
+                                                                : shift.status === 'confermato' ? 'secondary'
+                                                                : 'outline'
+                                                            } className={cn(
+                                                                shift.status === 'in_sospeso' && 'bg-yellow-500 text-white',
+                                                                shift.status === 'in_corso' && 'bg-blue-500 text-white'
+                                                                )}>
+                                                            {shift.status.replace('_', ' ')}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right whitespace-nowrap">
+                                                            <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'regular' })}>
+                                                                <Eye className="h-5 w-5" />
+                                                            </Button>
+                                                             <Button variant="ghost" size="icon" onClick={() => { setShiftToDelete(shift); setIsConfirmingDelete(true); }}>
+                                                                <Trash2 className="h-5 w-5 text-destructive" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Turni Straordinari da Gestire</CardTitle>
+                            <CardDescription>Gestisci i turni di straordinario in corso o completati.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                             {pendingOvertimeShifts.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-8">Nessun turno straordinario in corso o in attesa di approvazione.</p>
+                             ) : (
+                                <div className="border rounded-lg overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Data</TableHead>
+                                                <TableHead>Inizio</TableHead>
+                                                <TableHead>Fine</TableHead>
+                                                <TableHead>Stato</TableHead>
+                                                <TableHead className="text-right">Azioni</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {pendingOvertimeShifts.map((shift) => (
+                                                <TableRow key={shift.id}>
+                                                    <TableCell className="whitespace-nowrap">{formatDate(shift.date)}</TableCell>
+                                                    <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'entrata') ? format(shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                    <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'uscita') ? format(shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                    <TableCell className="whitespace-nowrap">
+                                                        <Badge variant={
+                                                            shift.status === 'in_attesa_di_approvazione' ? 'default'
+                                                            : shift.status === 'in_corso' ? 'outline'
+                                                            : 'destructive'
+                                                        } className={cn(
+                                                            shift.status === 'in_attesa_di_approvazione' && 'bg-yellow-500 text-white',
+                                                            shift.status === 'in_corso' && 'bg-blue-500 text-white'
                                                         )}>
-                                                    {shift.status.replace('_', ' ')}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-right whitespace-nowrap">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'regular' })}>
-                                                        <Eye className="h-5 w-5" />
-                                                    </Button>
-                                                     <Button variant="ghost" size="icon" onClick={() => { setShiftToDelete(shift); setIsConfirmingDelete(true); }}>
-                                                        <Trash2 className="h-5 w-5 text-destructive" />
-                                                    </Button>
-                                                </TableCell>
+                                                        {shift.status.replace(/_/g, ' ')}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-right whitespace-nowrap">
+                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'overtime' })}>
+                                                            <Eye className="h-5 w-5" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" onClick={() => { setOvertimeShiftToDelete(shift); setIsConfirmingOvertimeDelete(true); }}>
+                                                            <Trash2 className="h-5 w-5 text-destructive" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Riepilogo Turni Approvati</CardTitle>
+                            <CardDescription>Visualizza e modifica i turni già confermati.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                             {historicalShifts.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-8">Nessun turno approvato.</p>
+                            ) : (
+                                <div className="border rounded-lg overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="whitespace-nowrap">Data</TableHead>
+                                                <TableHead className="whitespace-nowrap">Timbrature</TableHead>
+                                                <TableHead className="whitespace-nowrap">Durata Effettiva</TableHead>
+                                                <TableHead className="whitespace-nowrap">Ore Contabili</TableHead>
+                                                <TableHead className="whitespace-nowrap">Stato</TableHead>
+                                                <TableHead className="text-right whitespace-nowrap">Azioni</TableHead>
                                             </TableRow>
-                                        )
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                                        </TableHeader>
+                                       <TableBody>
+                                            {paginatedApprovedShifts.map((shift, index) => {
+                                                const isRegular = shift.type === 'regular';
+                                                const date = isRegular ? (shift as Shift).date : (shift as StraordinarioShift).date;
+                                                const dateObj = date instanceof Date ? date : (date as Timestamp).toDate();
+                                                const note = dailyNotes.find(n => isSameDay(parse(n.date, 'yyyy-MM-dd', new Date()), dateObj));
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Turni Straordinari da Gestire</CardTitle>
-                    <CardDescription>Gestisci i turni di straordinario in corso o completati.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                     {pendingOvertimeShifts.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno straordinario in corso o in attesa di approvazione.</p>
-                     ) : (
-                        <div className="border rounded-lg overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Inizio</TableHead>
-                                        <TableHead>Fine</TableHead>
-                                        <TableHead>Stato</TableHead>
-                                        <TableHead className="text-right">Azioni</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {pendingOvertimeShifts.map((shift) => (
-                                        <TableRow key={shift.id}>
-                                            <TableCell className="whitespace-nowrap">{formatDate(shift.date)}</TableCell>
-                                            <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'entrata') ? format(shift.events.find(e => e.type === 'entrata')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
-                                            <TableCell className="whitespace-nowrap">{shift.events.find(e => e.type === 'uscita') ? format(shift.events.find(e => e.type === 'uscita')!.timestamp.toDate(), 'HH:mm') : '--:--'}</TableCell>
-                                            <TableCell className="whitespace-nowrap">
-                                                <Badge variant={
-                                                    shift.status === 'in_attesa_di_approvazione' ? 'default'
-                                                    : shift.status === 'in_corso' ? 'outline'
-                                                    : 'destructive'
-                                                } className={cn(
-                                                    shift.status === 'in_attesa_di_approvazione' && 'bg-yellow-500 text-white',
-                                                    shift.status === 'in_corso' && 'bg-blue-500 text-white'
-                                                )}>
-                                                {shift.status.replace(/_/g, ' ')}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-right whitespace-nowrap">
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog({ ...shift, type: 'overtime' })}>
-                                                    <Eye className="h-5 w-5" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => { setOvertimeShiftToDelete(shift); setIsConfirmingOvertimeDelete(true); }}>
-                                                    <Trash2 className="h-5 w-5 text-destructive" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                                                let timbratureString = '';
+                                                let effectiveDurationString = '';
+                                                let accountingHoursString = '';
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Riepilogo Turni Approvati</CardTitle>
-                    <CardDescription>Visualizza e modifica i turni già confermati.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                     {historicalShifts.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-8">Nessun turno approvato.</p>
-                    ) : (
-                        <div className="border rounded-lg overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="whitespace-nowrap">Data</TableHead>
-                                        <TableHead className="whitespace-nowrap">Timbrature</TableHead>
-                                        <TableHead className="whitespace-nowrap">Durata Effettiva</TableHead>
-                                        <TableHead className="whitespace-nowrap">Ore Contabili</TableHead>
-                                        <TableHead className="whitespace-nowrap">Stato</TableHead>
-                                        <TableHead className="text-right whitespace-nowrap">Azioni</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                               <TableBody>
-                                    {paginatedApprovedShifts.map((shift, index) => {
-                                        const isRegular = shift.type === 'regular';
-                                        const date = isRegular ? (shift as Shift).date : (shift as StraordinarioShift).date;
-                                        const note = dailyNotes.find(n => isSameDay(parse(n.date, 'yyyy-MM-dd', new Date()), date));
+                                                if (!operator) return null;
 
-                                        let timbratureString = '';
-                                        let effectiveDurationString = '';
-                                        let accountingHoursString = '';
+                                                if (isRegular) {
+                                                    const regularShift = shift as Shift;
+                                                    const sortedEvents = [...regularShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+                                                    
+                                                    const clockInEvent = sortedEvents.find(e => e.type === 'entrata');
+                                                    const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
+                                                    const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
+                                                    const schedule = operator.workSchedule[dayToUse];
+                                                    
+                                                    const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator);
+                                                    
+                                                    effectiveDurationString = formatMinutes(worked);
 
-                                        if (!operator) return null;
+                                                    timbratureString = sortedEvents.map(e => {
+                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                        let referenceTime = '';
+                                                        
+                                                        if (e.type === 'entrata' && calculationStart) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                        } else if (e.type === 'uscita' && calculationEnd) {
+                                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                        }
+                                                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                    }).join(' | ');
+                                                    
+                                                    const parts = [];
+                                                    if (ordinary > 0) parts.push(`${ordinary}h ordinarie`);
+                                                    
+                                                    const associatedLeaveRequest = approvedRequests.find(r => r.associatedShiftId === regularShift.id && r.type === 'permesso');
+                                                    if (associatedLeaveRequest?.hours) {
+                                                         parts.push(`${associatedLeaveRequest.hours}h permesso`);
+                                                    }
+                                                    
+                                                    if (overtime > 0) parts.push(`${overtime}h straordinarie`);
 
-                                        if (isRegular) {
-                                            const regularShift = shift as Shift;
-                                            const sortedEvents = [...regularShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                                            
-                                            const clockInEvent = sortedEvents.find(e => e.type === 'entrata');
-                                            const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
-                                            const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
-                                            const schedule = operator.workSchedule[dayToUse];
-                                            
-                                            const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator);
-                                            
-                                            effectiveDurationString = formatMinutes(worked);
+                                                    accountingHoursString = parts.length > 0 ? parts.join(', ') : '0h';
 
-                                            timbratureString = sortedEvents.map(e => {
-                                                const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                let referenceTime = '';
-                                                
-                                                if (e.type === 'entrata' && calculationStart) {
-                                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                } else if (e.type === 'uscita' && calculationEnd) {
-                                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                } else { // Overtime shift
+                                                    const overtimeShift = shift as StraordinarioShift;
+                                                    const approvedHours = overtimeShift.approvedHours ?? calculatePureOvertime(overtimeShift, operator);
+
+                                                    const sortedEvents = [...overtimeShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+
+                                                    const shiftDate = overtimeShift.date.toDate();
+                                                    const dayName = dayIndexToName[getDayFns(shiftDate)];
+                                                    const schedule = operator.workSchedule[dayName];
+                                                    const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator);
+                                                    
+                                                    timbratureString = sortedEvents.map(e => {
+                                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                         let referenceTime = '';
+                                                         if (e.type === 'entrata' && calculationStart) {
+                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                         } else if (e.type === 'uscita' && calculationEnd) {
+                                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                         }
+                                                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                                                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
+                                                    }).join(' | ');
+                                                    
+                                                    const { workedMinutes } = getShiftDurations(overtimeShift.events);
+                                                    effectiveDurationString = formatMinutes(workedMinutes);
+                                                    accountingHoursString = `${approvedHours}h straordinarie`;
                                                 }
-                                                const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                            }).join(' | ');
-                                            
-                                            const parts = [];
-                                            if (ordinary > 0) parts.push(`${ordinary}h ordinarie`);
-                                            
-                                            const associatedLeaveRequest = approvedRequests.find(r => r.associatedShiftId === regularShift.id && r.type === 'permesso');
-                                            if (associatedLeaveRequest?.hours) {
-                                                 parts.push(`${associatedLeaveRequest.hours}h permesso`);
-                                            }
-                                            
-                                            if (overtime > 0) parts.push(`${overtime}h straordinarie`);
 
-                                            accountingHoursString = parts.length > 0 ? parts.join(', ') : '0h';
+                                                return (
+                                                    <TableRow key={`${shift.id}-${index}`}>
+                                                        <TableCell className="whitespace-nowrap">{formatDate(date)}</TableCell>
+                                                        <TableCell className="text-xs max-w-[300px] truncate" title={timbratureString}>{timbratureString}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">{effectiveDurationString}</TableCell>
+                                                        <TableCell className="whitespace-nowrap text-xs">{accountingHoursString}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            <Badge variant={shift.status === 'confermato' || shift.status === 'approvato' ? 'secondary' : 'destructive'}>
+                                                                {shift.status.charAt(0).toUpperCase() + shift.status.slice(1).replace('_', ' ')}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right whitespace-nowrap">
+                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingNote({ date: dateObj, currentNote: note?.note || '' }); setNoteContent(note?.note || ''); }}>
+                                                                <FileText className={cn('h-5 w-5', note ? 'text-green-500' : 'text-foreground')}/>
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
+                                                                <Eye className="h-5 w-5" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+                        {totalPages > 1 && (
+                             <CardFooter className="flex justify-end items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                    disabled={currentPage === 0}
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                    Prec.
+                                </Button>
+                                <span className="text-sm text-muted-foreground">
+                                   Pagina {currentPage + 1} di {totalPages}
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                    disabled={currentPage === totalPages - 1}
+                                >
+                                    Succ.
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </CardFooter>
+                        )}
+                    </Card>
+                </TabsContent>
 
-                                        } else { // Overtime shift
-                                            const overtimeShift = shift as StraordinarioShift;
-                                            const approvedHours = overtimeShift.approvedHours ?? calculatePureOvertime(overtimeShift, operator);
-
-                                            const sortedEvents = [...overtimeShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-                                            const shiftDate = overtimeShift.date.toDate();
-                                            const dayName = dayIndexToName[getDayFns(shiftDate)];
-                                            const schedule = operator.workSchedule[dayName];
-                                            const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator);
-                                            
-                                            timbratureString = sortedEvents.map(e => {
-                                                 const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                 let referenceTime = '';
-                                                 if (e.type === 'entrata' && calculationStart) {
-                                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                 } else if (e.type === 'uscita' && calculationEnd) {
-                                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                                 }
-                                                 const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                 return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                            }).join(' | ');
-                                            
-                                            const { workedMinutes } = getShiftDurations(overtimeShift.events);
-                                            effectiveDurationString = formatMinutes(workedMinutes);
-                                            accountingHoursString = `${approvedHours}h straordinarie`;
-                                        }
-
-                                        return (
-                                            <TableRow key={`${shift.id}-${index}`}>
-                                                <TableCell className="whitespace-nowrap">{formatDate(date)}</TableCell>
-                                                <TableCell className="text-xs max-w-[300px] truncate" title={timbratureString}>{timbratureString}</TableCell>
-                                                <TableCell className="whitespace-nowrap">{effectiveDurationString}</TableCell>
-                                                <TableCell className="whitespace-nowrap text-xs">{accountingHoursString}</TableCell>
-                                                <TableCell className="whitespace-nowrap">
-                                                    <Badge variant={shift.status === 'confermato' || shift.status === 'approvato' ? 'secondary' : 'destructive'}>
-                                                        {shift.status.charAt(0).toUpperCase() + shift.status.slice(1).replace('_', ' ')}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-right whitespace-nowrap">
-                                                    <Button variant="ghost" size="icon" onClick={() => { setEditingNote({ date, currentNote: note?.note || '' }); setNoteContent(note?.note || ''); }}>
-                                                        <FileText className={cn('h-5 w-5', note ? 'text-green-500' : 'text-foreground')}/>
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
-                                                        <Eye className="h-5 w-5" />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        )
-                                    })}
-                                </TableBody>
-                            </Table>
+                <TabsContent value="report">
+                    <div className="space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <h2 className="text-2xl font-bold tracking-tight">Riepilogo Mensile</h2>
+                                <p className="text-muted-foreground">Analisi delle ore e dei costi per {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-1 bg-background border rounded-md p-1">
+                                    <Button variant="ghost" size="icon" onClick={() => handleMonthChange('prev')}><ChevronLeft className="h-4 w-4" /></Button>
+                                    <div className="px-3 py-1 text-sm font-medium min-w-[120px] text-center capitalize">
+                                        {format(currentMonth, 'MMMM yyyy', { locale: it })}
+                                    </div>
+                                    <Button variant="ghost" size="icon" onClick={() => handleMonthChange('next')}><ChevronRight className="h-4 w-4" /></Button>
+                                </div>
+                                <Button variant="outline" size="sm" onClick={() => handleMonthChange('current')}><CalendarIcon className="mr-2 h-4 w-4" /> Oggi</Button>
+                                <div className="h-8 w-px bg-border mx-1" />
+                                <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={isDownloading}>
+                                    {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                                    PDF
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={handleOpenPrintPreview}>
+                                    <Printer className="mr-2 h-4 w-4" />
+                                    Stampa
+                                </Button>
+                                <Button variant="destructive" size="sm" onClick={() => setIsCleanConfirmOpen(true)}><Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese</Button>
+                            </div>
                         </div>
-                    )}
-                </CardContent>
-                {totalPages > 1 && (
-                     <CardFooter className="flex justify-end items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                            disabled={currentPage === 0}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                            Prec.
-                        </Button>
-                        <span className="text-sm text-muted-foreground">
-                           Pagina {currentPage + 1} di {totalPages}
-                        </span>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                            disabled={currentPage === totalPages - 1}
-                        >
-                            Succ.
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </CardFooter>
-                )}
-            </Card>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Card className="bg-primary/5 border-primary/20">
+                                <CardHeader className="pb-2">
+                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ore Ordinarie</CardDescription>
+                                    <CardTitle className="text-2xl font-bold">{monthlySummary.ordinaryHours}h</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-xs text-muted-foreground">Su {monthlySummary.expectedMonthlyHours}h previste</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-amber-500/5 border-amber-500/20">
+                                <CardHeader className="pb-2">
+                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Straordinari</CardDescription>
+                                    <CardTitle className="text-2xl font-bold">{monthlySummary.overtimeHours}h</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-xs text-muted-foreground">Approvati questo mese</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-blue-500/5 border-blue-500/20">
+                                <CardHeader className="pb-2">
+                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Permessi / Ferie</CardDescription>
+                                    <CardTitle className="text-2xl font-bold">{monthlySummary.ferieHours + monthlySummary.permessoHours}h</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-xs text-muted-foreground">Giustificati</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-green-500/5 border-green-500/20">
+                                <CardHeader className="pb-2">
+                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Costo Stimato</CardDescription>
+                                    <CardTitle className="text-2xl font-bold">€{(monthlySummary?.estimatedTotalCost || 0).toFixed(2)}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-xs text-muted-foreground">Basato su ord. + stra.</div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle>Dettaglio Giornaliero</CardTitle>
+                                        <CardDescription>Resoconto puntuale di ogni giornata del mese</CardDescription>
+                                    </div>
+                                    <Badge variant="outline" className="font-mono">{monthlySummary.ordinaryWorkedDays}gg Ordinari Lavorati</Badge>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="border rounded-lg overflow-hidden">
+                                    <Table>
+                                        <TableHeader className="bg-muted/50">
+                                            <TableRow>
+                                                <TableHead className="w-[150px]">Data</TableHead>
+                                                <TableHead>Descrizione</TableHead>
+                                                <TableHead className="text-center">Ordinarie</TableHead>
+                                                <TableHead className="text-center">Straordinarie</TableHead>
+                                                <TableHead className="text-center">Permessi</TableHead>
+                                                <TableHead className="text-right">Azioni</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {dailyDetails.map((detail, idx) => {
+                                                const isHoliday = isPublicHoliday(detail.date);
+                                                const isWeekend = isSunday(detail.date);
+                                                const isAbsence = detail.status === 'mancata_timbratura';
+                                                const publicNote = detail.note?.publicNote || detail.note?.note || '';
+                                                const ordinaryHours = detail.shift?.ordinaryHours || 0;
+                                                const overtimeHours = detail.shift?.overtimeHours || 0;
+                                                const leaveHours = detail.shift?.permissionHours || 0;
+
+                                                return (
+                                                    <TableRow key={idx} className={cn(isHoliday && "bg-orange-500/5", isWeekend && !isHoliday && "bg-muted/30")}>
+                                                        <TableCell className="font-medium py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="capitalize">{format(detail.date, 'eeee', { locale: it })}</span>
+                                                                <span className="text-xs text-muted-foreground">{format(detail.date, 'dd/MM/yyyy')}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {isHoliday && <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200">Festivo</Badge>}
+                                                                {isAbsence && <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200">Assenza</Badge>}
+                                                                {publicNote && <span className="text-xs italic text-muted-foreground block w-full mt-1">"{publicNote}"</span>}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {ordinaryHours > 0 ? (
+                                                                <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/10 border-primary/20">
+                                                                    {ordinaryHours}h
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground text-xs">-</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {overtimeHours > 0 ? (
+                                                                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-200">
+                                                                    +{overtimeHours}h
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground text-xs">-</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {leaveHours > 0 ? (
+                                                                <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-200">
+                                                                    {leaveHours}h
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground text-xs">-</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingNote({ date: detail.date, currentNote: publicNote }); setNoteContent(publicNote); }}>
+                                                                <FileText className={cn("h-4 w-4", publicNote ? "text-primary" : "text-muted-foreground")} />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </TabsContent>
+            </Tabs>
 
             <ResponsiveDialog open={isAddShiftOpen} onOpenChange={setIsAddShiftOpen}>
                 <ResponsiveDialogContent>
@@ -1733,20 +2161,25 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         </div>
                         <div className="space-y-2">
                            <Label>{isMultiSelect ? 'Seleziona i giorni' : 'Giorno del turno'}</Label>
-                           <Calendar 
-                                mode={isMultiSelect ? "multiple" : "single"} 
-                                selected={isMultiSelect ? multipleShiftDates : newShiftDate} 
-                                onSelect={(date: any) => {
-                                    if (isMultiSelect) {
-                                        setMultipleShiftDates(date as Date[]);
-                                    } else {
-                                        setNewShiftDate(date as Date);
-                                    }
-                                }}
-                                className="rounded-md border" 
-                                disabled={(date) => date > new Date() && !isSameDay(date, new Date())}
-                                locale={it}
-                           />
+                           {isMultiSelect ? (
+                                    <Calendar
+                                        mode="multiple"
+                                        selected={multipleShiftDates}
+                                        onSelect={(dates: any) => setMultipleShiftDates(dates || [])}
+                                        className="rounded-md border mx-auto"
+                                        disabled={(date) => date > new Date() || date < subDays(new Date(), 90)}
+                                        locale={it}
+                                    />
+                                ) : (
+                                    <Calendar
+                                        mode="single"
+                                        selected={newShiftDate}
+                                        onSelect={(date: any) => setNewShiftDate(date)}
+                                        className="rounded-md border mx-auto"
+                                        disabled={(date) => date > new Date() || date < subDays(new Date(), 90)}
+                                        locale={it}
+                                    />
+                                )}
                            {!isMultiSelect && newShiftDate && (
                                 <p className="text-sm text-muted-foreground pt-2">
                                     {contractualStartTime 
@@ -2377,6 +2810,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
             
+            <AlertDialog open={isCleanConfirmOpen} onOpenChange={setIsCleanConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confermi la pulizia del mese?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Questa azione eliminerà tutte le timbrature, i turni straordinari, le note e le richieste di permesso per il mese di {format(currentMonth, 'MMMM yyyy', { locale: it })}. 
+                            L'operazione è irreversibile.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCleanMonth} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Pulisci Mese
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             <Dialog open={!!editingNote} onOpenChange={(open) => !open && setEditingNote(null)}>
                 <NoteDialogContent>
                     <NoteDialogHeader>

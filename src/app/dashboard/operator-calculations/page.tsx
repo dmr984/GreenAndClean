@@ -46,7 +46,7 @@ type ManualTotals = {
 };
 
 type VisibilitySettings = {
-    workedDays: boolean;
+    ordinaryWorkedDays: boolean;
     showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
@@ -123,7 +123,7 @@ const OperatorCalculationsPage = () => {
             const initialVisibility: Record<string, VisibilitySettings> = {};
             ops.forEach(op => {
                 initialVisibility[op.id] = {
-                    workedDays: true,
+                    ordinaryWorkedDays: true,
                     showWorkedHours: true, 
                     ordinaryHours: true,
                     overtimeHours: true,
@@ -421,7 +421,7 @@ const OperatorCalculationsPage = () => {
     const handleVisibilityChange = (operatorId: string, key: keyof VisibilitySettings) => {
         setVisibility(prev => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
-                workedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
+                ordinaryWorkedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
                 overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, compactMode: false,
             };
@@ -595,9 +595,9 @@ const OperatorCalculationsPage = () => {
                                 const permessoCost = summaryData?.permessoCost || 0;
                                 const malattiaCost = summaryData?.malattiaCost || 0;
                                 
-                                const workedDaysValue = opVisibility.showWorkedHours && summaryData
-                                    ? `${summaryData.workedDays} (${summaryData.ordinaryHours}h)`
-                                    : summaryData?.workedDays || 0;
+                                const ordinaryWorkedDaysValue = opVisibility.showWorkedHours && summaryData
+                                    ? `${summaryData.ordinaryWorkedDays} (${summaryData.ordinaryHours}h)`
+                                    : summaryData?.ordinaryWorkedDays || 0;
 
                                 return (
                                     <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
@@ -648,7 +648,7 @@ const OperatorCalculationsPage = () => {
                                         </CardHeader>
                                         {summaryData && !isCompact && (
                                             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-0 pb-4">
-                                                <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
+                                                <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={ordinaryWorkedDaysValue} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
                                                 
                                                 <InfoCard opId={op.id} title="Ore Straordinarie" value={summaryData.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />

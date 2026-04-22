@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
-import { Loader2, Users, User, RefreshCw } from 'lucide-react';
+import { Loader2, Users, User, RefreshCw, FileText, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -133,10 +133,12 @@ export function AdminDashboard() {
                            <Users className="h-6 w-6 text-primary" />
                            <CardTitle className="text-2xl">Accesso Rapido Operatori</CardTitle>
                         </div>
-                        <Button variant="outline" size="icon" onClick={forceRefresh}>
-                            <RefreshCw className="h-4 w-4" />
-                            <span className="sr-only">Azzera Notifiche</span>
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="icon" onClick={forceRefresh}>
+                                <RefreshCw className="h-4 w-4" />
+                                <span className="sr-only">Azzera Notifiche</span>
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>

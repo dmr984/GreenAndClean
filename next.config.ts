@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '4.5mb',
-      executionTimeout: 120, // 2 minutes
     }
   },
   reactStrictMode: false,

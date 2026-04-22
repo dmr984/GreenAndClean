@@ -39,7 +39,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const checkUser = () => {
-      let userFound = null;
+      let userFound: User | null = null;
       try {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {

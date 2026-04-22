@@ -92,7 +92,7 @@ type Shift = {
 type DetailView = {
     type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'ordinarie';
     title: string;
-    items: Request[] | {date: Date, hours: number, shift: Shift}[];
+    items: (Request | {date: Date, hours: number, shift: Shift})[];
 } | null;
 
 type DayInfo = {
@@ -771,7 +771,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
     
     const summary = useMemo(() => {
         if (!operator || !currentDate) {
-            return { workedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [], overtimeHoursByDay: [] };
+            return { ordinaryWorkedDays: 0, workedHours: 0, overtimeHours: 0, permessoHours: 0, malattiaDays: 0, ferieDays: 0, ordinaryHoursByDay: [], overtimeHoursByDay: [] };
         }
 
         const monthInterval = { start: startOfMonth(currentDate), end: endOfMonth(currentDate) };
@@ -852,7 +852,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         });
 
         return {
-            workedDays: allWorkedShifts.filter(s => s.endTime).length,
+            ordinaryWorkedDays: allWorkedShifts.filter(s => s.endTime).length,
             workedHours: totalOrdinaryHours,
             overtimeHours: totalOvertimeHours,
             permessoHours: totalPermessoHours,
@@ -868,7 +868,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
         setCurrentDate(prev => prev ? new Date(prev.getFullYear(), prev.getMonth() + offset, 1) : new Date());
     };
     
-    const handleSummaryCardClick = (type: DetailView['type'], title: string) => {
+    const handleSummaryCardClick = (type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'ordinarie', title: string) => {
         if (!type) return;
 
         if (type === 'ordinarie') {
@@ -1021,7 +1021,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             const shift: Shift = {
                 events,
                 startTime: startTime!,
-                endTime,
+                endTime: endTime || null,
                 workDuration,
                 isOvertime: events.some(e => e.isOvertime)
             };
@@ -1178,7 +1178,7 @@ const MonthlySummary = ({ operatorId, operator, onCleanMonth }: { operatorId: st
             
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Giorni Lavorati</CardTitle><Briefcase className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.workedDays}</div></CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Giorni Ordinari Lavorati</CardTitle><Briefcase className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{summary.ordinaryWorkedDays}</div></CardContent>
                 </Card>
                 <Card
                   onClick={() => handleSummaryCardClick('ordinarie', 'Dettaglio Ore Ordinarie')}

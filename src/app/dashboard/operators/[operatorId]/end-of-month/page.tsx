@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
 
 
 // Type definitions are now in calculations.ts
@@ -283,7 +284,7 @@ export default function EndOfMonthPage() {
         if (!currentMonth) return;
         const monthString = format(currentMonth, 'yyyy-MM');
         
-        const queryParams = new URLSearchParams({ month: monthString });
+        const queryParams = new URLSearchParams({ month: monthString, autoPrint: 'true' });
         
         window.open(`/dashboard/operators/${operatorId}/end-of-month/print?${queryParams.toString()}`, '_blank');
     };
@@ -292,14 +293,15 @@ export default function EndOfMonthPage() {
         if (!operator || !currentMonth || !monthlySummary) return;
         setIsDownloading(true);
         try {
-            const result = await generateOperatorPdf(
+            const result = await generateDetailedOperatorPdf(
                 currentMonth,
                 operator,
                 monthlySummary,
+                dailyDetails,
                 {}, // visibility
-                {}, // overrides
-                false // compact
+                {}  // overrides
             );
+            // Removed 4th argument false as it's not supported by signature
             if (result) {
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(result.blob);
@@ -476,7 +478,7 @@ export default function EndOfMonthPage() {
                             {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} Scarica PDF
                         </Button>
                         <Button variant="outline" onClick={handleOpenPrintPreview}>
-                            <Printer className="mr-2 h-4 w-4" /> Crea Report
+                            <Printer className="mr-2 h-4 w-4" /> Stampa
                         </Button>
                         <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)}>
                             <Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese
@@ -513,8 +515,8 @@ export default function EndOfMonthPage() {
                             className="bg-accent/20 border-accent"
                         />
                          <SummaryCard 
-                            title="Giorni Lavorati" 
-                            value={monthlySummary.workedDays ?? '...'}
+                            title="Giorni Ordinari Lavorati" 
+                            value={monthlySummary.ordinaryWorkedDays ?? '...'}
                             icon={Briefcase} 
                         />
                          <SummaryCard 
@@ -626,7 +628,7 @@ export default function EndOfMonthPage() {
                                             {format(detail.date, 'eeee dd MMMM', { locale: it })}
                                         </h4>
                                         <div className="flex items-center gap-1">
-                                             {!detail.shift && !detail.request && detail.status !== 'recupero_effettuato' && (
+                                             {!detail.shift && !detail.request && (
                                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setAddRequestContext({ date: detail.date, type: 'ferie' })}>
                                                     <PlusCircle className="h-4 w-4 text-primary" />
                                                 </Button>

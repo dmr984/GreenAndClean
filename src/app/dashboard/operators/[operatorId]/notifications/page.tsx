@@ -85,7 +85,7 @@ export default function NotificationCenterPage() {
         // Listener for Timbrature (now more comprehensive)
         const allTimbratureQuery = query(collection(firestore, `app-users/${operatorId}/timbrature`), orderBy('timestamp', 'desc'));
         const unsubTimbrature = onSnapshot(allTimbratureQuery, (snapshot) => {
-            const allTimbrature = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as Timbratura }));
+            const allTimbrature = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timbratura));
             const newItems: NotificationItem[] = [];
 
             // 1. Find individual 'sospesa' events

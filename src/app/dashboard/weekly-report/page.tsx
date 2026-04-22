@@ -108,7 +108,7 @@ export default function WeeklyReportPage() {
                                         selected={selectedDate}
                                         onSelect={(d) => { setSelectedDate(d); setIsCalendarOpen(false); }}
                                         initialFocus
-                                        locale={itLocale}
+                                        locale={it}
                                     />
                                 </DialogContent>
                             </Dialog>

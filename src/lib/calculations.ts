@@ -61,8 +61,9 @@ type Request = {
     dailyCosts?: { [date: string]: number };
 };
 
-type DailyNote = {
+export type DailyNote = {
     date: string;
+    note?: string; // Legacy field, keeping for compatibility if used
     privateNote?: string;
     publicNote?: string;
     showOnMonthlyReport?: boolean;
@@ -108,7 +109,7 @@ export type DailyDetail = {
 
 
 export type MonthlySummary = {
-    workedDays: number;
+    ordinaryWorkedDays: number;
     ordinaryHours: number;
     overtimeHours: number;
     ferieCost: number; 
@@ -120,6 +121,8 @@ export type MonthlySummary = {
     permessoHours: number;
     malattiaDays: number;
     festiveHours: number;
+    estimatedTotalCost: number;
+    expectedMonthlyHours: number;
 };
 
 export const roundOrdinaryHours = (minutes: number): number => {
@@ -512,8 +515,13 @@ export const processMonthlyData = (
             calculationStart: hoursResult.calculationStart || undefined,
             calculationEnd: hoursResult.calculationEnd || undefined
         });
-        detail.shift.ordinaryHours += hoursResult.ordinary;
-        detail.shift.overtimeHours += hoursResult.overtime;
+
+        // Only add to totals if confirmed
+        const isConfirmed = events.every(e => e.status === 'confermata');
+        if (isConfirmed) {
+            detail.shift.ordinaryHours += hoursResult.ordinary;
+            detail.shift.overtimeHours += hoursResult.overtime;
+        }
         
         if (events.find(e => e.type === 'entrata')?.makeupOfDay) {
             detail.makeupPerformedFor = format(physicalDate, 'dd MMM', { locale: it });
@@ -598,22 +606,33 @@ export const processMonthlyData = (
     let totalFerieCost = 0;
     let totalPermessoCost = 0;
     let totalMalattiaCost = 0;
-    let workedDays = 0;
+    let ordinaryWorkedDays = 0;
     let absenceDays = 0;
     let ferieDays = 0;
     let ferieHours = 0;
     let malattiaDays = 0;
     let festiveHours = 0;
+    let expectedMonthlyHours = 0;
 
     dailyDetails.forEach(detail => {
         if (!isWithinInterval(detail.date, monthInterval)) return;
         if (detail.status === 'lavorato') {
-            workedDays++;
-            if (detail.shift) {
-                totalOrdinaryHours += detail.shift.ordinaryHours;
-                totalOvertimeHours += detail.shift.overtimeHours;
-                if (isSunday(detail.date) || detail.status === 'festa') {
-                    festiveHours += detail.shift.ordinaryHours + detail.shift.overtimeHours;
+            const isConfirmed = detail.shift?.events.every(e => e.status === 'confermata');
+            if (isConfirmed) {
+                const dayName = dayIndexToName[getDay(detail.date)];
+                const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+                const isHoliday = isPublicHoliday(detail.date);
+
+                if (isContractualDay && !isHoliday) {
+                    ordinaryWorkedDays++;
+                }
+
+                if (detail.shift) {
+                    totalOrdinaryHours += detail.shift.ordinaryHours;
+                    totalOvertimeHours += detail.shift.overtimeHours;
+                    if (isSunday(detail.date) || isHoliday) {
+                        festiveHours += detail.shift.ordinaryHours + detail.shift.overtimeHours;
+                    }
                 }
             }
         }
@@ -630,6 +649,10 @@ export const processMonthlyData = (
                 absenceDays++;
                 break;
         }
+
+        // Calculate expected hours for the month
+        const dayName = dayIndexToName[getDay(detail.date)];
+        expectedMonthlyHours += operator.workSchedule[dayName]?.totalHours || 0;
     });
     
     totalFerieCost = 0; totalMalattiaCost = 0; totalPermessoCost = 0;
@@ -662,12 +685,23 @@ export const processMonthlyData = (
     }
 
     const monthlySummary: MonthlySummary = {
-        workedDays, absenceDays, ordinaryHours: totalOrdinaryHours,
+        ordinaryWorkedDays, absenceDays, ordinaryHours: totalOrdinaryHours,
         overtimeHours: totalOvertimeHours, ferieCost: totalFerieCost,
         permessoCost: totalPermessoCost, ferieDays, ferieHours,
         permessoHours: totalPermessoHours, malattiaDays, malattiaCost: totalMalattiaCost,
-        festiveHours
+        festiveHours,
+        estimatedTotalCost: 0, // Will calculate below
+        expectedMonthlyHours
     };
+
+    // Calculate estimated cost
+    if (operator.salaryType === 'fixed' && operator.fixedSalary) {
+        monthlySummary.estimatedTotalCost = operator.fixedSalary;
+    } else {
+        const rate = operator.hourlyRate || 0;
+        const overtimeRate = operator.overtimeRate || (rate * 1.2); // Default 20% increase if not specified
+        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate);
+    }
 
     return {
         monthlySummary,

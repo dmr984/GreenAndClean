@@ -38,7 +38,7 @@ type ManualTotals = {
 };
 
 type VisibilitySettings = {
-    workedDays: boolean;
+    ordinaryWorkedDays: boolean;
     showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
@@ -195,6 +195,28 @@ const PrintPageContent = () => {
         }
     }, [currentMonth, filteredOperators, firestore, toast]);
 
+    useEffect(() => {
+        if (!isLoading && filteredOperators.length > 0 && searchParams.get('autoPrint') === 'true') {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading, filteredOperators.length, searchParams]);
+
+    useEffect(() => {
+        if (!currentMonth) return;
+        let baseName = `Report_Mensile_${format(currentMonth, 'yyyy-MM')}`;
+        if (filteredOperators.length === 1) {
+            const op = filteredOperators[0];
+            baseName = `${op.firstName.trim()}_${op.lastName.trim()}_${format(currentMonth, 'yyyy-MM')}`;
+        } else if (filteredOperators.length > 1 && filteredOperators.length <= 3) {
+            const names = filteredOperators.map(op => `${op.firstName.trim()}_${op.lastName.trim()}`).join('-');
+            baseName = `Report_${names}_${format(currentMonth, 'yyyy-MM')}`;
+        }
+        document.title = baseName;
+    }, [currentMonth, filteredOperators]);
+
     const calculateTotalDue = useCallback((opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
         const override = manualOverrides[opId];
         if (override?.totalDueOverride !== undefined) {
@@ -295,10 +317,10 @@ const PrintPageContent = () => {
 
                 const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                 
-                const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
+                const ordinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
 
                 const allItems = [
-                    opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
+                    opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                     opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARIE: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
@@ -346,7 +368,15 @@ const PrintPageContent = () => {
 
 
             const blob = doc.output('blob');
-            const fileName = `Report_Mensile_${format(currentMonth, 'yyyy-MM')}.pdf`;
+            let baseName = `Report_Mensile_${format(currentMonth, 'yyyy-MM')}`;
+            if (filteredOperators.length === 1) {
+                const op = filteredOperators[0];
+                baseName = `${op.firstName.trim()}_${op.lastName.trim()}_${format(currentMonth, 'yyyy-MM')}`;
+            } else if (filteredOperators.length > 1 && filteredOperators.length <= 3) {
+                 const names = filteredOperators.map(op => `${op.firstName.trim()}_${op.lastName.trim()}`).join('-');
+                 baseName = `Report_${names}_${format(currentMonth, 'yyyy-MM')}`;
+            }
+            const fileName = `${baseName}.pdf`;
 
             return { blob, fileName };
         } catch (error) {
@@ -362,7 +392,7 @@ const PrintPageContent = () => {
         window.print();
     };
 
-    const handleDownload = async () => {
+    const handleDownload = useCallback(async () => {
         const pdf = await generatePdf();
         if (!pdf) return;
 
@@ -373,7 +403,16 @@ const PrintPageContent = () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
-    };
+    }, [generatePdf]);
+
+    useEffect(() => {
+        if (!isLoading && filteredOperators.length > 0 && searchParams.get('autoDownload') === 'true') {
+            const timer = setTimeout(() => {
+                handleDownload();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading, filteredOperators.length, searchParams, handleDownload]);
 
     const handleShare = async () => {
         const pdf = await generatePdf();
@@ -447,7 +486,7 @@ const PrintPageContent = () => {
 
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                             
-                            const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
+                            const ordinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
                             
                             if (globalCompact || opVisibility.compactMode) {
                                 return (
@@ -462,7 +501,7 @@ const PrintPageContent = () => {
                             }
 
                             const allItems = [
-                                opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
+                                opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
                                 opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                                 opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,

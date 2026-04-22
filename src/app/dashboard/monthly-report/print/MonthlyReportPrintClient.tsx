@@ -36,7 +36,7 @@ type ManualTotals = {
 };
 
 type VisibilitySettings = {
-    workedDays: boolean;
+    ordinaryWorkedDays: boolean;
     showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
@@ -294,10 +294,10 @@ export default function MonthlyReportPrintClient() {
 
                 const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                 
-                const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
+                const ordinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
 
                 const allItems = [
-                    opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
+                    opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                     opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
@@ -450,7 +450,7 @@ export default function MonthlyReportPrintClient() {
 
                             const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                             
-                            const workedDaysText = opVisibility.showWorkedHours ? `${summary.workedDays} (${summary.ordinaryHours}h)` : `${summary.workedDays}`;
+                            const ordinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
                             
                             if (globalCompact || opVisibility.compactMode) {
                                 return (
@@ -465,7 +465,7 @@ export default function MonthlyReportPrintClient() {
                             }
 
                             const allItems = [
-                                opVisibility.workedDays !== false ? `GIORNI LAVORATI: ${workedDaysText}` : null,
+                                opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
                                 opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
                                 opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,

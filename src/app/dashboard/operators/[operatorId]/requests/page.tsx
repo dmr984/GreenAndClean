@@ -62,6 +62,7 @@ type Request = {
     reason?: string;
     createdAt: Timestamp;
     dailyCosts?: { [date: string]: number };
+    viewedByOperator?: boolean;
 };
 
 const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onSave: (data: Partial<Request>) => void; onClose: () => void; }) => {

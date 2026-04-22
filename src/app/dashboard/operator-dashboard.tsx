@@ -31,7 +31,7 @@ type ClockingEvent = {
     id: string;
     userId: string;
     type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
-    timestamp: Timestamp;
+    timestamp: any;
     latitude?: number;
     longitude?: number;
     status: 'sospesa' | 'confermata' | 'rifiutata';
@@ -41,8 +41,8 @@ type ClockingEvent = {
 };
 
 type Shift = {
-    startTime: Timestamp;
-    endTime: Timestamp | null;
+    startTime: any;
+    endTime: any;
     events: ClockingEvent[];
     workDuration?: string;
     hasUnread?: boolean;
@@ -391,7 +391,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 orderBy('timestamp', 'desc')
             );
             const snapshot = await getDocs(q);
-            const recentEvents = snapshot.docs.map(d => ({id: d.id, ...d.data() as ClockingEvent}));
+            const recentEvents = snapshot.docs.map(d => ({id: d.id, ...d.data()} as ClockingEvent));
             
             let openShift: ClockingEvent | undefined = undefined;
 

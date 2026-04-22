@@ -45,7 +45,7 @@ type ManualTotals = {
 };
 
 type VisibilitySettings = {
-    workedDays: boolean;
+    ordinaryWorkedDays: boolean;
     showWorkedHours: boolean;
     ordinaryHours: boolean;
     overtimeHours: boolean;
@@ -121,7 +121,7 @@ const MonthlyReportPage = () => {
             const initialVisibility: Record<string, VisibilitySettings> = {};
             ops.forEach(op => {
                 initialVisibility[op.id] = {
-                    workedDays: true,
+                    ordinaryWorkedDays: true,
                     showWorkedHours: true, 
                     ordinaryHours: true,
                     overtimeHours: true,
@@ -229,17 +229,42 @@ const MonthlyReportPage = () => {
         const queryParams = new URLSearchParams({
             month: monthString,
             operators: operatorIdsString,
-            globalCompact: String(globalCompactMode)
+            globalCompact: String(globalCompactMode),
+            autoPrint: 'true'
         });
 
         // Add visibility params
-        for (const operatorId of selectedOperatorIds) {
-             const opVisibility = visibility[operatorId] || {};
-             for (const key in opVisibility) {
-                queryParams.append(`${key}_${operatorId}`, String(opVisibility[key as keyof VisibilitySettings]));
-             }
+        for (const opId of Array.from(selectedOperatorIds)) {
+            const opVisibility = visibility[opId] || {};
+            for (const [key, value] of Object.entries(opVisibility)) {
+                queryParams.append(`${key}_${opId}`, String(value));
+            }
         }
+        
+        window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
+    };
 
+    const handleDownloadPdf = () => {
+        if (selectedOperatorIds.size === 0) {
+            toast({ title: 'Nessun operatore selezionato', description: 'Seleziona almeno un operatore.', variant: 'destructive'});
+            return;
+        }
+        const monthString = format(currentMonth, 'yyyy-MM');
+        const operatorIdsString = Array.from(selectedOperatorIds).join(',');
+        const queryParams = new URLSearchParams({
+            month: monthString,
+            operators: operatorIdsString,
+            globalCompact: String(globalCompactMode),
+            autoDownload: 'true'
+        });
+
+        for (const opId of Array.from(selectedOperatorIds)) {
+            const opVisibility = visibility[opId] || {};
+            for (const [key, value] of Object.entries(opVisibility)) {
+                queryParams.append(`${key}_${opId}`, String(value));
+            }
+        }
+        
         window.open(`/dashboard/monthly-report/print?${queryParams.toString()}`, '_blank');
     };
 
@@ -386,7 +411,7 @@ const MonthlyReportPage = () => {
     const handleVisibilityChange = (operatorId: string, key: keyof VisibilitySettings) => {
         setVisibility(prev => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
-                workedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
+                ordinaryWorkedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
                 overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, compactMode: false,
             };
@@ -480,8 +505,11 @@ const MonthlyReportPage = () => {
                         <CardDescription>Visualizza i totali di tutti gli operatori per il mese selezionato.</CardDescription>
                     </div>
                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <Button variant="outline" onClick={handleDownloadPdf} disabled={isLoading || selectedOperatorIds.size === 0}>
+                            <Download className="mr-2 h-4 w-4" /> Scarica PDF
+                        </Button>
                         <Button onClick={handleOpenPrintPreview} disabled={isLoading || selectedOperatorIds.size === 0}>
-                            <Printer className="mr-2 h-4 w-4" /> Crea Report
+                            <Printer className="mr-2 h-4 w-4" /> Stampa
                         </Button>
                          <Button variant="destructive" onClick={() => setIsCleanConfirmOpen(true)} disabled={isLoading || selectedOperatorIds.size === 0}>
                             <Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese
@@ -547,9 +575,9 @@ const MonthlyReportPage = () => {
                                 const permessoCost = summary?.permessoCost || 0;
                                 const malattiaCost = summary?.malattiaCost || 0;
                                 
-                                const workedDaysValue = opVisibility.showWorkedHours && summary
-                                    ? `${summary.workedDays} (${summary.ordinaryHours}h)`
-                                    : summary?.workedDays || 0;
+                                const ordinaryWorkedDaysValue = opVisibility.showWorkedHours && summary
+                                    ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)`
+                                    : summary?.ordinaryWorkedDays || 0;
 
                                 return (
                                     <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
@@ -600,7 +628,7 @@ const MonthlyReportPage = () => {
                                         </CardHeader>
                                         {summary && !isCompact && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
-                                                <InfoCard opId={op.id} title="Giorni Lavorati" value={workedDaysValue} icon={Briefcase} visibilityKey="workedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
+                                                <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={ordinaryWorkedDaysValue} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
                                                 <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
                                                 <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                 <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
