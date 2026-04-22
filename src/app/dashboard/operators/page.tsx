@@ -4,9 +4,10 @@ import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { NotificationDialog } from '@/components/notification-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,7 +79,8 @@ type Operator = {
     overtimeHourTrigger?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
-    employmentStartDate?: Timestamp;
+    employmentStartDate?: any;
+    notificationTokens?: string[];
 };
 
 export default function ManageOperatorsPage() {
@@ -93,6 +95,8 @@ export default function ManageOperatorsPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
     const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number}>>({});
+    const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false);
+    const [operatorToNotify, setOperatorToNotify] = useState<Operator | null>(null);
 
     
     // Form state
@@ -722,6 +726,12 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                                                    <Button variant="ghost" size="icon" onClick={() => {
+                                                        setOperatorToNotify(operator);
+                                                        setIsNotificationDialogOpen(true);
+                                                    }} title="Invia Notifica Push">
+                                                        <Bell className={`h-4 w-4 ${operator.notificationTokens?.length ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                                                    </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => { 
                                                         setSelectedOperator(operator); 
                                                         setEditingOperatorCode(operator.username); 
@@ -837,6 +847,18 @@ export default function ManageOperatorsPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {operatorToNotify && (
+                <NotificationDialog 
+                    isOpen={isNotificationDialogOpen}
+                    onClose={() => {
+                        setIsNotificationDialogOpen(false);
+                        setOperatorToNotify(null);
+                    }}
+                    operatorName={`${operatorToNotify.firstName} ${operatorToNotify.lastName}`}
+                    tokens={operatorToNotify.notificationTokens || []}
+                />
+            )}
         </>
     );
 }

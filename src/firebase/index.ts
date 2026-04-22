@@ -8,6 +8,8 @@ import { getAuth as getAuthSdk, Auth } from 'firebase/auth';
 import { useFirebase } from './provider';
 import { DependencyList, useMemo } from 'react';
 
+import { getMessaging, Messaging } from 'firebase/messaging';
+
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
   if (!getApps().length) {
@@ -22,6 +24,7 @@ export function getSdks(firebaseApp: FirebaseApp) {
     firebaseApp,
     firestore: getFirestoreSdk(firebaseApp),
     auth: getAuthSdk(firebaseApp),
+    messaging: typeof window !== 'undefined' ? getMessaging(firebaseApp) : null,
   };
 }
 
@@ -43,6 +46,15 @@ export const useAuth = (): Auth => {
         throw new Error('useAuth must be used within a FirebaseProvider with a valid Auth instance.');
     }
     return context.auth;
+};
+
+/** Hook to access Messaging instance. */
+export const useMessaging = (): Messaging | null => {
+    const context = useFirebase();
+    if (!context) {
+        throw new Error('useMessaging must be used within a FirebaseProvider.');
+    }
+    return (context as any).messaging;
 };
 
 type MemoFirebase<T> = T & { __memo?: boolean };

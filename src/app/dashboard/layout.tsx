@@ -13,6 +13,7 @@ import { useFirestore } from '@/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { NotificationManager } from '@/components/notification-manager';
 
 type Operator = {
   id: string;
@@ -184,8 +185,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </div>
 
-          <div className="flex justify-end items-center gap-4 w-10">
-             {/* Notification Bell removed */}
+          <div className="flex justify-end items-center gap-4">
+             <NotificationManager />
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
