@@ -70,7 +70,7 @@ export function NotificationManager() {
       
       if (status === 'granted') {
         const token = await getToken(messaging, {
-          vapidKey: undefined
+          vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
         });
 
         if (token) {
