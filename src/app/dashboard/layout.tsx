@@ -14,6 +14,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
 import { NotificationManager } from '@/components/notification-manager';
+import { BackgroundProcessor } from '@/components/background-processor';
 
 type Operator = {
   id: string;
@@ -194,6 +195,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
     </div>
     <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
+    <BackgroundProcessor />
     </>
   );
 }

@@ -8,6 +8,17 @@ import { useToast } from '@/hooks/use-toast';
 import { Bell, BellOff, BellRing } from 'lucide-react';
 import { Button } from './ui/button';
 
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from './ui/alert-dialog';
+
 export function NotificationManager() {
   const messaging = useMessaging();
   const firestore = useFirestore();
@@ -15,10 +26,21 @@ export function NotificationManager() {
   const { toast } = useToast();
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPermission(Notification.permission);
+      const currentPermission = Notification.permission;
+      setPermission(currentPermission);
+      
+      // Mostra il prompt solo se il permesso non è ancora stato deciso
+      // E se l'utente non ha già cliccato "Non ora" recentemente
+      const hasDismissed = localStorage.getItem('notifications-dismissed');
+      if (currentPermission === 'default' && !hasDismissed) {
+        // Un piccolo ritardo per non sovrapporsi ad altri caricamenti
+        const timer = setTimeout(() => setShowPrompt(true), 2000);
+        return () => clearTimeout(timer);
+      }
     }
 
     if (messaging) {
@@ -41,17 +63,18 @@ export function NotificationManager() {
     try {
       const status = await Notification.requestPermission();
       setPermission(status);
+      setShowPrompt(false);
+      
+      // Memorizziamo che l'utente ha interagito, così non lo richiediamo più ad ogni refresh
+      localStorage.setItem('notifications-dismissed', 'true');
       
       if (status === 'granted') {
-        // Recupera il token FCM
-        // Nota: Qui andrebbe la chiave VAPID pubblica se configurata nella console Firebase
         const token = await getToken(messaging, {
-          vapidKey: undefined // Inserire qui la chiave VAPID se disponibile
+          vapidKey: undefined
         });
 
         if (token) {
           console.log('FCM Token:', token);
-          // Salva il token nel profilo dell'utente su Firestore
           const userRef = doc(firestore, 'app-users', user.id);
           await updateDoc(userRef, {
             notificationTokens: arrayUnion(token)
@@ -59,9 +82,12 @@ export function NotificationManager() {
           
           toast({
             title: 'Notifiche Attivate',
-            description: 'Riceverai un avviso quando il tuo turno sta per scadere.',
+            description: 'Riceverai un avviso per i tuoi turni.',
           });
         }
+      } else {
+        // Se l'utente nega o chiude il popup di sistema, ricordiamo la scelta
+        localStorage.setItem('notifications-dismissed', 'true');
       }
     } catch (error) {
       console.error('Errore nella registrazione delle notifiche:', error);
@@ -75,31 +101,31 @@ export function NotificationManager() {
     }
   };
 
-  if (permission === 'denied') {
-    return (
-      <Button variant="outline" size="sm" disabled className="gap-2 text-muted-foreground">
-        <BellOff className="h-4 w-4" /> Notifiche Bloccate
-      </Button>
-    );
-  }
+  const handleDismiss = () => {
+    setShowPrompt(false);
+    localStorage.setItem('notifications-dismissed', 'true');
+  };
 
-  if (permission === 'granted') {
-    return (
-      <Button variant="ghost" size="sm" className="gap-2 text-primary">
-        <BellRing className="h-4 w-4" /> Notifiche Attive
-      </Button>
-    );
-  }
-
+  // Se i permessi sono già stati gestiti, non renderizziamo nulla nell'interfaccia
   return (
-    <Button 
-      variant="outline" 
-      size="sm" 
-      onClick={requestPermission} 
-      disabled={isRegistering}
-      className="gap-2 animate-pulse hover:animate-none"
-    >
-      <Bell className="h-4 w-4" /> Attiva Notifiche Test
-    </Button>
+    <AlertDialog open={showPrompt} onOpenChange={setShowPrompt}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <BellRing className="h-5 w-5 text-primary" /> Attiva Notifiche Push
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Vuoi ricevere notifiche per i promemoria dei turni e le comunicazioni dell'amministratore? 
+            Potrai disattivarle in ogni momento dalle impostazioni del browser.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleDismiss}>Non ora</AlertDialogCancel>
+          <AlertDialogAction onClick={requestPermission} disabled={isRegistering}>
+            {isRegistering ? 'Attivazione...' : 'Attiva Notifiche'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
