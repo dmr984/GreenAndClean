@@ -4,9 +4,7 @@ import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { NotificationDialog } from '@/components/notification-dialog';
-import { ScheduledNotificationsDialog } from '@/components/scheduled-notifications-dialog';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell, Clock } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -96,9 +94,6 @@ export default function ManageOperatorsPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
     const [pendingCounts, setPendingCounts] = useState<Record<string, {shifts: number, leaves: number}>>({});
-    const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false);
-    const [isSchedulingDialogOpen, setIsSchedulingDialogOpen] = useState(false);
-    const [operatorToNotify, setOperatorToNotify] = useState<Operator | null>(null);
 
     
     // Form state
@@ -728,18 +723,6 @@ export default function ManageOperatorsPage() {
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" onClick={() => {
-                                                        setOperatorToNotify(operator);
-                                                        setIsSchedulingDialogOpen(true);
-                                                    }} title="Programma Notifiche">
-                                                        <Clock className="h-4 w-4 text-orange-500" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" onClick={() => {
-                                                        setOperatorToNotify(operator);
-                                                        setIsNotificationDialogOpen(true);
-                                                    }} title="Invia Notifica Push">
-                                                        <Bell className={`h-4 w-4 ${operator.notificationTokens?.length ? 'text-blue-500' : 'text-muted-foreground'}`} />
-                                                    </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => { 
                                                         setSelectedOperator(operator); 
                                                         setEditingOperatorCode(operator.username); 
@@ -856,29 +839,6 @@ export default function ManageOperatorsPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {operatorToNotify && (
-                <NotificationDialog 
-                    isOpen={isNotificationDialogOpen}
-                    onClose={() => {
-                        setIsNotificationDialogOpen(false);
-                        setOperatorToNotify(null);
-                    }}
-                    operatorName={`${operatorToNotify.firstName} ${operatorToNotify.lastName}`}
-                    tokens={operatorToNotify.notificationTokens || []}
-                />
-            )}
-
-            {operatorToNotify && (
-                <ScheduledNotificationsDialog
-                    isOpen={isSchedulingDialogOpen}
-                    onClose={() => {
-                        setIsSchedulingDialogOpen(false);
-                        setOperatorToNotify(null);
-                    }}
-                    operatorId={operatorToNotify.id}
-                    operatorName={`${operatorToNotify.firstName} ${operatorToNotify.lastName}`}
-                />
-            )}
         </>
     );
 }

@@ -13,8 +13,6 @@ import { useFirestore } from '@/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
-import { NotificationManager } from '@/components/notification-manager';
-import { BackgroundProcessor } from '@/components/background-processor';
 
 type Operator = {
   id: string;
@@ -187,7 +185,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex justify-end items-center gap-4">
-             <NotificationManager />
+             {/* Rimossa NotificationManager */}
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
@@ -195,7 +193,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
     </div>
     <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
-    <BackgroundProcessor />
     </>
   );
 }
