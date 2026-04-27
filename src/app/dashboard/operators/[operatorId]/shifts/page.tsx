@@ -1737,16 +1737,28 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                         <TableBody>
                                             {pendingShifts.map((shift, index) => {
                                                 const startTime = shift.events[0]?.timestamp;
-                                                const endTime = shift.events.find(e => e.type === 'uscita')?.timestamp;
+                                                const exitEvent = shift.events.find(e => e.type === 'uscita');
+                                                const endTime = exitEvent?.timestamp;
+                                                const suggestedTime = exitEvent?.suggestedTime;
+                                                const isAutoVoided = shift.events.some(e => e.type === 'uscita' && e.isAuto);
+                                                
                                                 return (
-                                                    <TableRow key={index}>
+                                                    <TableRow key={index} className={cn(isAutoVoided && "bg-red-50 dark:bg-red-950/20")}>
                                                         <TableCell className='flex items-center gap-2 whitespace-nowrap'>
                                                           {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
+                                                          {isAutoVoided && <AlertTriangle className="h-5 w-5 text-red-600" />}
                                                           {formatDate(startTime)}
                                                           {shift.makeupOfDay && <Badge variant="outline">Recupero</Badge>}
+                                                          {isAutoVoided && <Badge variant="destructive" className="ml-2 bg-red-600 animate-pulse">Dimenticata!</Badge>}
+                                                          {isAutoVoided && suggestedTime && <Badge variant="outline" className="ml-2 border-blue-500 text-blue-600">Proposta: {suggestedTime}</Badge>}
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">{startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
-                                                        <TableCell className="whitespace-nowrap">{endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            {endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}
+                                                            {isAutoVoided && suggestedTime && (
+                                                                <span className="block text-[10px] text-blue-600 font-semibold">Dichiarato: {suggestedTime}</span>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
                                                         <TableCell className="whitespace-nowrap">
                                                             <Badge variant={

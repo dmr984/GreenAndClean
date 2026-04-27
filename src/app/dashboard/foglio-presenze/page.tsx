@@ -119,17 +119,23 @@ export default function FoglioPresenzePage() {
             <Card className="no-print">
                 <CardHeader className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-1">
                     <CardTitle className="text-xl font-bold uppercase tracking-tight">Gestione Foglio Presenze</CardTitle>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                        <span className="font-bold w-36 text-center capitalize text-lg">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>
-                        <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                        <Button variant="outline" onClick={async () => {
-                            setOverrides({});
-                            if (firestore) {
-                                await setDoc(doc(firestore, 'reports', `foglio-presenze-overrides-${format(currentMonth, 'yyyy-MM')}`), { overrides: {} }, { merge: true });
-                            }
-                        }} className="ml-2 text-destructive border-destructive hover:bg-destructive/10"><RotateCcw className="mr-2 h-4 w-4" /> Reset</Button>
-                        <Button variant="default" onClick={() => window.print()} className="ml-2 bg-[#4a6da7] hover:bg-[#3a5d97]"><Printer className="mr-2 h-4 w-4" /> Stampa</Button>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2">
+                        <div className="flex items-center gap-1">
+                            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                            <span className="font-bold w-32 text-center capitalize text-sm sm:text-lg">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>
+                            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={async () => {
+                                if (confirm('Sei sicuro di voler resettare tutte le modifiche manuali di questo mese?')) {
+                                    setOverrides({});
+                                    if (firestore) {
+                                        await setDoc(doc(firestore, 'reports', `foglio-presenze-overrides-${format(currentMonth, 'yyyy-MM')}`), { overrides: {} }, { merge: true });
+                                    }
+                                }
+                            }} className="text-destructive border-destructive hover:bg-destructive/10"><RotateCcw className="mr-1 h-3 w-3" /> Reset</Button>
+                            <Button variant="default" size="sm" onClick={() => window.print()} className="bg-[#4a6da7] hover:bg-[#3a5d97]"><Printer className="mr-1 h-3 w-3" /> Stampa</Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="pb-3">
@@ -144,8 +150,8 @@ export default function FoglioPresenzePage() {
                 </CardContent>
             </Card>
 
-            <div className="attendance-sheet-container bg-white p-0 overflow-hidden">
-                <div className="attendance-sheet relative p-1 pb-16" style={{ width: '1180px', margin: '0 auto' }}>
+            <div className="attendance-sheet-container bg-white p-0 overflow-x-auto shadow-inner rounded-lg border max-w-full">
+                <div className="attendance-sheet relative p-0 pb-16 min-w-[1180px] mx-auto overflow-hidden">
                     <table className="w-full border-collapse border-[2.5px] border-black text-black leading-tight">
                         <thead>
                             <tr className="bg-[#4a6da7] text-white text-[9px] h-8">
@@ -211,14 +217,14 @@ export default function FoglioPresenzePage() {
                                 const processed = attendanceData[op.id];
                                 return (
                                     <React.Fragment key={op.id}>
-                                        <tr className="h-[18px]">
-                                            <td rowSpan={3} className="border-x border-t border-black text-center text-xs bg-white p-0 align-top">
-                                                <div className="h-[27px] border-b border-black flex items-center justify-center font-black">{idx + 1}</div>
+                                        <tr className="h-[15px]">
+                                            <td rowSpan={3} className="border-x border-t border-black text-center text-[10px] bg-white p-0 align-top">
+                                                <div className="h-[22px] border-b border-black flex items-center justify-center font-black">{idx + 1}</div>
                                             </td>
-                                            <td rowSpan={3} className="border-r-[2px] border-x border-t border-black px-2 font-black uppercase truncate max-w-[170px] text-[11px] leading-tight bg-white align-middle">
+                                            <td rowSpan={3} className="border-r-[2px] border-x border-t border-black px-2 font-black uppercase truncate max-w-[170px] text-[10px] leading-tight bg-white align-middle">
                                                 {op.lastName} {op.firstName}
                                             </td>
-                                            <td className="border-r-[2px] border-black text-center text-[10px] font-black bg-[#e1effe]">O</td>
+                                            <td className="border-r-[2px] border-b border-black text-center text-[9px] font-black bg-[#e1effe]">O</td>
                                             {[...Array(31)].map((_, i) => {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
@@ -246,24 +252,24 @@ export default function FoglioPresenzePage() {
                                                 }
                                                 return (
                                                     <td key={i} className={`border border-black text-center p-0 bg-[#e1effe] ${day === 31 ? 'border-r-[2px]' : ''}`}>
-                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-O-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                        <span className="only-print">{m}</span>
+                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-O-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                        <span className="only-print text-[9px]">{m}</span>
                                                     </td>
                                                 );
                                             })}
                                             {[...Array(10)].map((_, i) => (
-                                                <td key={i} className={`border border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
-                                                    <input type="text" value={overrides[`${op.id}-O-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-O-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                    <span className="only-print">{overrides[`${op.id}-O-sum-${i}`]}</span>
+                                                <td key={i} className={`border-x border-b border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
+                                                    <input type="text" value={overrides[`${op.id}-O-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-O-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                    <span className="only-print text-[9px]">{overrides[`${op.id}-O-sum-${i}`]}</span>
                                                 </td>
                                             ))}
-                                            <td rowSpan={3} className="border border-black bg-white p-0 text-center font-bold">
-                                                <input type="text" value={overrides[`${op.id}-RETR`] || ''} onChange={e => handleOverride(`${op.id}-RETR`, e.target.value)} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                <span className="only-print">{overrides[`${op.id}-RETR`]}</span>
+                                            <td rowSpan={3} className="border-x border-b border-black bg-white p-0 text-center font-bold">
+                                                <input type="text" value={overrides[`${op.id}-RETR`] || ''} onChange={e => handleOverride(`${op.id}-RETR`, e.target.value)} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                <span className="only-print text-[9px]">{overrides[`${op.id}-RETR`]}</span>
                                             </td>
                                         </tr>
-                                        <tr className="h-[18px] bg-white text-center font-bold">
-                                            <td className="border-r-[2px] border-black text-center text-[10px] font-black">S</td>
+                                        <tr className="h-[15px] bg-white text-center font-bold">
+                                            <td className="border-r-[2px] border-b border-black text-center text-[9px] font-black">S</td>
                                             {[...Array(31)].map((_, i) => {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
@@ -274,21 +280,21 @@ export default function FoglioPresenzePage() {
                                                     if (dayDate <= today) m = '/';
                                                 }
                                                 return (
-                                                    <td key={i} className={`border border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
-                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-S-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                        <span className="only-print">{m}</span>
+                                                    <td key={i} className={`border-x border-b border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
+                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-S-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                        <span className="only-print text-[9px]">{m}</span>
                                                     </td>
                                                 );
                                             })}
                                             {[...Array(10)].map((_, i) => (
-                                                <td key={i} className={`border border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
-                                                    <input type="text" value={overrides[`${op.id}-S-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-S-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                    <span className="only-print">{overrides[`${op.id}-S-sum-${i}`]}</span>
+                                                <td key={i} className={`border-x border-b border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
+                                                    <input type="text" value={overrides[`${op.id}-S-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-S-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                    <span className="only-print text-[9px]">{overrides[`${op.id}-S-sum-${i}`]}</span>
                                                 </td>
                                             ))}
                                         </tr>
-                                        <tr className="h-[18px] bg-white text-center font-bold border-b-2 border-black" style={{ borderBottomWidth: '2.5px' }}>
-                                            <td className="border-r-[2px] border-black text-center text-[10px] font-black"></td>
+                                        <tr className="h-[15px] bg-white text-center font-bold border-b-2 border-black" style={{ borderBottomWidth: '2.5px' }}>
+                                            <td className="border-r-[2px] border-b border-black text-center text-[9px] font-black"></td>
                                             {[...Array(31)].map((_, i) => {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
@@ -299,16 +305,16 @@ export default function FoglioPresenzePage() {
                                                     if (dayDate <= today) m = '/';
                                                 }
                                                 return (
-                                                    <td key={i} className={`border border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
-                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-B-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                        <span className="only-print">{m}</span>
+                                                    <td key={i} className={`border-x border-b border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
+                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-B-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                        <span className="only-print text-[9px]">{m}</span>
                                                     </td>
                                                 );
                                             })}
                                             {[...Array(10)].map((_, i) => (
-                                                <td key={i} className={`border border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
-                                                    <input type="text" value={overrides[`${op.id}-B-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-B-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold" />
-                                                    <span className="only-print">{overrides[`${op.id}-B-sum-${i}`]}</span>
+                                                <td key={i} className={`border-x border-b border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
+                                                    <input type="text" value={overrides[`${op.id}-B-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-B-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
+                                                    <span className="only-print text-[9px]">{overrides[`${op.id}-B-sum-${i}`]}</span>
                                                 </td>
                                             ))}
                                         </tr>
@@ -348,29 +354,50 @@ export default function FoglioPresenzePage() {
             </div>
 
             <style jsx global>{`
-                @media screen { .only-print { display: none; } }
+                @media screen { 
+                    .only-print { display: none; }
+                    /* Custom scrollbar for the table container */
+                    .attendance-sheet-container::-webkit-scrollbar {
+                        height: 8px;
+                    }
+                    .attendance-sheet-container::-webkit-scrollbar-track {
+                        background: #f1f1f1;
+                    }
+                    .attendance-sheet-container::-webkit-scrollbar-thumb {
+                        background: #4a6da7;
+                        border-radius: 4px;
+                    }
+                }
                 @media print {
-                    @page { size: A4 landscape; margin: 3mm; }
-                    body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                    @page { 
+                        size: A4 landscape; 
+                        size: landscape; 
+                        margin: 5mm !important; 
+                    }
+                    body { 
+                        background: white !important; 
+                        -webkit-print-color-adjust: exact !important; 
+                        print-color-adjust: exact !important;
+                    }
                     .no-print { display: none !important; }
                     .only-print { display: inline !important; }
-                    .attendance-sheet-container { 
-                        display: flex !important;
-                        justify-content: center !important;
-                        align-items: center !important;
-                        height: 100vh;
-                        width: 100vw;
-                        background: white !important;
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        z-index: 9999;
-                    }
                     .attendance-sheet { 
-                        transform: scale(0.9); 
-                        transform-origin: center center;
+                        width: 100% !important;
+                        min-width: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        transform: scale(0.98); 
+                        transform-origin: top center;
+                        background: white !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                    }
+                    .attendance-sheet table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
                     }
                     table { border-width: 1.5px !important; }
+                    input { border: none !important; }
                 }
             `}</style>
         </div>

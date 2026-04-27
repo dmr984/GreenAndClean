@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
@@ -110,6 +110,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [canClockIn, setCanClockIn] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isLocationHelpOpen, setIsLocationHelpOpen] = useState(false);
+  const [suggestedTime, setSuggestedTime] = useState("");
+  
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
 
 
@@ -177,9 +179,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     timestamp: Timestamp.fromDate(endOfYesterday), // Set it to 23:59:59 of yesterday
                     latitude: 0,
                     longitude: 0,
-                    status: 'rifiutata',
+                    status: 'sospesa',
                     viewedByOperator: false,
                     shiftId: lastEvent.shiftId,
+                    isAuto: true,
                 };
                 
                 try {
@@ -267,18 +270,45 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
+  const voidedShift = useMemo(() => {
+    return clockings?.find(e => e.type === 'uscita' && e.isAuto && !e.viewedByOperator);
+  }, [clockings]);
+
+  const handleDismissVoidedWarning = async (eventId: string) => {
+    if (!firestore || !authUser) return;
+    try {
+        const docRef = doc(firestore, `app-users/${authUser.id}/timbrature`, eventId);
+        const updates: any = { viewedByOperator: true };
+        if (suggestedTime) {
+            updates.suggestedTime = suggestedTime;
+        }
+        await updateDoc(docRef, updates);
+        setSuggestedTime("");
+    } catch (error) {
+        console.error("Error dismissing warning", error);
+    }
+  };
+
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
-      const lastValidEvent = [...clockings].filter(e => e.status !== 'rifiutata').pop();
-      if (!lastValidEvent) {
+      const lastEvent = [...clockings].pop();
+      if (!lastEvent) {
           setIsClockedIn(false);
           return;
       }
-      if (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa') {
-        setIsClockedIn(true);
-      } else if (lastValidEvent.type === 'uscita') {
+      
+      // If the absolute last event is an 'uscita' (even if pending/auto-voided), 
+      // the operator is NOT clocked in.
+      if (lastEvent.type === 'uscita') {
         setIsClockedIn(false);
+      } else {
+        const lastValidEvent = [...clockings].filter(e => e.status !== 'rifiutata').pop();
+        if (lastValidEvent && (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa')) {
+          setIsClockedIn(true);
+        } else {
+          setIsClockedIn(false);
+        }
       }
     } else {
        setIsClockedIn(false);
@@ -570,9 +600,53 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
   
   const renderMainContent = () => {
+    const voidedWarning = voidedShift && (
+        <Card className="border-red-500 bg-red-50 dark:bg-red-950/20 mb-6 animate-in fade-in slide-in-from-top-4 duration-500">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-red-700 dark:text-red-400 flex items-center gap-2 text-lg">
+                    <AlertTriangle className="h-5 w-5" />
+                    Turno di Ieri Non Chiuso
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-3">
+                <p className="text-sm text-red-600 dark:text-red-300 mb-4">
+                    Ieri hai dimenticato di timbrare l'uscita. Il sistema ha chiuso il turno automaticamente alle 23:59.
+                    <strong> Questa timbratura è in sospeso</strong> e deve essere verificata dall'amministratore.
+                </p>
+                <div className="space-y-2 border-t pt-3">
+                    <Label htmlFor="suggested-time" className="text-sm font-medium text-red-800 dark:text-red-300">
+                        Inserisci l'orario effettivo in cui sei uscito:
+                    </Label>
+                    <div className="flex gap-2">
+                        <input 
+                            id="suggested-time"
+                            type="time" 
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            value={suggestedTime}
+                            onChange={(e) => setSuggestedTime(e.target.value)}
+                        />
+                    </div>
+                </div>
+            </CardContent>
+            <CardFooter>
+                <Button 
+                    variant="default" 
+                    size="sm" 
+                    className="w-full bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => handleDismissVoidedWarning(voidedShift.id)}
+                    disabled={!suggestedTime}
+                >
+                    Invia Orario e Conferma
+                </Button>
+            </CardFooter>
+        </Card>
+    );
+
     if (isClockedIn) {
         return (
-             <Card>
+            <>
+                {voidedWarning}
+                <Card>
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
                     <Clock className="h-6 w-6 text-primary" />
@@ -603,6 +677,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     </Button>
                 </CardFooter>
               </Card>
+            </>
         );
     }
     
@@ -613,6 +688,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     // Not clocked in, not on leave
     return (
         <>
+            {voidedWarning}
             <Card>
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
