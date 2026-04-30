@@ -271,7 +271,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
   const voidedShift = useMemo(() => {
-    return clockings?.find(e => e.type === 'uscita' && e.isAuto && !e.viewedByOperator);
+    return clockings?.find(e => e.type === 'uscita' && e.isAuto && e.status === 'sospesa' && !e.viewedByOperator);
   }, [clockings]);
 
   const handleDismissVoidedWarning = async (eventId: string) => {

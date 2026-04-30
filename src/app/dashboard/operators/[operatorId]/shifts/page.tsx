@@ -783,7 +783,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const makeupDayValue = editMakeupDay || null;
 
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
-            const existingEvent = editingShift.events.find(e => e.type === type);
+            const existingEventsOfType = editingShift.events.filter(e => e.type === type);
+            const existingEvent = existingEventsOfType.length > 0 ? existingEventsOfType[0] : undefined;
+            const extraEventsToDelete = existingEventsOfType.slice(1);
+            
             const newEventDetails = newEventData[type];
     
             const updatePayload: any = { 
@@ -820,6 +823,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 batch.delete(docRef);
                 newEventsForState = newEventsForState.filter(e => e.id !== existingEvent.id);
             }
+
+            // Automatically delete any duplicate events of the same type
+            extraEventsToDelete.forEach(extra => {
+                const docRef = doc(timbratureCollectionRef, extra.id);
+                batch.delete(docRef);
+                newEventsForState = newEventsForState.filter(e => e.id !== extra.id);
+            });
         }
         
         await batch.commit().then(() => {
@@ -844,10 +854,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     
     const handleConfirmDeleteTimbratura = async () => {
         if (!firestore || !deletingTimbratura || !operator) return;
-        if (deletingTimbratura.isAuto) {
-            toast({ title: 'Azione non permessa', description: 'Non puoi eliminare una timbratura automatica.', variant: 'destructive'});
-            return;
-        }
         const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, deletingTimbratura.id);
         await deleteDoc(docRef).then(() => {
             toast({ title: 'Successo', description: 'Timbratura eliminata.' });
