@@ -231,6 +231,7 @@ export default function ShiftApprovalPage() {
     const [isConfirmingNoLeave, setIsConfirmingNoLeave] = useState(false);
     const [orphanedEvents, setOrphanedEvents] = useState<Timbratura[]>([]);
     const [eventToDelete, setEventToDelete] = useState<Timbratura | null>(null);
+    const [isProcessingApprove, setIsProcessingApprove] = useState(false);
 
     // Monthly Data States (from end-of-month)
     const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -559,22 +560,27 @@ export default function ShiftApprovalPage() {
     };
 
     const handleApprovalClick = async (context: ApprovalContext) => {
-        if (!context) return;
-        const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
-    
-        if (isOvertimeShift) {
-             await handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve');
-             return;
-        } else {
-            const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
-            if (hasLeaveHours && !createLeaveRequest) {
-                 setApprovalContext(context);
-                 setIsConfirmingNoLeave(true); // Ask for confirmation
-                 return;
-            }
-        }
+        if (!context || isProcessingApprove) return;
+        setIsProcessingApprove(true);
+        try {
+            const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
         
-        await handleRegularShiftApproval(context);
+            if (isOvertimeShift) {
+                 await handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve');
+                 return;
+            } else {
+                const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
+                if (hasLeaveHours && !createLeaveRequest) {
+                     setApprovalContext(context);
+                     setIsConfirmingNoLeave(true); // Ask for confirmation
+                     return;
+                }
+            }
+            
+            await handleRegularShiftApproval(context);
+        } finally {
+            setIsProcessingApprove(false);
+        }
     };
     
 const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
@@ -965,7 +971,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     };
 
     const handleAddBreakAndReload = async () => {
-        if (!shiftForBreak || !firestore || !operator || !breakTimes.start || !breakTimes.end) return;
+        if (!shiftForBreak || !firestore || !operator || !breakTimes.start || !breakTimes.end || isProcessingApprove) return;
+        setIsProcessingApprove(true);
     
         const batch = writeBatch(firestore);
         const timbratureRef = collection(firestore, `app-users/${operator.id}/timbrature`);
@@ -1016,6 +1023,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             setIsAddBreakDialogOpen(false);
             setShiftForBreak(null);
             setBreakTimes({ start: '', end: '' });
+            setIsProcessingApprove(false);
         }
     };
 
@@ -2649,7 +2657,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     )}
                      <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext)}>Approva e Registra</AlertDialogAction>
+                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext)} disabled={isProcessingApprove}>Approva e Registra</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -2717,7 +2725,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </div>
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => setIsAddBreakDialogOpen(false)}>Annulla</Button>
-                        <Button onClick={handleAddBreakAndReload}>Aggiungi Pausa</Button>
+                        <Button onClick={handleAddBreakAndReload} disabled={isProcessingApprove}>Aggiungi Pausa</Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
