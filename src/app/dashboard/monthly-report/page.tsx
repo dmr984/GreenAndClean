@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch, orderBy, limit } from 'firebase/firestore';
-import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck } from 'lucide-react';
+import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck, Download } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfMonth, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
