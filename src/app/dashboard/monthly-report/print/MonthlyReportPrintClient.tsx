@@ -34,12 +34,12 @@ type ManualTotals = {
     malattiaDays?: number | string;
     totalDueOverride?: number;
     ordinaryWorkedDays?: number | string;
-    ordinaryCost?: number;
+    ordinaryCost?: number | string;
     overtimeHours?: number | string;
-    overtimeCost?: number;
-    malattiaCost?: number;
-    permessoCost?: number;
-    ferieCost?: number;
+    overtimeCost?: number | string;
+    malattiaCost?: number | string;
+    permessoCost?: number | string;
+    ferieCost?: number | string;
     absenceDays?: number | string;
     [key: string]: any;
 };
@@ -225,9 +225,17 @@ export default function MonthlyReportPrintClient() {
             : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
         
         const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-        const ferieCost = override.ferieCost !== undefined ? Number(override.ferieCost) : summary.ferieCost || 0;
-        const permessoCost = override.permessoCost !== undefined ? Number(override.permessoCost) : summary.permessoCost || 0;
-        const malattiaCost = override.malattiaCost !== undefined ? Number(override.malattiaCost) : summary.malattiaCost || 0;
+        const ferieCost = override.ferieCost !== undefined ? Number(override.ferieCost) : (summary.ferieCost || 0);
+        const permessoCost = override.permessoCost !== undefined ? Number(override.permessoCost) : (summary.permessoCost || 0);
+        const malattiaCost = override.malattiaCost !== undefined ? Number(override.malattiaCost) : (summary.malattiaCost || 0);
+        
+        const absenceDays = override.absenceDays !== undefined ? override.absenceDays : (summary?.absenceDays || 0);
+        const overtimeHours = override.overtimeHours !== undefined ? override.overtimeHours : (summary?.overtimeHours || 0);
+        const ferieDays = override.ferieDays !== undefined ? override.ferieDays : (summary?.ferieDays || 0);
+        const permessoHours = override.permessoHours !== undefined ? override.permessoHours : (summary?.permessoHours || 0);
+        const malattiaDays = override.malattiaDays !== undefined ? override.malattiaDays : (summary?.malattiaDays || 0);
+        const ordinaryWorkedDays = override.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : (summary?.ordinaryWorkedDays || 0);
+        const ordinaryHours = summary?.ordinaryHours || 0;
 
         let total = 0;
         if (finalVisibility.ordinaryCost !== false) total += ordinaryCost;
@@ -312,15 +320,19 @@ export default function MonthlyReportPrintClient() {
                 const defaultOrdinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
                 const ordinaryWorkedDaysText = override.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : defaultOrdinaryWorkedDaysText;
 
+                const ordinaryWorkedDaysDisplay = override.ordinaryWorkedDays !== undefined 
+                    ? override.ordinaryWorkedDays 
+                    : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
+
                 const allItems = [
-                    opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
+                    opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysDisplay}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                    opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${override.overtimeHours !== undefined ? override.overtimeHours : summary.overtimeHours}` : null,
+                    opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${overtimeHours}` : null,
                     opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                    opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${override.malattiaDays !== undefined ? override.malattiaDays : summary.malattiaDays}`: null,
-                    opVisibility.permessoHours !== false ? `ORE PERMESSI: ${override.permessoHours !== undefined ? override.permessoHours : summary.permessoHours}` : null,
-                    opVisibility.ferieDays !== false ? `FERIE: ${override.ferieDays !== undefined ? override.ferieDays : summary.ferieDays}` : null,
-                    opVisibility.absenceDays !== false ? `ASSENZE: ${override.absenceDays !== undefined ? override.absenceDays : summary.absenceDays}` : null
+                    opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${malattiaDays}`: null,
+                    opVisibility.permessoHours !== false ? `ORE PERMESSI: ${permessoHours}` : null,
+                    opVisibility.ferieDays !== false ? `FERIE: ${ferieDays}` : null,
+                    opVisibility.absenceDays !== false ? `ASSENZE: ${absenceDays}` : null
                 ].filter(Boolean) as string[];
 
                 const bodyData: [string, string][] = [];
@@ -481,15 +493,19 @@ export default function MonthlyReportPrintClient() {
                                 )
                             }
 
+                            const ordinaryWorkedDaysDisplay = override.ordinaryWorkedDays !== undefined 
+                                ? override.ordinaryWorkedDays 
+                                : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
+
                             const allItems = [
-                                opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
+                                opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysDisplay}` : null,
                                 opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${override.overtimeHours !== undefined ? override.overtimeHours : summary.overtimeHours}` : null,
+                                opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${overtimeHours}` : null,
                                 opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                                opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                                opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
-                                opVisibility.absenceDays !== false ? `ASSENZE: ${override.absenceDays !== undefined ? override.absenceDays : summary.absenceDays}` : null
+                                opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${malattiaDays}`: null,
+                                opVisibility.permessoHours !== false ? `ORE PERMESSI: ${permessoHours}` : null,
+                                opVisibility.ferieDays !== false ? `FERIE: ${ferieDays}` : null,
+                                opVisibility.absenceDays !== false ? `ASSENZE: ${absenceDays}` : null
                             ].filter(Boolean) as string[];
 
                             const bodyData: [string, string][] = [];

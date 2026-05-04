@@ -284,7 +284,8 @@ const MonthlyReportPage = () => {
             month: monthString,
             operators: operatorIdsString,
             globalCompact: String(globalCompactMode),
-            autoPrint: 'true'
+            autoPrint: 'true',
+            _cb: String(Date.now())
         });
 
         // Add visibility params
@@ -309,7 +310,8 @@ const MonthlyReportPage = () => {
             month: monthString,
             operators: operatorIdsString,
             globalCompact: String(globalCompactMode),
-            autoDownload: 'true'
+            autoDownload: 'true',
+            _cb: String(Date.now())
         });
 
         for (const opId of Array.from(selectedOperatorIds)) {
@@ -438,6 +440,10 @@ const MonthlyReportPage = () => {
         const updateData = { [type]: newValue };
 
         setDoc(overrideDocRef, updateData, { merge: true })
+            .then(() => {
+                fetchOverridesForMonth(currentMonth);
+                toast({ title: 'Successo', description: 'Valore aggiornato correttamente.' });
+            })
             .catch(error => {
                 if (error.code === 'permission-denied') {
                     errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -465,6 +471,32 @@ const MonthlyReportPage = () => {
         toast({ title: 'Rettifica Salvata', description: 'Il nuovo valore è stato salvato in modo permanente per questo mese.'});
         setEditingTotal(null);
         setTotalContent('');
+    };
+
+    const handleResetOverrides = async (operatorId: string) => {
+        if (!firestore) return;
+        
+        try {
+            const monthId = format(currentMonth, 'yyyy-MM');
+            const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
+            
+            // Actually delete the document to reset everything
+            const batch = writeBatch(firestore);
+            batch.delete(overrideDocRef);
+            await batch.commit();
+            
+            // Update local state
+            setManualOverrides(prev => {
+                const newState = { ...prev };
+                delete newState[operatorId];
+                return newState;
+            });
+            
+            toast({ title: 'Ripristinato', description: 'Valori originali ripristinati per questo operatore.' });
+        } catch (error) {
+            console.error("Error resetting overrides:", error);
+            toast({ title: 'Errore', description: 'Impossibile ripristinare i valori.', variant: 'destructive' });
+        }
     };
 
     const handleVisibilityChange = (operatorId: string, key: keyof VisibilitySettings) => {
@@ -682,31 +714,16 @@ const MonthlyReportPage = () => {
                                                         {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
                                                     </Link>
                                                 </div>
-                                                <div className="flex flex-col items-end gap-2">
-                                                    <div className='font-bold text-lg flex items-center gap-2'>
-                                                        <Euro className="h-5 w-5" />
-                                                        <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
-                                                            {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </span>
+                                                <div className="flex items-center gap-2">
+                                                    {manualOverrides[op.id] && (
                                                         <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
-                                                            className="h-6 w-6 ml-1" 
-                                                            onClick={() => {
-                                                                setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
-                                                                setTotalContent(String(totalDue));
-                                                            }}
+                                                            variant="outline" 
+                                                            size="sm" 
+                                                            className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
+                                                            onClick={() => handleResetOverrides(op.id)}
                                                         >
-                                                            <Pencil className="h-3 w-3" />
+                                                            <Trash2 className="h-3 w-3 mr-1" /> Ripristina Originali
                                                         </Button>
-                                                    </div>
-                                                    {!globalCompactMode && (
-                                                        <div className="flex items-center gap-2">
-                                                            <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground">Vista Sintetica</Label>
-                                                            <Switch
-                                                                id={`compact-${op.id}`}
-                                                                checked={opVisibility.compactMode}
-                                                                onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
                                                                 className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
                                                             />
                                                         </div>
