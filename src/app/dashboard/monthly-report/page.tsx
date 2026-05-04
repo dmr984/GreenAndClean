@@ -38,10 +38,19 @@ type Operator = {
 };
 
 type ManualTotals = {
-    ferieDays?: number;
-    permessoHours?: number;
-    malattiaDays?: number;
+    ferieDays?: number | string;
+    permessoHours?: number | string;
+    malattiaDays?: number | string;
     totalDueOverride?: number;
+    ordinaryWorkedDays?: number | string;
+    ordinaryCost?: number;
+    overtimeHours?: number | string;
+    overtimeCost?: number;
+    malattiaCost?: number;
+    permessoCost?: number;
+    ferieCost?: number;
+    absenceDays?: number | string;
+    [key: string]: any;
 };
 
 type VisibilitySettings = {
@@ -108,7 +117,7 @@ const MonthlyReportPage = () => {
     }, [currentMonth, globalCompactMode, visibility, selectedOperatorIds]);
 
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
-    const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
+    const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: string, currentValue: any } | null>(null);
     const [totalContent, setTotalContent] = useState('');
 
     const [isCleaning, setIsCleaning] = useState(false);
@@ -314,21 +323,21 @@ const MonthlyReportPage = () => {
     };
 
     const calculateTotalDue = (opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: VisibilitySettings | undefined) => {
-        const override = manualOverrides[opId];
+        const override = manualOverrides[opId] || {};
         if (override?.totalDueOverride !== undefined) {
             return override.totalDueOverride;
         }
         
         if (!summary || !visibilitySettings) return 0;
         
-        const ordinaryCost = (op.salaryType === 'fixed' 
+        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
             : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
         
-        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-        const ferieCost = summary.ferieCost || 0;
-        const permessoCost = summary.permessoCost || 0;
-        const malattiaCost = summary.malattiaCost || 0;
+        const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        const ferieCost = override.ferieCost !== undefined ? Number(override.ferieCost) : summary.ferieCost || 0;
+        const permessoCost = override.permessoCost !== undefined ? Number(override.permessoCost) : summary.permessoCost || 0;
+        const malattiaCost = override.malattiaCost !== undefined ? Number(override.malattiaCost) : summary.malattiaCost || 0;
 
         let total = 0;
         if (visibilitySettings.ordinaryCost) total += ordinaryCost;
@@ -415,10 +424,15 @@ const MonthlyReportPage = () => {
         const monthId = format(currentMonth, 'yyyy-MM');
         const overrideDocRef = doc(firestore, `app-users/${operatorId}/monthly-overrides`, monthId);
 
-        const newValue = parseFloat(totalContent);
-        if (isNaN(newValue)) {
-            toast({ title: 'Valore non valido', variant: 'destructive'});
-            return;
+        let newValue: number | string = totalContent;
+        if (totalContent.trim() === '') {
+            // Delete key if empty
+            newValue = '';
+        } else {
+            const asNum = Number(totalContent.replace(',', '.'));
+            if (!isNaN(asNum) && totalContent.trim() !== '') {
+                newValue = asNum;
+            }
         }
         
         const updateData = { [type]: newValue };
@@ -467,12 +481,20 @@ const MonthlyReportPage = () => {
         });
     };
 
-    const getDialogTitleForType = (type?: keyof ManualTotals) => {
+    const getDialogTitleForType = (type?: string) => {
         switch (type) {
             case 'ferieDays': return 'Rettifica Ferie (giorni)';
             case 'permessoHours': return 'Rettifica Permessi (ore)';
             case 'malattiaDays': return 'Rettifica Malattia (giorni)';
             case 'totalDueOverride': return 'Rettifica Totale Dovuto (€)';
+            case 'ordinaryWorkedDays': return 'Rettifica Giorni Lavorati';
+            case 'ordinaryCost': return 'Rettifica Totale Ordinarie (€)';
+            case 'overtimeHours': return 'Rettifica Ore Straordinarie';
+            case 'overtimeCost': return 'Rettifica Totale Straordinari (€)';
+            case 'malattiaCost': return 'Rettifica Totale Malattia (€)';
+            case 'permessoCost': return 'Rettifica Totale Permessi (€)';
+            case 'ferieCost': return 'Rettifica Totale Ferie (€)';
+            case 'absenceDays': return 'Rettifica Assenze (giorni)';
             default: return 'Rettifica Valore';
         }
     }
@@ -485,7 +507,9 @@ const MonthlyReportPage = () => {
         icon: Icon,
         visibilityKey,
         extraSwitchKey,
-        extraSwitchLabel
+        extraSwitchLabel,
+        editKey,
+        currentRawValue
     }: {
         opId: string;
         title: string;
@@ -495,10 +519,13 @@ const MonthlyReportPage = () => {
         visibilityKey: keyof VisibilitySettings;
         extraSwitchKey?: keyof VisibilitySettings;
         extraSwitchLabel?: string;
+        editKey: string;
+        currentRawValue: string | number;
     }) => {
         const opVisibility = visibility[opId];
         const isVisible = opVisibility ? opVisibility[visibilityKey] : true;
         const isExtraSwitchVisible = extraSwitchKey ? (opVisibility ? opVisibility[extraSwitchKey] : true) : false;
+        const isOverridden = manualOverrides[opId]?.[editKey] !== undefined;
 
         return (
             <div className={cn("flex flex-col p-2 border rounded-md transition-all", !isVisible && "bg-muted/50")}>
@@ -512,8 +539,21 @@ const MonthlyReportPage = () => {
                 </div>
                  {isVisible && (
                     <>
-                        <div className={cn('font-bold mt-1', manualOverrides[opId]?.[visibilityKey as keyof ManualTotals] !== undefined && 'text-primary')}>
-                            {value}
+                        <div className="flex items-center gap-2 mt-1">
+                            <div className={cn('font-bold', isOverridden && 'text-primary underline decoration-dotted')}>
+                                {value}
+                            </div>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-5 w-5 ml-auto text-muted-foreground hover:text-foreground" 
+                                onClick={() => {
+                                    setEditingTotal({ operatorId: opId, type: editKey, currentValue: currentRawValue });
+                                    setTotalContent(String(currentRawValue));
+                                }}
+                            >
+                                <Pencil className="h-3 w-3" />
+                            </Button>
                         </div>
                         {subtext && <span className="text-xs text-muted-foreground">{subtext}</span>}
                         {extraSwitchKey && extraSwitchLabel && (
@@ -607,22 +647,25 @@ const MonthlyReportPage = () => {
                                 const isCompact = globalCompactMode || opVisibility.compactMode;
                                 const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
                                 
-                                const finalFerieDays = override?.ferieDays ?? summary?.ferieDays ?? 0;
-                                const finalPermessoHours = override?.permessoHours ?? summary?.permessoHours ?? 0;
-                                const finalMalattiaDays = override?.malattiaDays ?? summary?.malattiaDays ?? 0;
+                                const finalFerieDays = override?.ferieDays !== undefined ? override.ferieDays : summary?.ferieDays ?? 0;
+                                const finalPermessoHours = override?.permessoHours !== undefined ? override.permessoHours : summary?.permessoHours ?? 0;
+                                const finalMalattiaDays = override?.malattiaDays !== undefined ? override.malattiaDays : summary?.malattiaDays ?? 0;
+                                const finalAbsenceDays = override?.absenceDays !== undefined ? override.absenceDays : summary?.absenceDays ?? 0;
+                                const finalOvertimeHours = override?.overtimeHours !== undefined ? override.overtimeHours : summary?.overtimeHours ?? 0;
 
-                                const ordinaryCost = (op.salaryType === 'fixed' 
+                                const ordinaryCost = override?.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
                                     ? (op.fixedSalary || 0) 
                                     : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
 
-                                const overtimeCost = (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
-                                const ferieCost = summary?.ferieCost || 0;
-                                const permessoCost = summary?.permessoCost || 0;
-                                const malattiaCost = summary?.malattiaCost || 0;
+                                const overtimeCost = override?.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
+                                const ferieCost = override?.ferieCost !== undefined ? Number(override.ferieCost) : summary?.ferieCost || 0;
+                                const permessoCost = override?.permessoCost !== undefined ? Number(override.permessoCost) : summary?.permessoCost || 0;
+                                const malattiaCost = override?.malattiaCost !== undefined ? Number(override.malattiaCost) : summary?.malattiaCost || 0;
                                 
-                                const ordinaryWorkedDaysValue = opVisibility.showWorkedHours && summary
+                                const defaultOrdinaryWorkedDays = opVisibility.showWorkedHours && summary
                                     ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)`
                                     : summary?.ordinaryWorkedDays || 0;
+                                const finalOrdinaryWorkedDays = override?.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : defaultOrdinaryWorkedDays;
 
                                 return (
                                     <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
@@ -673,23 +716,23 @@ const MonthlyReportPage = () => {
                                         </CardHeader>
                                         {summary && !isCompact && (
                                             <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
-                                                <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={ordinaryWorkedDaysValue} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" />
-                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" />
-                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={summary.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
-                                                <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
-                                                <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" />
-                                                <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
+                                                <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={finalOrdinaryWorkedDays} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" editKey="ordinaryWorkedDays" currentRawValue={finalOrdinaryWorkedDays} />
+                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" editKey="ordinaryCost" currentRawValue={ordinaryCost} />
+                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={finalOvertimeHours} icon={Plus} visibilityKey="overtimeHours" editKey="overtimeHours" currentRawValue={finalOvertimeHours} />
+                                                <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" editKey="overtimeCost" currentRawValue={overtimeCost} />
+                                                <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" editKey="malattiaDays" currentRawValue={finalMalattiaDays} />
+                                                <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" editKey="malattiaCost" currentRawValue={malattiaCost} />
                                                 
                                                 {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
                                                     <>
-                                                        <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
-                                                        <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
+                                                        <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" editKey="permessoHours" currentRawValue={finalPermessoHours} />
+                                                        <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" editKey="permessoCost" currentRawValue={permessoCost} />
                                                     </>
                                                 )}
                                                 
-                                                <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" />
-                                                <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
-                                                <InfoCard opId={op.id} title="Assenze (g)" value={summary.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
+                                                <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" editKey="ferieDays" currentRawValue={finalFerieDays} />
+                                                <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" editKey="ferieCost" currentRawValue={ferieCost} />
+                                                <InfoCard opId={op.id} title="Assenze (g)" value={finalAbsenceDays} icon={AlertTriangle} visibilityKey="absenceDays" editKey="absenceDays" currentRawValue={finalAbsenceDays} />
                                             </CardContent>
                                         )}
                                     </Card>
@@ -716,10 +759,10 @@ const MonthlyReportPage = () => {
                     </Label>
                     <Input
                         id="total-content"
-                        type="number"
+                        type={editingTotal?.type.toLowerCase().includes('cost') || editingTotal?.type === 'totalDueOverride' ? 'number' : 'text'}
                         value={totalContent}
                         onChange={(e) => setTotalContent(e.target.value)}
-                        placeholder="Es: 1500.00"
+                        placeholder="Inserisci il valore..."
                     />
                 </div>
                 <DialogFooter>

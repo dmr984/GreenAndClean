@@ -29,10 +29,19 @@ type Operator = {
 };
 
 type ManualTotals = {
-    ferieDays?: number;
-    permessoHours?: number;
-    malattiaDays?: number;
+    ferieDays?: number | string;
+    permessoHours?: number | string;
+    malattiaDays?: number | string;
     totalDueOverride?: number;
+    ordinaryWorkedDays?: number | string;
+    ordinaryCost?: number;
+    overtimeHours?: number | string;
+    overtimeCost?: number;
+    malattiaCost?: number;
+    permessoCost?: number;
+    ferieCost?: number;
+    absenceDays?: number | string;
+    [key: string]: any;
 };
 
 type VisibilitySettings = {
@@ -211,14 +220,14 @@ export default function MonthlyReportPrintClient() {
         
         const finalVisibility = visibilitySettings || {};
 
-        const ordinaryCost = (op.salaryType === 'fixed' 
+        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
             : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
         
-        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-        const ferieCost = summary.ferieCost || 0;
-        const permessoCost = summary.permessoCost || 0;
-        const malattiaCost = summary.malattiaCost || 0;
+        const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        const ferieCost = override.ferieCost !== undefined ? Number(override.ferieCost) : summary.ferieCost || 0;
+        const permessoCost = override.permessoCost !== undefined ? Number(override.permessoCost) : summary.permessoCost || 0;
+        const malattiaCost = override.malattiaCost !== undefined ? Number(override.malattiaCost) : summary.malattiaCost || 0;
 
         let total = 0;
         if (finalVisibility.ordinaryCost !== false) total += ordinaryCost;
@@ -294,23 +303,24 @@ export default function MonthlyReportPrintClient() {
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
                 y += 10;
                 
-                const ordinaryCost = op.salaryType === 'fixed' 
+                const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
-                    : (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
+                    : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
 
-                const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+                const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                 
-                const ordinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
+                const defaultOrdinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
+                const ordinaryWorkedDaysText = override.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : defaultOrdinaryWorkedDaysText;
 
                 const allItems = [
                     opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                    opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
+                    opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${override.overtimeHours ?? summary.overtimeHours}` : null,
                     opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                     opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${override.malattiaDays ?? summary.malattiaDays}`: null,
                     opVisibility.permessoHours !== false ? `ORE PERMESSI: ${override.permessoHours ?? summary.permessoHours}` : null,
                     opVisibility.ferieDays !== false ? `FERIE: ${override.ferieDays ?? summary.ferieDays}` : null,
-                    opVisibility.absenceDays !== false ? `ASSENZE: ${summary.absenceDays}` : null
+                    opVisibility.absenceDays !== false ? `ASSENZE: ${override.absenceDays ?? summary.absenceDays}` : null
                 ].filter(Boolean) as string[];
 
                 const bodyData: [string, string][] = [];
@@ -450,13 +460,14 @@ export default function MonthlyReportPrintClient() {
                             const finalPermessoHours = override.permessoHours ?? summary.permessoHours;
                             const finalMalattiaDays = override.malattiaDays ?? summary.malattiaDays;
 
-                            const ordinaryCost = op.salaryType === 'fixed' 
+                            const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
                                 ? (op.fixedSalary || 0) 
-                                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0);
+                                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
 
-                            const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+                            const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                             
-                            const ordinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
+                            const defaultOrdinaryWorkedDaysText = opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)` : `${summary.ordinaryWorkedDays}`;
+                            const ordinaryWorkedDaysText = override.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : defaultOrdinaryWorkedDaysText;
                             
                             if (globalCompact || opVisibility.compactMode) {
                                 return (
@@ -473,12 +484,12 @@ export default function MonthlyReportPrintClient() {
                             const allItems = [
                                 opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysText}` : null,
                                 opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${summary.overtimeHours}` : null,
+                                opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${override.overtimeHours ?? summary.overtimeHours}` : null,
                                 opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
                                 opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
                                 opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
                                 opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
-                                opVisibility.absenceDays !== false ? `ASSENZE: ${summary.absenceDays}` : null
+                                opVisibility.absenceDays !== false ? `ASSENZE: ${override.absenceDays ?? summary.absenceDays}` : null
                             ].filter(Boolean) as string[];
 
                             const bodyData: [string, string][] = [];
