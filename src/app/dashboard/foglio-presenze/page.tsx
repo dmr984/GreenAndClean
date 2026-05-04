@@ -240,13 +240,13 @@ export default function FoglioPresenzePage() {
                                                         
                                                         if (d) {
                                                             if (d.status === 'lavorato') m = 'P';
-                                                            else if (isWeekend) m = '/';
+                                                            else if (isWeekend) m = '-';
                                                             else if (d.status === 'festa') m = 'FG';
                                                             else if (d.status === 'ferie') m = 'F';
                                                             else if (d.status === 'malattia') m = 'M';
                                                             else if (d.status === 'mancata_timbratura') m = 'A';
                                                         } else if (isWeekend) {
-                                                            m = '/';
+                                                            m = '-';
                                                         }
                                                     }
                                                 }
@@ -277,7 +277,7 @@ export default function FoglioPresenzePage() {
                                                                                                 if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
                                                     const today = new Date();
                                                     today.setHours(0, 0, 0, 0);
-                                                    if (dayDate <= today) m = '/';
+                                                    if (dayDate <= today) m = '-';
                                                 }
                                                 return (
                                                     <td key={i} className={`border-x border-b border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
@@ -302,7 +302,7 @@ export default function FoglioPresenzePage() {
                                                                                                 if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
                                                     const today = new Date();
                                                     today.setHours(0, 0, 0, 0);
-                                                    if (dayDate <= today) m = '/';
+                                                    if (dayDate <= today) m = '-';
                                                 }
                                                 return (
                                                     <td key={i} className={`border-x border-b border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
