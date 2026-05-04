@@ -713,8 +713,18 @@ const MonthlyReportPage = () => {
                                                         <CardTitle className="hover:underline text-lg">{op.firstName} {op.lastName}</CardTitle>
                                                         {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
                                                     </Link>
-                                                </div>
-                                                <div className="flex items-center gap-2">
+                                                                                          <div className="flex items-center gap-4">
+                                                    {!globalCompactMode && (
+                                                        <div className="flex items-center gap-2">
+                                                            <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground whitespace-nowrap">Sintetica</Label>
+                                                            <Switch
+                                                                id={`compact-${op.id}`}
+                                                                checked={opVisibility.compactMode}
+                                                                onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
+                                                                className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
+                                                            />
+                                                        </div>
+                                                    )}
                                                     {manualOverrides[op.id] && (
                                                         <Button 
                                                             variant="outline" 
@@ -722,12 +732,29 @@ const MonthlyReportPage = () => {
                                                             className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
                                                             onClick={() => handleResetOverrides(op.id)}
                                                         >
-                                                            <Trash2 className="h-3 w-3 mr-1" /> Ripristina Originali
+                                                            <Trash2 className="h-3 w-3 mr-1" /> Ripristina
                                                         </Button>
-                                                                className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
-                                                            />
-                                                        </div>
                                                     )}
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <div className='font-bold text-lg flex items-center gap-2'>
+                                                            <Euro className="h-5 w-5" />
+                                                            <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
+                                                                {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            </span>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className="h-6 w-6 ml-1" 
+                                                                onClick={() => {
+                                                                    setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
+                                                                    setTotalContent(String(totalDue));
+                                                                }}
+                                                            >
+                                                                <Pencil className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                        {!isCompact && <span className="text-[10px] text-muted-foreground uppercase font-semibold">Totale Dovuto</span>}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </CardHeader>
