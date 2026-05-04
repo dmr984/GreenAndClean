@@ -65,13 +65,47 @@ type VisibilitySettings = {
 const MonthlyReportPage = () => {
     const firestore = useFirestore();
     const { toast } = useToast();
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [currentMonth, setCurrentMonth] = useState<Date>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('monthlyReport_currentMonth');
+            if (saved) return new Date(saved);
+        }
+        return new Date();
+    });
     const [operators, setOperators] = useState<Operator[]>([]);
     const [summaries, setSummaries] = useState<Map<string, MonthlySummary>>(new Map());
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(new Set());
-    const [visibility, setVisibility] = useState<Record<string, VisibilitySettings>>({});
-    const [globalCompactMode, setGlobalCompactMode] = useState(false);
+    const [selectedOperatorIds, setSelectedOperatorIds] = useState<Set<string>>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('monthlyReport_selectedOperatorIds');
+            if (saved) return new Set(JSON.parse(saved));
+        }
+        return new Set();
+    });
+    const [visibility, setVisibility] = useState<Record<string, VisibilitySettings>>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('monthlyReport_visibility');
+            if (saved) return JSON.parse(saved);
+        }
+        return {};
+    });
+    const [globalCompactMode, setGlobalCompactMode] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('monthlyReport_globalCompactMode');
+            if (saved) return JSON.parse(saved);
+        }
+        return false;
+    });
+
+    // Save state to sessionStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem('monthlyReport_currentMonth', currentMonth.toISOString());
+            sessionStorage.setItem('monthlyReport_globalCompactMode', JSON.stringify(globalCompactMode));
+            sessionStorage.setItem('monthlyReport_visibility', JSON.stringify(visibility));
+            sessionStorage.setItem('monthlyReport_selectedOperatorIds', JSON.stringify(Array.from(selectedOperatorIds)));
+        }
+    }, [currentMonth, globalCompactMode, visibility, selectedOperatorIds]);
 
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: keyof ManualTotals, currentValue: number } | null>(null);
@@ -118,26 +152,32 @@ const MonthlyReportPage = () => {
             ops.sort((a,b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName));
             setOperators(ops);
             // Configure visibilities
-            const initialVisibility: Record<string, VisibilitySettings> = {};
-            ops.forEach(op => {
-                initialVisibility[op.id] = {
-                    ordinaryWorkedDays: true,
-                    showWorkedHours: true, 
-                    ordinaryHours: true,
-                    overtimeHours: true,
-                    ferieDays: true,
-                    permessoHours: true,
-                    malattiaDays: true,
-                    absenceDays: true,
-                    ordinaryCost: true,
-                    overtimeCost: true,
-                    ferieCost: true,
-                    permessoCost: true,
-                    malattiaCost: true,
-                    compactMode: false,
-                };
+            setVisibility(prev => {
+                const newVis = { ...prev };
+                let hasChanges = false;
+                ops.forEach(op => {
+                    if (!newVis[op.id]) {
+                        newVis[op.id] = {
+                            ordinaryWorkedDays: true,
+                            showWorkedHours: true, 
+                            ordinaryHours: true,
+                            overtimeHours: true,
+                            ferieDays: true,
+                            permessoHours: true,
+                            malattiaDays: true,
+                            absenceDays: true,
+                            ordinaryCost: true,
+                            overtimeCost: true,
+                            ferieCost: true,
+                            permessoCost: true,
+                            malattiaCost: true,
+                            compactMode: false,
+                        };
+                        hasChanges = true;
+                    }
+                });
+                return hasChanges ? newVis : prev;
             });
-            setVisibility(initialVisibility);
         });
         return () => unsubscribe();
     }, [firestore]);
