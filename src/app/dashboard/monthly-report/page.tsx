@@ -652,137 +652,139 @@ const MonthlyReportPage = () => {
                         <p className="text-center text-muted-foreground py-10">Nessun operatore trovato. Aggiungine uno dalla sezione "Gestione Operatori".</p>
                     ) : (
                         <>
-                        <div className="flex flex-wrap items-center gap-4 mb-4 p-2 border rounded-md bg-muted/20">
-                           <div className="flex items-center space-x-2">
-                               <Checkbox
-                                    id="select-all"
-                                    checked={selectedOperatorIds.size === operators.length && operators.length > 0}
-                                    onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
-                                />
-                                <Label htmlFor="select-all" className="font-semibold cursor-pointer">Seleziona Tutto</Label>
+                            <div className="flex flex-wrap items-center gap-4 mb-4 p-2 border rounded-md bg-muted/20">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="select-all"
+                                        checked={selectedOperatorIds.size === operators.length && operators.length > 0}
+                                        onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                                    />
+                                    <Label htmlFor="select-all" className="font-semibold cursor-pointer">Seleziona Tutto</Label>
+                                </div>
+                                <Separator orientation="vertical" className="hidden sm:block h-6" />
+                                <div className="flex items-center space-x-2">
+                                    <Switch 
+                                        id="global-compact" 
+                                        checked={globalCompactMode} 
+                                        onCheckedChange={setGlobalCompactMode} 
+                                    />
+                                    <Label htmlFor="global-compact" className="font-semibold cursor-pointer text-primary">Vista Sintetica Globale</Label>
+                                </div>
                             </div>
-                            <Separator orientation="vertical" className="hidden sm:block h-6" />
-                            <div className="flex items-center space-x-2">
-                                <Switch 
-                                    id="global-compact" 
-                                    checked={globalCompactMode} 
-                                    onCheckedChange={setGlobalCompactMode} 
-                                />
-                                <Label htmlFor="global-compact" className="font-semibold cursor-pointer text-primary">Vista Sintetica Globale</Label>
-                            </div>
-                        </div>
-                        <div className="space-y-4">
-                            {operators.map(op => {
-                                const summary = summaries.get(op.id);
-                                const override = manualOverrides[op.id];
-                                const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
-                                const isCompact = globalCompactMode || opVisibility.compactMode;
-                                const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
-                                
-                                const finalFerieDays = override?.ferieDays !== undefined ? override.ferieDays : summary?.ferieDays ?? 0;
-                                const finalPermessoHours = override?.permessoHours !== undefined ? override.permessoHours : summary?.permessoHours ?? 0;
-                                const finalMalattiaDays = override?.malattiaDays !== undefined ? override.malattiaDays : summary?.malattiaDays ?? 0;
-                                const finalAbsenceDays = override?.absenceDays !== undefined ? override.absenceDays : summary?.absenceDays ?? 0;
-                                const finalOvertimeHours = override?.overtimeHours !== undefined ? override.overtimeHours : summary?.overtimeHours ?? 0;
+                            
+                            <div className="space-y-4">
+                                {operators.map(op => {
+                                    const summary = summaries.get(op.id);
+                                    const override = manualOverrides[op.id];
+                                    const opVisibility = visibility[op.id] || { compactMode: false } as VisibilitySettings;
+                                    const isCompact = globalCompactMode || opVisibility.compactMode;
+                                    const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
+                                    
+                                    const finalFerieDays = override?.ferieDays !== undefined ? override.ferieDays : summary?.ferieDays ?? 0;
+                                    const finalPermessoHours = override?.permessoHours !== undefined ? override.permessoHours : summary?.permessoHours ?? 0;
+                                    const finalMalattiaDays = override?.malattiaDays !== undefined ? override.malattiaDays : summary?.malattiaDays ?? 0;
+                                    const finalAbsenceDays = override?.absenceDays !== undefined ? override.absenceDays : summary?.absenceDays ?? 0;
+                                    const finalOvertimeHours = override?.overtimeHours !== undefined ? override.overtimeHours : summary?.overtimeHours ?? 0;
 
-                                const ordinaryCost = override?.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
-                                    ? (op.fixedSalary || 0) 
-                                    : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
+                                    const ordinaryCost = override?.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
+                                        ? (op.fixedSalary || 0) 
+                                        : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
 
-                                const overtimeCost = override?.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
-                                const ferieCost = override?.ferieCost !== undefined ? Number(override.ferieCost) : summary?.ferieCost || 0;
-                                const permessoCost = override?.permessoCost !== undefined ? Number(override.permessoCost) : summary?.permessoCost || 0;
-                                const malattiaCost = override?.malattiaCost !== undefined ? Number(override.malattiaCost) : summary?.malattiaCost || 0;
-                                
-                                const defaultOrdinaryWorkedDays = opVisibility.showWorkedHours && summary
-                                    ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)`
-                                    : summary?.ordinaryWorkedDays || 0;
-                                const finalOrdinaryWorkedDays = override?.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : defaultOrdinaryWorkedDays;
+                                    const overtimeCost = override?.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
+                                    const ferieCost = override?.ferieCost !== undefined ? Number(override.ferieCost) : summary?.ferieCost || 0;
+                                    const permessoCost = override?.permessoCost !== undefined ? Number(override.permessoCost) : summary?.permessoCost || 0;
+                                    const malattiaCost = override?.malattiaCost !== undefined ? Number(override.malattiaCost) : summary?.malattiaCost || 0;
+                                    
+                                    const defaultOrdinaryWorkedDays = opVisibility.showWorkedHours && summary
+                                        ? `${summary.ordinaryWorkedDays} (${summary.ordinaryHours}h)`
+                                        : summary?.ordinaryWorkedDays || 0;
+                                    const finalOrdinaryWorkedDays = override?.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : defaultOrdinaryWorkedDays;
 
-                                return (
-                                    <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
-                                        <CardHeader className={cn(isCompact && "py-3")}>
-                                            <div className='flex justify-between items-start'>
-                                                <div className="flex items-center gap-4">
-                                                    <Checkbox
-                                                        id={`select-${op.id}`}
-                                                        checked={selectedOperatorIds.has(op.id)}
-                                                        onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
-                                                    />
-                                                    <Link href={`/dashboard/operators/${op.id}/end-of-month`}>
-                                                        <CardTitle className="hover:underline text-lg">{op.firstName} {op.lastName}</CardTitle>
-                                                        {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
-                                                    </Link>
-                                                                                          <div className="flex items-center gap-4">
-                                                    {!globalCompactMode && (
-                                                        <div className="flex items-center gap-2">
-                                                            <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground whitespace-nowrap">Sintetica</Label>
-                                                            <Switch
-                                                                id={`compact-${op.id}`}
-                                                                checked={opVisibility.compactMode}
-                                                                onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
-                                                                className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                    {manualOverrides[op.id] && (
-                                                        <Button 
-                                                            variant="outline" 
-                                                            size="sm" 
-                                                            className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
-                                                            onClick={() => handleResetOverrides(op.id)}
-                                                        >
-                                                            <Trash2 className="h-3 w-3 mr-1" /> Ripristina
-                                                        </Button>
-                                                    )}
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <div className='font-bold text-lg flex items-center gap-2'>
-                                                            <Euro className="h-5 w-5" />
-                                                            <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
-                                                                {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                            </span>
+                                    return (
+                                        <Card key={op.id} className={cn(isCompact && "border-primary/20 bg-muted/10")}>
+                                            <CardHeader className={cn(isCompact && "py-3")}>
+                                                <div className='flex justify-between items-start'>
+                                                    <div className="flex items-center gap-4">
+                                                        <Checkbox
+                                                            id={`select-${op.id}`}
+                                                            checked={selectedOperatorIds.has(op.id)}
+                                                            onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
+                                                        />
+                                                        <Link href={`/dashboard/operators/${op.id}/end-of-month`}>
+                                                            <CardTitle className="hover:underline text-lg">{op.firstName} {op.lastName}</CardTitle>
+                                                            {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
+                                                        </Link>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        {!globalCompactMode && (
+                                                            <div className="flex items-center gap-2">
+                                                                <Label htmlFor={`compact-${op.id}`} className="text-xs text-muted-foreground whitespace-nowrap">Sintetica</Label>
+                                                                <Switch
+                                                                    id={`compact-${op.id}`}
+                                                                    checked={opVisibility.compactMode}
+                                                                    onCheckedChange={() => handleVisibilityChange(op.id, 'compactMode')}
+                                                                    className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        {manualOverrides[op.id] && (
                                                             <Button 
-                                                                variant="ghost" 
-                                                                size="icon" 
-                                                                className="h-6 w-6 ml-1" 
-                                                                onClick={() => {
-                                                                    setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
-                                                                    setTotalContent(String(totalDue));
-                                                                }}
+                                                                variant="outline" 
+                                                                size="sm" 
+                                                                className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
+                                                                onClick={() => handleResetOverrides(op.id)}
                                                             >
-                                                                <Pencil className="h-3 w-3" />
+                                                                <Trash2 className="h-3 w-3 mr-1" /> Ripristina
                                                             </Button>
+                                                        )}
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className='font-bold text-lg flex items-center gap-2'>
+                                                                <Euro className="h-5 w-5" />
+                                                                <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
+                                                                    {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </span>
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="icon" 
+                                                                    className="h-6 w-6 ml-1" 
+                                                                    onClick={() => {
+                                                                        setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
+                                                                        setTotalContent(String(totalDue));
+                                                                    }}
+                                                                >
+                                                                    <Pencil className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                            {!isCompact && <span className="text-[10px] text-muted-foreground uppercase font-semibold">Totale Dovuto</span>}
                                                         </div>
-                                                        {!isCompact && <span className="text-[10px] text-muted-foreground uppercase font-semibold">Totale Dovuto</span>}
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </CardHeader>
-                                        {summary && !isCompact && (
-                                            <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
-                                                <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={finalOrdinaryWorkedDays} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" editKey="ordinaryWorkedDays" currentRawValue={finalOrdinaryWorkedDays} />
-                                                <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" editKey="ordinaryCost" currentRawValue={ordinaryCost} />
-                                                <InfoCard opId={op.id} title="Ore Straordinarie" value={finalOvertimeHours} icon={Plus} visibilityKey="overtimeHours" editKey="overtimeHours" currentRawValue={finalOvertimeHours} />
-                                                <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" editKey="overtimeCost" currentRawValue={overtimeCost} />
-                                                <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" editKey="malattiaDays" currentRawValue={finalMalattiaDays} />
-                                                <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" editKey="malattiaCost" currentRawValue={malattiaCost} />
-                                                
-                                                {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
-                                                    <>
-                                                        <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" editKey="permessoHours" currentRawValue={finalPermessoHours} />
-                                                        <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" editKey="permessoCost" currentRawValue={permessoCost} />
-                                                    </>
-                                                )}
-                                                
-                                                <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" editKey="ferieDays" currentRawValue={finalFerieDays} />
-                                                <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" editKey="ferieCost" currentRawValue={ferieCost} />
-                                                <InfoCard opId={op.id} title="Assenze (g)" value={finalAbsenceDays} icon={AlertTriangle} visibilityKey="absenceDays" editKey="absenceDays" currentRawValue={finalAbsenceDays} />
-                                            </CardContent>
-                                        )}
-                                    </Card>
-                                )
-                            })}
-                        </div>
+                                            </CardHeader>
+                                            {summary && !isCompact && (
+                                                <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2 text-sm">
+                                                    <InfoCard opId={op.id} title="Giorni Ordinari Lavorati" value={finalOrdinaryWorkedDays} icon={Briefcase} visibilityKey="ordinaryWorkedDays" extraSwitchKey="showWorkedHours" extraSwitchLabel="Mostra Ore" editKey="ordinaryWorkedDays" currentRawValue={finalOrdinaryWorkedDays} />
+                                                    <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" editKey="ordinaryCost" currentRawValue={ordinaryCost} />
+                                                    <InfoCard opId={op.id} title="Ore Straordinarie" value={finalOvertimeHours} icon={Plus} visibilityKey="overtimeHours" editKey="overtimeHours" currentRawValue={finalOvertimeHours} />
+                                                    <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" editKey="overtimeCost" currentRawValue={overtimeCost} />
+                                                    <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" editKey="malattiaDays" currentRawValue={finalMalattiaDays} />
+                                                    <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" editKey="malattiaCost" currentRawValue={malattiaCost} />
+                                                    
+                                                    {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                                                        <>
+                                                            <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" editKey="permessoHours" currentRawValue={finalPermessoHours} />
+                                                            <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" editKey="permessoCost" currentRawValue={permessoCost} />
+                                                        </>
+                                                    )}
+                                                    
+                                                    <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" editKey="ferieDays" currentRawValue={finalFerieDays} />
+                                                    <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" editKey="ferieCost" currentRawValue={ferieCost} />
+                                                    <InfoCard opId={op.id} title="Assenze (g)" value={finalAbsenceDays} icon={AlertTriangle} visibilityKey="absenceDays" editKey="absenceDays" currentRawValue={finalAbsenceDays} />
+                                                </CardContent>
+                                            )}
+                                        </Card>
+                                    )
+                                })}
+                            </div>
                         </>
                     )}
                 </CardContent>
