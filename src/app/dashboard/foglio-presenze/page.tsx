@@ -238,15 +238,14 @@ export default function FoglioPresenzePage() {
                                                         const isWorkDay = (op.workSchedule[dayName]?.totalHours || 0) > 0;
                                                         const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
                                                         
-                                                        if (d) {
+                                                        if (isWeekend) {
+                                                            m = '-';
+                                                        } else if (d) {
                                                             if (d.status === 'lavorato') m = 'P';
-                                                            else if (isWeekend) m = '-';
                                                             else if (d.status === 'festa') m = 'FG';
                                                             else if (d.status === 'ferie') m = 'F';
                                                             else if (d.status === 'malattia') m = 'M';
                                                             else if (d.status === 'mancata_timbratura') m = 'A';
-                                                        } else if (isWeekend) {
-                                                            m = '-';
                                                         }
                                                     }
                                                 }
