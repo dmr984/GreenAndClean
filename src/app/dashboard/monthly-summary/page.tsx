@@ -103,6 +103,7 @@ const MonthlySummaryContent = () => {
     const [isLoadingOperator, setIsLoadingOperator] = useState(true);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], straordinari: any[], dailyNotes: DailyNote[] }>({ timbrature: [], requests: [], straordinari: [], dailyNotes: [] });
+    const [overrides, setOverrides] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -166,12 +167,16 @@ const MonthlySummaryContent = () => {
                  where('__name__', '>=', format(monthStart, 'yyyy-MM-dd')),
                  where('__name__', '<=', format(monthEnd, 'yyyy-MM-dd'))
             );
+            
+            const monthId = format(currentMonth, 'yyyy-MM');
+            const overrideDocRef = doc(firestore, `app-users/${user.id}/monthly-overrides`, monthId);
     
-            const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot, notesSnapshot] = await Promise.all([
+            const [timbratureSnapshot, requestsSnapshot, straordinariSnapshot, notesSnapshot, overrideSnap] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
                 getDocs(straordinariQuery),
-                getDocs(notesQuery)
+                getDocs(notesQuery),
+                getDoc(overrideDocRef)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
@@ -180,6 +185,7 @@ const MonthlySummaryContent = () => {
             const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
 
             setMonthlyData({ timbrature: timbratureData, requests: requestsData, straordinari: straordinariData, dailyNotes: notesData });
+            setOverrides(overrideSnap.exists() ? overrideSnap.data() : null);
         } catch (error) {
             console.error("Error fetching monthly data:", error);
             toast({ title: 'Errore', description: "Impossibile caricare i dati del mese.", variant: 'destructive' });
@@ -265,9 +271,9 @@ const MonthlySummaryContent = () => {
                     <SummaryCard title="Giorni Ordinari Lavorati" value={monthlySummary.ordinaryWorkedDays || 0} icon={Briefcase} />
                     <SummaryCard title="Ore Ordinarie" value={(monthlySummary.ordinaryHours || 0).toLocaleString('it-IT')} icon={Clock} />
                     <SummaryCard title="Ore Straordinarie" value={(monthlySummary.overtimeHours || 0).toLocaleString('it-IT')} icon={Plus} />
-                    <SummaryCard title="Ferie (giorni)" value={monthlySummary.ferieDays || 0} icon={Plane} />
-                    <SummaryCard title="Permessi (ore)" value={(monthlySummary.permessoHours || 0).toLocaleString('it-IT')} icon={UserCheck} />
-                    <SummaryCard title="Malattia (giorni)" value={monthlySummary.malattiaDays || 0} icon={Stethoscope} />
+                    <SummaryCard title="Ferie (giorni)" value={overrides?.ferieDays ?? monthlySummary.ferieDays ?? 0} icon={Plane} />
+                    <SummaryCard title="Permessi (ore)" value={(overrides?.permessoHours ?? monthlySummary.permessoHours ?? 0).toLocaleString('it-IT')} icon={UserCheck} />
+                    <SummaryCard title="Malattia (giorni)" value={overrides?.malattiaDays ?? monthlySummary.malattiaDays ?? 0} icon={Stethoscope} />
                 </div>
 
                 <Separator />

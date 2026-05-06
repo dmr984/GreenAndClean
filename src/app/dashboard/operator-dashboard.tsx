@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit } from 'firebase/firestore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,7 +110,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [canClockIn, setCanClockIn] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isLocationHelpOpen, setIsLocationHelpOpen] = useState(false);
-  const [suggestedTime, setSuggestedTime] = useState("");
+  const [suggestedTimes, setSuggestedTimes] = useState<Record<string, string>>({});
+  const [isForgetClockInOpen, setIsForgetClockInOpen] = useState(false);
+  const [forgottenStartTime, setForgottenStartTime] = useState("");
   
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
 
@@ -155,33 +157,35 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         if (!firestore || !authUser?.id) return;
 
         const checkAndVoidOpenShifts = async () => {
-            const yesterday = subDays(new Date(), 1);
-            const startOfYesterday = startOfDay(yesterday);
-            const endOfYesterday = endOfDay(yesterday);
+            const todayStart = startOfDay(new Date());
 
+            // Query for all events before today
             const q = query(
                 collection(firestore, `app-users/${authUser.id}/timbrature`),
-                where('timestamp', '>=', startOfYesterday),
-                where('timestamp', '<=', endOfYesterday),
-                orderBy('timestamp', 'desc')
+                where('timestamp', '<', todayStart),
+                orderBy('timestamp', 'desc'),
+                limit(20) // Check the last 20 events to find any missing exits
             );
             
-            const yesterdaySnapshot = await getDocs(q);
-            if (yesterdaySnapshot.empty) return;
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) return;
 
-            const lastEvent = yesterdaySnapshot.docs[0].data() as ClockingEvent;
-            
-            if (lastEvent.type !== 'uscita') {
-                // If the last event of yesterday was not a clock-out, void the shift.
+            const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ClockingEvent));
+            const entrateSenzaUscita = events.filter(e => e.type === 'entrata' && !events.some(u => u.type === 'uscita' && u.shiftId === e.shiftId));
+
+            for (const entrata of entrateSenzaUscita) {
+                const eventDate = entrata.timestamp.toDate();
+                const endOfEventDay = endOfDay(eventDate);
+                
                 const voidClockOut: Omit<ClockingEvent, 'id'> = {
                     userId: authUser.id,
                     type: 'uscita',
-                    timestamp: Timestamp.fromDate(endOfYesterday), // Set it to 23:59:59 of yesterday
+                    timestamp: Timestamp.fromDate(endOfEventDay),
                     latitude: 0,
                     longitude: 0,
                     status: 'sospesa',
                     viewedByOperator: false,
-                    shiftId: lastEvent.shiftId,
+                    shiftId: entrata.shiftId,
                     isAuto: true,
                 };
                 
@@ -190,7 +194,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     toast({
                         variant: 'destructive',
                         title: 'Turno Annullato Automaticamente',
-                        description: 'Non hai timbrato l\'uscita ieri. Il turno è stato annullato.',
+                        description: `Non hai timbrato l'uscita il ${format(eventDate, 'dd/MM/yyyy')}. Il turno è stato annullato.`,
                         duration: 10000,
                     });
                 } catch (error) {
@@ -202,6 +206,22 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         checkAndVoidOpenShifts();
 
     }, [firestore, authUser, toast]);
+
+    const [pendingVoidedShifts, setPendingVoidedShifts] = useState<(ClockingEvent & { suggestedTime?: string })[]>([]);
+
+    useEffect(() => {
+        if (!firestore || !authUser?.id) return;
+        const q = query(
+            collection(firestore, `app-users/${authUser.id}/timbrature`),
+            where('status', '==', 'sospesa'),
+            where('isAuto', '==', true)
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setPendingVoidedShifts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ClockingEvent)));
+        });
+        return () => unsubscribe();
+    }, [firestore, authUser]);
+
 
 
   const { todayTimestamp, tomorrowTimestamp } = useMemo(() => {
@@ -270,20 +290,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
-  const voidedShift = useMemo(() => {
-    return clockings?.find(e => e.type === 'uscita' && e.isAuto && e.status === 'sospesa' && !e.viewedByOperator);
-  }, [clockings]);
-
   const handleDismissVoidedWarning = async (eventId: string) => {
     if (!firestore || !authUser) return;
+    const timeToSubmit = suggestedTimes[eventId];
     try {
         const docRef = doc(firestore, `app-users/${authUser.id}/timbrature`, eventId);
         const updates: any = { viewedByOperator: true };
-        if (suggestedTime) {
-            updates.suggestedTime = suggestedTime;
+        if (timeToSubmit) {
+            updates.suggestedTime = timeToSubmit;
         }
         await updateDoc(docRef, updates);
-        setSuggestedTime("");
+        setSuggestedTimes(prev => {
+            const next = { ...prev };
+            delete next[eventId];
+            return next;
+        });
     } catch (error) {
         console.error("Error dismissing warning", error);
     }
@@ -546,6 +567,44 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
   }
 
+  const handleForgottenClockIn = async () => {
+    if (!firestore || !operator || !forgottenStartTime || isProcessing) return;
+    setIsProcessing(true);
+    try {
+        const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+        const shiftId = doc(timbraturaRef).id;
+        
+        const [hours, minutes] = forgottenStartTime.split(':').map(Number);
+        const startTime = set(new Date(), { hours, minutes, seconds: 0, milliseconds: 0 });
+
+        const newTimbratura: Omit<ClockingEvent, 'id'> = {
+            userId: operator.id,
+            type: 'entrata',
+            timestamp: Timestamp.fromDate(startTime),
+            status: 'sospesa' as const,
+            latitude: 0,
+            longitude: 0,
+            viewedByOperator: true,
+            shiftId: shiftId,
+            isAuto: true,
+            suggestedTime: forgottenStartTime,
+        };
+        await addDoc(timbraturaRef, newTimbratura);
+        
+        toast({
+            title: "Richiesta Inviata",
+            description: "La tua entrata è stata registrata e sarà verificata dall'amministratore.",
+        });
+        setIsForgetClockInOpen(false);
+        setForgottenStartTime("");
+    } catch (error) {
+        console.error("Forgotten clock-in failed", error);
+        toast({ title: "Errore", description: "Impossibile registrare la timbratura.", variant: "destructive" });
+    } finally {
+        setIsProcessing(false);
+    }
+  }
+
   const renderLeaveCard = () => {
     const Icon = leaveStatus.type === 'ferie' ? BedDouble : Stethoscope;
     const leaveTypeText = leaveStatus.type === 'ferie' ? 'Ferie' : 'Malattia';
@@ -600,52 +659,66 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
   
   const renderMainContent = () => {
-    const voidedWarning = voidedShift && (
-        <Card className="border-red-500 bg-red-50 dark:bg-red-950/20 mb-6 animate-in fade-in slide-in-from-top-4 duration-500">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-red-700 dark:text-red-400 flex items-center gap-2 text-lg">
-                    <AlertTriangle className="h-5 w-5" />
-                    Turno di Ieri Non Chiuso
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-3">
-                <p className="text-sm text-red-600 dark:text-red-300 mb-4">
-                    Ieri hai dimenticato di timbrare l'uscita. Il sistema ha chiuso il turno automaticamente alle 23:59.
-                    <strong> Questa timbratura è in sospeso</strong> e deve essere verificata dall'amministratore.
-                </p>
-                <div className="space-y-2 border-t pt-3">
-                    <Label htmlFor="suggested-time" className="text-sm font-medium text-red-800 dark:text-red-300">
-                        Inserisci l'orario effettivo in cui sei uscito:
-                    </Label>
-                    <div className="flex gap-2">
-                        <input 
-                            id="suggested-time"
-                            type="time" 
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            value={suggestedTime}
-                            onChange={(e) => setSuggestedTime(e.target.value)}
-                        />
-                    </div>
-                </div>
-            </CardContent>
-            <CardFooter>
-                <Button 
-                    variant="default" 
-                    size="sm" 
-                    className="w-full bg-red-600 hover:bg-red-700 text-white"
-                    onClick={() => handleDismissVoidedWarning(voidedShift.id)}
-                    disabled={!suggestedTime}
-                >
-                    Invia Orario e Conferma
-                </Button>
-            </CardFooter>
-        </Card>
-    );
+    const voidedWarnings = pendingVoidedShifts.map(voidedShift => {
+        const isPendingAdmin = voidedShift.viewedByOperator && voidedShift.suggestedTime;
+        return (
+            <Card key={voidedShift.id} className={cn("border-red-500 mb-6 animate-in fade-in slide-in-from-top-4 duration-500", isPendingAdmin ? "bg-orange-50 dark:bg-orange-950/20 border-orange-500" : "bg-red-50 dark:bg-red-950/20")}>
+                <CardHeader className="pb-2">
+                    <CardTitle className={cn("flex items-center gap-2 text-lg", isPendingAdmin ? "text-orange-700 dark:text-orange-400" : "text-red-700 dark:text-red-400")}>
+                        <AlertTriangle className="h-5 w-5" />
+                        {isPendingAdmin ? "Richiesta in Approvazione" : "Turno Non Chiuso"}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3">
+                    {isPendingAdmin ? (
+                        <p className="text-sm text-orange-600 dark:text-orange-300">
+                            Hai suggerito l'orario <strong>{voidedShift.suggestedTime}</strong> per il giorno {format(voidedShift.timestamp?.toDate() || new Date(), 'dd/MM/yyyy')}. 
+                            <br/>La richiesta è in attesa di approvazione da parte dell'amministratore. Questa notifica scomparirà non appena verrà gestita.
+                        </p>
+                    ) : (
+                        <>
+                            <p className="text-sm text-red-600 dark:text-red-300 mb-4">
+                                Hai dimenticato di timbrare l'uscita il giorno {format(voidedShift.timestamp?.toDate() || new Date(), 'dd/MM/yyyy')}. Il sistema ha chiuso il turno automaticamente.
+                                <strong> Devi suggerire l'orario corretto</strong> per farlo approvare dall'amministratore.
+                            </p>
+                            <div className="space-y-2 border-t pt-3">
+                                <Label htmlFor={`suggested-time-${voidedShift.id}`} className="text-sm font-medium text-red-800 dark:text-red-300">
+                                    Inserisci l'orario effettivo in cui sei uscito:
+                                </Label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        id={`suggested-time-${voidedShift.id}`}
+                                        type="time" 
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={suggestedTimes[voidedShift.id] || ""}
+                                        onChange={(e) => setSuggestedTimes(prev => ({ ...prev, [voidedShift.id]: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </CardContent>
+                {!isPendingAdmin && (
+                    <CardFooter>
+                        <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="w-full bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => handleDismissVoidedWarning(voidedShift.id)}
+                            disabled={!suggestedTimes[voidedShift.id]}
+                        >
+                            Invia Orario e Conferma
+                        </Button>
+                    </CardFooter>
+                )}
+            </Card>
+        );
+    });
 
     if (isClockedIn) {
         return (
             <>
-                {voidedWarning}
+                {voidedWarnings}
                 <Card>
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
@@ -688,7 +761,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     // Not clocked in, not on leave
     return (
         <>
-            {voidedWarning}
+            {voidedWarnings}
             <Card>
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
@@ -730,6 +803,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         <History className="mr-2 h-4 w-4"/>
                         Inizia Recupero
                     </Button>
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full text-muted-foreground"
+                        onClick={() => setIsForgetClockInOpen(true)}
+                    >
+                        Hai dimenticato di timbrare l'inizio?
+                    </Button>
                 </CardContent>
             </Card>
         </>
@@ -746,6 +827,39 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
        {renderMainContent()}
       
     </div>
+
+    <ResponsiveDialog open={isForgetClockInOpen} onOpenChange={setIsForgetClockInOpen}>
+        <ResponsiveDialogContent>
+            <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle>Dimenticato di timbrare?</ResponsiveDialogTitle>
+                <ResponsiveDialogDescription>
+                    Inserisci l'orario effettivo in cui hai iniziato il turno oggi.
+                </ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="forgotten-start-time">Orario di Inizio Effettivo</Label>
+                    <input 
+                        id="forgotten-start-time"
+                        type="time" 
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={forgottenStartTime}
+                        onChange={(e) => setForgottenStartTime(e.target.value)}
+                    />
+                </div>
+            </div>
+            <ResponsiveDialogFooter>
+                <Button variant="outline" onClick={() => setIsForgetClockInOpen(false)}>Annulla</Button>
+                <Button 
+                    disabled={!forgottenStartTime || isProcessing}
+                    onClick={handleForgottenClockIn}
+                >
+                    {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
+                    Conferma e Inizia Turno
+                </Button>
+            </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+    </ResponsiveDialog>
 
     <ResponsiveDialog open={isMakeupDialogOpen} onOpenChange={setIsMakeupDialogOpen}>
         <ResponsiveDialogContent>

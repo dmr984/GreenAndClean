@@ -44,7 +44,7 @@ export default function WeeklyReportPage() {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            setSelectedOperatorIds(new Set(operators.map(op => op.id)));
+            setSelectedOperatorIds(new Set(operators.filter(op => !op.firstName.toLowerCase().includes('test') && !op.lastName.toLowerCase().includes('test')).map(op => op.id)));
         } else {
             setSelectedOperatorIds(new Set());
         }
@@ -121,10 +121,10 @@ export default function WeeklyReportPage() {
                         <div className="flex items-center space-x-2 bg-muted/20 p-2 rounded-md">
                             <Checkbox 
                                 id="select-all" 
-                                checked={selectedOperatorIds.size === operators.length && operators.length > 0}
+                                checked={selectedOperatorIds.size > 0 && selectedOperatorIds.size === operators.filter(op => !op.firstName.toLowerCase().includes('test') && !op.lastName.toLowerCase().includes('test')).length}
                                 onCheckedChange={handleSelectAll}
                             />
-                            <Label htmlFor="select-all" className="font-bold cursor-pointer">Seleziona Tutti gli Operatori ({operators.length})</Label>
+                            <Label htmlFor="select-all" className="font-bold cursor-pointer">Seleziona Tutti gli Operatori ({operators.filter(op => !op.firstName.toLowerCase().includes('test') && !op.lastName.toLowerCase().includes('test')).length})</Label>
                         </div>
 
                         {isLoading ? (

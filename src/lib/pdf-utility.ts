@@ -19,10 +19,19 @@ export type Operator = {
 };
 
 export type ManualTotals = {
-    ferieDays?: number;
-    permessoHours?: number;
-    malattiaDays?: number;
+    ferieDays?: number | string;
+    permessoHours?: number | string;
+    malattiaDays?: number | string;
     totalDueOverride?: number;
+    ordinaryWorkedDays?: number | string;
+    ordinaryCost?: number | string;
+    overtimeHours?: number | string;
+    overtimeCost?: number | string;
+    malattiaCost?: number | string;
+    permessoCost?: number | string;
+    ferieCost?: number | string;
+    absenceDays?: number | string;
+    [key: string]: any;
 };
 
 export type VisibilitySettings = {
@@ -56,14 +65,19 @@ export const calculateTotalDue = (
     
     const finalVisibility = visibilitySettings || {};
 
-    const ordinaryCost = (op.salaryType === 'fixed' 
-        ? (op.fixedSalary || 0) 
-        : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+    const ordinaryCost = overrides?.ordinaryCost !== undefined 
+        ? Number(overrides.ordinaryCost) 
+        : (op.salaryType === 'fixed' 
+            ? (op.fixedSalary || 0) 
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
     
-    const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-    const ferieCost = summary.ferieCost || 0;
-    const permessoCost = summary.permessoCost || 0;
-    const malattiaCost = summary.malattiaCost || 0;
+    const overtimeCost = overrides?.overtimeCost !== undefined 
+        ? Number(overrides.overtimeCost) 
+        : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        
+    const ferieCost = overrides?.ferieCost !== undefined ? Number(overrides.ferieCost) : (summary.ferieCost || 0);
+    const permessoCost = overrides?.permessoCost !== undefined ? Number(overrides.permessoCost) : (summary.permessoCost || 0);
+    const malattiaCost = overrides?.malattiaCost !== undefined ? Number(overrides.malattiaCost) : (summary.malattiaCost || 0);
 
     let total = 0;
     if (finalVisibility.ordinaryCost !== false) total += ordinaryCost;
@@ -130,14 +144,16 @@ export const generateDetailedOperatorPdf = async (
         const finalFerieDays = overrides.ferieDays ?? summary.ferieDays ?? 0;
         const finalPermessoHours = overrides.permessoHours ?? summary.permessoHours ?? 0;
         const finalMalattiaDays = overrides.malattiaDays ?? summary.malattiaDays ?? 0;
+        const finalOrdinaryWorkedDays = overrides.ordinaryWorkedDays ?? summary.ordinaryWorkedDays ?? 0;
+        const finalOvertimeHours = overrides.overtimeHours ?? summary.overtimeHours ?? 0;
 
         const isMonthly = op.scheduleType === 'monthly';
         const showPermessi = !(isMonthly && finalPermessoHours === 0);
 
         const summaryBody = [
-            [`GIORNI ORDINARI LAVORATI: ${summary.ordinaryWorkedDays}`, { content: `FERIE: ${finalFerieDays}`, styles: { halign: 'right' }} ],
+            [`GIORNI ORDINARI LAVORATI: ${finalOrdinaryWorkedDays}`, { content: `FERIE: ${finalFerieDays}`, styles: { halign: 'right' }} ],
             [`ORE ORDINARIE: ${summary.ordinaryHours}`, { content: showPermessi ? `ORE PERMESSI: ${finalPermessoHours}` : '', styles: { halign: 'right' }}],
-            [`ORE STRAORDINARIE: ${summary.overtimeHours}`, { content: `GIORNI MALATTIA: ${finalMalattiaDays}`, styles: { halign: 'right' }}],
+            [`ORE STRAORDINARIE: ${finalOvertimeHours}`, { content: `GIORNI MALATTIA: ${finalMalattiaDays}`, styles: { halign: 'right' }}],
         ];
 
         autoTable(doc, {
@@ -149,10 +165,15 @@ export const generateDetailedOperatorPdf = async (
         y = (doc as any).lastAutoTable.finalY + 5;
 
         // 3. Costs
-        const ordinaryCost = (op.salaryType === 'fixed' 
-            ? (op.fixedSalary || 0) 
-            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
-        const overtimeCost = (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        const ordinaryCost = overrides.ordinaryCost !== undefined 
+            ? Number(overrides.ordinaryCost) 
+            : (op.salaryType === 'fixed' 
+                ? (op.fixedSalary || 0) 
+                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+                
+        const overtimeCost = overrides.overtimeCost !== undefined 
+            ? Number(overrides.overtimeCost) 
+            : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
 
         doc.setDrawColor(200);
         doc.line(margin, y, pageWidth - margin, y);
@@ -162,9 +183,13 @@ export const generateDetailedOperatorPdf = async (
             [`${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'COSTO ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: `COSTO STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, styles: { halign: 'right' }}]
         ];
         
-        if (summary.ferieCost || summary.permessoCost || summary.malattiaCost) {
+        const finalFerieCost = overrides.ferieCost !== undefined ? Number(overrides.ferieCost) : (summary.ferieCost || 0);
+        const finalPermessoCost = overrides.permessoCost !== undefined ? Number(overrides.permessoCost) : (summary.permessoCost || 0);
+        const finalMalattiaCost = overrides.malattiaCost !== undefined ? Number(overrides.malattiaCost) : (summary.malattiaCost || 0);
+
+        if (finalFerieCost || finalPermessoCost || finalMalattiaCost) {
             costBody.push([
-                `COSTO FERIE/PERM/MAL: ${((summary.ferieCost || 0) + (summary.permessoCost || 0) + (summary.malattiaCost || 0)).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
+                `COSTO FERIE/PERM/MAL: ${(finalFerieCost + finalPermessoCost + finalMalattiaCost).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
                 { content: '', styles: { halign: 'right' } }
             ]);
         }

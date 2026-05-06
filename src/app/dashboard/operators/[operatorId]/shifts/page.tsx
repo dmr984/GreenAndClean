@@ -84,6 +84,7 @@ type Timbratura = {
     approvedLeaveHours?: number;
     createLeaveRequest?: boolean;
     viewedByOperator: boolean;
+    suggestedTime?: string;
 };
 
 type Shift = {
@@ -553,10 +554,19 @@ export default function ShiftApprovalPage() {
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
-    const handleConfirmApprove = async () => {
+    const handleConfirmApprove = () => {
         if (!approvalContext) return;
-        setApprovalContext(prev => prev ? { ...prev, leaveHours: '0', createLeaveRequest: false } : null);
+        
+        // Close the confirmation dialog
         setIsConfirmingNoLeave(false);
+        
+        // Update the approval context: set leave hours to 0 and disable leave request
+        // This allows the user to see the change in the summary dialog and click "Approva" again
+        setApprovalContext(prev => prev ? ({
+            ...prev,
+            leaveHours: '0',
+            createLeaveRequest: false
+        }) : null);
     };
 
     const handleApprovalClick = async (context: ApprovalContext) => {
@@ -799,7 +809,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 viewedByOperator: false, 
                 shiftId: shiftId,
                 status: 'sospesa',
-                makeupOfDay: makeupDayValue
+                makeupOfDay: makeupDayValue,
+                isAuto: false,
+                suggestedTime: null
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -1542,7 +1554,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         const docRef = doc(firestore, `app-users/${operator.id}/straordinari`, editingOvertimeShift.id);
         const updatePayload: { events: StraordinarioEvent[], status: StraordinarioShift['status'] } = { 
             events: newEvents,
-            status: 'in_attesa_di_approvazione' // Always require re-approval after edit
+            status: 'in_attesa_di_approvazione', // Always require re-approval after edit
+            isAuto: false
         };
         
         await updateDoc(docRef, updatePayload).then(() => {
@@ -1755,18 +1768,25 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                 const endTime = exitEvent?.timestamp;
                                                 const suggestedTime = exitEvent?.suggestedTime;
                                                 const isAutoVoided = shift.events.some(e => e.type === 'uscita' && e.isAuto);
+                                                const isAutoEntry = shift.events.some(e => e.type === 'entrata' && e.isAuto);
+                                                const entryEvent = shift.events.find(e => e.type === 'entrata');
+                                                const entrySuggested = entryEvent?.suggestedTime;
                                                 
                                                 return (
-                                                    <TableRow key={index} className={cn(isAutoVoided && "bg-red-50 dark:bg-red-950/20")}>
+                                                    <TableRow key={index} className={cn((isAutoVoided || isAutoEntry) && "bg-red-50 dark:bg-red-950/20")}>
                                                         <TableCell className='flex items-center gap-2 whitespace-nowrap'>
                                                           {shift.isOnLeaveDay && <AlertCircle className="h-5 w-5 text-yellow-500" />}
-                                                          {isAutoVoided && <AlertTriangle className="h-5 w-5 text-red-600" />}
+                                                          {(isAutoVoided || isAutoEntry) && <AlertTriangle className="h-5 w-5 text-red-600" />}
                                                           {formatDate(startTime)}
                                                           {shift.makeupOfDay && <Badge variant="outline">Recupero</Badge>}
-                                                          {isAutoVoided && <Badge variant="destructive" className="ml-2 bg-red-600 animate-pulse">Dimenticata!</Badge>}
-                                                          {isAutoVoided && suggestedTime && <Badge variant="outline" className="ml-2 border-blue-500 text-blue-600">Proposta: {suggestedTime}</Badge>}
+                                                          {(isAutoVoided || isAutoEntry) && <Badge variant="destructive" className="ml-2 bg-red-600 animate-pulse">Dimenticata!</Badge>}
                                                         </TableCell>
-                                                        <TableCell className="whitespace-nowrap">{startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}</TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            {startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}
+                                                            {isAutoEntry && entrySuggested && (
+                                                                <span className="block text-[10px] text-blue-600 font-semibold">Dichiarato: {entrySuggested}</span>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell className="whitespace-nowrap">
                                                             {endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}
                                                             {isAutoVoided && suggestedTime && (
@@ -2416,8 +2436,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                         <TableRow key={t.id}>
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>
                                                <div className='flex flex-col'>
-                                                  <span>
+                                                  <span className="flex items-center gap-1">
                                                      {`${originalTime} ${referenceTime}`.trim()}
+                                                     {t.isAuto && t.suggestedTime && (
+                                                         <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-400 text-blue-600">
+                                                             Sugg: {t.suggestedTime}
+                                                         </Badge>
+                                                     )}
                                                   </span>
                                                </div>
                                             </TableCell>
@@ -2563,10 +2588,36 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             <div className="space-y-2">
                                 <Label htmlFor="edit-entrata">Entrata*</Label>
                                 <Input id="edit-entrata" type="time" value={editShiftTimes.entrata} onChange={e => setEditShiftTimes(p => ({...p, entrata: e.target.value}))} required />
+                                {isEditShiftOpen && editingShift?.events.find(e => e.type === 'entrata')?.suggestedTime && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-blue-600 font-semibold italic">Suggerito: {editingShift.events.find(e => e.type === 'entrata')?.suggestedTime}</span>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="h-5 px-1 text-[10px] text-blue-600 hover:text-blue-700"
+                                            onClick={() => setEditShiftTimes(p => ({...p, entrata: editingShift.events.find(e => e.type === 'entrata')!.suggestedTime!}))}
+                                        >
+                                            Usa
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-uscita">Uscita</Label>
                                 <Input id="edit-uscita" type="time" value={editShiftTimes.uscita} onChange={e => setEditShiftTimes(p => ({...p, uscita: e.target.value}))} />
+                                {isEditShiftOpen && editingShift?.events.find(e => e.type === 'uscita')?.suggestedTime && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-blue-600 font-semibold italic">Suggerito: {editingShift.events.find(e => e.type === 'uscita')?.suggestedTime}</span>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="h-5 px-1 text-[10px] text-blue-600 hover:text-blue-700"
+                                            onClick={() => setEditShiftTimes(p => ({...p, uscita: editingShift.events.find(e => e.type === 'uscita')!.suggestedTime!}))}
+                                        >
+                                            Usa
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -2610,6 +2661,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </AlertDialogHeader>
                     {approvalContext && (
                         <div className="py-4 space-y-4">
+                            {approvalContext.shift.events.some(e => e.isAuto) && (
+                                <div className="bg-amber-100 dark:bg-amber-900/30 p-3 rounded-md border border-amber-200 flex items-start gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+                                    <div className="text-xs text-amber-800 dark:text-amber-200">
+                                        <p className="font-bold">Attenzione: Timbrature Automatiche</p>
+                                        <p>Questo turno contiene timbrature generate dal sistema. Verifica che le ore calcolate siano corrette o usa i suggerimenti dell'operatore nel dettaglio del turno prima di procedere.</p>
+                                    </div>
+                                </div>
+                            )}
                             {!approvalContext.isOvertimeShift && (
                                 <>
                                 <div className="flex items-center space-x-2">
@@ -2643,7 +2703,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             {!approvalContext.isOvertimeShift && (
                                 <div>
                                     <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
-                                    <Input id="leave-hours" type="number" value={approvalContext.leaveHours} onChange={(e) => handleApprovalContextChange('leaveHours', e.target.value)} step="0.5" min="0" />
+                                    <div className="flex gap-2 items-center">
+                                        <Input id="leave-hours" type="number" className="flex-1" value={approvalContext.leaveHours} onChange={(e) => handleApprovalContextChange('leaveHours', e.target.value)} step="0.5" min="0" />
+                                        <Button variant="outline" size="sm" type="button" onClick={() => {
+                                            handleApprovalContextChange('leaveHours', '0');
+                                            handleApprovalContextChange('createLeaveRequest', false);
+                                        }}>Azzera</Button>
+                                    </div>
                                     <p className="text-xs text-muted-foreground mt-1">Le ore mancanti rispetto al monte ore giornaliero.</p>
                                     <div className="flex items-center space-x-2 mt-2">
                                         <Checkbox id="include-leave" checked={approvalContext.createLeaveRequest} onCheckedChange={(checked) => handleApprovalContextChange('createLeaveRequest', !!checked)} />

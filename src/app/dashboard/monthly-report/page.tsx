@@ -353,7 +353,7 @@ const MonthlyReportPage = () => {
     
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            setSelectedOperatorIds(new Set(operators.map(op => op.id)));
+            setSelectedOperatorIds(new Set(operators.filter(op => !op.firstName.toLowerCase().includes('test') && !op.lastName.toLowerCase().includes('test')).map(op => op.id)));
         } else {
             setSelectedOperatorIds(new Set());
         }
@@ -656,7 +656,7 @@ const MonthlyReportPage = () => {
                                 <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="select-all"
-                                        checked={selectedOperatorIds.size === operators.length && operators.length > 0}
+                                        checked={selectedOperatorIds.size > 0 && selectedOperatorIds.size === operators.filter(op => !op.firstName.toLowerCase().includes('test') && !op.lastName.toLowerCase().includes('test')).length}
                                         onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
                                     />
                                     <Label htmlFor="select-all" className="font-semibold cursor-pointer">Seleziona Tutto</Label>

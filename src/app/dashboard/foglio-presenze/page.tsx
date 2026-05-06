@@ -40,7 +40,7 @@ export default function FoglioPresenzePage() {
             const ops = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Operator));
             ops.sort((a, b) => a.lastName.localeCompare(b.lastName));
             setOperators(ops);
-            setSelectedOperatorIds(ops.map(o => o.id));
+            setSelectedOperatorIds(ops.filter(o => !o.firstName.toLowerCase().includes('test') && !o.lastName.toLowerCase().includes('test')).map(o => o.id));
         });
         return () => unsubscribe();
     }, [firestore]);
