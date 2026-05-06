@@ -5,6 +5,7 @@ import { FirebaseClientProvider } from '@/firebase';
 import { UserProvider } from '@/providers/user-provider';
 import { InstallPWA } from '@/components/install-pwa';
 import { PWAManager } from '@/components/pwa-manager';
+import { UpdateNotifier } from '@/components/update-notifier';
 
 export const metadata: Metadata = {
   title: 'SERVECO GREEN & CLEAN',
@@ -36,6 +37,7 @@ export default function RootLayout({
           <UserProvider>
             {children}
             <InstallPWA />
+            <UpdateNotifier />
           </UserProvider>
         </FirebaseClientProvider>
         <Toaster />
