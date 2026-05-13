@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format, addMonths, subMonths } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format, addMonths, subMonths, startOfMonth, endOfMonth, isAfter, isBefore } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { isPublicHoliday } from '@/lib/holidays';
@@ -113,9 +113,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [suggestedTimes, setSuggestedTimes] = useState<Record<string, string>>({});
   const [isForgetClockInOpen, setIsForgetClockInOpen] = useState(false);
   const [forgottenStartTime, setForgottenStartTime] = useState("");
+  const [forgottenDate, setForgottenDate] = useState<Date>(new Date());
+  const [forgottenType, setForgottenType] = useState<'entrata' | 'uscita'>('entrata');
   
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
 
+
+  const [showQuickClockConfirm, setShowQuickClockConfirm] = useState(false);
+  const [showDeleteErrorConfirm, setShowDeleteErrorConfirm] = useState(false);
+  const [pendingClockType, setPendingClockType] = useState<'entrata' | 'uscita' | null>(null);
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -239,14 +245,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const clockingsQuery = useMemoFirebase(() => {
     if (!firestore || !operator?.id) return null;
     
-    // Widen query to catch shifts that started yesterday but haven't ended.
-    const lookbackDate = subDays(new Date(), 1);
-    lookbackDate.setHours(0,0,0,0);
-    const lookbackTs = Timestamp.fromDate(lookbackDate);
+    // Fetch from start of current month
+    const startOfMonthDate = startOfMonth(new Date());
+    const startOfMonthTs = Timestamp.fromDate(startOfMonthDate);
 
     return query(
       collection(firestore, `app-users/${operator.id}/timbrature`),
-      where('timestamp', '>=', lookbackTs),
+      where('timestamp', '>=', startOfMonthTs),
       orderBy('timestamp', 'asc')
     );
   }, [firestore, operator]);
@@ -290,6 +295,11 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
 
+  const lastEvent = useMemo(() => {
+    if (!clockings || clockings.length === 0) return null;
+    return clockings[clockings.length - 1];
+  }, [clockings]);
+
   const handleDismissVoidedWarning = async (eventId: string) => {
     if (!firestore || !authUser) return;
     const timeToSubmit = suggestedTimes[eventId];
@@ -310,6 +320,85 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
   };
 
+  const handleCancelRequest = async (event: ClockingEvent) => {
+      if (!firestore || !authUser) return;
+      try {
+          if (event.isAuto && event.suggestedTime) {
+              // It's a voided shift reply, reset it instead of deleting
+              const docRef = doc(firestore, `app-users/${authUser.id}/timbrature`, event.id);
+              await updateDoc(docRef, {
+                  viewedByOperator: false,
+                  suggestedTime: null
+              });
+          } else {
+              // It's a manual request, delete it
+              const { deleteDoc } = await import('firebase/firestore');
+              await deleteDoc(doc(firestore, `app-users/${authUser.id}/timbrature`, event.id));
+          }
+          toast({ title: "Richiesta Annullata", description: "La richiesta è stata rimossa correttamente." });
+      } catch (error) {
+          console.error("Error canceling request", error);
+          toast({ title: "Errore", description: "Impossibile annullare la richiesta.", variant: "destructive" });
+      }
+  };
+
+
+  const currentShiftInfo = useMemo(() => {
+    if (!clockings || clockings.length === 0) return null;
+    
+    const today = startOfDay(new Date());
+    
+    // Find events for today that are not 'confermata'
+    const todayEvents = clockings.filter(e => {
+        const eventDate = e.timestamp?.toDate();
+        return eventDate && isSameDay(eventDate, today) && e.status === 'sospesa';
+    });
+
+    if (todayEvents.length === 0) return null;
+
+    // Get the latest shiftId to display the current/most recent shift of today
+    const latestEvent = [...todayEvents].sort((a,b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0))[0];
+    const shiftEvents = todayEvents.filter(e => e.shiftId === latestEvent.shiftId);
+
+    const entry = shiftEvents.find(e => e.type === 'entrata');
+    const exit = shiftEvents.find(e => e.type === 'uscita');
+
+    if (!entry) return null;
+
+    return {
+        entry: format(entry.timestamp.toDate(), 'HH:mm'),
+        exit: exit ? format(exit.timestamp.toDate(), 'HH:mm') : null
+    };
+  }, [clockings]);
+
+  const groupedShifts = useMemo(() => {
+    if (!clockings || clockings.length === 0) return [];
+    
+    const groups: Record<string, { date: Date; entry?: ClockingEvent; exit?: ClockingEvent; status: string }> = {};
+    
+    clockings.forEach(event => {
+        if (!event.shiftId) return;
+        if (!groups[event.shiftId]) {
+            groups[event.shiftId] = { 
+                date: event.timestamp?.toDate() || new Date(),
+                status: event.status
+            };
+        }
+        if (event.type === 'entrata') groups[event.shiftId].entry = event;
+        if (event.type === 'uscita') groups[event.shiftId].exit = event;
+        
+        // If any part is 'sospesa', the whole group shows as 'sospesa'
+        if (event.status === 'sospesa') groups[event.shiftId].status = 'sospesa';
+        // If one is rejected, it's rejected
+        if (event.status === 'rifiutata') groups[event.shiftId].status = 'rifiutata';
+        // If both are confirmed, it's confirmed
+        if (groups[event.shiftId].entry?.status === 'confermata' && (!groups[event.shiftId].exit || groups[event.shiftId].exit?.status === 'confermata')) {
+            groups[event.shiftId].status = 'confermata';
+        }
+    });
+    
+    return Object.values(groups).sort((a,b) => b.date.getTime() - a.date.getTime());
+  }, [clockings]);
 
   useEffect(() => {
     if (clockings && clockings.length > 0) {
@@ -407,8 +496,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     });
   };
 
-  const performClocking = async (type: 'entrata' | 'uscita', makeupDayInfo?: string) => {
+  const performClocking = async (type: 'entrata' | 'uscita', skipCheck = false, makeupDayInfo?: string) => {
     if (!firestore || !operator || isProcessing) return;
+
+    // Safety check: if less than 5 minutes since last event, ask for confirmation
+    if (!skipCheck && lastEvent && lastEvent.timestamp) {
+        const lastTime = lastEvent.timestamp.toDate();
+        const now = new Date();
+        const diffMinutes = (now.getTime() - lastTime.getTime()) / (1000 * 60);
+
+        if (diffMinutes < 5) {
+            setPendingClockType(type);
+            setShowQuickClockConfirm(true);
+            return;
+        }
+    }
     
     setIsProcessing(true);
 
@@ -509,6 +611,26 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }
 
 
+  const handleDeleteError = async () => {
+    if (!firestore || !operator || !lastEvent) return;
+    
+    try {
+        await writeBatch(firestore).delete(doc(firestore, `app-users/${operator.id}/timbrature`, lastEvent.id)).commit();
+        toast({
+            title: "Errore eliminato",
+            description: "L'ultima timbratura è stata rimossa correttamente.",
+        });
+        setShowDeleteErrorConfirm(false);
+        setShowQuickClockConfirm(false);
+    } catch (error) {
+        toast({
+            variant: 'destructive',
+            title: 'Errore',
+            description: 'Impossibile eliminare la timbratura.',
+        });
+    }
+  };
+
   const handleUnlockRequest = async () => {
     if (!firestore || !operator) return;
 
@@ -559,7 +681,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         return;
     }
     try {
-        await performClocking('entrata', format(makeupDay, 'yyyy-MM-dd'));
+        await performClocking('entrata', false, format(makeupDay, 'yyyy-MM-dd'));
         setIsMakeupDialogOpen(false);
         setMakeupDay(undefined);
     } catch (error) {
@@ -567,38 +689,94 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
   }
 
+  const checkOverlap = (newDate: Date, type: 'entrata' | 'uscita', shiftIdToExclude?: string) => {
+    return groupedShifts.some(shift => {
+        // Skip current shift if we are updating it (e.g. adding exit to existing entry)
+        if (shiftIdToExclude && (shift.entry?.shiftId === shiftIdToExclude || shift.exit?.shiftId === shiftIdToExclude)) return false;
+        
+        const entry = shift.entry?.timestamp?.toDate();
+        const exit = shift.exit?.timestamp?.toDate();
+        
+        if (!entry) return false;
+        
+        if (exit) {
+            // Check if newDate is between entry and exit
+            return isWithinInterval(newDate, { start: entry, end: exit }) || 
+                   isSameDay(newDate, entry) && (isSameDay(newDate, exit)) && 
+                   (newDate >= entry && newDate <= exit);
+        } else {
+            // Open shift: check if newDate is after entry (assuming it's still ongoing)
+            return isSameDay(newDate, entry) && newDate >= entry;
+        }
+    });
+  }
+
   const handleForgottenClockIn = async () => {
     if (!firestore || !operator || !forgottenStartTime || isProcessing) return;
+    
+    const [hours, minutes] = forgottenStartTime.split(':').map(Number);
+    const eventTime = set(forgottenDate, { hours, minutes, seconds: 0, milliseconds: 0 });
+
+    if (checkOverlap(eventTime, forgottenType)) {
+        toast({ 
+            title: "Sovrapposizione Rilevata", 
+            description: "Non puoi inserire una timbratura che si sovrappone a un turno già esistente.", 
+            variant: "destructive" 
+        });
+        return;
+    }
+
     setIsProcessing(true);
     try {
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
-        const shiftId = doc(timbraturaRef).id;
         
-        const [hours, minutes] = forgottenStartTime.split(':').map(Number);
-        const startTime = set(new Date(), { hours, minutes, seconds: 0, milliseconds: 0 });
-
+        let shiftIdToUse = doc(timbraturaRef).id;
+        
+        // If reporting an exit, try to find an open shift first on the SAME day
+        if (forgottenType === 'uscita') {
+            const q = query(
+                collection(firestore, `app-users/${operator.id}/timbrature`),
+                where('timestamp', '>=', Timestamp.fromDate(startOfDay(forgottenDate))),
+                where('timestamp', '<=', Timestamp.fromDate(endOfDay(forgottenDate))),
+                orderBy('timestamp', 'desc')
+            );
+            const snapshot = await getDocs(q);
+            const events = snapshot.docs.map(d => ({id: d.id, ...d.data()} as ClockingEvent));
+            
+            for (const event of events) {
+                if (event.type === 'entrata' && event.shiftId) {
+                    const isClosed = events.some(e => e.type === 'uscita' && e.shiftId === event.shiftId);
+                    if (!isClosed) {
+                        shiftIdToUse = event.shiftId;
+                        break;
+                    }
+                }
+            }
+        }
+        
         const newTimbratura: Omit<ClockingEvent, 'id'> = {
             userId: operator.id,
-            type: 'entrata',
-            timestamp: Timestamp.fromDate(startTime),
+            type: forgottenType,
+            timestamp: Timestamp.fromDate(eventTime),
             status: 'sospesa' as const,
             latitude: 0,
             longitude: 0,
             viewedByOperator: true,
-            shiftId: shiftId,
-            isAuto: true,
+            shiftId: shiftIdToUse,
+            isAuto: false, // Explicitly manual now
             suggestedTime: forgottenStartTime,
         };
         await addDoc(timbraturaRef, newTimbratura);
         
         toast({
             title: "Richiesta Inviata",
-            description: "La tua entrata è stata registrata e sarà verificata dall'amministratore.",
+            description: `La tua ${forgottenType === 'entrata' ? 'entrata' : 'uscita'} del ${format(forgottenDate, 'dd/MM')} è stata registrata e sarà verificata.`,
         });
         setIsForgetClockInOpen(false);
         setForgottenStartTime("");
+        setForgottenDate(new Date());
     } catch (error) {
-        console.error("Forgotten clock-in failed", error);
+        console.error("Forgotten clocking failed", error);
         toast({ title: "Errore", description: "Impossibile registrare la timbratura.", variant: "destructive" });
     } finally {
         setIsProcessing(false);
@@ -658,6 +836,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     return false;
   };
   
+
   const renderMainContent = () => {
     const voidedWarnings = pendingVoidedShifts.map(voidedShift => {
         const isPendingAdmin = voidedShift.viewedByOperator && voidedShift.suggestedTime;
@@ -671,10 +850,20 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </CardHeader>
                 <CardContent className="pb-3">
                     {isPendingAdmin ? (
-                        <p className="text-sm text-orange-600 dark:text-orange-300">
-                            Hai suggerito l'orario <strong>{voidedShift.suggestedTime}</strong> per il giorno {format(voidedShift.timestamp?.toDate() || new Date(), 'dd/MM/yyyy')}. 
-                            <br/>La richiesta è in attesa di approvazione da parte dell'amministratore. Questa notifica scomparirà non appena verrà gestita.
-                        </p>
+                        <div className="flex flex-col gap-3">
+                            <p className="text-sm text-orange-600 dark:text-orange-300">
+                                Hai suggerito l'orario <strong>{voidedShift.suggestedTime}</strong> per il giorno {format(voidedShift.timestamp?.toDate() || new Date(), 'dd/MM/yyyy')}. 
+                                <br/>La richiesta è in attesa di approvazione.
+                            </p>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="w-fit text-orange-700 border-orange-200 hover:bg-orange-100"
+                                onClick={() => handleCancelRequest(voidedShift)}
+                            >
+                                <Eye className="mr-2 h-4 w-4" /> Annulla e Correggi
+                            </Button>
+                        </div>
                     ) : (
                         <>
                             <p className="text-sm text-red-600 dark:text-red-300 mb-4">
@@ -715,37 +904,112 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         );
     });
 
+    const pendingAlerts = groupedShifts.filter(s => s.status === 'sospesa').map((shift, idx) => {
+        const isManual = shift.entry?.isAuto === false || shift.exit?.isAuto === false;
+        const isReply = (shift.entry?.isAuto === true && !!shift.entry?.suggestedTime) || (shift.exit?.isAuto === true && !!shift.exit?.suggestedTime);
+        
+        // Only show alerts for things the user actually DID (manual entry or reply to a voided shift)
+        if (!isManual && !isReply) return null;
+
+        return (
+            <Card key={idx} className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20 mb-4 overflow-hidden">
+                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0">
+                    <CardTitle className="text-sm font-bold text-yellow-800 dark:text-yellow-400 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" /> Richiesta in Approvazione
+                    </CardTitle>
+                    {isManual && (
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 text-[10px] uppercase font-bold text-yellow-700 hover:text-destructive hover:bg-yellow-100"
+                            onClick={async () => {
+                                if (shift.entry?.isAuto === false) await handleCancelRequest(shift.entry);
+                                if (shift.exit?.isAuto === false) await handleCancelRequest(shift.exit);
+                            }}
+                        >
+                            Annulla Richiesta
+                        </Button>
+                    )}
+                </CardHeader>
+                <CardContent className="py-2 px-4">
+                    <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                        La tua richiesta di {isManual ? "inserimento manuale" : "correzione orario"} per il giorno <strong>{format(shift.date, 'dd/MM/yyyy')}</strong> è in attesa di verifica.
+                        <span className="ml-2 opacity-70">
+                            ({shift.entry ? (shift.entry.suggestedTime || format(shift.entry.timestamp.toDate(), 'HH:mm')) : '--:--'} - {shift.exit ? (shift.exit.suggestedTime || format(shift.exit.timestamp.toDate(), 'HH:mm')) : '--:--'})
+                        </span>
+                    </p>
+                </CardContent>
+            </Card>
+        );
+    });
+
     if (isClockedIn) {
         return (
             <>
                 {voidedWarnings}
-                <Card>
+                {pendingAlerts}
+                <Card className="overflow-hidden border-none shadow-xl bg-gradient-to-br from-card to-muted/30">
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
-                    <Clock className="h-6 w-6 text-primary" />
-                    <CardTitle className="text-2xl">
-                        Gestione Turno
-                    </CardTitle>
-                    <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                        <Clock className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-2xl font-bold tracking-tight">
+                            Gestione Turno
+                        </CardTitle>
+                        <CardDescription>In servizio</CardDescription>
+                    </div>
+                    <Button variant="ghost" size="icon" className="ml-auto rounded-full hover:bg-primary/10" onClick={() => setIsHelpOpen(true)}>
                         <Info className="h-5 w-5" />
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center gap-4">
-                   <div className="text-xl font-medium text-muted-foreground capitalize">
-                      {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                <CardContent className="flex flex-col items-center justify-center gap-6 py-6">
+                   <div className="text-center">
+                       <div className="text-lg font-semibold text-primary capitalize">
+                          {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                       </div>
                    </div>
-                  {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
+
+                   {currentShiftInfo && (
+                       <div className="w-full grid grid-cols-2 gap-4">
+                           <div className="flex flex-col items-center p-4 bg-background rounded-2xl border shadow-sm transition-all">
+                               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Entrata</span>
+                               <span className="text-3xl font-mono font-bold text-primary">{currentShiftInfo.entry}</span>
+                           </div>
+                           <div className="flex flex-col items-center p-4 bg-background/50 rounded-2xl border border-dashed shadow-sm">
+                               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Uscita</span>
+                               <span className="text-3xl font-mono font-bold text-muted-foreground/30">--:--</span>
+                           </div>
+                       </div>
+                   )}
+
+                  {locationError && (
+                      <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive text-sm rounded-lg border border-destructive/20">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          <p>{locationError}</p>
+                      </div>
+                  )}
+
+                  <Button 
+                      variant="link" 
+                      size="sm" 
+                      className="text-muted-foreground hover:text-primary transition-colors"
+                      onClick={() => setIsForgetClockInOpen(true)}
+                  >
+                      <History className="mr-2 h-4 w-4" />
+                      Hai dimenticato di timbrare?
+                  </Button>
                 </CardContent>
-                <CardFooter className="flex flex-col gap-4">
+                <CardFooter className="bg-muted/50 p-6">
                     <Button 
-                        className="w-full" 
-                        size="lg" 
+                        className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98]" 
                         variant="destructive"
                         disabled={isProcessing} 
                         onClick={() => performClocking('uscita')}
                     >
-                        {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-5 w-5"/>}
+                        {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-6 w-6 fill-current"/>}
                         Termina Turno
                     </Button>
                 </CardFooter>
@@ -762,220 +1026,386 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     return (
         <>
             {voidedWarnings}
-            <Card>
+            {pendingAlerts}
+            <Card className="overflow-hidden border-none shadow-xl bg-gradient-to-br from-card to-muted/30">
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3">
-                    <Clock className="h-6 w-6 text-primary" />
-                    <CardTitle className="text-2xl">Gestione Turno</CardTitle>
-                    <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setIsHelpOpen(true)}>
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                        <Clock className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-2xl font-bold tracking-tight">Gestione Turno</CardTitle>
+                        <CardDescription>Fuori servizio</CardDescription>
+                    </div>
+                    <Button variant="ghost" size="icon" className="ml-auto rounded-full hover:bg-primary/10" onClick={() => setIsHelpOpen(true)}>
                         <Info className="h-5 w-5" />
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center gap-4">
-                   <div className="text-xl font-medium text-muted-foreground capitalize">
-                      {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                <CardContent className="flex flex-col items-center justify-center gap-6 py-6">
+                    <div className="text-center">
+                       <div className="text-lg font-semibold text-muted-foreground capitalize">
+                          {format(currentDate, 'eeee, dd MMMM yyyy', { locale: it })}
+                       </div>
                    </div>
-                  {locationError && <p className="text-sm text-destructive text-center">{locationError}</p>}
-                   {!canClockIn && !isWorkDay && <p className="text-sm text-muted-foreground text-center">Puoi timbrare fino a 90 minuti prima dell'inizio del tuo turno.</p>}
-                </CardContent>
-                <CardFooter className="flex flex-col gap-4">
+
+                   {currentShiftInfo && (
+                       <div className="w-full grid grid-cols-2 gap-4">
+                           <div className="flex flex-col items-center p-4 bg-background rounded-2xl border shadow-sm">
+                               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Entrata</span>
+                               <span className="text-3xl font-mono font-bold text-primary">{currentShiftInfo.entry}</span>
+                           </div>
+                           <div className="flex flex-col items-center p-4 bg-background rounded-2xl border shadow-sm">
+                               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Uscita</span>
+                               <span className="text-3xl font-mono font-bold text-primary">{currentShiftInfo.exit || '--:--'}</span>
+                           </div>
+                       </div>
+                   )}
+
+                  {locationError && (
+                      <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive text-sm rounded-lg border border-destructive/20">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          <p>{locationError}</p>
+                      </div>
+                  )}
+                  
+                   {!canClockIn && !isWorkDay && !currentShiftInfo && (
+                       <p className="text-sm text-muted-foreground text-center bg-muted/50 p-3 rounded-lg">
+                           Puoi timbrare fino a 90 minuti prima dell'inizio del tuo turno.
+                       </p>
+                   )}
+
                     <Button 
-                        className="w-full" 
-                        size="lg"
-                        disabled={isProcessing || !canClockIn} 
-                        onClick={() => performClocking('entrata')}
-                        style={{backgroundColor: '#22c55e', color: 'white'}}
+                        variant="link" 
+                        size="sm" 
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        onClick={() => setIsForgetClockInOpen(true)}
                     >
-                        {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-5 w-5"/>}
+                        <History className="mr-2 h-4 w-4" />
+                        Hai dimenticato di timbrare?
+                    </Button>
+                </CardContent>
+                <CardFooter className="bg-muted/50 p-6 flex flex-col gap-3">
+                    <Button 
+                        className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98] bg-[#22c55e] hover:bg-[#16a34a] text-white border-none" 
+                        size="lg"
+                        disabled={isProcessing || (!canClockIn && !currentShiftInfo)} 
+                        onClick={() => performClocking('entrata')}
+                    >
+                        {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-6 w-6 fill-current"/>}
                         Inizia Turno
+                    </Button>
+                    
+                    <Button 
+                        variant="ghost" 
+                        className="w-full text-muted-foreground" 
+                        size="sm"
+                        onClick={() => setIsMakeupDialogOpen(true)}
+                    >
+                        <PlusCircle className="mr-2 h-4 w-4"/>
+                        Inizia Recupero / Anticipo
                     </Button>
                 </CardFooter>
             </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Turni Speciali</CardTitle>
-                    <CardDescription>Avvia un turno per recuperare un giorno di lavoro non svolto.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                     <Button variant="outline" className="w-full" onClick={() => setIsMakeupDialogOpen(true)}>
-                        <History className="mr-2 h-4 w-4"/>
-                        Inizia Recupero
-                    </Button>
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="w-full text-muted-foreground"
-                        onClick={() => setIsForgetClockInOpen(true)}
-                    >
-                        Hai dimenticato di timbrare l'inizio?
-                    </Button>
-                </CardContent>
-            </Card>
         </>
     );
-  }
+  };
 
   return (
-    <>
     <div className="space-y-6">
-       <div className="flex items-center justify-between space-y-2">
+      <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>
 
-       {renderMainContent()}
-      
-    </div>
+      {renderMainContent()}
 
-    <ResponsiveDialog open={isForgetClockInOpen} onOpenChange={setIsForgetClockInOpen}>
-        <ResponsiveDialogContent>
-            <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle>Dimenticato di timbrare?</ResponsiveDialogTitle>
-                <ResponsiveDialogDescription>
-                    Inserisci l'orario effettivo in cui hai iniziato il turno oggi.
-                </ResponsiveDialogDescription>
-            </ResponsiveDialogHeader>
-            <div className="py-4 space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="forgotten-start-time">Orario di Inizio Effettivo</Label>
-                    <input 
-                        id="forgotten-start-time"
-                        type="time" 
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        value={forgottenStartTime}
-                        onChange={(e) => setForgottenStartTime(e.target.value)}
-                    />
+      <div className="mt-8 space-y-4">
+        <div className="flex items-center gap-2">
+          <History className="h-5 w-5 text-primary" />
+          <h3 className="text-xl font-bold tracking-tight">Le tue timbrature di {format(new Date(), 'MMMM', { locale: it })}</h3>
+        </div>
+        
+        <div className="space-y-3">
+          {isLoadingClockings ? (
+            <div className="flex justify-center p-8"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
+          ) : groupedShifts.length > 0 ? (
+            groupedShifts.map((shift, idx) => (
+              <Card key={idx} className="overflow-hidden border-none shadow-sm bg-background/50">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] text-muted-foreground uppercase font-extrabold tracking-widest">
+                      {format(shift.date, 'eeee dd MMMM', { locale: it })}
+                    </p>
+                    <Badge variant={
+                      shift.status === 'confermata' ? 'secondary' : 
+                      shift.status === 'rifiutata' ? 'destructive' : 'default'
+                    } className={cn(
+                      "text-[9px] px-1.5 py-0",
+                      shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
+                    )}>
+                      {shift.status}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Inizio</span>
+                        <span className="text-base font-mono font-bold">
+                          {shift.entry ? format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm') : '--:--'}
+                        </span>
+                      </div>
+                      <div className="h-8 w-px bg-border/50" />
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Fine</span>
+                        <span className="text-base font-mono font-bold">
+                          {shift.exit ? format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm') : '--:--'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {shift.status === 'sospesa' && (shift.entry?.isAuto === false || shift.exit?.isAuto === false) && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={async () => {
+                          if (shift.entry?.isAuto === false) await handleCancelRequest(shift.entry);
+                          if (shift.exit?.isAuto === false) await handleCancelRequest(shift.exit);
+                        }}
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
+              </Card>
+            ))
+          ) : (
+            <p className="text-center text-muted-foreground py-8 border border-dashed rounded-xl">
+              Nessun turno registrato questo mese.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Dialogs */}
+      <ResponsiveDialog open={isForgetClockInOpen} onOpenChange={setIsForgetClockInOpen}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Segnala Timbratura Dimenticata</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Inserisci i dettagli della timbratura che hai dimenticato di registrare.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Giorno della Timbratura</Label>
+              <Calendar
+                mode="single"
+                selected={forgottenDate}
+                onSelect={(date) => date && setForgottenDate(date)}
+                disabled={(date) => isAfter(date, new Date())}
+                className="rounded-md border"
+                locale={it}
+              />
             </div>
-            <ResponsiveDialogFooter>
-                <Button variant="outline" onClick={() => setIsForgetClockInOpen(false)}>Annulla</Button>
+            <div className="space-y-2">
+              <Label>Tipo di Timbratura</Label>
+              <div className="flex gap-2">
                 <Button 
-                    disabled={!forgottenStartTime || isProcessing}
-                    onClick={handleForgottenClockIn}
+                  variant={forgottenType === 'entrata' ? 'default' : 'outline'} 
+                  className="flex-1"
+                  onClick={() => setForgottenType('entrata')}
                 >
-                    {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
-                    Conferma e Inizia Turno
+                  Inizio Turno
                 </Button>
-            </ResponsiveDialogFooter>
-        </ResponsiveDialogContent>
-    </ResponsiveDialog>
-
-    <ResponsiveDialog open={isMakeupDialogOpen} onOpenChange={setIsMakeupDialogOpen}>
-        <ResponsiveDialogContent>
-             <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle>Inizia Turno di Recupero</ResponsiveDialogTitle>
-                <ResponsiveDialogDescription>
-                    Seleziona il giorno che vuoi recuperare o anticipare. Le ore lavorate verranno attribuite a quel giorno.
-                </ResponsiveDialogDescription>
-            </ResponsiveDialogHeader>
-             <div className="py-4 space-y-4">
-                <Label>Giorno da recuperare/anticipare</Label>
-                 <Calendar
-                    mode="single"
-                    selected={makeupDay}
-                    onSelect={setMakeupDay}
-                    className="rounded-md border"
-                    locale={it}
-                    disabled={calendarDisabledMatcher}
-                    month={currentDate || new Date()}
-                    onMonthChange={(month) => setCurrentDate(month)}
-                    fromMonth={subMonths(new Date(), 2)}
-                    toMonth={addMonths(new Date(), 2)}
-                 />
-                 {makeupDay && (
-                    <p className="text-sm text-center text-primary font-semibold pt-2">
-                        Giorno selezionato: {format(makeupDay, 'PPP', { locale: it })}
-                    </p>
-                 )}
+                <Button 
+                  variant={forgottenType === 'uscita' ? 'default' : 'outline'} 
+                  className="flex-1"
+                  onClick={() => setForgottenType('uscita')}
+                >
+                  Fine Turno
+                </Button>
+              </div>
             </div>
-            <ResponsiveDialogFooter>
-                <Button variant="outline" onClick={() => setIsMakeupDialogOpen(false)}>Annulla</Button>
-                <Button onClick={handleStartMakeupShift} disabled={!makeupDay}>Conferma e Inizia Turno</Button>
-            </ResponsiveDialogFooter>
-        </ResponsiveDialogContent>
-    </ResponsiveDialog>
-
-
-    <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
-        <ResponsiveDialogContent>
-            <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle>Guida alla Gestione del Turno</ResponsiveDialogTitle>
-                <ResponsiveDialogDescription>
-                    Come utilizzare il sistema di timbratura in modo corretto.
-                </ResponsiveDialogDescription>
-            </ResponsiveDialogHeader>
-            <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
-                <div>
-                    <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
-                    <p className="text-muted-foreground">
-                        Usa il pulsante verde "Inizia Turno" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
-                    </p>
-                </div>
-                <div>
-                    <h4 className="font-semibold mb-1">Turno di Recupero o Straordinario</h4>
-                    <p className="text-muted-foreground">
-                        Se devi recuperare un giorno o fare straordinari in un giorno non lavorativo, usa il pulsante "Inizia Recupero" e seleziona dal calendario il giorno che stai compensando, oppure timbra normalmente con "Inizia Turno" per registrare ore extra.
-                    </p>
-                </div>
-                 <div>
-                    <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
-                    <p className="text-muted-foreground">
-                        Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
-                    </p>
-                </div>
-                <div>
-                    <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
-                    <p className="text-muted-foreground">
-                        Il sistema arrotonda gli orari di entrata e uscita per calcolare le ore ordinarie, che scattano ogni mezz'ora.
-                    </p>
-                </div>
-                <div>
-                    <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
-                     <p className="text-muted-foreground">
-                        Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
-                    </p>
-                </div>
-                 <div>
-                    <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
-                    <p className="text-muted-foreground">
-                        Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
-                    </p>
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="forgotten-time">Orario Effettivo</Label>
+              <input 
+                id="forgotten-time"
+                type="time" 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={forgottenStartTime}
+                onChange={(e) => setForgottenStartTime(e.target.value)}
+              />
             </div>
+          </div>
+          <ResponsiveDialogFooter>
+            <Button variant="outline" onClick={() => setIsForgetClockInOpen(false)}>Annulla</Button>
+            <Button 
+              disabled={!forgottenStartTime || isProcessing}
+              onClick={handleForgottenClockIn}
+            >
+              {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
+              Conferma e Invia
+            </Button>
+          </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
-    </ResponsiveDialog>
-    <ResponsiveDialog open={isLocationHelpOpen} onOpenChange={setIsLocationHelpOpen}>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={isMakeupDialogOpen} onOpenChange={setIsMakeupDialogOpen}>
         <ResponsiveDialogContent>
-            <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-primary"/> Abilita Geolocalizzazione su iPhone</ResponsiveDialogTitle>
-                <ResponsiveDialogDescription>
-                    Per timbrare, l'app ha bisogno di accedere alla tua posizione. Segui questi passaggi per abilitarla.
-                </ResponsiveDialogDescription>
-            </ResponsiveDialogHeader>
-            <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
-                 <div>
-                    <h4 className="font-semibold mb-1">Passaggio 1: Impostazioni Generali</h4>
-                    <p className="text-muted-foreground">
-                        Vai su <span className='font-bold'>Impostazioni</span> &gt; <span className='font-bold'>Privacy e Sicurezza</span> &gt; <span className='font-bold'>Localizzazione</span> e assicurati che la levetta <span className='font-bold'>"Localizzazione"</span> sia attiva.
-                    </p>
-                </div>
-                 <div>
-                    <h4 className="font-semibold mb-1">Passaggio 2: Impostazioni per Safari</h4>
-                    <p className="text-muted-foreground">
-                        Scorri in basso fino a trovare <span className='font-bold'>Safari</span> (o il browser che usi), toccalo, poi vai su <span className='font-bold'>Posizione</span> e seleziona <span className='font-bold'>"Mentre usi l'app"</span>.
-                    </p>
-                </div>
-                 <div>
-                    <h4 className="font-semibold mb-1">Passaggio 3: Ricarica l'App</h4>
-                    <p className="text-muted-foreground">
-                       Chiudi e riapri l'app dalla tua schermata Home. Ora dovresti essere in grado di timbrare.
-                    </p>
-                </div>
-            </div>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Inizia Turno di Recupero</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Seleziona il giorno che vuoi recuperare o anticipare. Le ore lavorate verranno attribuite a quel giorno.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="py-4 space-y-4">
+            <Label>Giorno da recuperare/anticipare</Label>
+            <Calendar
+              mode="single"
+              selected={makeupDay}
+              onSelect={setMakeupDay}
+              className="rounded-md border"
+              locale={it}
+              disabled={calendarDisabledMatcher}
+              month={currentDate || new Date()}
+              onMonthChange={(month) => setCurrentDate(month)}
+              fromMonth={subMonths(new Date(), 2)}
+              toMonth={addMonths(new Date(), 2)}
+            />
+            {makeupDay && (
+              <p className="text-sm text-center text-primary font-semibold pt-2">
+                Giorno selezionato: {format(makeupDay, 'PPP', { locale: it })}
+              </p>
+            )}
+          </div>
+          <ResponsiveDialogFooter>
+            <Button variant="outline" onClick={() => setIsMakeupDialogOpen(false)}>Annulla</Button>
+            <Button onClick={handleStartMakeupShift} disabled={!makeupDay}>Conferma e Inizia Turno</Button>
+          </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
-    </ResponsiveDialog>
-    </>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Guida alla Gestione del Turno</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Come utilizzare il sistema di timbratura in modo corretto.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
+            <div>
+              <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
+              <p className="text-muted-foreground">
+                Usa il pulsante verde "Inizia Turno" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Turno di Recupero o Straordinario</h4>
+              <p className="text-muted-foreground">
+                Se devi recuperare un giorno o fare straordinari in un giorno non lavorativo, usa il pulsante "Inizia Recupero" e seleziona dal calendario il giorno che stai compensando, oppure timbra normalmente con "Inizia Turno" per registrare ore extra.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
+              <p className="text-muted-foreground">
+                Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
+              <p className="text-muted-foreground">
+                Il sistema arrotonda gli orari di entrata e uscita per calcolare le ore ordinarie, che scattano ogni mezz'ora.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
+              <p className="text-muted-foreground">
+                Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
+              <p className="text-muted-foreground">
+                Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
+              </p>
+            </div>
+          </div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={isLocationHelpOpen} onOpenChange={setIsLocationHelpOpen}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-primary"/> Abilita Geolocalizzazione su iPhone</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Per timbrare, l'app ha bisogno di accedere alla tua posizione. Segui questi passaggi per abilitarla.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
+            <div>
+              <h4 className="font-semibold mb-1">Passaggio 1: Impostazioni Generali</h4>
+              <p className="text-muted-foreground">
+                Vai su <span className='font-bold'>Impostazioni</span> &gt; <span className='font-bold'>Privacy e Sicurezza</span> &gt; <span className='font-bold'>Localizzazione</span> e assicurati che la levetta <span className='font-bold'>"Localizzazione"</span> sia attiva.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Passaggio 2: Impostazioni per Safari</h4>
+              <p className="text-muted-foreground">
+                Scorri in basso fino a trovare <span className='font-bold'>Safari</span> (o il browser che usi), toccalo, poi vai su <span className='font-bold'>Posizione</span> e seleziona <span className='font-bold'>"Mentre usi l'app"</span>.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Passaggio 3: Ricarica l'App</h4>
+              <p className="text-muted-foreground">
+                Chiudi e riapri l'app dalla tua schermata Home. Ora dovresti essere in grado di timbrare.
+              </p>
+            </div>
+          </div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      {/* Quick Clocking Confirmation */}
+      <AlertDialog open={showQuickClockConfirm} onOpenChange={setShowQuickClockConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Conferma Timbratura Rapida
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Sono passati meno di 5 minuti dall'ultima azione. Sei sicuro di voler registrare questa {pendingClockType === 'entrata' ? 'entrata' : 'uscita'}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDeleteErrorConfirm(true)}>No, ho sbagliato</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingClockType) performClocking(pendingClockType, true);
+              setShowQuickClockConfirm(false);
+            }}>Sì, conferma</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Previous Error Confirmation */}
+      <AlertDialog open={showDeleteErrorConfirm} onOpenChange={setShowDeleteErrorConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Vuoi eliminare l'errore?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vuoi eliminare l'ultima timbratura effettuata ({lastEvent ? format(lastEvent.timestamp.toDate(), 'HH:mm') : ''}) perché è stata un errore?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, lascia così</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDeleteError}>Sì, elimina errore</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
