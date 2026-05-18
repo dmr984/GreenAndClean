@@ -260,8 +260,8 @@ export const generateDetailedOperatorPdf = async (
                         return `${typeLabel}: ${originalTime} ${refTime}`.trim();
                     }).join(' | ');
 
-                    doc.text(`Turno ${idx + 1}: ${timbratureString}`, margin, y);
-                    y += 5;
+                    // doc.text(`Turno ${idx + 1}: ${timbratureString}`, margin, y);
+                    // y += 5;
                 });
                 
                 const stats = `Ore Previste: ${detail.shift.contractualHours}h | Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h${showPermessi ? ` | Permesso: ${detail.shift.permissionHours}h` : ''}`;

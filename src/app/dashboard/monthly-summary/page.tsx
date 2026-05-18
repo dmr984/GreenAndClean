@@ -340,12 +340,7 @@ const MonthlySummaryContent = () => {
                                                     const isRecoveryDisplay = firstEventDate && !isSameDay(firstEventDate, detail.date);
                                                     const recoveryDateString = detail.makeupPerformedFor ? ` (rec. il ${detail.makeupPerformedFor})` : '';
 
-                                                     return (
-                                                        <div key={idx} className="border-b pb-1 last:border-b-0">
-                                                            <span className="font-medium mr-2 text-foreground">{`Turno ${idx + 1}:`}</span>
-                                                            <span className="text-muted-foreground">{`${timbratureString}${recoveryDateString}`}</span>
-                                                        </div>
-                                                     )
+                                                     return null;
                                                  })}
                                             </div>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

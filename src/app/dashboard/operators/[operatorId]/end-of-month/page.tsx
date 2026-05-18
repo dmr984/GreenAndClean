@@ -677,7 +677,7 @@ export default function EndOfMonthPage() {
 
                                     {detail.shift && detail.shift.allShifts ? (
                                         <>
-                                            <div className="text-sm text-muted-foreground mt-1 mb-3">
+                                            <div className="text-sm text-muted-foreground mt-1 mb-3" style={{ display: 'none' }}>
                                                 {detail.shift.allShifts.map((shiftBlock, idx) => {
                                                     const timbratureString = shiftBlock.events.map(e => {
                                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');

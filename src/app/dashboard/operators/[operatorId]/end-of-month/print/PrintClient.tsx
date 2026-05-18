@@ -431,11 +431,7 @@ export default function PrintClient() {
                                                     return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                                 }).join(' | ');
 
-                                                return (
-                                                    <div key={idx}>
-                                                        <p className="text-black text-sm pl-1 leading-tight">{`Turno ${idx + 1}: ${timbratureString}`}</p>
-                                                    </div>
-                                                )
+                                                return null;
                                             })}
                                             <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>
                                         </>
