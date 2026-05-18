@@ -385,6 +385,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     clockings.forEach(event => {
       if (!event.shiftId) return;
+      // Skip fully-rejected clockings (new insertion requests denied by admin)
+      if (event.status === 'rifiutata' && !event.originalTime) return;
       if (!groups[event.shiftId]) {
         groups[event.shiftId] = {
           date: event.timestamp?.toDate() || new Date(),
@@ -396,15 +398,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
       // If any part is 'sospesa', the whole group shows as 'sospesa'
       if (event.status === 'sospesa') groups[event.shiftId].status = 'sospesa';
-      // If one is rejected, it's rejected
-      if (event.status === 'rifiutata') groups[event.shiftId].status = 'rifiutata';
       // If both are confirmed, it's confirmed
       if (groups[event.shiftId].entry?.status === 'confermata' && (!groups[event.shiftId].exit || groups[event.shiftId].exit?.status === 'confermata')) {
         groups[event.shiftId].status = 'confermata';
       }
     });
 
-    return Object.values(groups).sort((a, b) => b.date.getTime() - a.date.getTime());
+    return Object.values(groups)
+      // Remove groups where the only entry was a rejected insertion (no real clocking at all)
+      .filter(g => g.entry || g.exit)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [clockings]);
 
   useEffect(() => {
@@ -1235,17 +1238,24 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <div className="flex items-center gap-6">
                       <div className="flex flex-col">
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Inizio</span>
-                        <span className="text-base font-mono font-bold">
-                          {shift.entry
-                            ? (shift.entry.status === 'sospesa' && shift.entry.suggestedTime && !shift.entry.originalTime
-                              ? '--:--'
-                              : (shift.entry.status === 'sospesa' && shift.entry.originalTime
-                                ? shift.entry.originalTime
-                                : format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm')
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-base font-mono font-bold">
+                            {shift.entry
+                              ? (shift.entry.status === 'sospesa' && shift.entry.suggestedTime && !shift.entry.originalTime
+                                ? '--:--'
+                                : (shift.entry.status === 'sospesa' && shift.entry.originalTime
+                                  ? shift.entry.originalTime
+                                  : format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm')
+                                )
                               )
-                            )
-                            : '--:--'}
-                        </span>
+                              : '--:--'}
+                          </span>
+                          {shift.entry?.suggestedTime && (
+                            <span className="text-[10px] font-mono text-amber-600 font-bold">
+                              ({shift.entry.suggestedTime})
+                            </span>
+                          )}
+                        </div>
                         {isShiftRectifiable(shift.date) && !shift.entry?.suggestedTime && (
                           <button
                             type="button"
@@ -1268,17 +1278,24 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       <div className="h-8 w-px bg-border/50" />
                       <div className="flex flex-col">
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Fine</span>
-                        <span className="text-base font-mono font-bold">
-                          {shift.exit
-                            ? (shift.exit.status === 'sospesa' && shift.exit.suggestedTime && !shift.exit.originalTime
-                              ? '--:--'
-                              : (shift.exit.status === 'sospesa' && shift.exit.originalTime
-                                ? shift.exit.originalTime
-                                : format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm')
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-base font-mono font-bold">
+                            {shift.exit
+                              ? (shift.exit.status === 'sospesa' && shift.exit.suggestedTime && !shift.exit.originalTime
+                                ? '--:--'
+                                : (shift.exit.status === 'sospesa' && shift.exit.originalTime
+                                  ? shift.exit.originalTime
+                                  : format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm')
+                                )
                               )
-                            )
-                            : '--:--'}
-                        </span>
+                              : '--:--'}
+                          </span>
+                          {shift.exit?.suggestedTime && (
+                            <span className="text-[10px] font-mono text-amber-600 font-bold">
+                              ({shift.exit.suggestedTime})
+                            </span>
+                          )}
+                        </div>
                         {isShiftRectifiable(shift.date) && shift.exit && !shift.exit.suggestedTime && (
                           <button
                             type="button"
