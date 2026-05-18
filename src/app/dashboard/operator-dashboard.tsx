@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit } from 'firebase/firestore';
@@ -38,6 +38,9 @@ type ClockingEvent = {
     viewedByOperator?: boolean;
     makeupOfDay?: string; // Changed to ISO date string 'YYYY-MM-DD'
     shiftId?: string;
+    isAuto?: boolean;
+    suggestedTime?: string | null;
+    originalTime?: string | null;
 };
 
 type Shift = {
@@ -115,6 +118,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [forgottenStartTime, setForgottenStartTime] = useState("");
   const [forgottenDate, setForgottenDate] = useState<Date>(new Date());
   const [forgottenType, setForgottenType] = useState<'entrata' | 'uscita'>('entrata');
+  const [isHistoryCorrection, setIsHistoryCorrection] = useState(false);
+  const [correctingShiftId, setCorrectingShiftId] = useState<string | undefined>(undefined);
   
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
 
@@ -213,7 +218,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     }, [firestore, authUser, toast]);
 
-    const [pendingVoidedShifts, setPendingVoidedShifts] = useState<(ClockingEvent & { suggestedTime?: string })[]>([]);
+    const [pendingVoidedShifts, setPendingVoidedShifts] = useState<ClockingEvent[]>([]);
 
     useEffect(() => {
         if (!firestore || !authUser?.id) return;
@@ -711,6 +716,44 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     });
   }
 
+  const getDefaultForgottenDate = useCallback(() => {
+    const today = new Date();
+    if (operator?.workSchedule) {
+      const dayName = dayIndexToName[getDay(today)];
+      const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+      if (isContractualDay && !isPublicHoliday(today)) return today;
+    } else {
+      return today;
+    }
+    
+    for (let i = 1; i <= 3; i++) {
+      const d = subDays(today, i);
+      if (operator?.workSchedule) {
+        const dayName = dayIndexToName[getDay(d)];
+        const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+        if (isContractualDay && !isPublicHoliday(d)) return d;
+      } else {
+        return d;
+      }
+    }
+    return today;
+  }, [operator]);
+
+  const openForgottenDialog = useCallback((type: 'entrata' | 'uscita') => {
+      setForgottenType(type);
+      setForgottenDate(getDefaultForgottenDate());
+      setIsForgetClockInOpen(true);
+  }, [getDefaultForgottenDate]);
+
+  const handleHistoryCorrection = useCallback((date: Date, type: 'entrata' | 'uscita', shiftId?: string) => {
+    setForgottenType(type);
+    setForgottenDate(date);
+    setCorrectingShiftId(shiftId);
+    setIsHistoryCorrection(true);
+    setForgottenStartTime("");
+    setIsForgetClockInOpen(true);
+  }, []);
+
   const handleForgottenClockIn = async () => {
     if (!firestore || !operator || !forgottenStartTime || isProcessing) return;
     
@@ -730,10 +773,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     try {
         const timbraturaRef = collection(firestore, `app-users/${operator.id}/timbrature`);
         
-        let shiftIdToUse = doc(timbraturaRef).id;
+        let shiftIdToUse = correctingShiftId || doc(timbraturaRef).id;
         
-        // If reporting an exit, try to find an open shift first on the SAME day
-        if (forgottenType === 'uscita') {
+        // If reporting an exit, try to find an open shift first on the SAME day (only if not a history correction!)
+        if (!correctingShiftId && forgottenType === 'uscita') {
             const q = query(
                 collection(firestore, `app-users/${operator.id}/timbrature`),
                 where('timestamp', '>=', Timestamp.fromDate(startOfDay(forgottenDate))),
@@ -754,23 +797,45 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             }
         }
         
-        const newTimbratura: Omit<ClockingEvent, 'id'> = {
-            userId: operator.id,
-            type: forgottenType,
-            timestamp: Timestamp.fromDate(eventTime),
-            status: 'sospesa' as const,
-            latitude: 0,
-            longitude: 0,
-            viewedByOperator: true,
-            shiftId: shiftIdToUse,
-            isAuto: false, // Explicitly manual now
-            suggestedTime: forgottenStartTime,
-        };
-        await addDoc(timbraturaRef, newTimbratura);
+        // Check if there is an existing event of this type for this shiftId
+        const existingEvent = (correctingShiftId && clockings)
+            ? clockings.find(c => c.shiftId === correctingShiftId && c.type === forgottenType)
+            : null;
+
+        if (existingEvent) {
+            // Update existing event instead of creating a new one
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, existingEvent.id);
+            const originalTimeStr = existingEvent.timestamp?.toDate()
+                ? format(existingEvent.timestamp.toDate(), 'HH:mm')
+                : '';
+            
+            await updateDoc(docRef, {
+                status: 'sospesa' as const,
+                suggestedTime: forgottenStartTime,
+                originalTime: originalTimeStr,
+                viewedByOperator: true
+            });
+        } else {
+            // Create a new event for missing clocking
+            const newTimbratura: Omit<ClockingEvent, 'id'> = {
+                userId: operator.id,
+                type: forgottenType,
+                timestamp: Timestamp.fromDate(eventTime),
+                status: 'sospesa' as const,
+                latitude: 0,
+                longitude: 0,
+                viewedByOperator: true,
+                shiftId: shiftIdToUse,
+                isAuto: false, // Explicitly manual now
+                suggestedTime: forgottenStartTime,
+                originalTime: null
+            };
+            await addDoc(timbraturaRef, newTimbratura);
+        }
         
         toast({
             title: "Richiesta Inviata",
-            description: `La tua ${forgottenType === 'entrata' ? 'entrata' : 'uscita'} del ${format(forgottenDate, 'dd/MM')} è stata registrata e sarà verificata.`,
+            description: "Richiesta inviata all'amministratore. A breve riceverai l'approvazione o meno della rettifica.",
         });
         setIsForgetClockInOpen(false);
         setForgottenStartTime("");
@@ -835,6 +900,27 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     }
     return false;
   };
+
+  const forgottenCalendarDisabledMatcher = (day: Date) => {
+    const today = new Date();
+    if (isAfter(startOfDay(day), startOfDay(today))) return true;
+
+    const limitDate = startOfDay(subDays(today, 3));
+    if (isBefore(startOfDay(day), limitDate)) return true;
+
+    if (operator?.workSchedule) {
+        const dayName = dayIndexToName[getDay(day)];
+        const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+        if (!isContractualDay && !isPublicHoliday(day)) return true;
+    }
+    return false;
+  };
+
+  const isShiftRectifiable = (shiftDate: Date) => {
+    const today = new Date();
+    const limitDate = startOfDay(subDays(today, 3));
+    return !isAfter(startOfDay(shiftDate), startOfDay(today)) && !isBefore(startOfDay(shiftDate), limitDate);
+  };
   
 
   const renderMainContent = () => {
@@ -867,8 +953,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     ) : (
                         <>
                             <p className="text-sm text-red-600 dark:text-red-300 mb-4">
-                                Hai dimenticato di timbrare l'uscita il giorno {format(voidedShift.timestamp?.toDate() || new Date(), 'dd/MM/yyyy')}. Il sistema ha chiuso il turno automaticamente.
-                                <strong> Devi suggerire l'orario corretto</strong> per farlo approvare dall'amministratore.
+                                Il turno del giorno {format(voidedShift.timestamp?.toDate() || new Date(), 'dd/MM/yyyy')} risulta incompleto (manca la timbratura di uscita). Il sistema lo ha chiuso automaticamente.
+                                <strong> Inserisci l'orario effettivo di uscita</strong> per inviare una richiesta di rettifica all'amministratore.
                             </p>
                             <div className="space-y-2 border-t pt-3">
                                 <Label htmlFor={`suggested-time-${voidedShift.id}`} className="text-sm font-medium text-red-800 dark:text-red-300">
@@ -991,16 +1077,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                           <p>{locationError}</p>
                       </div>
                   )}
-
-                  <Button 
-                      variant="link" 
-                      size="sm" 
-                      className="text-muted-foreground hover:text-primary transition-colors"
-                      onClick={() => setIsForgetClockInOpen(true)}
-                  >
-                      <History className="mr-2 h-4 w-4" />
-                      Hai dimenticato di timbrare?
-                  </Button>
                 </CardContent>
                 <CardFooter className="bg-muted/50 p-6">
                     <Button 
@@ -1049,18 +1125,32 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                        </div>
                    </div>
 
-                   {currentShiftInfo && (
-                       <div className="w-full grid grid-cols-2 gap-4">
-                           <div className="flex flex-col items-center p-4 bg-background rounded-2xl border shadow-sm">
-                               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Entrata</span>
-                               <span className="text-3xl font-mono font-bold text-primary">{currentShiftInfo.entry}</span>
-                           </div>
-                           <div className="flex flex-col items-center p-4 bg-background rounded-2xl border shadow-sm">
-                               <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Uscita</span>
-                               <span className="text-3xl font-mono font-bold text-primary">{currentShiftInfo.exit || '--:--'}</span>
-                           </div>
+                   <div className="w-full grid grid-cols-2 gap-4">
+                       <div className={cn(
+                           "flex flex-col items-center p-4 rounded-2xl border shadow-sm transition-all",
+                           currentShiftInfo?.entry ? "bg-background" : "bg-background/50 border-dashed"
+                       )}>
+                           <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Entrata</span>
+                           <span className={cn(
+                               "text-3xl font-mono font-bold",
+                               currentShiftInfo?.entry ? "text-primary" : "text-muted-foreground/30"
+                           )}>
+                               {currentShiftInfo?.entry || '--:--'}
+                           </span>
                        </div>
-                   )}
+                       <div className={cn(
+                           "flex flex-col items-center p-4 rounded-2xl border shadow-sm transition-all",
+                           currentShiftInfo?.exit ? "bg-background" : "bg-background/50 border-dashed"
+                       )}>
+                           <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-extrabold mb-1">Uscita</span>
+                           <span className={cn(
+                               "text-3xl font-mono font-bold",
+                               currentShiftInfo?.exit ? "text-primary" : "text-muted-foreground/30"
+                           )}>
+                               {currentShiftInfo?.exit || '--:--'}
+                           </span>
+                       </div>
+                   </div>
 
                   {locationError && (
                       <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive text-sm rounded-lg border border-destructive/20">
@@ -1074,16 +1164,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                            Puoi timbrare fino a 90 minuti prima dell'inizio del tuo turno.
                        </p>
                    )}
-
-                    <Button 
-                        variant="link" 
-                        size="sm" 
-                        className="text-muted-foreground hover:text-primary transition-colors"
-                        onClick={() => setIsForgetClockInOpen(true)}
-                    >
-                        <History className="mr-2 h-4 w-4" />
-                        Hai dimenticato di timbrare?
-                    </Button>
                 </CardContent>
                 <CardFooter className="bg-muted/50 p-6 flex flex-col gap-3">
                     <Button 
@@ -1152,15 +1232,55 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       <div className="flex flex-col">
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Inizio</span>
                         <span className="text-base font-mono font-bold">
-                          {shift.entry ? format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm') : '--:--'}
+                          {shift.entry 
+                            ? (shift.entry.status === 'sospesa' && !shift.entry.originalTime
+                              ? '--:--'
+                              : (shift.entry.status === 'sospesa' && shift.entry.originalTime
+                                ? shift.entry.originalTime
+                                : format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm')
+                              )
+                            )
+                            : '--:--'}
                         </span>
+                        {isShiftRectifiable(shift.date) && !shift.entry?.suggestedTime && (
+                          <button
+                            type="button"
+                            onClick={() => handleHistoryCorrection(shift.date, 'entrata', shift.entry?.shiftId || shift.exit?.shiftId)}
+                            className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 font-bold uppercase tracking-wider mt-1 hover:underline flex items-center gap-0.5"
+                          >
+                            Rettifica
+                          </button>
+                        )}
+                        {shift.entry?.suggestedTime && (
+                          <span className="text-[9px] text-orange-600 font-semibold italic mt-0.5">Rettifica pendente...</span>
+                        )}
                       </div>
                       <div className="h-8 w-px bg-border/50" />
                       <div className="flex flex-col">
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Fine</span>
                         <span className="text-base font-mono font-bold">
-                          {shift.exit ? format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm') : '--:--'}
+                          {shift.exit 
+                            ? (shift.exit.status === 'sospesa' && !shift.exit.originalTime
+                              ? '--:--'
+                              : (shift.exit.status === 'sospesa' && shift.exit.originalTime
+                                ? shift.exit.originalTime
+                                : format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm')
+                              )
+                            )
+                            : '--:--'}
                         </span>
+                        {isShiftRectifiable(shift.date) && !shift.exit?.suggestedTime && (
+                          <button
+                            type="button"
+                            onClick={() => handleHistoryCorrection(shift.date, 'uscita', shift.entry?.shiftId || shift.exit?.shiftId)}
+                            className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 font-bold uppercase tracking-wider mt-1 hover:underline flex items-center gap-0.5"
+                          >
+                            Rettifica
+                          </button>
+                        )}
+                        {shift.exit?.suggestedTime && (
+                          <span className="text-[9px] text-orange-600 font-semibold italic mt-0.5">Rettifica pendente...</span>
+                        )}
                       </div>
                     </div>
 
@@ -1190,53 +1310,76 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       </div>
 
       {/* Dialogs */}
-      <ResponsiveDialog open={isForgetClockInOpen} onOpenChange={setIsForgetClockInOpen}>
+      <ResponsiveDialog 
+        open={isForgetClockInOpen} 
+        onOpenChange={(open) => {
+          setIsForgetClockInOpen(open);
+          if (!open) {
+            setIsHistoryCorrection(false);
+            setCorrectingShiftId(undefined);
+          }
+        }}
+      >
         <ResponsiveDialogContent>
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>Segnala Timbratura Dimenticata</ResponsiveDialogTitle>
+            <ResponsiveDialogTitle>Richiesta di Rettifica / Correzione</ResponsiveDialogTitle>
             <ResponsiveDialogDescription>
-              Inserisci i dettagli della timbratura che hai dimenticato di registrare.
+              {isHistoryCorrection ? (
+                <span>
+                  Suggerisci il nuovo orario per la timbratura di{' '}
+                  <strong className="text-primary">{forgottenType === 'entrata' ? 'inizio' : 'fine'} turno</strong> di{' '}
+                  <strong className="text-primary">{format(forgottenDate, 'eeee d MMMM', { locale: it })}</strong>.
+                </span>
+              ) : (
+                <span>
+                  Inserisci i dettagli corretti per la timbratura di entrata o uscita.
+                </span>
+              )}
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
           <div className="py-4 space-y-4">
+            {!isHistoryCorrection && (
+              <>
+                <div className="space-y-2">
+                  <Label>Giorno della Timbratura</Label>
+                  <Calendar
+                    mode="single"
+                    selected={forgottenDate}
+                    onSelect={(date) => date && setForgottenDate(date)}
+                    disabled={forgottenCalendarDisabledMatcher}
+                    className="rounded-md border"
+                    locale={it}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo di Timbratura</Label>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant={forgottenType === 'entrata' ? 'default' : 'outline'} 
+                      className="flex-1"
+                      onClick={() => setForgottenType('entrata')}
+                    >
+                      Inizio Turno
+                    </Button>
+                    <Button 
+                      variant={forgottenType === 'uscita' ? 'default' : 'outline'} 
+                      className="flex-1"
+                      onClick={() => setForgottenType('uscita')}
+                    >
+                      Fine Turno
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
             <div className="space-y-2">
-              <Label>Giorno della Timbratura</Label>
-              <Calendar
-                mode="single"
-                selected={forgottenDate}
-                onSelect={(date) => date && setForgottenDate(date)}
-                disabled={(date) => isAfter(date, new Date())}
-                className="rounded-md border"
-                locale={it}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo di Timbratura</Label>
-              <div className="flex gap-2">
-                <Button 
-                  variant={forgottenType === 'entrata' ? 'default' : 'outline'} 
-                  className="flex-1"
-                  onClick={() => setForgottenType('entrata')}
-                >
-                  Inizio Turno
-                </Button>
-                <Button 
-                  variant={forgottenType === 'uscita' ? 'default' : 'outline'} 
-                  className="flex-1"
-                  onClick={() => setForgottenType('uscita')}
-                >
-                  Fine Turno
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="forgotten-time">Orario Effettivo</Label>
-              <input 
-                id="forgotten-time"
-                type="time" 
+              <Label htmlFor="forgotten-start-time">Orario Suggerito</Label>
+              <input
+                id="forgotten-start-time"
+                type="time"
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={forgottenStartTime}
-                onChange={(e) => setForgottenStartTime(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForgottenStartTime(e.target.value)}
               />
             </div>
           </div>

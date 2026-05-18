@@ -85,6 +85,7 @@ type Timbratura = {
     createLeaveRequest?: boolean;
     viewedByOperator: boolean;
     suggestedTime?: string;
+    originalTime?: string | null;
 };
 
 type Shift = {
@@ -697,6 +698,90 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setIsDetailOpen(false);
     }
 };
+
+    const handleApproveRectification = async (event: Timbratura, currentShift: Shift | null) => {
+        if (!firestore || !operator || !event.suggestedTime || !currentShift) return;
+
+        try {
+            const [hours, minutes] = event.suggestedTime.split(':').map(Number);
+            const eventDate = event.timestamp.toDate();
+            const newDate = set(eventDate, { hours, minutes, seconds: 0, milliseconds: 0 });
+            
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            await updateDoc(docRef, {
+                timestamp: Timestamp.fromDate(newDate),
+                status: 'confermata',
+                suggestedTime: null,
+                originalTime: null,
+                viewedByOperator: false
+            });
+
+            toast({ title: 'Successo', description: 'Rettifica applicata con successo!' });
+            
+            if (detailShift) {
+                const updatedEvents = detailShift.events.map(e => 
+                    e.id === event.id 
+                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: 'confermata' as const, suggestedTime: undefined, originalTime: undefined } as Timbratura
+                        : e
+                );
+                const processed = processShift(updatedEvents, new Set());
+                if (processed) {
+                    setDetailShift({ ...detailShift, ...processed, events: updatedEvents });
+                }
+            }
+        } catch (error) {
+            console.error("Error approving rectification:", error);
+            toast({ title: 'Errore', description: 'Impossibile applicare la rettifica.', variant: 'destructive' });
+        }
+    };
+
+    const handleRejectRectification = async (event: Timbratura, currentShift: Shift | null) => {
+        if (!firestore || !operator || !currentShift) return;
+
+        try {
+            const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            
+            if (event.originalTime) {
+                await updateDoc(docRef, {
+                    status: 'confermata',
+                    suggestedTime: null,
+                    originalTime: null,
+                    viewedByOperator: false
+                });
+                
+                toast({ title: 'Successo', description: 'Richiesta di rettifica rifiutata. Ripristinato orario originale.' });
+                
+                if (detailShift) {
+                    const updatedEvents = detailShift.events.map(e => 
+                        e.id === event.id 
+                            ? { ...e, status: 'confermata' as const, suggestedTime: undefined, originalTime: undefined } as Timbratura
+                            : e
+                    );
+                    const processed = processShift(updatedEvents, new Set());
+                    if (processed) {
+                        setDetailShift({ ...detailShift, ...processed, events: updatedEvents });
+                    }
+                }
+            } else {
+                await deleteDoc(docRef);
+                
+                toast({ title: 'Successo', description: 'Richiesta di rettifica rifiutata e rimossa.' });
+                
+                if (detailShift) {
+                    const updatedEvents = detailShift.events.filter(e => e.id !== event.id);
+                    const processed = processShift(updatedEvents, new Set());
+                    if (processed) {
+                        setDetailShift({ ...detailShift, ...processed, events: updatedEvents });
+                    } else {
+                        setIsDetailOpen(false);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error rejecting rectification:", error);
+            toast({ title: 'Errore', description: 'Impossibile rifiutare la rettifica.', variant: 'destructive' });
+        }
+    };
     
      const handleRejectShift = async (shiftToReject: Shift | null) => {
         if (!firestore || !operator || !shiftToReject) return;
@@ -1782,15 +1867,23 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                           {(isAutoVoided || isAutoEntry) && <Badge variant="destructive" className="ml-2 bg-red-600 animate-pulse">Dimenticata!</Badge>}
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">
-                                                            {startTime ? format(startTime.toDate(), 'HH:mm') : '--:--'}
-                                                            {isAutoEntry && entrySuggested && (
-                                                                <span className="block text-[10px] text-blue-600 font-semibold">Dichiarato: {entrySuggested}</span>
+                                                            {entryEvent?.status === 'sospesa' && !entryEvent.originalTime ? '--:--' : (startTime ? format(startTime.toDate(), 'HH:mm') : '--:--')}
+                                                            {entrySuggested && (
+                                                                entryEvent?.originalTime ? (
+                                                                    <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {entrySuggested}</span>
+                                                                ) : (
+                                                                    <span className="block text-[10px] text-blue-600 font-bold bg-blue-500/10 px-1 py-0.5 rounded mt-1">Dichiarato: {entrySuggested}</span>
+                                                                )
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">
-                                                            {endTime ? format(endTime.toDate(), 'HH:mm') : '--:--'}
-                                                            {isAutoVoided && suggestedTime && (
-                                                                <span className="block text-[10px] text-blue-600 font-semibold">Dichiarato: {suggestedTime}</span>
+                                                            {exitEvent?.status === 'sospesa' && !exitEvent.originalTime ? '--:--' : (endTime ? format(endTime.toDate(), 'HH:mm') : '--:--')}
+                                                            {suggestedTime && (
+                                                                exitEvent?.originalTime ? (
+                                                                    <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {suggestedTime}</span>
+                                                                ) : (
+                                                                    <span className="block text-[10px] text-blue-600 font-bold bg-blue-500/10 px-1 py-0.5 rounded mt-1">Dichiarato: {suggestedTime}</span>
+                                                                )
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
@@ -2436,18 +2529,28 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                         <TableRow key={t.id}>
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>
                                                <div className='flex flex-col'>
-                                                  <span className="flex items-center gap-1">
-                                                     {`${originalTime} ${referenceTime}`.trim()}
-                                                     {t.isAuto && t.suggestedTime && (
-                                                         <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-400 text-blue-600">
-                                                             Sugg: {t.suggestedTime}
-                                                         </Badge>
-                                                     )}
+                                                  <span className="flex items-center gap-1 font-mono">
+                                                     {t.status === 'sospesa' && !t.originalTime ? '--:--:--' : originalTime} {referenceTime}
                                                   </span>
+                                                  {t.suggestedTime && (
+                                                      t.originalTime ? (
+                                                          <Badge variant="outline" className="text-[10px] h-auto px-1.5 py-0.5 border-orange-400 text-orange-600 bg-orange-50 dark:bg-orange-950/20 font-semibold block mt-1 w-fit">
+                                                              Rettifica richiesta da {t.originalTime} a {t.suggestedTime}
+                                                          </Badge>
+                                                      ) : (
+                                                          <Badge variant="outline" className="text-[10px] h-auto px-1.5 py-0.5 border-blue-400 text-blue-600 bg-blue-50 dark:bg-blue-950/20 font-semibold block mt-1 w-fit">
+                                                              Richiesta inserimento: {t.suggestedTime}
+                                                          </Badge>
+                                                      )
+                                                  )}
                                                </div>
                                             </TableCell>
                                             <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>{t.type.replace('_', ' ')}</TableCell>
-                                            <TableCell className="whitespace-nowrap"><Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'}>{t.status}</Badge></TableCell>
+                                            <TableCell className="whitespace-nowrap">
+                                                <Badge variant={t.status === 'confermata' ? 'secondary' : t.status === 'rifiutata' ? 'destructive' : 'default'} className={cn(t.status === 'sospesa' && "bg-yellow-500 text-white")}>
+                                                    {t.status}
+                                                </Badge>
+                                            </TableCell>
                                             <TableCell className="whitespace-nowrap">
                                                {t.latitude && t.longitude ? (
                                                     <a href={`https://www.google.com/maps?q=${t.latitude},${t.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
@@ -2457,8 +2560,30 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                     <span>Manuale</span>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-right whitespace-nowrap">
-                                                <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                            <TableCell className="text-right whitespace-nowrap flex items-center justify-end gap-1.5 h-full">
+                                                {t.suggestedTime && (
+                                                    <>
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="sm" 
+                                                            className="h-7 px-2 border-green-500 hover:bg-green-500 hover:text-white text-green-600 flex items-center gap-1 font-bold text-[10px] uppercase tracking-wider"
+                                                            onClick={() => handleApproveRectification(t, detailShift)}
+                                                        >
+                                                            <CheckCircle className="h-3.5 w-3.5" /> Applica
+                                                        </Button>
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="sm" 
+                                                            className="h-7 px-2 border-red-500 hover:bg-red-500 hover:text-white text-red-600 flex items-center gap-1 font-bold text-[10px] uppercase tracking-wider"
+                                                            onClick={() => handleRejectRectification(t, detailShift)}
+                                                        >
+                                                            <XCircle className="h-3.5 w-3.5" /> Rifiuta
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                <Button variant="ghost" size="icon" onClick={() => { setDeletingTimbratura(t); setIsDeleteTimbraturaDialogOpen(true); }}>
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
                                             </TableCell>
                                         </TableRow>
                                     )});
