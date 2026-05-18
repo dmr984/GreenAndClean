@@ -765,7 +765,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     const [hours, minutes] = forgottenStartTime.split(':').map(Number);
     const eventTime = set(forgottenDate, { hours, minutes, seconds: 0, milliseconds: 0 });
 
-    if (checkOverlap(eventTime, forgottenType)) {
+    // Only check for overlaps on brand-new insertions, NOT on corrections of existing clockings.
+    // When correcting an existing exit/entry the proposed time naturally falls within the same
+    // shift window and would always trigger a false-positive overlap error.
+    if (!isHistoryCorrection && checkOverlap(eventTime, forgottenType, correctingShiftId)) {
       toast({
         title: "Sovrapposizione Rilevata",
         description: "Non puoi inserire una timbratura che si sovrappone a un turno già esistente.",
