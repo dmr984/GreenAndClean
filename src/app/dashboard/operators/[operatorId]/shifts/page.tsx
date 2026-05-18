@@ -875,6 +875,36 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setIsEditShiftOpen(true);
     };
 
+    /**
+     * Returns true if the pause (start..end) is fully contained within the shift's entry..exit window.
+     * Returns an error message string if the pause is invalid.
+     */
+    const validatePauseWithinShift = (
+        entrata: string, uscita: string,
+        pausaStart: string, pausaEnd: string,
+        shiftDate: Date
+    ): string | null => {
+        const toMs = (time: string) => {
+            const [h, m] = time.split(':').map(Number);
+            return set(shiftDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 }).getTime();
+        };
+        const entryMs = toMs(entrata);
+        const exitMs  = uscita ? toMs(uscita) : null;
+        const pStartMs = toMs(pausaStart);
+        const pEndMs   = toMs(pausaEnd);
+
+        if (pStartMs < entryMs || (exitMs !== null && pStartMs > exitMs)) {
+            return `L'inizio della pausa (${pausaStart}) non rientra nell'orario del turno (${entrata}–${uscita || '?'}).`;
+        }
+        if (exitMs !== null && pEndMs > exitMs) {
+            return `La fine della pausa (${pausaEnd}) supera l'orario di uscita del turno (${uscita}).`;
+        }
+        if (pStartMs >= pEndMs) {
+            return `L'inizio della pausa (${pausaStart}) deve essere precedente alla fine (${pausaEnd}).`;
+        }
+        return null;
+    };
+
     const handleEditShift = async () => {
         if (!firestore || !editingShift || !editShiftTimes.entrata || !operator) {
             toast({ title: 'Dati mancanti', description: 'L\'orario di entrata è obbligatorio.', variant: 'destructive' });
@@ -884,6 +914,19 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         if ((editShiftTimes.pausa && !editShiftTimes.fine_pausa) || (!editShiftTimes.pausa && editShiftTimes.fine_pausa)) {
              toast({ title: 'Pausa incompleta', description: 'Devi inserire sia l\'inizio che la fine della pausa.', variant: 'destructive' });
              return;
+        }
+
+        if (editShiftTimes.pausa && editShiftTimes.fine_pausa && editShiftTimes.uscita) {
+            const shiftDate = editingShift!.events[0].timestamp.toDate();
+            const pausaErr = validatePauseWithinShift(
+                editShiftTimes.entrata, editShiftTimes.uscita,
+                editShiftTimes.pausa, editShiftTimes.fine_pausa,
+                shiftDate
+            );
+            if (pausaErr) {
+                toast({ title: 'Pausa non valida', description: pausaErr, variant: 'destructive' });
+                return;
+            }
         }
     
         const batch = writeBatch(firestore);
@@ -1126,6 +1169,20 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         }
 
         const shiftDate = shiftForBreak.events[0].timestamp.toDate();
+
+        // Validate pause is within entry-exit window
+        const entryEvent = shiftForBreak.events.find(e => e.type === 'entrata');
+        const exitEvent  = shiftForBreak.events.find(e => e.type === 'uscita');
+        if (entryEvent) {
+            const entryTime = format(entryEvent.timestamp.toDate(), 'HH:mm');
+            const exitTime  = exitEvent ? format(exitEvent.timestamp.toDate(), 'HH:mm') : '';
+            const pausaErr  = validatePauseWithinShift(entryTime, exitTime, breakTimes.start, breakTimes.end, shiftDate);
+            if (pausaErr) {
+                toast({ title: 'Pausa non valida', description: pausaErr, variant: 'destructive' });
+                setIsProcessingApprove(false);
+                return;
+            }
+        }
     
         const createTimestamp = (time: string): Timestamp => {
             const [hours, minutes] = time.split(':').map(Number);
@@ -1534,6 +1591,21 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             }
             if (newShiftTimes.fine_pausa) {
                 events.push({ type: 'fine_pausa', time: newShiftTimes.fine_pausa });
+            }
+
+            // Validate pause is within shift window before saving
+            if (newShiftTimes.pausa && newShiftTimes.fine_pausa) {
+                const pausaErr = validatePauseWithinShift(
+                    newShiftTimes.entrata,
+                    newShiftTimes.uscita,
+                    newShiftTimes.pausa,
+                    newShiftTimes.fine_pausa,
+                    processingDate
+                );
+                if (pausaErr) {
+                    toast({ title: 'Pausa non valida', description: pausaErr, variant: 'destructive' });
+                    return;
+                }
             }
         
             const makeupDayValue = newShiftIsMakeup && newShiftMakeupDay ? newShiftMakeupDay : undefined;
