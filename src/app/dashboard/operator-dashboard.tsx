@@ -41,6 +41,7 @@ type ClockingEvent = {
   isAuto?: boolean;
   suggestedTime?: string | null;
   originalTime?: string | null;
+  rectificationStatus?: 'in_approvazione' | 'approvata' | 'rifiutata' | null;
 };
 
 type Shift = {
@@ -313,6 +314,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       const updates: any = { viewedByOperator: true };
       if (timeToSubmit) {
         updates.suggestedTime = timeToSubmit;
+        updates.rectificationStatus = 'in_approvazione';
       }
       await updateDoc(docRef, updates);
       setSuggestedTimes(prev => {
@@ -813,7 +815,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
           status: 'sospesa' as const,
           suggestedTime: forgottenStartTime,
           originalTime: originalTimeStr,
-          viewedByOperator: true
+          viewedByOperator: true,
+          rectificationStatus: 'in_approvazione'
         });
       } else {
         // Create a new event for missing clocking
@@ -828,7 +831,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
           shiftId: shiftIdToUse,
           isAuto: false, // Explicitly manual now
           suggestedTime: forgottenStartTime,
-          originalTime: null
+          originalTime: null,
+          rectificationStatus: 'in_approvazione'
         };
         await addDoc(timbraturaRef, newTimbratura);
       }
@@ -1251,8 +1255,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             Rettifica
                           </button>
                         )}
-                        {shift.entry?.suggestedTime && (
-                          <span className="text-[9px] text-orange-600 font-semibold italic mt-0.5">Rettifica pendente...</span>
+                        {(shift.entry?.rectificationStatus === 'in_approvazione' || (!shift.entry?.rectificationStatus && shift.entry?.suggestedTime)) && (
+                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
+                        )}
+                        {shift.entry?.rectificationStatus === 'approvata' && (
+                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta approvata</span>
+                        )}
+                        {shift.entry?.rectificationStatus === 'rifiutata' && (
+                          <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
                         )}
                       </div>
                       <div className="h-8 w-px bg-border/50" />
@@ -1278,8 +1288,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             Rettifica
                           </button>
                         )}
-                        {shift.exit?.suggestedTime && (
-                          <span className="text-[9px] text-orange-600 font-semibold italic mt-0.5">Rettifica pendente...</span>
+                        {(shift.exit?.rectificationStatus === 'in_approvazione' || (!shift.exit?.rectificationStatus && shift.exit?.suggestedTime)) && (
+                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
+                        )}
+                        {shift.exit?.rectificationStatus === 'approvata' && (
+                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta approvata</span>
+                        )}
+                        {shift.exit?.rectificationStatus === 'rifiutata' && (
+                          <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
                         )}
                       </div>
                     </div>

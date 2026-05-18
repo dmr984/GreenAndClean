@@ -86,6 +86,7 @@ type Timbratura = {
     viewedByOperator: boolean;
     suggestedTime?: string;
     originalTime?: string | null;
+    rectificationStatus?: 'in_approvazione' | 'approvata' | 'rifiutata' | null;
 };
 
 type Shift = {
@@ -378,7 +379,7 @@ export default function ShiftApprovalPage() {
             });
             
             const allClockings: Timbratura[] = allClockingsFromDb.filter(event => 
-                event.timestamp && typeof event.timestamp.toDate === 'function'
+                event.timestamp && typeof event.timestamp.toDate === 'function' && event.status !== 'rifiutata'
             );
             
             allClockings.sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
@@ -738,8 +739,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             await updateDoc(docRef, {
                 timestamp: Timestamp.fromDate(newDate),
                 status: 'confermata',
-                suggestedTime: null,
-                originalTime: null,
+                rectificationStatus: 'approvata',
                 viewedByOperator: false
             });
 
@@ -748,7 +748,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             if (detailShift) {
                 const updatedEvents = detailShift.events.map(e => 
                     e.id === event.id 
-                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: 'confermata' as const, suggestedTime: undefined, originalTime: undefined } as Timbratura
+                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: 'confermata' as const, rectificationStatus: 'approvata' } as Timbratura
                         : e
                 );
                 const processed = processShift(updatedEvents, new Set());
@@ -771,8 +771,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             if (event.originalTime) {
                 await updateDoc(docRef, {
                     status: 'confermata',
-                    suggestedTime: null,
-                    originalTime: null,
+                    rectificationStatus: 'rifiutata',
                     viewedByOperator: false
                 });
                 
@@ -781,7 +780,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 if (detailShift) {
                     const updatedEvents = detailShift.events.map(e => 
                         e.id === event.id 
-                            ? { ...e, status: 'confermata' as const, suggestedTime: undefined, originalTime: undefined } as Timbratura
+                            ? { ...e, status: 'confermata' as const, rectificationStatus: 'rifiutata' } as Timbratura
                             : e
                     );
                     const processed = processShift(updatedEvents, new Set());
@@ -790,12 +789,20 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     }
                 }
             } else {
-                await deleteDoc(docRef);
+                await updateDoc(docRef, {
+                    status: 'rifiutata',
+                    rectificationStatus: 'rifiutata',
+                    viewedByOperator: false
+                });
                 
-                toast({ title: 'Successo', description: 'Richiesta di rettifica rifiutata e rimossa.' });
+                toast({ title: 'Successo', description: 'Richiesta di rettifica rifiutata.' });
                 
                 if (detailShift) {
-                    const updatedEvents = detailShift.events.filter(e => e.id !== event.id);
+                    const updatedEvents = detailShift.events.map(e => 
+                        e.id === event.id 
+                            ? { ...e, status: 'rifiutata' as const, rectificationStatus: 'rifiutata' } as Timbratura
+                            : e
+                    );
                     const processed = processShift(updatedEvents, new Set());
                     if (processed) {
                         setDetailShift({ ...detailShift, ...processed, events: updatedEvents });
@@ -1905,7 +1912,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">
                                                             {entryEvent?.status === 'sospesa' && entryEvent.suggestedTime && !entryEvent.originalTime ? '--:--' : (startTime ? format(startTime.toDate(), 'HH:mm') : '--:--')}
-                                                            {entrySuggested && (
+                                                            {(entrySuggested && entryEvent?.status === 'sospesa') && (
                                                                 entryEvent?.originalTime ? (
                                                                     <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {entrySuggested}</span>
                                                                 ) : (
@@ -1915,7 +1922,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">
                                                             {exitEvent?.status === 'sospesa' && exitEvent.suggestedTime && !exitEvent.originalTime ? '--:--' : (endTime ? format(endTime.toDate(), 'HH:mm') : '--:--')}
-                                                            {suggestedTime && (
+                                                            {(suggestedTime && exitEvent?.status === 'sospesa') && (
                                                                 exitEvent?.originalTime ? (
                                                                     <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {suggestedTime}</span>
                                                                 ) : (
@@ -2569,7 +2576,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                   <span className="flex items-center gap-1 font-mono">
                                                      {t.status === 'sospesa' && t.suggestedTime && !t.originalTime ? '--:--:--' : originalTime} {referenceTime}
                                                   </span>
-                                                  {t.suggestedTime && (
+                                                  {(t.status === 'sospesa' && t.suggestedTime) && (
                                                       t.originalTime ? (
                                                           <Badge variant="outline" className="text-[10px] h-auto px-1.5 py-0.5 border-orange-400 text-orange-600 bg-orange-50 dark:bg-orange-950/20 font-semibold block mt-1 w-fit">
                                                               Rettifica richiesta da {t.originalTime} a {t.suggestedTime}
@@ -2598,7 +2605,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right whitespace-nowrap flex items-center justify-end gap-1.5 h-full">
-                                                {t.suggestedTime && (
+                                                {(t.status === 'sospesa' && t.suggestedTime) && (
                                                     <>
                                                         <Button 
                                                             variant="outline" 
