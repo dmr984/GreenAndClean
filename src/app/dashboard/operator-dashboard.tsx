@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle, Coffee } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit } from 'firebase/firestore';
@@ -381,7 +381,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const groupedShifts = useMemo(() => {
     if (!clockings || clockings.length === 0) return [];
 
-    const groups: Record<string, { date: Date; entry?: ClockingEvent; exit?: ClockingEvent; status: string }> = {};
+    const groups: Record<string, {
+      date: Date;
+      entry?: ClockingEvent;
+      exit?: ClockingEvent;
+      status: string;
+      pauses: { start: ClockingEvent; end?: ClockingEvent }[];
+    }> = {};
 
     clockings.forEach(event => {
       if (!event.shiftId) return;
@@ -390,11 +396,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       if (!groups[event.shiftId]) {
         groups[event.shiftId] = {
           date: event.timestamp?.toDate() || new Date(),
-          status: event.status
+          status: event.status,
+          pauses: []
         };
       }
       if (event.type === 'entrata') groups[event.shiftId].entry = event;
       if (event.type === 'uscita') groups[event.shiftId].exit = event;
+      if (event.type === 'pausa') {
+        groups[event.shiftId].pauses.push({ start: event });
+      }
+      if (event.type === 'fine_pausa') {
+        // Attach to the last open pause
+        const pauses = groups[event.shiftId].pauses;
+        const last = pauses[pauses.length - 1];
+        if (last && !last.end) last.end = event;
+      }
 
       // If any part is 'sospesa', the whole group shows as 'sospesa'
       if (event.status === 'sospesa') groups[event.shiftId].status = 'sospesa';
@@ -1334,6 +1350,36 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       </Button>
                     )}
                   </div>
+
+                  {/* Pauses row — shown only when at least one pause exists */}
+                  {shift.pauses.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/40">
+                      <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight block mb-1.5">Pause</span>
+                      <div className="flex flex-wrap gap-2">
+                        {shift.pauses.map((p, pi) => {
+                          const startTs = p.start.timestamp?.toDate();
+                          const endTs = p.end?.timestamp?.toDate();
+                          const durationMin = startTs && endTs
+                            ? Math.round((endTs.getTime() - startTs.getTime()) / 60000)
+                            : null;
+                          return (
+                            <span
+                              key={pi}
+                              className="inline-flex items-center gap-1 text-[10px] font-mono bg-muted/60 rounded px-2 py-0.5 text-muted-foreground"
+                            >
+                              <Coffee className="h-3 w-3 shrink-0" />
+                              {startTs ? format(startTs, 'HH:mm') : '--:--'}
+                              {' → '}
+                              {endTs ? format(endTs, 'HH:mm') : '--:--'}
+                              {durationMin !== null && (
+                                <span className="text-[9px] opacity-70 ml-0.5">({durationMin} min)</span>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Card>
             ))
