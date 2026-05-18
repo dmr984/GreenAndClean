@@ -423,6 +423,34 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     return Object.values(groups)
       // Remove groups where the only entry was a rejected insertion (no real clocking at all)
       .filter(g => g.entry || g.exit)
+      .map(g => {
+        // Keep only pauses that fall strictly within the shift's entry-exit window.
+        // A pause is valid when:
+        //   - its start  >= shift entry
+        //   - its end    <= shift exit  (if both entry AND exit are known)
+        const entryMs = g.entry?.timestamp?.toDate()?.getTime() ?? null;
+        const exitMs  = g.exit?.timestamp?.toDate()?.getTime()  ?? null;
+
+        g.pauses = g.pauses.filter(p => {
+          const pStartMs = p.start.timestamp?.toDate()?.getTime() ?? null;
+          const pEndMs   = p.end?.timestamp?.toDate()?.getTime()  ?? null;
+
+          // Must start after (or at) entry
+          if (entryMs !== null && pStartMs !== null && pStartMs < entryMs) return false;
+
+          // If the shift already has an exit, the pause must end before (or at) exit
+          if (exitMs !== null) {
+            // If the pause end is known, it must be <= exit
+            if (pEndMs !== null && pEndMs > exitMs) return false;
+            // If the pause end is unknown (open pause) but exit is known, exclude the dangling pause
+            if (pEndMs === null) return false;
+          }
+
+          return true;
+        });
+
+        return g;
+      })
       .sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [clockings]);
 
