@@ -322,6 +322,26 @@ export default function ShiftApprovalPage() {
         return { date: startTime.toDate(), events, status, workDuration, breakDuration, isOnLeaveDay, isOvertime, ignoreContractualStart, makeupOfDay };
     };
 
+    const splitEventsIntoShifts = (events: Timbratura[]): Timbratura[][] => {
+        const sorted = [...events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+        const shiftsList: Timbratura[][] = [];
+        let currentShiftEvents: Timbratura[] = [];
+        
+        for (const event of sorted) {
+            if (event.type === 'entrata') {
+                if (currentShiftEvents.length > 0) {
+                    shiftsList.push(currentShiftEvents);
+                    currentShiftEvents = [];
+                }
+            }
+            currentShiftEvents.push(event);
+        }
+        if (currentShiftEvents.length > 0) {
+            shiftsList.push(currentShiftEvents);
+        }
+        return shiftsList;
+    };
+
      useEffect(() => {
         if (!firestore || !operatorId) {
              router.push('/dashboard');
@@ -394,10 +414,14 @@ export default function ShiftApprovalPage() {
             const modernShifts: Shift[] = [];
             for (const shiftId in shiftsById) {
                 const dayEvents = shiftsById[shiftId];
-                const processed = processShift(dayEvents, leaveDays);
-                if (processed) {
-                    modernShifts.push({ id: shiftId, ...processed });
-                }
+                const splitShifts = splitEventsIntoShifts(dayEvents);
+                splitShifts.forEach((subEvents, idx) => {
+                    const processed = processShift(subEvents, leaveDays);
+                    if (processed) {
+                        const subShiftId = splitShifts.length > 1 ? `${shiftId}-${idx}` : shiftId;
+                        modernShifts.push({ id: subShiftId, ...processed });
+                    }
+                });
             }
 
             // 3. Process legacy events
@@ -412,11 +436,14 @@ export default function ShiftApprovalPage() {
             const legacyShifts: Shift[] = [];
             for (const dayString in legacyShiftsByDay) {
                 const dayEvents = legacyShiftsByDay[dayString];
-                const processed = processShift(dayEvents, leaveDays);
-                if (processed) {
-                    const syntheticId = `legacy-${dayString}`;
-                    legacyShifts.push({ id: syntheticId, ...processed });
-                }
+                const splitShifts = splitEventsIntoShifts(dayEvents);
+                splitShifts.forEach((subEvents, idx) => {
+                    const processed = processShift(subEvents, leaveDays);
+                    if (processed) {
+                        const syntheticId = `legacy-${dayString}-${idx}`;
+                        legacyShifts.push({ id: syntheticId, ...processed });
+                    }
+                });
             }
 
             // 4. Combine and sort
@@ -979,10 +1006,17 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                  setIsDetailOpen(true);
                  return;
             }
+
+            if (shiftId.startsWith('legacy-')) {
+                 setDetailShift(shift);
+                 setIsDetailOpen(true);
+                 return;
+            }
     
+            const baseShiftId = shiftId.replace(/-\d+$/, '');
             const timbratureQuery = query(
                 collection(firestore, `app-users/${operatorId}/timbrature`),
-                where('shiftId', '==', shiftId)
+                where('shiftId', '==', baseShiftId)
             );
     
             try {
@@ -990,9 +1024,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 const shiftEvents = dayEventsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
                
                 if(shiftEvents.length > 0) {
-                    const processedShift = processShift(shiftEvents, new Set());
+                    const splitShifts = splitEventsIntoShifts(shiftEvents);
+                    const clickedStartTime = shift.events[0]?.timestamp.toMillis();
+                    const matchedShift = splitShifts.find(s => s[0]?.timestamp.toMillis() === clickedStartTime) || splitShifts[0];
+                    const processedShift = processShift(matchedShift, new Set());
                     if (processedShift) {
-                        setDetailShift({ ...shift, ...processedShift, events: shiftEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()) });
+                        setDetailShift({ ...shift, ...processedShift, events: matchedShift });
                     } else {
                         setDetailShift(shift);
                     }
