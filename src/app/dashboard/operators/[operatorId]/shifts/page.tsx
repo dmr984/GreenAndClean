@@ -1867,7 +1867,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                           {(isAutoVoided || isAutoEntry) && <Badge variant="destructive" className="ml-2 bg-red-600 animate-pulse">Dimenticata!</Badge>}
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">
-                                                            {entryEvent?.status === 'sospesa' && !entryEvent.originalTime ? '--:--' : (startTime ? format(startTime.toDate(), 'HH:mm') : '--:--')}
+                                                            {entryEvent?.status === 'sospesa' && entryEvent.suggestedTime && !entryEvent.originalTime ? '--:--' : (startTime ? format(startTime.toDate(), 'HH:mm') : '--:--')}
                                                             {entrySuggested && (
                                                                 entryEvent?.originalTime ? (
                                                                     <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {entrySuggested}</span>
@@ -1877,7 +1877,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="whitespace-nowrap">
-                                                            {exitEvent?.status === 'sospesa' && !exitEvent.originalTime ? '--:--' : (endTime ? format(endTime.toDate(), 'HH:mm') : '--:--')}
+                                                            {exitEvent?.status === 'sospesa' && exitEvent.suggestedTime && !exitEvent.originalTime ? '--:--' : (endTime ? format(endTime.toDate(), 'HH:mm') : '--:--')}
                                                             {suggestedTime && (
                                                                 exitEvent?.originalTime ? (
                                                                     <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {suggestedTime}</span>
@@ -2530,7 +2530,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <TableCell className={cn("whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>
                                                <div className='flex flex-col'>
                                                   <span className="flex items-center gap-1 font-mono">
-                                                     {t.status === 'sospesa' && !t.originalTime ? '--:--:--' : originalTime} {referenceTime}
+                                                     {t.status === 'sospesa' && t.suggestedTime && !t.originalTime ? '--:--:--' : originalTime} {referenceTime}
                                                   </span>
                                                   {t.suggestedTime && (
                                                       t.originalTime ? (
