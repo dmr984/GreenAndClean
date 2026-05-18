@@ -1260,7 +1260,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Fine</span>
                         <span className="text-base font-mono font-bold">
                           {shift.exit
-                            ? (shift.exit.status === 'sospesa' && !shift.exit.originalTime
+                            ? (shift.exit.status === 'sospesa' && shift.exit.suggestedTime && !shift.exit.originalTime
                               ? '--:--'
                               : (shift.exit.status === 'sospesa' && shift.exit.originalTime
                                 ? shift.exit.originalTime
@@ -1269,7 +1269,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             )
                             : '--:--'}
                         </span>
-                        {isShiftRectifiable(shift.date) && !shift.exit?.suggestedTime && (
+                        {isShiftRectifiable(shift.date) && shift.exit && !shift.exit.suggestedTime && (
                           <button
                             type="button"
                             onClick={() => handleHistoryCorrection(shift.date, 'uscita', shift.entry?.shiftId || shift.exit?.shiftId)}
