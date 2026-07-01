@@ -301,12 +301,12 @@ export default function ShiftApprovalPage() {
         const allConfirmed = events.every(e => e.status === 'confermata');
     
         let status: Shift['status'];
-        if (allConfirmed) {
+        if (!isComplete) {
+            status = 'in_corso';
+        } else if (allConfirmed) {
             status = 'confermato';
         } else if (hasPending && isComplete) {
             status = 'in_sospeso';
-        } else if (!isComplete) {
-            status = 'in_corso';
         } else {
             status = 'in_sospeso'; 
         }
@@ -736,9 +736,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             const newDate = set(eventDate, { hours, minutes, seconds: 0, milliseconds: 0 });
             
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            const isShiftInProgress = currentShift.status === 'in_corso';
+            const targetStatus = isShiftInProgress ? 'sospesa' : 'confermata';
+
             await updateDoc(docRef, {
                 timestamp: Timestamp.fromDate(newDate),
-                status: 'confermata',
+                status: targetStatus,
                 rectificationStatus: 'approvata',
                 viewedByOperator: false
             });
@@ -748,7 +751,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             if (detailShift) {
                 const updatedEvents = detailShift.events.map(e => 
                     e.id === event.id 
-                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: 'confermata' as const, rectificationStatus: 'approvata' } as Timbratura
+                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: targetStatus as any, rectificationStatus: 'approvata' } as Timbratura
                         : e
                 );
                 const processed = processShift(updatedEvents, new Set());
@@ -767,10 +770,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
 
         try {
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
+            const isShiftInProgress = currentShift.status === 'in_corso';
             
             if (event.originalTime) {
+                const targetStatus = isShiftInProgress ? 'sospesa' : 'confermata';
                 await updateDoc(docRef, {
-                    status: 'confermata',
+                    status: targetStatus,
                     rectificationStatus: 'rifiutata',
                     viewedByOperator: false
                 });
@@ -780,7 +785,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 if (detailShift) {
                     const updatedEvents = detailShift.events.map(e => 
                         e.id === event.id 
-                            ? { ...e, status: 'confermata' as const, rectificationStatus: 'rifiutata' } as Timbratura
+                            ? { ...e, status: targetStatus as any, rectificationStatus: 'rifiutata' } as Timbratura
                             : e
                     );
                     const processed = processShift(updatedEvents, new Set());
