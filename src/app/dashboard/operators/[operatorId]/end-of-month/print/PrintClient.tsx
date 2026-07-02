@@ -358,10 +358,15 @@ export default function PrintClient() {
                                     <td className="py-1 font-semibold">ORE ORDINARIE: <span className="font-normal">{finalOrdinaryHours}</span></td>
                                     <td className="py-1 text-right font-semibold">ORE PERMESSI: <span className="font-normal">{finalPermessoHours}</span></td>
                                 </tr>
-                                <tr>
-                                    <td className="py-1 font-semibold">ORE STRAORDINARIE: <span className="font-normal">{finalOvertimeHours}</span></td>
-                                    <td className="py-1 text-right font-semibold">GIORNI MALATTIA: <span className="font-normal">{finalMalattiaDays}</span></td>
-                                </tr>
+                                 <tr>
+                                     <td className="py-1 font-semibold">ORE STRAORDINARIE: <span className="font-normal">{finalOvertimeHours}</span></td>
+                                     <td className="py-1 text-right font-semibold">GIORNI MALATTIA: <span className="font-normal">{finalMalattiaDays}</span></td>
+                                 </tr>
+                                 {monthlySummary.recuperoStraordinariHours !== undefined && monthlySummary.recuperoStraordinariHours > 0 && (
+                                     <tr>
+                                         <td className="py-1 font-semibold" colSpan={2}>RECUPERO STRAORDINARI: <span className="font-normal">{monthlySummary.recuperoStraordinariHours}h</span> (scalate da straordinari)</td>
+                                     </tr>
+                                 )}
                            </tbody>
                         </table>
                          <div className="border-t border-gray-300 mt-2 mb-2"></div>
@@ -433,7 +438,9 @@ export default function PrintClient() {
 
                                                 return null;
                                             })}
-                                            <p className="text-black text-sm pl-1 leading-tight">{`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h`}</p>
+                                            <p className="text-black text-sm pl-1 leading-tight">
+                                                 {`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h` + (detail.shift.recuperoHours ? ` | Recupero: ${detail.shift.recuperoHours}h` : '')}
+                                             </p>
                                         </>
                                     ) : (
                                        !detail.note && (

@@ -580,6 +580,14 @@ export default function EndOfMonthPage() {
                                 />
                             </>
                         )}
+                        {monthlySummary.recuperoStraordinariHours !== undefined && monthlySummary.recuperoStraordinariHours > 0 && (
+                            <SummaryCard 
+                                title="Recupero Straordinari" 
+                                value={`${monthlySummary.recuperoStraordinariHours}h`} 
+                                icon={RefreshCw}
+                                subtext="Scalate da straordinari"
+                            />
+                        )}
                          <SummaryCard 
                             title="Malattia (giorni)" 
                             value={finalMalattiaDays}
@@ -709,6 +717,7 @@ export default function EndOfMonthPage() {
                                                 <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
                                                 <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} /> 
                                                 <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                                {detail.shift.recuperoHours > 0 && <InfoBox label="Recupero Straord." value={`${detail.shift.recuperoHours}h`} />}
                                             </div>
                                         </>
                                     ) : (

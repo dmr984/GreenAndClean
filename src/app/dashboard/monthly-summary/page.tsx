@@ -348,6 +348,7 @@ const MonthlySummaryContent = () => {
                                                 <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
                                                 <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} />
                                                 <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
+                                                {detail.shift.recuperoHours > 0 && <InfoBox label="Recupero Straord." value={`${detail.shift.recuperoHours}h`} />}
                                             </div>
                                         </>
                                     ) : detail.status === 'ferie' ? (

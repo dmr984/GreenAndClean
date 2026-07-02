@@ -21,6 +21,10 @@ type WorkSchedule = {
 };
 
 type Operator = {
+    id: string;
+    username?: string;
+    firstName?: string;
+    lastName?: string;
     workSchedule: WorkSchedule;
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
@@ -53,7 +57,7 @@ type Timbratura = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
@@ -99,6 +103,7 @@ export type DailyDetail = {
         ordinaryHours: number;
         overtimeHours: number;
         permissionHours: number;
+        recuperoHours: number;
         calculationStart?: Date;
         calculationEnd?: Date;
     } | null;
@@ -124,6 +129,8 @@ export type MonthlySummary = {
     festiveHours: number;
     estimatedTotalCost: number;
     expectedMonthlyHours: number;
+    recuperoStraordinariHours?: number;
+    totalDueOverride?: number;
 };
 
 export const roundOrdinaryHours = (minutes: number): number => {
@@ -510,7 +517,7 @@ export const processMonthlyData = (
         if (!detail.shift) {
             detail.shift = {
                 events: [], allShifts: [], contractualHours: 0,
-                ordinaryHours: 0, overtimeHours: 0, permissionHours: 0,
+                ordinaryHours: 0, overtimeHours: 0, permissionHours: 0, recuperoHours: 0,
             };
         }
         
@@ -555,7 +562,7 @@ export const processMonthlyData = (
             const overtimeHours = straordinario.approvedHours ?? calculatePureOvertime(straordinario, operator);
 
             if (!detail.shift) {
-                detail.shift = { events: [], contractualHours: 0, ordinaryHours: 0, overtimeHours: 0, permissionHours: 0 };
+                detail.shift = { events: [], contractualHours: 0, ordinaryHours: 0, overtimeHours: 0, permissionHours: 0, recuperoHours: 0 };
             }
             detail.shift.overtimeHours += overtimeHours;
             detail.shift.events.push(...(straordinario.events as unknown as Timbratura[]));
@@ -573,8 +580,10 @@ export const processMonthlyData = (
         }
 
         const permissionHours = data.requests.filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), detail.date)).reduce((sum, r) => sum + (r.hours || 0), 0);
+        const recuperoHours = data.requests.filter(r => r.type === 'recupero_straordinari' && isSameDay(r.startDate.toDate(), detail.date)).reduce((sum, r) => sum + (r.hours || 0), 0);
         if (detail.shift) {
             detail.shift.permissionHours = permissionHours;
+            detail.shift.recuperoHours = recuperoHours;
         }
 
         const dailyNote = data.dailyNotes?.find(n => n.date === format(detail.date, 'yyyy-MM-dd'));
@@ -696,6 +705,18 @@ export const processMonthlyData = (
         .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
     
+    const totalRecuperoStraordinariHours = data.requests
+        .filter(r => r.type === 'recupero_straordinari' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .reduce((sum, r) => sum + (r.hours || 0), 0);
+
+    // Adjust total ordinary and overtime hours by the recovered hours
+    // Subtract from overtime, add to ordinary
+    totalOrdinaryHours += totalRecuperoStraordinariHours;
+    totalOvertimeHours -= totalRecuperoStraordinariHours;
+    if (totalOvertimeHours < 0) {
+        totalOvertimeHours = 0;
+    }
+    
     if (operator.scheduleType === 'monthly' && operator.monthlyContractualHours) {
         const totalWorked = totalOrdinaryHours + totalOvertimeHours;
         const target = operator.monthlyContractualHours;
@@ -715,7 +736,8 @@ export const processMonthlyData = (
         permessoHours: totalPermessoHours, malattiaDays, malattiaCost: totalMalattiaCost,
         festiveHours,
         estimatedTotalCost: 0, // Will calculate below
-        expectedMonthlyHours
+        expectedMonthlyHours,
+        recuperoStraordinariHours: totalRecuperoStraordinariHours
     };
 
     // Apply summary overrides from Foglio Presenze or Manual Rettifiche (Viceversa Sync)

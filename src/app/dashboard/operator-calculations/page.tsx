@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
-import { Loader2, Printer, Download, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck } from 'lucide-react';
+import { Loader2, Printer, Download, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck, RefreshCw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfMonth, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
@@ -643,6 +643,9 @@ const OperatorCalculationsPage = () => {
                                                     
                                                     <InfoCard opId={op.id} title="Ore Straordinarie" value={summaryData.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                     <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
+                                                    {summaryData.recuperoStraordinariHours !== undefined && summaryData.recuperoStraordinariHours > 0 && (
+                                                         <InfoCard opId={op.id} title="Recupero Straord. (h)" value={summaryData.recuperoStraordinariHours} icon={RefreshCw} visibilityKey="overtimeHours" />
+                                                     )}
                                                     
                                                     <InfoCard opId={op.id} title="Ferie (h)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" subtext={summaryData.ferieHours ? `(${summaryData.ferieHours}h)` : ''} />
                                                     <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />

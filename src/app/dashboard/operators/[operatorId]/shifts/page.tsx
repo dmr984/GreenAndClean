@@ -134,6 +134,7 @@ type ApprovalContext = {
     overtimeHours: string;
     leaveHours?: string;
     createLeaveRequest?: boolean;
+    createOvertimeRecovery?: boolean;
     manualBreak?: ManualBreak;
     isOvertimeShift: boolean;
     ignoreContractualStart: boolean;
@@ -573,7 +574,8 @@ export default function ShiftApprovalPage() {
                     malattiaDays: 0,
                     festiveHours: 0,
                     estimatedTotalCost: 0,
-                    expectedMonthlyHours: 0
+                    expectedMonthlyHours: 0,
+                    recuperoStraordinariHours: 0
                 } as MonthlySummary, 
                 dailyDetails: [] as DailyDetail[] 
             };
@@ -602,14 +604,14 @@ export default function ShiftApprovalPage() {
         if (!context || isProcessingApprove) return;
         setIsProcessingApprove(true);
         try {
-            const { leaveHours, createLeaveRequest, isOvertimeShift } = context;
+            const { leaveHours, createLeaveRequest, createOvertimeRecovery, isOvertimeShift } = context;
         
             if (isOvertimeShift) {
                  await handleOvertimeShiftAction(context.shift as StraordinarioShift, 'approve');
                  return;
             } else {
                 const hasLeaveHours = parseFloat(leaveHours || '0') > 0;
-                if (hasLeaveHours && !createLeaveRequest) {
+                if (hasLeaveHours && !createLeaveRequest && !createOvertimeRecovery) {
                      setApprovalContext(context);
                      setIsConfirmingNoLeave(true); // Ask for confirmation
                      return;
@@ -625,11 +627,12 @@ export default function ShiftApprovalPage() {
 const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     if (!currentContext || currentContext.isOvertimeShift || !firestore || !operator) return;
 
-    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, manualBreak, ignoreContractualStart, makeupOfDay } = currentContext;
+    const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, createOvertimeRecovery, manualBreak, ignoreContractualStart, makeupOfDay } = currentContext;
     const regularShift = shift as Shift;
     const approvedOrdinary = parseFloat(ordinaryHours) || 0;
     const approvedOvertime = parseFloat(overtimeHours) || 0;
     const approvedLeave = (createLeaveRequest && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
+    const approvedRecupero = (createOvertimeRecovery && leaveHours) ? (parseFloat(leaveHours) || 0) : 0;
 
     const stableShiftId = regularShift.id;
     
@@ -712,6 +715,23 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         };
         const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
         batch.set(newRequestRef, leaveRequest);
+    }
+
+    if (approvedRecupero > 0) {
+        const recuperoRequest = {
+            userId: operator.id,
+            type: 'recupero_straordinari' as const,
+            status: 'approvato' as const,
+            startDate: Timestamp.fromDate(regularShift.date),
+            endDate: Timestamp.fromDate(regularShift.date),
+            hours: approvedRecupero,
+            reason: 'Recupero ore da straordinari',
+            createdAt: serverTimestamp(),
+            viewedByOperator: false,
+            associatedShiftId: stableShiftId,
+        };
+        const newRequestRef = doc(collection(firestore, `app-users/${operator.id}/requests`));
+        batch.set(newRequestRef, recuperoRequest);
     }
 
     try {
@@ -1270,6 +1290,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             leaveHours: String(leave),
             manualBreak: manualBreak,
             createLeaveRequest: false, // Default to false
+            createOvertimeRecovery: false, // Default to false
             isOvertimeShift: isOvertimeShift,
             ignoreContractualStart: ignoreContractualStart,
             makeupOfDay: makeupOfDay,
@@ -2160,6 +2181,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                     if (associatedLeaveRequest?.hours) {
                                                          parts.push(`${associatedLeaveRequest.hours}h permesso`);
                                                     }
+
+                                                    const associatedRecuperoRequest = approvedRequests.find(r => r.associatedShiftId === regularShift.id && r.type === 'recupero_straordinari');
+                                                    if (associatedRecuperoRequest?.hours) {
+                                                         parts.push(`${associatedRecuperoRequest.hours}h recupero straordinari`);
+                                                    }
                                                     
                                                     if (overtime > 0) parts.push(`${overtime}h straordinarie`);
 
@@ -2948,20 +2974,48 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </div>
                             {!approvalContext.isOvertimeShift && (
                                 <div>
-                                    <Label htmlFor="leave-hours">Ore di Permesso (Ammanco Ore)</Label>
+                                    <Label htmlFor="leave-hours">Ore di Permesso / Recupero (Ammanco Ore)</Label>
                                     <div className="flex gap-2 items-center">
                                         <Input id="leave-hours" type="number" className="flex-1" value={approvalContext.leaveHours} onChange={(e) => handleApprovalContextChange('leaveHours', e.target.value)} step="0.5" min="0" />
                                         <Button variant="outline" size="sm" type="button" onClick={() => {
                                             handleApprovalContextChange('leaveHours', '0');
                                             handleApprovalContextChange('createLeaveRequest', false);
+                                            handleApprovalContextChange('createOvertimeRecovery', false);
                                         }}>Azzera</Button>
                                     </div>
                                     <p className="text-xs text-muted-foreground mt-1">Le ore mancanti rispetto al monte ore giornaliero.</p>
-                                    <div className="flex items-center space-x-2 mt-2">
-                                        <Checkbox id="include-leave" checked={approvalContext.createLeaveRequest} onCheckedChange={(checked) => handleApprovalContextChange('createLeaveRequest', !!checked)} />
-                                        <Label htmlFor="include-leave" className="text-sm font-normal">
-                                            Crea richiesta di permesso per queste ore
-                                        </Label>
+                                    <div className="flex flex-col space-y-2 mt-3 bg-muted/50 p-3 rounded-lg border border-border">
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id="include-leave" 
+                                                checked={approvalContext.createLeaveRequest} 
+                                                onCheckedChange={(checked) => {
+                                                    handleApprovalContextChange('createLeaveRequest', !!checked);
+                                                    if (checked) handleApprovalContextChange('createOvertimeRecovery', false);
+                                                }} 
+                                            />
+                                            <Label htmlFor="include-leave" className="text-sm font-normal cursor-pointer">
+                                                Crea richiesta di permesso per queste ore
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id="recover-overtime" 
+                                                checked={approvalContext.createOvertimeRecovery} 
+                                                onCheckedChange={(checked) => {
+                                                    handleApprovalContextChange('createOvertimeRecovery', !!checked);
+                                                    if (checked) handleApprovalContextChange('createLeaveRequest', false);
+                                                }} 
+                                            />
+                                            <div className="grid gap-0.5 leading-none">
+                                                <Label htmlFor="recover-overtime" className="text-sm font-normal cursor-pointer">
+                                                    Recupera ore da straordinari
+                                                </Label>
+                                                <p className="text-xs text-muted-foreground">
+                                                    (Disponibili: {monthlySummary.overtimeHours}h di straordinario questo mese)
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
