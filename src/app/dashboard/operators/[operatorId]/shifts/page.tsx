@@ -306,11 +306,8 @@ export default function ShiftApprovalPage() {
             status = 'in_corso';
         } else if (allConfirmed) {
             status = 'confermato';
-<<<<<<< HEAD
         } else if (hasPending && isComplete) {
             status = 'in_sospeso';
-=======
->>>>>>> origin/main
         } else {
             status = 'in_sospeso';
         }
