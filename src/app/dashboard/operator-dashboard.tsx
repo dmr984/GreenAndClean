@@ -1546,14 +1546,14 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>Guida alla Gestione del Turno</ResponsiveDialogTitle>
             <ResponsiveDialogDescription>
-              Come utilizzare il sistema di timbratura in modo corretto.
+              Come utilizzare il sistema di timbratura e come vengono elaborati i turni.
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
           <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
             <div>
               <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
               <p className="text-muted-foreground">
-                Usa il pulsante verde "Inizia Turno" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura.
+                Usa il pulsante verde "Inizia Turno" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura. È possibile effettuare più turni distinti nella stessa giornata (es. mattina e pomeriggio) che verranno calcolati separatamente.
               </p>
             </div>
             <div>
@@ -1563,9 +1563,21 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               </p>
             </div>
             <div>
+              <h4 className="font-semibold mb-1">Rettifiche e Turno in Corso</h4>
+              <p className="text-muted-foreground">
+                Se richiedi una rettifica (correzione d'orario) per un turno ancora in corso (es. correzione dell'orario di entrata prima di aver effettuato l'uscita), l'approvazione della rettifica da parte dell'amministratore aggiornerà l'orario senza confermare prematuramente il turno. Il turno rimarrà attivo ("In Corso") fino a quando non effettuerai l'uscita.
+              </p>
+            </div>
+            <div>
               <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
               <p className="text-muted-foreground">
                 Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Dettaglio delle Timbrature nei Riepiloghi</h4>
+              <p className="text-muted-foreground">
+                Tutti i riepiloghi mensili, le anteprime di stampa e i report PDF scaricabili mostrano ora il dettaglio completo e analitico di ciascuna timbratura (orari precisi di entrata, uscita e pause) con eventuali orari di riferimento calcolati dall'amministrazione.
               </p>
             </div>
             <div>
@@ -1577,7 +1589,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <div>
               <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
               <p className="text-muted-foreground">
-                Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>.
+                Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>. Se ci sono timbrature rifiutate su una giornata, le ore dei turni regolarmente confermati nella stessa giornata verranno comunque conteggiate e pagate correttamente.
               </p>
             </div>
             <div>

@@ -436,7 +436,11 @@ export default function PrintClient() {
                                                     return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                                                 }).join(' | ');
 
-                                                return null;
+                                                return (
+                                                    <p key={idx} className="text-gray-700 text-xs pl-1 leading-tight italic mb-1">
+                                                        {timbratureString}
+                                                    </p>
+                                                );
                                             })}
                                             <p className="text-black text-sm pl-1 leading-tight">
                                                  {`Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${detail.shift.permissionHours}h` + (detail.shift.recuperoHours ? ` | Recupero: ${detail.shift.recuperoHours}h` : '')}
