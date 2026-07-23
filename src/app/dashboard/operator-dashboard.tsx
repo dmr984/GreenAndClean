@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle, Coffee } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle, Coffee, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit } from 'firebase/firestore';
@@ -26,6 +26,7 @@ import { isPublicHoliday } from '@/lib/holidays';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { processMonthlyData } from '@/lib/calculations';
 
 type ClockingEvent = {
   id: string;
@@ -128,6 +129,67 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [correctingShift, setCorrectingShift] = useState<any>(null);
   const [suggestedEntryTime, setSuggestedEntryTime] = useState("");
   const [suggestedExitTime, setSuggestedExitTime] = useState("");
+
+  const [summaryMonth, setSummaryMonth] = useState<Date>(new Date());
+  const [monthlySummaryData, setMonthlySummaryData] = useState<{ timbrature: any[], requests: any[], straordinari: any[], dailyNotes: any[] }>({ timbrature: [], requests: [], straordinari: [], dailyNotes: [] });
+  const [isLoadingMonthlySummary, setIsLoadingMonthlySummary] = useState(false);
+
+  const fetchMonthlySummary = useCallback(async () => {
+    if (!firestore || !authUser?.id || !summaryMonth) return;
+    setIsLoadingMonthlySummary(true);
+
+    const monthStart = startOfMonth(summaryMonth);
+    const monthEnd = endOfMonth(summaryMonth);
+    const queryStart = subMonths(monthStart, 1);
+    const queryEnd = addMonths(monthEnd, 1);
+
+    try {
+      const timbratureQuery = query(
+        collection(firestore, `app-users/${authUser.id}/timbrature`),
+        where('timestamp', '>=', queryStart),
+        where('timestamp', '<=', queryEnd)
+      );
+      const requestsQuery = query(
+        collection(firestore, `app-users/${authUser.id}/requests`),
+        where('status', '==', 'approvato')
+      );
+      const straordinariQuery = query(
+        collection(firestore, `app-users/${authUser.id}/straordinari`),
+        where('date', '>=', queryStart),
+        where('date', '<=', queryEnd)
+      );
+
+      const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
+        getDocs(timbratureQuery),
+        getDocs(requestsQuery),
+        getDocs(straordinariQuery)
+      ]);
+
+      const timbratureData = timbratureSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const requestsData = requestsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const straordinariData = straordinariSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      setMonthlySummaryData({
+        timbrature: timbratureData,
+        requests: requestsData,
+        straordinari: straordinariData,
+        dailyNotes: []
+      });
+    } catch (err) {
+      console.error("Error fetching monthly summary data:", err);
+    } finally {
+      setIsLoadingMonthlySummary(false);
+    }
+  }, [firestore, authUser, summaryMonth]);
+
+  useEffect(() => {
+    fetchMonthlySummary();
+  }, [fetchMonthlySummary]);
+
+  const computedMonthlySummary = useMemo(() => {
+    if (!operator || !summaryMonth) return null;
+    return processMonthlyData(summaryMonth, operator as any, monthlySummaryData).monthlySummary;
+  }, [operator, summaryMonth, monthlySummaryData]);
 
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
 
@@ -1092,10 +1154,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     return false;
   };
 
-  const isShiftRectifiable = (shiftDate: Date) => {
-    const today = new Date();
-    const limitDate = startOfDay(subDays(today, 3));
-    return !isAfter(startOfDay(shiftDate), startOfDay(today)) && !isBefore(startOfDay(shiftDate), limitDate);
+  const isShiftRectifiable = (shiftIndex: number) => {
+    return shiftIndex < 3;
   };
 
 
@@ -1398,10 +1458,68 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
       {renderMainContent()}
 
+      {/* Integrated Monthly Summary Section */}
+      <Card className="border-none shadow-md bg-gradient-to-br from-card to-muted/20 my-6">
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setSummaryMonth(prev => subMonths(prev, 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold capitalize">
+                Riepilogo {format(summaryMonth, 'MMMM yyyy', { locale: it })}
+              </h3>
+              {isLoadingMonthlySummary && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setSummaryMonth(prev => addMonths(prev, 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase block">Giorni Lavorati</span>
+              <span className="text-xl font-bold text-primary">{computedMonthlySummary?.ordinaryWorkedDays || 0} gg</span>
+            </div>
+            <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase block">Ore Ordinarie</span>
+              <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{(computedMonthlySummary?.ordinaryHours || 0).toFixed(1)} h</span>
+            </div>
+            <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase block">Ore Straordinari</span>
+              <span className="text-xl font-bold text-amber-600 dark:text-amber-400">{(computedMonthlySummary?.overtimeHours || 0).toFixed(1)} h</span>
+            </div>
+            <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase block">Ferie</span>
+              <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{computedMonthlySummary?.ferieDays || 0} gg ({(computedMonthlySummary?.ferieHours || 0).toFixed(1)}h)</span>
+            </div>
+            <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase block">Permessi</span>
+              <span className="text-xl font-bold text-purple-600 dark:text-purple-400">{(computedMonthlySummary?.permessoHours || 0).toFixed(1)} h</span>
+            </div>
+            <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase block">Malattia</span>
+              <span className="text-xl font-bold text-rose-600 dark:text-rose-400">{computedMonthlySummary?.malattiaDays || 0} gg</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="mt-8 space-y-4">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5 text-primary" />
-          <h3 className="text-xl font-bold tracking-tight">Le tue timbrature di {format(new Date(), 'MMMM', { locale: it })}</h3>
+          <h3 className="text-xl font-bold tracking-tight">Le tue timbrature di {format(summaryMonth, 'MMMM', { locale: it })}</h3>
         </div>
 
         <div className="space-y-3">
@@ -1415,15 +1533,27 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <p className="text-[10px] text-muted-foreground uppercase font-extrabold tracking-widest">
                       {format(shift.date, 'eeee dd MMMM', { locale: it })}
                     </p>
-                    <Badge variant={
-                      shift.status === 'confermata' ? 'secondary' :
-                        shift.status === 'rifiutata' ? 'destructive' : 'default'
-                    } className={cn(
-                      "text-[9px] px-1.5 py-0",
-                      shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
-                    )}>
-                      {shift.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        shift.status === 'confermata' ? 'secondary' :
+                          shift.status === 'rifiutata' ? 'destructive' : 'default'
+                      } className={cn(
+                        "text-[9px] px-1.5 py-0",
+                        shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
+                      )}>
+                        {shift.status}
+                      </Badge>
+                      {shift.status === 'sospesa' && isShiftRectifiable(idx) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-5 px-2 py-0 text-[10px] border-amber-600 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-500 dark:text-amber-500 dark:hover:bg-amber-950/20 font-bold uppercase"
+                          onClick={() => handleHistoryShiftCorrection(shift)}
+                        >
+                          Rettifica
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -1506,19 +1636,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     )}
                   </div>
 
-                  {shift.status === 'sospesa' && isShiftRectifiable(shift.date) && (
-                    <div className="flex justify-center mt-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-4 text-xs border-amber-600 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-500 dark:text-amber-500 dark:hover:bg-amber-950/20 font-bold uppercase"
-                        onClick={() => handleHistoryShiftCorrection(shift)}
-                      >
-                        Rettifica
-                      </Button>
-                    </div>
-                  )}
-
                   {/* Pauses row — shown only when at least one pause exists */}
                   {shift.pauses.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border/40">
@@ -1548,6 +1665,47 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       </div>
                     </div>
                   )}
+
+                  {/* Daily details section */}
+                  {(() => {
+                    const dayName = dayIndexToName[getDay(shift.date)];
+                    const daySchedule = operator?.workSchedule?.[dayName];
+                    const contractualHours = daySchedule?.totalHours || 0;
+                    
+                    let totalMin = 0;
+                    if (shift.entry?.timestamp && shift.exit?.timestamp) {
+                      const start = shift.entry.timestamp.toDate();
+                      const end = shift.exit.timestamp.toDate();
+                      totalMin = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+                      shift.pauses.forEach(p => {
+                        if (p.start?.timestamp && p.end?.timestamp) {
+                          const pStart = p.start.timestamp.toDate();
+                          const pEnd = p.end.timestamp.toDate();
+                          totalMin = Math.max(0, totalMin - Math.round((pEnd.getTime() - pStart.getTime()) / 60000));
+                        }
+                      });
+                    }
+                    const workedH = totalMin / 60;
+                    const ordinaryH = Math.min(workedH, contractualHours > 0 ? contractualHours : workedH);
+                    const overtimeH = Math.max(0, workedH - ordinaryH);
+
+                    return (
+                      <div className="mt-3 pt-2 border-t border-border/30 grid grid-cols-3 sm:grid-cols-4 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-muted-foreground block font-medium">Previste</span>
+                          <span className="font-bold">{contractualHours > 0 ? `${contractualHours}h` : '0h'}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block font-medium">Ordinarie</span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{ordinaryH > 0 ? `${ordinaryH.toFixed(1)}h` : '0h'}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block font-medium">Straordinari</span>
+                          <span className="font-bold text-amber-600 dark:text-amber-400">{overtimeH > 0 ? `${overtimeH.toFixed(1)}h` : '0h'}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </Card>
             ))

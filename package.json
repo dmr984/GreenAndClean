@@ -6,10 +6,10 @@
     "dev": "next dev --webpack",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
-    "build": "npx next build",
-    "start": "npx next start",
-    "lint": "npx next lint",
-    "typecheck": "npx tsc --noEmit"
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.20.0",
