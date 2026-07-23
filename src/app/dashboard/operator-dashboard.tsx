@@ -97,6 +97,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const { user: hookUser, isLoading: isUserLoading } = useUser();
   const authUser = propUser || hookUser;
 
+  const checkRunRef = React.useRef(false);
+
   const [operator, setOperator] = useState<Operator | null>(null);
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -167,8 +169,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   useEffect(() => {
     if (!firestore || !authUser?.id) return;
+    if (checkRunRef.current) return;
 
     const checkAndVoidOpenShifts = async () => {
+      checkRunRef.current = true;
       const todayStart = startOfDay(new Date());
 
       // Query for all events before today
@@ -978,7 +982,30 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
 
   const renderMainContent = () => {
-    const voidedWarnings = pendingVoidedShifts.map(voidedShift => {
+    const uniqueVoidedShifts: ClockingEvent[] = [];
+    const shiftsSeen = new Set<string>();
+
+    pendingVoidedShifts.forEach(shift => {
+      const isPendingAdmin = shift.viewedByOperator && shift.suggestedTime;
+      if (isPendingAdmin && shift.shiftId) {
+        uniqueVoidedShifts.push(shift);
+        shiftsSeen.add(shift.shiftId);
+      }
+    });
+
+    pendingVoidedShifts.forEach(shift => {
+      const isPendingAdmin = shift.viewedByOperator && shift.suggestedTime;
+      if (!isPendingAdmin) {
+        if (!shift.shiftId || !shiftsSeen.has(shift.shiftId)) {
+          uniqueVoidedShifts.push(shift);
+          if (shift.shiftId) {
+            shiftsSeen.add(shift.shiftId);
+          }
+        }
+      }
+    });
+
+    const voidedWarnings = uniqueVoidedShifts.map(voidedShift => {
       const isPendingAdmin = voidedShift.viewedByOperator && voidedShift.suggestedTime;
       return (
         <Card key={voidedShift.id} className={cn("border-red-500 mb-6 animate-in fade-in slide-in-from-top-4 duration-500", isPendingAdmin ? "bg-orange-50 dark:bg-orange-950/20 border-orange-500" : "bg-red-50 dark:bg-red-950/20")}>
