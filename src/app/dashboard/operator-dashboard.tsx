@@ -1415,27 +1415,15 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <p className="text-[10px] text-muted-foreground uppercase font-extrabold tracking-widest">
                       {format(shift.date, 'eeee dd MMMM', { locale: it })}
                     </p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={
-                        shift.status === 'confermata' ? 'secondary' :
-                          shift.status === 'rifiutata' ? 'destructive' : 'default'
-                      } className={cn(
-                        "text-[9px] px-1.5 py-0",
-                        shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
-                      )}>
-                        {shift.status}
-                      </Badge>
-                      {shift.status === 'sospesa' && isShiftRectifiable(shift.date) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-5 px-2 py-0 text-[10px] border-amber-600 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-500 dark:text-amber-500 dark:hover:bg-amber-950/20 font-bold uppercase"
-                          onClick={() => handleHistoryShiftCorrection(shift)}
-                        >
-                          Rettifica
-                        </Button>
-                      )}
-                    </div>
+                    <Badge variant={
+                      shift.status === 'confermata' ? 'secondary' :
+                        shift.status === 'rifiutata' ? 'destructive' : 'default'
+                    } className={cn(
+                      "text-[9px] px-1.5 py-0",
+                      shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
+                    )}>
+                      {shift.status}
+                    </Badge>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -1517,6 +1505,19 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       </Button>
                     )}
                   </div>
+
+                  {shift.status === 'sospesa' && isShiftRectifiable(shift.date) && (
+                    <div className="flex justify-center mt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-4 text-xs border-amber-600 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-500 dark:text-amber-500 dark:hover:bg-amber-950/20 font-bold uppercase"
+                        onClick={() => handleHistoryShiftCorrection(shift)}
+                      >
+                        Rettifica
+                      </Button>
+                    </div>
+                  )}
 
                   {/* Pauses row — shown only when at least one pause exists */}
                   {shift.pauses.length > 0 && (
