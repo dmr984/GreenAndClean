@@ -124,6 +124,11 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [isHistoryCorrection, setIsHistoryCorrection] = useState(false);
   const [correctingShiftId, setCorrectingShiftId] = useState<string | undefined>(undefined);
 
+  const [isShiftCorrectionOpen, setIsShiftCorrectionOpen] = useState(false);
+  const [correctingShift, setCorrectingShift] = useState<any>(null);
+  const [suggestedEntryTime, setSuggestedEntryTime] = useState("");
+  const [suggestedExitTime, setSuggestedExitTime] = useState("");
+
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
 
 
@@ -807,6 +812,119 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     setIsForgetClockInOpen(true);
   }, []);
 
+  const handleHistoryShiftCorrection = (shift: any) => {
+    setCorrectingShift(shift);
+    
+    // Pre-populate with existing values or empty string
+    const entryTime = shift.entry?.timestamp ? format(shift.entry.timestamp.toDate(), 'HH:mm') : '';
+    const exitTime = shift.exit?.timestamp ? format(shift.exit.timestamp.toDate(), 'HH:mm') : '';
+    
+    setSuggestedEntryTime(shift.entry?.suggestedTime || entryTime);
+    setSuggestedExitTime(shift.exit?.suggestedTime || exitTime);
+    setIsShiftCorrectionOpen(true);
+  };
+
+  const handleSaveShiftCorrection = async () => {
+    const userId = authUser?.id || operator?.id;
+    if (!firestore || !userId || !correctingShift || isProcessing) return;
+
+    setIsProcessing(true);
+    try {
+      const timbraturaRef = collection(firestore, `app-users/${userId}/timbrature`);
+      const shiftId = correctingShift.entry?.shiftId || correctingShift.exit?.shiftId || doc(timbraturaRef).id;
+
+      // 1. Handle entry (entrata) event
+      if (correctingShift.entry) {
+        // Update existing entry
+        const docRef = doc(firestore, `app-users/${userId}/timbrature`, correctingShift.entry.id);
+        const originalTimeStr = correctingShift.entry.timestamp?.toDate()
+          ? format(correctingShift.entry.timestamp.toDate(), 'HH:mm')
+          : '';
+
+        await updateDoc(docRef, {
+          status: 'sospesa' as const,
+          suggestedTime: suggestedEntryTime || null,
+          originalTime: originalTimeStr,
+          viewedByOperator: true,
+          rectificationStatus: 'in_approvazione'
+        });
+      } else if (suggestedEntryTime) {
+        // Create new entry
+        const [hours, minutes] = suggestedEntryTime.split(':').map(Number);
+        const eventTime = set(correctingShift.date, { hours, minutes, seconds: 0, milliseconds: 0 });
+
+        const newEntry: Omit<ClockingEvent, 'id'> = {
+          userId: userId,
+          type: 'entrata',
+          timestamp: Timestamp.fromDate(eventTime),
+          status: 'sospesa' as const,
+          latitude: 0,
+          longitude: 0,
+          viewedByOperator: true,
+          shiftId: shiftId,
+          isAuto: false,
+          suggestedTime: suggestedEntryTime,
+          originalTime: null,
+          rectificationStatus: 'in_approvazione'
+        };
+        await addDoc(timbraturaRef, newEntry);
+      }
+
+      // 2. Handle exit (uscita) event
+      if (correctingShift.exit) {
+        // Update existing exit
+        const docRef = doc(firestore, `app-users/${userId}/timbrature`, correctingShift.exit.id);
+        const originalTimeStr = correctingShift.exit.timestamp?.toDate()
+          ? format(correctingShift.exit.timestamp.toDate(), 'HH:mm')
+          : '';
+
+        await updateDoc(docRef, {
+          status: 'sospesa' as const,
+          suggestedTime: suggestedExitTime || null,
+          originalTime: originalTimeStr,
+          viewedByOperator: true,
+          rectificationStatus: 'in_approvazione'
+        });
+      } else if (suggestedExitTime) {
+        // Create new exit
+        const [hours, minutes] = suggestedExitTime.split(':').map(Number);
+        const eventTime = set(correctingShift.date, { hours, minutes, seconds: 0, milliseconds: 0 });
+
+        const newExit: Omit<ClockingEvent, 'id'> = {
+          userId: userId,
+          type: 'uscita',
+          timestamp: Timestamp.fromDate(eventTime),
+          status: 'sospesa' as const,
+          latitude: 0,
+          longitude: 0,
+          viewedByOperator: true,
+          shiftId: shiftId,
+          isAuto: false,
+          suggestedTime: suggestedExitTime,
+          originalTime: null,
+          rectificationStatus: 'in_approvazione'
+        };
+        await addDoc(timbraturaRef, newExit);
+      }
+
+      toast({
+        title: "Richiesta Inviata",
+        description: "La richiesta di rettifica dell'intero turno è stata inviata all'amministratore.",
+      });
+      setIsShiftCorrectionOpen(false);
+      setCorrectingShift(null);
+    } catch (error) {
+      console.error("Failed to save shift correction:", error);
+      toast({
+        title: "Errore",
+        description: "Impossibile inviare la richiesta di rettifica.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleForgottenClockIn = async () => {
     if (!firestore || !operator || !forgottenStartTime || isProcessing) return;
 
@@ -1297,15 +1415,27 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <p className="text-[10px] text-muted-foreground uppercase font-extrabold tracking-widest">
                       {format(shift.date, 'eeee dd MMMM', { locale: it })}
                     </p>
-                    <Badge variant={
-                      shift.status === 'confermata' ? 'secondary' :
-                        shift.status === 'rifiutata' ? 'destructive' : 'default'
-                    } className={cn(
-                      "text-[9px] px-1.5 py-0",
-                      shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
-                    )}>
-                      {shift.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        shift.status === 'confermata' ? 'secondary' :
+                          shift.status === 'rifiutata' ? 'destructive' : 'default'
+                      } className={cn(
+                        "text-[9px] px-1.5 py-0",
+                        shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
+                      )}>
+                        {shift.status}
+                      </Badge>
+                      {shift.status === 'sospesa' && isShiftRectifiable(shift.date) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-5 px-2 py-0 text-[10px] border-amber-600 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-500 dark:text-amber-500 dark:hover:bg-amber-950/20 font-bold uppercase"
+                          onClick={() => handleHistoryShiftCorrection(shift)}
+                        >
+                          Rettifica
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -1330,15 +1460,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             </span>
                           )}
                         </div>
-                        {isShiftRectifiable(shift.date) && !shift.entry?.suggestedTime && (
-                          <button
-                            type="button"
-                            onClick={() => handleHistoryCorrection(shift.date, 'entrata', shift.entry?.shiftId || shift.exit?.shiftId)}
-                            className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 font-bold uppercase tracking-wider mt-1 hover:underline flex items-center gap-0.5"
-                          >
-                            Rettifica
-                          </button>
-                        )}
                         {(shift.entry?.rectificationStatus === 'in_approvazione' || (!shift.entry?.rectificationStatus && shift.entry?.suggestedTime)) && (
                           <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
                         )}
@@ -1370,15 +1491,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                             </span>
                           )}
                         </div>
-                        {isShiftRectifiable(shift.date) && shift.exit && !shift.exit.suggestedTime && (
-                          <button
-                            type="button"
-                            onClick={() => handleHistoryCorrection(shift.date, 'uscita', shift.entry?.shiftId || shift.exit?.shiftId)}
-                            className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 font-bold uppercase tracking-wider mt-1 hover:underline flex items-center gap-0.5"
-                          >
-                            Rettifica
-                          </button>
-                        )}
                         {(shift.exit?.rectificationStatus === 'in_approvazione' || (!shift.exit?.rectificationStatus && shift.exit?.suggestedTime)) && (
                           <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
                         )}
@@ -1528,6 +1640,62 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             >
               {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
               Conferma e Invia
+            </Button>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog
+        open={isShiftCorrectionOpen}
+        onOpenChange={(open) => {
+          setIsShiftCorrectionOpen(open);
+          if (!open) {
+            setCorrectingShift(null);
+          }
+        }}
+      >
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Rettifica Turno Completo</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Modifica gli orari di inizio e fine per il turno del{' '}
+              <strong className="text-primary">
+                {correctingShift ? format(correctingShift.date, 'eeee d MMMM', { locale: it }) : ''}
+              </strong>.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="suggested-entry-time">Orario Inizio</Label>
+                <input
+                  id="suggested-entry-time"
+                  type="time"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={suggestedEntryTime}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuggestedEntryTime(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="suggested-exit-time">Orario Fine</Label>
+                <input
+                  id="suggested-exit-time"
+                  type="time"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={suggestedExitTime}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuggestedExitTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <ResponsiveDialogFooter>
+            <Button variant="outline" onClick={() => setIsShiftCorrectionOpen(false)}>Annulla</Button>
+            <Button
+              disabled={(!suggestedEntryTime && !suggestedExitTime) || isProcessing}
+              onClick={handleSaveShiftCorrection}
+            >
+              {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
+              Invia Rettifica
             </Button>
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
