@@ -33,6 +33,7 @@ type Request = {
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    deductFromOvertime?: boolean;
     reason?: string;
     createdAt: Timestamp;
     viewedByOperator?: boolean;
@@ -190,7 +191,14 @@ export default function RequestsPage() {
                                         <TableCell>
                                             {req.viewedByOperator === false && <Circle fill="red" className="h-2 w-2 text-red-500" />}
                                         </TableCell>
-                                        <TableCell className="font-medium capitalize">{req.type.replace('_', ' ')}</TableCell>
+                                        <TableCell className="font-medium capitalize">
+                                            {req.type.replace('_', ' ')}
+                                            {req.type === 'permesso' && req.deductFromOvertime && (
+                                                <Badge variant="outline" className="ml-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
+                                                    Da Straordinari
+                                                </Badge>
+                                            )}
+                                        </TableCell>
                                         <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                                         <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                                         <TableCell>{req.hours ? `${req.hours}` : '-'}</TableCell>

@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { format, eachDayOfInterval, isSameDay, startOfDay, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type ExistingRequest = {
     id: string;
@@ -47,6 +48,7 @@ const requestSchema = z.object({
   requestType: z.enum(['ferie', 'permesso', 'malattia'], { required_error: 'Devi selezionare un tipo.' }),
   selectedDates: z.array(z.date()).nonempty({ message: 'Devi selezionare almeno un giorno.' }),
   hours: z.string().optional(),
+  deductFromOvertime: z.boolean().optional(),
   reason: z.string().optional(),
 });
 
@@ -146,6 +148,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             requestType: undefined,
             selectedDates: [],
             hours: '',
+            deductFromOvertime: false,
             reason: '',
         }
     });
@@ -187,6 +190,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
 
             if (data.requestType === 'permesso') {
                 newRequestData.hours = Number(data.hours);
+                newRequestData.deductFromOvertime = !!data.deductFromOvertime;
             }
             batch.set(newDocRef, newRequestData);
         });
@@ -300,19 +304,47 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             
             {/* Hours */}
             {(selectedType === 'permesso') && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="hours" className={cn("text-right", errors.hours && 'text-destructive')}>Ore (per giorno)</Label>
-                     <Controller
-                        name="hours"
-                        control={control}
-                        render={({ field }) => (
-                            <div className='col-span-3 flex flex-col'>
-                                <Input id="hours" type="number" {...field} value={field.value || ''} placeholder='Es: 2.5' min="0.5" step="0.5" />
-                                {errors.hours && <p className="text-xs text-destructive mt-1">{errors.hours.message}</p>}
+                <>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="hours" className={cn("text-right", errors.hours && 'text-destructive')}>Ore (per giorno)</Label>
+                         <Controller
+                            name="hours"
+                            control={control}
+                            render={({ field }) => (
+                                <div className='col-span-3 flex flex-col'>
+                                    <Input id="hours" type="number" {...field} value={field.value || ''} placeholder='Es: 2.5' min="0.5" step="0.5" />
+                                    {errors.hours && <p className="text-xs text-destructive mt-1">{errors.hours.message}</p>}
+                                </div>
+                            )}
+                        />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <div className="col-start-2 col-span-3 flex items-start space-x-2 pt-1">
+                            <Controller
+                                name="deductFromOvertime"
+                                control={control}
+                                render={({ field }) => (
+                                    <Checkbox
+                                        id="deductFromOvertime"
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                )}
+                            />
+                            <div className="grid gap-1 leading-none">
+                                <label
+                                    htmlFor="deductFromOvertime"
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                >
+                                    Scala ore dai miei straordinari accumulati
+                                </label>
+                                <p className="text-xs text-muted-foreground">
+                                    Detrae le ore di permesso dagli straordinari e completa le ordinarie della giornata.
+                                </p>
                             </div>
-                        )}
-                    />
-                </div>
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* Reason */}

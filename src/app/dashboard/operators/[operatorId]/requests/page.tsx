@@ -59,6 +59,7 @@ type Request = {
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    deductFromOvertime?: boolean;
     reason?: string;
     createdAt: Timestamp;
     dailyCosts?: { [date: string]: number };
@@ -181,9 +182,10 @@ const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onS
     );
 };
 
-const ApprovalDialog = ({ request, operator, onConfirm, onClose }: { request: Request; operator: Operator; onConfirm: (costs: Record<string, number>) => void; onClose: () => void; }) => {
+const ApprovalDialog = ({ request, operator, onConfirm, onClose }: { request: Request; operator: Operator; onConfirm: (costs: Record<string, number>, deductFromOvertime: boolean) => void; onClose: () => void; }) => {
     const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
     const [costs, setCosts] = useState<Record<string, number>>({});
+    const [deductFromOvertime, setDeductFromOvertime] = useState<boolean>(request.deductFromOvertime || false);
 
     const handleApplyContractualRate = (checked: boolean) => {
         if (checked) {
@@ -232,6 +234,23 @@ const ApprovalDialog = ({ request, operator, onConfirm, onClose }: { request: Re
                     </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
                  <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+                    {request.type === 'permesso' && (
+                        <div className="flex items-center space-x-2 bg-amber-500/10 p-3 rounded-md border border-amber-500/20">
+                            <Checkbox
+                                id="approval-deduct-overtime"
+                                checked={deductFromOvertime}
+                                onCheckedChange={(c) => setDeductFromOvertime(!!c)}
+                            />
+                            <div className="grid gap-1">
+                                <Label htmlFor="approval-deduct-overtime" className="font-semibold cursor-pointer">
+                                    Scala ore dai straordinari accumulati
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Sottrae le ore di permesso dagli straordinari ed integra le ordinarie della giornata.
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center space-x-2">
                         <Checkbox id="apply-contractual" onCheckedChange={handleApplyContractualRate} />
                         <Label htmlFor="apply-contractual">Applica tariffa contrattuale</Label>
@@ -260,7 +279,7 @@ const ApprovalDialog = ({ request, operator, onConfirm, onClose }: { request: Re
                 </div>
                 <ResponsiveDialogFooter>
                     <Button variant="outline" onClick={onClose}>Annulla</Button>
-                    <Button onClick={() => onConfirm(costs)}>Conferma Approvazione</Button>
+                    <Button onClick={() => onConfirm(costs, deductFromOvertime)}>Conferma Approvazione</Button>
                 </ResponsiveDialogFooter>
             </ResponsiveDialogContent>
         </ResponsiveDialog>
@@ -317,12 +336,20 @@ export default function LeaveRequestsPage() {
         return unsubscribe;
     }, [firestore, operatorId, toast]);
 
-    const handleConfirmApproval = (costs: Record<string, number>) => {
+    const handleConfirmApproval = (costs: Record<string, number>, deductFromOvertime: boolean) => {
         if (!firestore || !requestToApprove) return;
         const docRef = doc(firestore, `app-users/${operatorId}/requests`, requestToApprove.id);
-        updateDoc(docRef, { status: 'approvato', viewedByOperator: false, dailyCosts: costs })
+        const updatePayload: any = { 
+            status: 'approvato', 
+            viewedByOperator: false, 
+            dailyCosts: costs 
+        };
+        if (requestToApprove.type === 'permesso') {
+            updatePayload.deductFromOvertime = deductFromOvertime;
+        }
+        updateDoc(docRef, updatePayload)
         .then(() => {
-            toast({ title: 'Successo', description: 'Richiesta approvata con costi salvati.' });
+            toast({ title: 'Successo', description: 'Richiesta approvata con successo.' });
         })
         .catch(err => {
             console.error(err);
@@ -511,7 +538,14 @@ export default function LeaveRequestsPage() {
                                     />
                                 </TableCell>
                             )}
-                            <TableCell className="capitalize font-medium">{req.type.replace('_', ' ')}</TableCell>
+                            <TableCell className="capitalize font-medium">
+                                {req.type.replace('_', ' ')}
+                                {req.type === 'permesso' && req.deductFromOvertime && (
+                                    <Badge variant="outline" className="ml-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
+                                        Da Straordinari
+                                    </Badge>
+                                )}
+                            </TableCell>
                             <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                             <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                             <TableCell>{req.hours || '-'}</TableCell>

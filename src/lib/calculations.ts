@@ -62,6 +62,7 @@ type Request = {
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
 };
@@ -529,12 +530,8 @@ export const processMonthlyData = (
             calculationEnd: hoursResult.calculationEnd || undefined
         });
 
-        // Only add to totals if confirmed
-        const isConfirmed = events.every(e => e.status === 'confermata');
-        if (isConfirmed) {
-            detail.shift.ordinaryHours += hoursResult.ordinary;
-            detail.shift.overtimeHours += hoursResult.overtime;
-        }
+        detail.shift.ordinaryHours += hoursResult.ordinary;
+        detail.shift.overtimeHours += hoursResult.overtime;
         
         if (events.find(e => e.type === 'entrata')?.makeupOfDay) {
             detail.makeupPerformedFor = format(physicalDate, 'dd MMM', { locale: it });
@@ -579,16 +576,41 @@ export const processMonthlyData = (
             detail.shift = null;
         }
 
-        const permissionHours = data.requests.filter(r => r.type === 'permesso' && isSameDay(r.startDate.toDate(), detail.date)).reduce((sum, r) => sum + (r.hours || 0), 0);
-        const recuperoHours = data.requests.filter(r => r.type === 'recupero_straordinari' && isSameDay(r.startDate.toDate(), detail.date)).reduce((sum, r) => sum + (r.hours || 0), 0);
+        const permissionHours = data.requests.filter(r => r.status === 'approvato' && r.type === 'permesso' && isSameDay(r.startDate.toDate(), detail.date)).reduce((sum, r) => sum + (r.hours || 0), 0);
+        const recuperoHours = data.requests.filter(r => r.status === 'approvato' && r.type === 'recupero_straordinari' && isSameDay(r.startDate.toDate(), detail.date)).reduce((sum, r) => sum + (r.hours || 0), 0);
+        
+        // Handle permits deducted from overtime ONLY if approved
+        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && r.type === 'permesso' && r.deductFromOvertime === true && isSameDay(r.startDate.toDate(), detail.date));
+        const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
+
         if (detail.shift) {
             detail.shift.permissionHours = permissionHours;
             detail.shift.recuperoHours = recuperoHours;
+            const isShiftConfirmed = detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata');
+            if (deductHours > 0 && isShiftConfirmed) {
+                detail.shift.ordinaryHours += deductHours;
+                detail.shift.overtimeHours = Math.max(0, detail.shift.overtimeHours - deductHours);
+            }
         }
 
         const dailyNote = data.dailyNotes?.find(n => n.date === format(detail.date, 'yyyy-MM-dd'));
         if (dailyNote) {
-            detail.note = dailyNote;
+            detail.note = { ...dailyNote };
+        }
+
+        const isConfirmedShift = detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata');
+        if (deductHours > 0 && isConfirmedShift) {
+            const noteText = `${deductHours} ${deductHours === 1 ? 'ora' : 'ore'} di permesso compensate da straordinari`;
+            if (!detail.note) {
+                detail.note = {
+                    date: format(detail.date, 'yyyy-MM-dd'),
+                    publicNote: noteText,
+                    showOnMonthlyReport: true,
+                    showOnEOMReport: true
+                };
+            } else {
+                detail.note.publicNote = detail.note.publicNote ? `${detail.note.publicNote} (${noteText})` : noteText;
+            }
         }
 
         if (detail.status === 'vuoto') {
@@ -649,23 +671,20 @@ export const processMonthlyData = (
 
     dailyDetails.forEach(detail => {
         if (!isWithinInterval(detail.date, monthInterval)) return;
-        if (detail.status === 'lavorato') {
-            const isConfirmed = detail.shift?.events.every(e => e.status === 'confermata');
-            if (isConfirmed) {
-                const dayName = dayIndexToName[getDay(detail.date)];
-                const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
-                const isHoliday = isPublicHoliday(detail.date);
+        if (detail.status === 'lavorato' || detail.status === 'in_corso') {
+            const dayName = dayIndexToName[getDay(detail.date)];
+            const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
+            const isHoliday = isPublicHoliday(detail.date);
 
-                if (isContractualDay && !isHoliday) {
-                    ordinaryWorkedDays++;
-                }
+            if (isContractualDay && !isHoliday) {
+                ordinaryWorkedDays++;
+            }
 
-                if (detail.shift) {
-                    totalOrdinaryHours += detail.shift.ordinaryHours;
-                    totalOvertimeHours += detail.shift.overtimeHours;
-                    if (isSunday(detail.date) || isHoliday) {
-                        festiveHours += detail.shift.ordinaryHours + detail.shift.overtimeHours;
-                    }
+            if (detail.shift) {
+                totalOrdinaryHours += detail.shift.ordinaryHours;
+                totalOvertimeHours += detail.shift.overtimeHours;
+                if (isSunday(detail.date) || isHoliday) {
+                    festiveHours += detail.shift.ordinaryHours + detail.shift.overtimeHours;
                 }
             }
         }
@@ -702,11 +721,11 @@ export const processMonthlyData = (
     });
 
     const totalPermessoHours = data.requests
-        .filter(r => r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .filter(r => r.status === 'approvato' && r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
     
     const totalRecuperoStraordinariHours = data.requests
-        .filter(r => r.type === 'recupero_straordinari' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .filter(r => r.status === 'approvato' && r.type === 'recupero_straordinari' && isWithinInterval(r.startDate.toDate(), monthInterval))
         .reduce((sum, r) => sum + (r.hours || 0), 0);
 
     // Adjust total ordinary and overtime hours by the recovered hours

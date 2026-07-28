@@ -146,8 +146,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     try {
       const timbratureQuery = query(
         collection(firestore, `app-users/${authUser.id}/timbrature`),
-        where('timestamp', '>=', queryStart),
-        where('timestamp', '<=', queryEnd)
+        where('timestamp', '>=', Timestamp.fromDate(queryStart)),
+        where('timestamp', '<=', Timestamp.fromDate(queryEnd))
       );
       const requestsQuery = query(
         collection(firestore, `app-users/${authUser.id}/requests`),
@@ -155,8 +155,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       );
       const straordinariQuery = query(
         collection(firestore, `app-users/${authUser.id}/straordinari`),
-        where('date', '>=', queryStart),
-        where('date', '<=', queryEnd)
+        where('date', '>=', Timestamp.fromDate(queryStart)),
+        where('date', '<=', Timestamp.fromDate(queryEnd))
       );
 
       const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
@@ -188,7 +188,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   const computedMonthlySummary = useMemo(() => {
     if (!operator || !summaryMonth) return null;
-    return processMonthlyData(summaryMonth, operator as any, monthlySummaryData).monthlySummary;
+    try {
+      return processMonthlyData(summaryMonth, operator as any, monthlySummaryData).monthlySummary;
+    } catch (e) {
+      console.error('processMonthlyData error:', e);
+      return null;
+    }
   }, [operator, summaryMonth, monthlySummaryData]);
 
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
