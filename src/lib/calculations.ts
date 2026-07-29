@@ -171,8 +171,7 @@ export const calculatePureOvertime = (
     
     const clockInTime = clockInEvent.timestamp.toDate();
     const clockOutTime = clockOutEvent.timestamp.toDate();
-    const dayName = dayIndexToName[getDay(clockInTime)];
-    const schedule = operator.workSchedule[dayName];
+    const schedule = getScheduleForDate(operator, clockInTime);
 
     let referenceStartTime = clockInTime;
     
@@ -211,6 +210,35 @@ export const calculatePureOvertime = (
 
 
 
+export const getScheduleForDate = (operator: Operator | undefined | null, date: Date): DailySchedule | undefined => {
+    if (!operator || !operator.workSchedule) return undefined;
+    const dayName = dayIndexToName[getDay(date)];
+    
+    // Check if workScheduleHistory exists
+    const history = (operator as any).workScheduleHistory;
+    if (history && Array.isArray(history) && history.length > 0) {
+        const sortedHistory = [...history].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const activeHistoryItem = sortedHistory.find(h => h.effectiveDate <= dateStr);
+        if (activeHistoryItem && activeHistoryItem.workSchedule && activeHistoryItem.workSchedule[dayName]) {
+            return activeHistoryItem.workSchedule[dayName];
+        }
+    }
+
+    const currentDaySchedule = operator.workSchedule[dayName];
+    const dateStr = format(date, 'yyyy-MM-dd');
+    if (dateStr <= '2026-07-16') {
+        return {
+            totalHours: currentDaySchedule?.totalHours || 4,
+            startTime: '14:30',
+            endTime: '18:30',
+            breakMinutes: currentDaySchedule?.breakMinutes || 0
+        };
+    }
+    
+    return currentDaySchedule;
+};
+
 export const calculateShiftDetails = (
     events: Timbratura[], 
     schedule: DailySchedule | undefined, 
@@ -225,10 +253,14 @@ export const calculateShiftDetails = (
     const clockInTime = clockInEvent.timestamp.toDate();
     let calculationStartTime = clockInTime;
     
+    const effectiveSchedule = (operator && clockInTime) ? getScheduleForDate(operator, clockInTime) : schedule;
+    const customRefStart = (clockInEvent as any).customReferenceStart;
+    const activeStartTime = customRefStart || effectiveSchedule?.startTime;
+
     // 1. Determine Calculation Start Time
-    if (schedule?.startTime && !ignoreContractualStart) {
+    if (activeStartTime && !ignoreContractualStart) {
         // --- Logic for operators WITH a contractual start time ---
-        const [h, m] = schedule.startTime.split(':').map(Number);
+        const [h, m] = activeStartTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
 
         const minutesLate = (clockInTime.getTime() - contractualStartDateTime.getTime()) / (1000 * 60);
@@ -501,8 +533,7 @@ export const processMonthlyData = (
         const detail = detailsMap.get(effectiveDateISO);
         if (!detail) return;
 
-        const dayName = dayIndexToName[getDay(date)];
-        const dailySchedule = operator.workSchedule[dayName];
+        const dailySchedule = getScheduleForDate(operator, date);
         
         const isShiftComplete = events.some(e => e.type === 'uscita');
         const physicalDate = events.find(e => e.type === 'entrata')!.timestamp.toDate();
@@ -579,6 +610,8 @@ export const processMonthlyData = (
 
         const dayReqs = data.requests.filter(r => r.status === 'approvato' && (r.type === 'permesso' || r.type === 'recupero_straordinari') && isSameDay(r.startDate.toDate(), detail.date));
         const effectivePermissionHours = dayReqs.reduce((max, r) => Math.max(max, r.hours || 0), 0);
+        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && r.type === 'permesso' && r.deductFromOvertime === true && isSameDay(r.startDate.toDate(), detail.date));
+        const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
 
         if (detail.shift) {
             detail.shift.permissionHours = effectivePermissionHours;

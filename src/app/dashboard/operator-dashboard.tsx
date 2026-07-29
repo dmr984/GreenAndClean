@@ -26,7 +26,7 @@ import { isPublicHoliday } from '@/lib/holidays';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { processMonthlyData } from '@/lib/calculations';
+import { processMonthlyData, calculateHours, getScheduleForDate } from '@/lib/calculations';
 
 type ClockingEvent = {
   id: string;
@@ -1714,26 +1714,25 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
                   {/* Daily details section */}
                   {(() => {
-                    const dayName = dayIndexToName[getDay(shift.date)];
-                    const daySchedule = operator?.workSchedule?.[dayName];
+                    const daySchedule = getScheduleForDate(operator, shift.date);
                     const contractualHours = daySchedule?.totalHours || 0;
                     
-                    let totalMin = 0;
-                    if (shift.entry?.timestamp && shift.exit?.timestamp) {
-                      const start = shift.entry.timestamp.toDate();
-                      const end = shift.exit.timestamp.toDate();
-                      totalMin = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
-                      shift.pauses.forEach(p => {
-                        if (p.start?.timestamp && p.end?.timestamp) {
-                          const pStart = p.start.timestamp.toDate();
-                          const pEnd = p.end.timestamp.toDate();
-                          totalMin = Math.max(0, totalMin - Math.round((pEnd.getTime() - pStart.getTime()) / 60000));
-                        }
-                      });
-                    }
-                    const workedH = totalMin / 60;
-                    const ordinaryH = Math.min(workedH, contractualHours > 0 ? contractualHours : workedH);
-                    const overtimeH = Math.max(0, workedH - ordinaryH);
+                    const shiftEvents: any[] = [];
+                    if (shift.entry) shiftEvents.push(shift.entry);
+                    shift.pauses.forEach(p => {
+                      if (p.start) shiftEvents.push(p.start);
+                      if (p.end) shiftEvents.push(p.end);
+                    });
+                    if (shift.exit) shiftEvents.push(shift.exit);
+
+                    const shiftRes = calculateHours(
+                      { date: shift.date, events: shiftEvents },
+                      daySchedule,
+                      shift.entry?.ignoreContractualStart,
+                      operator || undefined
+                    );
+                    const ordinaryH = shiftRes.ordinary;
+                    const overtimeH = shiftRes.overtime;
 
                     return (
                       <div className="mt-3 pt-2 border-t border-border/30 grid grid-cols-3 sm:grid-cols-4 gap-2 text-[10px]">
@@ -1743,11 +1742,11 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         </div>
                         <div>
                           <span className="text-muted-foreground block font-medium">Ordinarie</span>
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{ordinaryH > 0 ? `${ordinaryH.toFixed(1)}h` : '0h'}</span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{ordinaryH > 0 ? `${ordinaryH}h` : '0h'}</span>
                         </div>
                         <div>
                           <span className="text-muted-foreground block font-medium">Straordinari</span>
-                          <span className="font-bold text-amber-600 dark:text-amber-400">{overtimeH > 0 ? `${overtimeH.toFixed(1)}h` : '0h'}</span>
+                          <span className="font-bold text-amber-600 dark:text-amber-400">{overtimeH > 0 ? `${overtimeH}h` : '0h'}</span>
                         </div>
                       </div>
                     );

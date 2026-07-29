@@ -27,7 +27,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isPublicHoliday } from '@/lib/holidays';
-import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours, calculatePureOvertime, processMonthlyData, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
+import { roundOrdinaryHours, roundOvertimeHours, calculateShiftDetails, calculateHours, calculatePureOvertime, processMonthlyData, getScheduleForDate, type DailyDetail, type MonthlySummary } from '@/lib/calculations';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
 import { Switch } from '@/components/ui/switch';
@@ -214,6 +214,7 @@ export default function ShiftApprovalPage() {
     const [editShiftTimes, setEditShiftTimes] = useState({ entrata: '', uscita: '', pausa: '', fine_pausa: '' });
     const [editIgnoreContractual, setEditIgnoreContractual] = useState(false);
     const [editMakeupDay, setEditMakeupDay] = useState('');
+    const [editCustomReferenceStart, setEditCustomReferenceStart] = useState('');
     const [deletingTimbratura, setDeletingTimbratura] = useState<Timbratura | null>(null);
     const [isDeleteTimbraturaDialogOpen, setIsDeleteTimbraturaDialogOpen] = useState(false);
     const [shiftForBreak, setShiftForBreak] = useState<Shift | null>(null);
@@ -903,6 +904,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         setEditShiftTimes(times);
         setEditIgnoreContractual(shift.ignoreContractualStart || false);
         setEditMakeupDay(shift.makeupOfDay || '');
+        const clockInEvent = shift.events.find(e => e.type === 'entrata');
+        const defaultRefStart = (clockInEvent as any)?.customReferenceStart || getScheduleForDate(operator, shift.date)?.startTime || '';
+        setEditCustomReferenceStart(defaultRefStart);
         setIsEditShiftOpen(true);
     };
 
@@ -1008,6 +1012,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
+                updatePayload.customReferenceStart = editCustomReferenceStart ? editCustomReferenceStart : null;
             }
 
             if (newEventDetails && existingEvent) { 
@@ -2160,8 +2165,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                     
                                                     const clockInEvent = sortedEvents.find(e => e.type === 'entrata');
                                                     const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
-                                                    const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
-                                                    const schedule = operator.workSchedule[dayToUse];
+                                                    const schedule = getScheduleForDate(operator, dayToUseDate);
                                                     
                                                     const { ordinary, overtime, leave, worked, calculationStart, calculationEnd } = calculateHours(regularShift, schedule, regularShift.ignoreContractualStart, operator);
                                                     
@@ -2687,7 +2691,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     if (!detailShift) return null;
                                     
                                     const displayEvents = [...detailShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, operator.workSchedule[dayIndexToName[getDayFns(detailShift.date)]], detailShift.ignoreContractualStart, operator);
+                                    const { calculationStart, calculationEnd } = calculateHours(detailShift, getScheduleForDate(operator, detailShift.date), detailShift.ignoreContractualStart, operator);
 
                                     return displayEvents.map(t => {
                                         const originalTime = format(t.timestamp.toDate(), 'HH:mm:ss');
@@ -2825,7 +2829,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </TableHeader>
                             <TableBody>
                                 {detailOvertimeShift && operator && (() => {
-                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], operator.workSchedule[dayIndexToName[getDayFns(detailOvertimeShift.date.toDate())]], false, operator);
+                                    const { calculationStart, calculationEnd } = calculateShiftDetails(detailOvertimeShift.events as Timbratura[], getScheduleForDate(operator, detailOvertimeShift.date.toDate()), false, operator);
 
                                     return detailOvertimeShift.events.map((e, i) => {
                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm:ss');
@@ -2941,6 +2945,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <Label htmlFor="edit-makeup-day">Recupero del Giorno (Opzionale)</Label>
                                     <Input id="edit-makeup-day" type="date" value={editMakeupDay} onChange={e => setEditMakeupDay(e.target.value)} />
                                     <p className="text-xs text-muted-foreground">Lascia vuoto se non è un recupero.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-custom-ref-start">Orario di Riferimento Inizio (Opzionale)</Label>
+                                    <Input id="edit-custom-ref-start" type="time" value={editCustomReferenceStart} onChange={e => setEditCustomReferenceStart(e.target.value)} />
+                                    <p className="text-xs text-muted-foreground">Orario contrattuale di riferimento per il calcolo delle ore (es: 14:30 o 15:00).</p>
                                 </div>
                             </>
                         )}
