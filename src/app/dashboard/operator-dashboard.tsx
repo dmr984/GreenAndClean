@@ -97,6 +97,8 @@ type LeaveStatus = {
 export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const { user: hookUser, isLoading: isUserLoading } = useUser();
   const authUser = propUser || hookUser;
+  const { toast } = useToast();
+  const firestore = useFirestore();
 
   const checkRunRef = React.useRef(false);
 
@@ -202,10 +204,6 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [showQuickClockConfirm, setShowQuickClockConfirm] = useState(false);
   const [showDeleteErrorConfirm, setShowDeleteErrorConfirm] = useState(false);
   const [pendingClockType, setPendingClockType] = useState<'entrata' | 'uscita' | null>(null);
-
-  const { toast } = useToast();
-  const firestore = useFirestore();
-
   useEffect(() => {
     // Set date only on the client
     setCurrentDate(new Date());
@@ -247,47 +245,51 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       checkRunRef.current = true;
       const todayStart = startOfDay(new Date());
 
-      // Query for all events before today
-      const q = query(
-        collection(firestore, `app-users/${authUser.id}/timbrature`),
-        where('timestamp', '<', todayStart),
-        orderBy('timestamp', 'desc'),
-        limit(20) // Check the last 20 events to find any missing exits
-      );
+      try {
+        // Query for all events before today
+        const q = query(
+          collection(firestore, `app-users/${authUser.id}/timbrature`),
+          where('timestamp', '<', todayStart),
+          orderBy('timestamp', 'desc'),
+          limit(20) // Check the last 20 events to find any missing exits
+        );
 
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) return;
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) return;
 
-      const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ClockingEvent));
-      const entrateSenzaUscita = events.filter(e => e.type === 'entrata' && !events.some(u => u.type === 'uscita' && u.shiftId === e.shiftId));
+        const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ClockingEvent));
+        const entrateSenzaUscita = events.filter(e => e.type === 'entrata' && !events.some(u => u.type === 'uscita' && u.shiftId === e.shiftId));
 
-      for (const entrata of entrateSenzaUscita) {
-        const eventDate = entrata.timestamp.toDate();
-        const endOfEventDay = endOfDay(eventDate);
+        for (const entrata of entrateSenzaUscita) {
+          const eventDate = entrata.timestamp?.toDate ? entrata.timestamp.toDate() : new Date();
+          const endOfEventDay = endOfDay(eventDate);
 
-        const voidClockOut: Omit<ClockingEvent, 'id'> = {
-          userId: authUser.id,
-          type: 'uscita',
-          timestamp: Timestamp.fromDate(endOfEventDay),
-          latitude: 0,
-          longitude: 0,
-          status: 'sospesa',
-          viewedByOperator: false,
-          shiftId: entrata.shiftId,
-          isAuto: true,
-        };
+          const voidClockOut: Omit<ClockingEvent, 'id'> = {
+            userId: authUser.id,
+            type: 'uscita',
+            timestamp: Timestamp.fromDate(endOfEventDay),
+            latitude: 0,
+            longitude: 0,
+            status: 'sospesa',
+            viewedByOperator: false,
+            shiftId: entrata.shiftId,
+            isAuto: true,
+          };
 
-        try {
-          await addDoc(collection(firestore, `app-users/${authUser.id}/timbrature`), voidClockOut);
-          toast({
-            variant: 'destructive',
-            title: 'Turno Annullato Automaticamente',
-            description: `Non hai timbrato l'uscita il ${format(eventDate, 'dd/MM/yyyy')}. Il turno è stato annullato.`,
-            duration: 10000,
-          });
-        } catch (error) {
-          console.error("Failed to void open shift:", error);
+          try {
+            await addDoc(collection(firestore, `app-users/${authUser.id}/timbrature`), voidClockOut);
+            toast({
+              variant: 'destructive',
+              title: 'Turno Annullato Automaticamente',
+              description: `Non hai timbrato l'uscita il ${format(eventDate, 'dd/MM/yyyy')}. Il turno è stato annullato.`,
+              duration: 10000,
+            });
+          } catch (error) {
+            console.error("Failed to void open shift:", error);
+          }
         }
+      } catch (error) {
+        console.error("Error checking voided open shifts:", error);
       }
     };
 
@@ -306,6 +308,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setPendingVoidedShifts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ClockingEvent)));
+    }, (error) => {
+      console.error("Error fetching pending voided shifts:", error);
     });
     return () => unsubscribe();
   }, [firestore, authUser]);
@@ -325,15 +329,29 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }, []);
 
   const clockingsQuery = useMemoFirebase(() => {
-    if (!firestore || !operator?.id) return null;
+    if (!firestore || !operator?.id || !summaryMonth) return null;
 
-    // Fetch from start of current month
-    const startOfMonthDate = startOfMonth(new Date());
-    const startOfMonthTs = Timestamp.fromDate(startOfMonthDate);
+    const startOfMonthDate = startOfMonth(summaryMonth);
+    const endOfMonthDate = endOfMonth(summaryMonth);
+    const startTs = Timestamp.fromDate(startOfMonthDate);
+    const endTs = Timestamp.fromDate(endOfMonthDate);
 
     return query(
       collection(firestore, `app-users/${operator.id}/timbrature`),
-      where('timestamp', '>=', startOfMonthTs),
+      where('timestamp', '>=', startTs),
+      where('timestamp', '<=', endTs),
+      orderBy('timestamp', 'asc')
+    );
+  }, [firestore, operator, summaryMonth]);
+
+  const todayClockingsQuery = useMemoFirebase(() => {
+    if (!firestore || !operator?.id) return null;
+    const todayStart = startOfDay(new Date());
+    const todayTs = Timestamp.fromDate(todayStart);
+
+    return query(
+      collection(firestore, `app-users/${operator.id}/timbrature`),
+      where('timestamp', '>=', todayTs),
       orderBy('timestamp', 'asc')
     );
   }, [firestore, operator]);
@@ -354,10 +372,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
       snapshot.forEach(doc => {
         const request = doc.data();
-        const startDate = request.startDate.toDate();
-        const endDate = request.endDate.toDate();
+        const startDate = request.startDate?.toDate ? request.startDate.toDate() : null;
+        const endDate = request.endDate?.toDate ? request.endDate.toDate() : null;
 
-        if (isWithinInterval(today, { start: startOfDay(startDate), end: endOfDay(endDate) })) {
+        if (startDate && endDate && isWithinInterval(today, { start: startOfDay(startDate), end: endOfDay(endDate) })) {
           if (request.type === 'ferie' || request.type === 'malattia') {
             onLeaveToday = true;
             leaveType = request.type;
@@ -369,6 +387,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       });
       setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
       setUnlockRequestSent(unlockRequestExists);
+    }, (error) => {
+      console.error("Error fetching requests:", error);
     });
 
     return () => unsubscribe();
@@ -376,11 +396,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
+  const { data: todayClockings } = useCollection<ClockingEvent>(todayClockingsQuery);
 
   const lastEvent = useMemo(() => {
-    if (!clockings || clockings.length === 0) return null;
-    return clockings[clockings.length - 1];
-  }, [clockings]);
+    const activeList = (todayClockings && todayClockings.length > 0) ? todayClockings : clockings;
+    if (!activeList || activeList.length === 0) return null;
+    return activeList[activeList.length - 1];
+  }, [todayClockings, clockings]);
 
   const handleDismissVoidedWarning = async (eventId: string) => {
     if (!firestore || !authUser) return;
@@ -427,7 +449,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
 
   const currentShiftInfo = useMemo(() => {
-    if (!clockings || clockings.length === 0) return null;
+    const activeData = (todayClockings && todayClockings.length > 0) ? todayClockings : clockings;
+    if (!activeData || activeData.length === 0) return null;
 
     const today = startOfDay(new Date());
 
@@ -449,8 +472,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     if (!entry) return null;
 
     return {
-      entry: format(entry.timestamp.toDate(), 'HH:mm'),
-      exit: exit ? format(exit.timestamp.toDate(), 'HH:mm') : null
+      entry: entry.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--',
+      exit: (exit && exit.timestamp?.toDate) ? format(exit.timestamp.toDate(), 'HH:mm') : null
     };
   }, [clockings]);
 
@@ -531,8 +554,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }, [clockings]);
 
   useEffect(() => {
-    if (clockings && clockings.length > 0) {
-      const lastEvent = [...clockings].pop();
+    const activeData = (todayClockings && todayClockings.length > 0) ? todayClockings : clockings;
+    if (activeData && activeData.length > 0) {
+      const lastEvent = [...activeData].pop();
       if (!lastEvent) {
         setIsClockedIn(false);
         return;
@@ -543,7 +567,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       if (lastEvent.type === 'uscita') {
         setIsClockedIn(false);
       } else {
-        const lastValidEvent = [...clockings].filter(e => e.status !== 'rifiutata').pop();
+        const lastValidEvent = [...activeData].filter(e => e.status !== 'rifiutata').pop();
         if (lastValidEvent && (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa')) {
           setIsClockedIn(true);
         } else {
@@ -553,7 +577,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     } else {
       setIsClockedIn(false);
     }
-  }, [clockings]);
+  }, [todayClockings, clockings]);
 
   useEffect(() => {
     if (isClockedIn || !operator || !isWorkDay) {
@@ -631,14 +655,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     // Safety check: if less than 5 minutes since last event, ask for confirmation
     if (!skipCheck && lastEvent && lastEvent.timestamp) {
-      const lastTime = lastEvent.timestamp.toDate();
-      const now = new Date();
-      const diffMinutes = (now.getTime() - lastTime.getTime()) / (1000 * 60);
+      const lastTime = lastEvent.timestamp?.toDate ? lastEvent.timestamp.toDate() : null;
+      if (lastTime) {
+        const now = new Date();
+        const diffMinutes = (now.getTime() - lastTime.getTime()) / (1000 * 60);
 
-      if (diffMinutes < 5) {
-        setPendingClockType(type);
-        setShowQuickClockConfirm(true);
-        return;
+        if (diffMinutes < 5) {
+          setPendingClockType(type);
+          setShowQuickClockConfirm(true);
+          return;
+        }
       }
     }
 
@@ -1285,7 +1311,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <p className="text-xs text-yellow-700 dark:text-yellow-300">
               La tua richiesta di {isManual ? "inserimento manuale" : "correzione orario"} per il giorno <strong>{format(shift.date, 'dd/MM/yyyy')}</strong> è in attesa di verifica.
               <span className="ml-2 opacity-70">
-                ({shift.entry ? (shift.entry.suggestedTime || format(shift.entry.timestamp.toDate(), 'HH:mm')) : '--:--'} - {shift.exit ? (shift.exit.suggestedTime || format(shift.exit.timestamp.toDate(), 'HH:mm')) : '--:--'})
+                ({shift.entry ? (shift.entry.suggestedTime || (shift.entry.timestamp?.toDate ? format(shift.entry.timestamp.toDate(), 'HH:mm') : '--:--')) : '--:--'} - {shift.exit ? (shift.exit.suggestedTime || (shift.exit.timestamp?.toDate ? format(shift.exit.timestamp.toDate(), 'HH:mm') : '--:--')) : '--:--'})
               </span>
             </p>
           </CardContent>
@@ -1512,6 +1538,11 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
               <span className="text-[10px] text-muted-foreground font-bold uppercase block">Permessi</span>
               <span className="text-xl font-bold text-purple-600 dark:text-purple-400">{(computedMonthlySummary?.permessoHours || 0).toFixed(1)} h</span>
+              {((computedMonthlySummary?.recuperoStraordinariHours || 0) > 0 || computedMonthlySummary?.isPermessoDeductedFromOvertime) && (
+                <span className="text-[9px] font-semibold text-purple-700 dark:text-purple-300 block mt-0.5 opacity-90">
+                  (scalato dagli straordinari)
+                </span>
+              )}
             </div>
             <div className="p-3 rounded-xl bg-background/80 border shadow-2xs">
               <span className="text-[10px] text-muted-foreground font-bold uppercase block">Malattia</span>
@@ -1587,7 +1618,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                           <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
                         )}
                         {shift.entry?.rectificationStatus === 'approvata' && (
-                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta approvata</span>
+                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit flex flex-col">
+                            <span>Richiesta approvata</span>
+                            {shift.entry.originalTime && (
+                              <span className="text-[9px] text-muted-foreground font-mono font-medium">Orario timbrato: {shift.entry.originalTime}</span>
+                            )}
+                          </span>
                         )}
                         {shift.entry?.rectificationStatus === 'rifiutata' && (
                           <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
@@ -1618,7 +1654,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                           <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
                         )}
                         {shift.exit?.rectificationStatus === 'approvata' && (
-                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta approvata</span>
+                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit flex flex-col">
+                            <span>Richiesta approvata</span>
+                            {shift.exit.originalTime && (
+                              <span className="text-[9px] text-muted-foreground font-mono font-medium">Orario timbrato: {shift.exit.originalTime}</span>
+                            )}
+                          </span>
                         )}
                         {shift.exit?.rectificationStatus === 'rifiutata' && (
                           <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>

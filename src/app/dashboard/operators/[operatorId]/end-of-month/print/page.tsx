@@ -1,6 +1,8 @@
 'use client';
 
 import React, { Suspense, useEffect, useState } from 'react';
+
+export const dynamic = 'force-dynamic';
 import PrintClient from './PrintClient';
 import { Loader2 } from 'lucide-react';
 import { useParams, useSearchParams } from 'next/navigation';

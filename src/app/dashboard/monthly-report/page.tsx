@@ -766,9 +766,6 @@ const MonthlyReportPage = () => {
                                                     <InfoCard opId={op.id} title={op.salaryType === 'fixed' ? 'Fisso Mensile' : 'Totale Ordinarie'} value={`${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ordinaryCost" editKey="ordinaryCost" currentRawValue={ordinaryCost} />
                                                     <InfoCard opId={op.id} title="Ore Straordinarie" value={finalOvertimeHours} icon={Plus} visibilityKey="overtimeHours" editKey="overtimeHours" currentRawValue={finalOvertimeHours} />
                                                     <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" editKey="overtimeCost" currentRawValue={overtimeCost} />
-                                                    {summary.recuperoStraordinariHours !== undefined && summary.recuperoStraordinariHours > 0 && (
-                                                        <InfoCard opId={op.id} title="Recupero Straord. (h)" value={summary.recuperoStraordinariHours} icon={RefreshCw} visibilityKey="overtimeHours" currentRawValue={summary.recuperoStraordinariHours} />
-                                                    )}
                                                     <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" editKey="malattiaDays" currentRawValue={finalMalattiaDays} />
                                                     <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" editKey="malattiaCost" currentRawValue={malattiaCost} />
                                                     

@@ -1,6 +1,8 @@
 'use client';
 
 import React, { Suspense, useEffect } from 'react';
+
+export const dynamic = 'force-dynamic';
 import WeeklyReportPrintClient from './WeeklyReportPrintClient';
 import { Loader2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';

@@ -1,5 +1,7 @@
 
 'use client';
+
+export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
@@ -643,16 +645,13 @@ const OperatorCalculationsPage = () => {
                                                     
                                                     <InfoCard opId={op.id} title="Ore Straordinarie" value={summaryData.overtimeHours} icon={Plus} visibilityKey="overtimeHours" />
                                                     <InfoCard opId={op.id} title="Totale Straordinari" value={`${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="overtimeCost" />
-                                                    {summaryData.recuperoStraordinariHours !== undefined && summaryData.recuperoStraordinariHours > 0 && (
-                                                         <InfoCard opId={op.id} title="Recupero Straord. (h)" value={summaryData.recuperoStraordinariHours} icon={RefreshCw} visibilityKey="overtimeHours" />
-                                                     )}
                                                     
                                                     <InfoCard opId={op.id} title="Ferie (h)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" subtext={summaryData.ferieHours ? `(${summaryData.ferieHours}h)` : ''} />
                                                     <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
                                                     
                                                     {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
                                                         <>
-                                                            <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" />
+                                                            <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" subtext={(summaryData.recuperoStraordinariHours || 0) > 0 || summaryData.isPermessoDeductedFromOvertime ? "(scalato dagli straordinari)" : undefined} />
                                                             <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
                                                         </>
                                                     )}

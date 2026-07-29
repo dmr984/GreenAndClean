@@ -18,6 +18,8 @@ export function PWAManager() {
       // Registriamo il nostro sw.js specifico
       navigator.serviceWorker.register('/sw.js').then((registration) => {
           console.log('GreenAndClean Service Worker registrato.');
+      }).catch((err) => {
+          console.warn('GreenAndClean Service Worker non registrato:', err);
       });
     }
   }, []);

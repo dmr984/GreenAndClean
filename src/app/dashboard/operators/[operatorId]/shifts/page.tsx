@@ -1,6 +1,9 @@
 
 
 'use client';
+
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -551,7 +554,7 @@ export default function ShiftApprovalPage() {
         // We need to format the data as expected by processMonthlyData
         return {
             timbrature: allShifts.flatMap(s => s.events),
-            requests: approvedRequests as Request[],
+            requests: (approvedRequests || []).filter(r => r.status === 'approvato') as Request[],
             dailyNotes: dailyNotes,
             straordinari: overtimeShifts
         };
@@ -759,10 +762,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             const isShiftInProgress = currentShift.status === 'in_corso';
             const targetStatus = isShiftInProgress ? 'sospesa' : 'confermata';
 
+            const originalTimeStr = event.originalTime || format(eventDate, 'HH:mm');
+
             await updateDoc(docRef, {
                 timestamp: Timestamp.fromDate(newDate),
                 status: targetStatus,
                 rectificationStatus: 'approvata',
+                originalTime: originalTimeStr,
                 viewedByOperator: false
             });
 
@@ -771,7 +777,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             if (detailShift) {
                 const updatedEvents = detailShift.events.map(e => 
                     e.id === event.id 
-                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: targetStatus as any, rectificationStatus: 'approvata' } as Timbratura
+                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: targetStatus as any, rectificationStatus: 'approvata', originalTime: originalTimeStr } as Timbratura
                         : e
                 );
                 const processed = processShift(updatedEvents, new Set());
@@ -2328,7 +2334,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <CardTitle className="text-2xl font-bold">{monthlySummary.ferieHours + monthlySummary.permessoHours}h</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-xs text-muted-foreground">Giustificati</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        Giustificati
+                                        {((monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime) && (
+                                            <span className="text-purple-700 dark:text-purple-300 font-semibold block mt-0.5">
+                                                (scalato dagli straordinari)
+                                            </span>
+                                        )}
+                                    </div>
                                 </CardContent>
                             </Card>
                             <Card className="bg-green-500/5 border-green-500/20">
@@ -2373,7 +2386,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                 const publicNote = detail.note?.publicNote || detail.note?.note || '';
                                                 const ordinaryHours = detail.shift?.ordinaryHours || 0;
                                                 const overtimeHours = detail.shift?.overtimeHours || 0;
-                                                const leaveHours = detail.shift?.permissionHours || 0;
+                                                const requestPermessiOnDay = (approvedRequests || []).filter(r => 
+                                                    r.status === 'approvato' && 
+                                                    (r.type === 'permesso' || r.type === 'recupero_straordinari') && 
+                                                    isSameDay(r.startDate.toDate(), detail.date)
+                                                );
+                                                const dayPermessoHours = requestPermessiOnDay.reduce((max, r) => Math.max(max, r.hours || 0), 0);
+                                                const leaveHours = dayPermessoHours > 0 ? dayPermessoHours : (detail.shift?.permissionHours || 0);
+                                                const isDeductedFromOvertime = requestPermessiOnDay.some(r => r.type === 'recupero_straordinari' || r.deductFromOvertime === true);
 
                                                 return (
                                                     <TableRow key={idx} className={cn(isHoliday && "bg-orange-500/5", isWeekend && !isHoliday && "bg-muted/30")}>
@@ -2410,9 +2430,16 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             {leaveHours > 0 ? (
-                                                                <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-200">
-                                                                    {leaveHours}h
-                                                                </Badge>
+                                                                <div className="flex flex-col items-center">
+                                                                    <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 font-semibold">
+                                                                        {leaveHours}h
+                                                                    </Badge>
+                                                                    {isDeductedFromOvertime && (
+                                                                        <span className="text-[9px] font-semibold text-purple-700 dark:text-purple-300 block mt-0.5 whitespace-nowrap">
+                                                                            (scalato dagli straordinari)
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             ) : (
                                                                 <span className="text-muted-foreground text-xs">-</span>
                                                             )}

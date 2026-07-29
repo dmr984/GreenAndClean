@@ -2,6 +2,8 @@
 // src/app/dashboard/monthly-report/print/page.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';

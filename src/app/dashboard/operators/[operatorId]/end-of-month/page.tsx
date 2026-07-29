@@ -2,6 +2,8 @@
 
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { doc, getDoc, collection, query, where, Timestamp, getDocs, writeBatch, serverTimestamp, setDoc, addDoc, deleteDoc, orderBy, limit } from 'firebase/firestore';
@@ -118,10 +120,11 @@ const SummaryCard = ({ title, value, icon: Icon, subtext, className, actionButto
     </Card>
 );
 
-const InfoBox = ({ label, value }: { label: string, value: string }) => (
+const InfoBox = ({ label, value, subtext }: { label: string, value: string, subtext?: string }) => (
     <div>
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className="font-semibold">{value}</p>
+        {subtext && <p className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold mt-0.5">{subtext}</p>}
     </div>
 );
 
@@ -571,6 +574,7 @@ export default function EndOfMonthPage() {
                                     title="Permessi (ore)" 
                                     value={finalPermessoHours} 
                                     icon={UserCheck}
+                                    subtext={(monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime ? "(scalato dagli straordinari)" : undefined}
                                 />
                                 <SummaryCard 
                                     title="Costo Permessi" 
@@ -579,14 +583,6 @@ export default function EndOfMonthPage() {
                                     subtext="Costo approvato manually"
                                 />
                             </>
-                        )}
-                        {monthlySummary.recuperoStraordinariHours !== undefined && monthlySummary.recuperoStraordinariHours > 0 && (
-                            <SummaryCard 
-                                title="Recupero Straordinari" 
-                                value={`${monthlySummary.recuperoStraordinariHours}h`} 
-                                icon={RefreshCw}
-                                subtext="Scalate da straordinari"
-                            />
                         )}
                          <SummaryCard 
                             title="Malattia (giorni)" 
@@ -716,8 +712,25 @@ export default function EndOfMonthPage() {
                                                 <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
                                                 <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
                                                 <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} /> 
-                                                <InfoBox label="Permesso" value={`${detail.shift.permissionHours}h`} />
-                                                {detail.shift.recuperoHours > 0 && <InfoBox label="Recupero Straord." value={`${detail.shift.recuperoHours}h`} />}
+                                                {(() => {
+                                                    const dayReqs = (monthlyData.requests || []).filter(r => 
+                                                        r.status === 'approvato' && 
+                                                        (r.type === 'permesso' || r.type === 'recupero_straordinari') && 
+                                                        isSameDay(r.startDate.toDate(), detail.date)
+                                                    );
+                                                    const dayPermessoHours = dayReqs.reduce((max, r) => Math.max(max, r.hours || 0), 0);
+                                                    const shiftPerm = detail.shift?.permissionHours || 0;
+                                                    const finalPermesso = dayPermessoHours > 0 ? dayPermessoHours : shiftPerm;
+                                                    const isDeducted = dayReqs.some(r => r.type === 'recupero_straordinari' || r.deductFromOvertime === true);
+
+                                                    return (
+                                                        <InfoBox 
+                                                            label="Permesso" 
+                                                            value={`${finalPermesso}h`} 
+                                                            subtext={isDeducted && finalPermesso > 0 ? "(scalato dagli straordinari)" : undefined} 
+                                                        />
+                                                    );
+                                                })()}
                                             </div>
                                         </>
                                     ) : (

@@ -45,7 +45,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         if (storedUser) {
           userFound = JSON.parse(storedUser);
           setUser(userFound);
-          if (navigator.serviceWorker.ready) {
+          if ('serviceWorker' in navigator && navigator.serviceWorker?.ready) {
             navigator.serviceWorker.ready.then(() => {
               sendUserToServiceWorker(userFound);
             });
