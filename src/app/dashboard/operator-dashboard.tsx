@@ -1358,19 +1358,25 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-1">
                 <Button
-                  className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center"
+                  className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center p-2"
                   onClick={() => openForgottenDialog('entrata')}
                 >
-                  <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
-                  Timbratura Mancata
+                  <AlertCircle className="mr-2 h-6 w-6 shrink-0" />
+                  <div className="flex flex-col items-start leading-tight text-left">
+                    <span className="font-bold">Timbratura Mancata</span>
+                    <span className="text-[10px] font-normal opacity-90">Hai dimenticato di timbrare?</span>
+                  </div>
                 </Button>
 
                 <Button
-                  className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center"
+                  className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center p-2"
                   onClick={() => setIsMakeupDialogOpen(true)}
                 >
-                  <PlusCircle className="mr-2 h-5 w-5 shrink-0" />
-                  Inizio Recupero Anticipo
+                  <PlusCircle className="mr-2 h-6 w-6 shrink-0" />
+                  <div className="flex flex-col items-start leading-tight text-left">
+                    <span className="font-bold">Inizio Recupero/Anticipo</span>
+                    <span className="text-[10px] font-normal opacity-90">Recupera o anticipa ore</span>
+                  </div>
                 </Button>
               </div>
             </CardFooter>
@@ -1458,19 +1464,25 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-1">
               <Button
-                className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center"
+                className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center p-2"
                 onClick={() => openForgottenDialog('entrata')}
               >
-                <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
-                Timbratura Mancata
+                <AlertCircle className="mr-2 h-6 w-6 shrink-0" />
+                <div className="flex flex-col items-start leading-tight text-left">
+                  <span className="font-bold">Timbratura Mancata</span>
+                  <span className="text-[10px] font-normal opacity-90">Hai dimenticato di timbrare?</span>
+                </div>
               </Button>
 
               <Button
-                className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center"
+                className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center p-2"
                 onClick={() => setIsMakeupDialogOpen(true)}
               >
-                <PlusCircle className="mr-2 h-5 w-5 shrink-0" />
-                Inizio Recupero Anticipo
+                <PlusCircle className="mr-2 h-6 w-6 shrink-0" />
+                <div className="flex flex-col items-start leading-tight text-left">
+                  <span className="font-bold">Inizio Recupero/Anticipo</span>
+                  <span className="text-[10px] font-normal opacity-90">Recupera o anticipa ore</span>
+                </div>
               </Button>
             </div>
           </CardFooter>
