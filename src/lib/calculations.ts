@@ -227,7 +227,14 @@ export const getScheduleForDate = (operator: Operator | undefined | null, date: 
 
     const currentDaySchedule = operator.workSchedule[dayName];
     const dateStr = format(date, 'yyyy-MM-dd');
-    if (dateStr <= '2026-07-16') {
+    
+    // The 14:30 reference start time prior to July 17 applies ONLY to Francesco Marino
+    const isFrancescoMarino = 
+        (operator.firstName?.trim().toLowerCase() === 'francesco' && operator.lastName?.trim().toLowerCase() === 'marino') ||
+        operator.username?.trim().toLowerCase().includes('francesco') ||
+        (operator as any).name?.trim().toLowerCase().includes('francesco marino');
+
+    if (isFrancescoMarino && dateStr <= '2026-07-16') {
         return {
             totalHours: currentDaySchedule?.totalHours || 4,
             startTime: '14:30',
@@ -244,21 +251,39 @@ export const calculateShiftDetails = (
     schedule: DailySchedule | undefined, 
     ignoreContractualStart: boolean = false, 
     operator?: Operator
-): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null } => {
+): { workedMinutes: number, calculationStart: Date | null, calculationEnd: Date | null, breakMinutes: number, contractualEndTime: Date | null, earlyOvertimeHours: number } => {
     const clockInEvent = events.find(e => e.type === 'entrata');
     const clockOutEvent = events.find(e => e.type === 'uscita');
 
-    if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null, breakMinutes: 0, contractualEndTime: null };
+    if (!clockInEvent || !clockOutEvent) return { workedMinutes: 0, calculationStart: null, calculationEnd: null, breakMinutes: 0, contractualEndTime: null, earlyOvertimeHours: 0 };
 
     const clockInTime = clockInEvent.timestamp.toDate();
     let calculationStartTime = clockInTime;
     
+    // Check early morning entrance rules:
+    // Before 05:30 -> 2 hours overtime
+    // Before 06:30 (between 05:30 and 06:29) -> 1 hour overtime
+    const clockInMinutesOfDay = clockInTime.getHours() * 60 + clockInTime.getMinutes();
+    let earlyOvertimeHours = 0;
+    if (clockInMinutesOfDay < 5 * 60 + 30) { // before 05:30
+        earlyOvertimeHours = 2;
+    } else if (clockInMinutesOfDay < 6 * 60 + 30) { // before 06:30
+        earlyOvertimeHours = 1;
+    }
+
     const effectiveSchedule = (operator && clockInTime) ? getScheduleForDate(operator, clockInTime) : schedule;
     const customRefStart = (clockInEvent as any).customReferenceStart;
     const activeStartTime = customRefStart || effectiveSchedule?.startTime;
 
     // 1. Determine Calculation Start Time
-    if (activeStartTime && !ignoreContractualStart) {
+    if (earlyOvertimeHours > 0) {
+        if (activeStartTime && !ignoreContractualStart) {
+            const [h, m] = activeStartTime.split(':').map(Number);
+            calculationStartTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+        } else {
+            calculationStartTime = set(clockInTime, { hours: 8, minutes: 0, seconds: 0, milliseconds: 0 });
+        }
+    } else if (activeStartTime && !ignoreContractualStart) {
         // --- Logic for operators WITH a contractual start time ---
         const [h, m] = activeStartTime.split(':').map(Number);
         const contractualStartDateTime = set(clockInTime, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
@@ -354,7 +379,8 @@ export const calculateShiftDetails = (
         calculationStart: calculationStartTime,
         calculationEnd: calculationEndTime,
         breakMinutes: Math.floor(breakDurationMillis / 60000),
-        contractualEndTime: contractualEndTime
+        contractualEndTime: contractualEndTime,
+        earlyOvertimeHours
     };
 };
 
@@ -384,7 +410,7 @@ export const calculateHours = (
         };
     }
 
-    const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, operator);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd, earlyOvertimeHours } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, operator);
     
     const isMonthly = operator?.scheduleType === 'monthly';
     const contractualHours = (isMonthly ? Infinity : schedule?.totalHours) || 0;
@@ -393,14 +419,14 @@ export const calculateHours = (
     const isWorkDay = isMakeupShift || contractualHours > 0;
     
     if (!isWorkDay && !isMonthly) {
-        const overtime = roundOvertimeHours(workedMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger);
+        const overtime = roundOvertimeHours(workedMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger) + (earlyOvertimeHours || 0);
         return { ordinary: 0, overtime, leave: 0, worked: workedMinutes, break: breakMinutes, calculationStart, calculationEnd };
     }
 
     const ordinaryMinutes = Math.min(workedMinutes, contractualMinutes);
     const overtimeMinutes = Math.max(0, workedMinutes - contractualMinutes);
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes); // Internally handles half-hour blocks based on exact workedMinutes
-    const overtimeHours = roundOvertimeHours(overtimeMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger);
+    const overtimeHours = roundOvertimeHours(overtimeMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger) + (earlyOvertimeHours || 0);
     
     // Monthly workers never accrue daily leave (Infinity check prevents it), skip if IS monthly
     // Per gli operatori mensili non calcoliamo automaticamente i permessi per coprire i "buchi" giornalieri.

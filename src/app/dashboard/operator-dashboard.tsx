@@ -580,31 +580,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }, [todayClockings, clockings]);
 
   useEffect(() => {
-    if (isClockedIn || !operator || !isWorkDay) {
-      setCanClockIn(true); // Always allow clocking out, or clocking in for overtime
-      return;
-    }
-    const today = new Date();
-    const dayName = dayIndexToName[getDay(today)];
-    const shiftStartTimeStr = operator.workSchedule?.[dayName]?.startTime;
-
-    if (!shiftStartTimeStr) {
-      setCanClockIn(true); // If no start time is defined, can always clock in
-      return;
-    }
-
-    const [hours, minutes] = shiftStartTimeStr.split(':').map(Number);
-    const shiftStartTime = set(today, { hours, minutes, seconds: 0, milliseconds: 0 });
-    const activationTime = new Date(shiftStartTime.getTime() - 90 * 60 * 1000); // 90 minutes before
-
-    setCanClockIn(new Date() >= activationTime);
-
-    const interval = setInterval(() => {
-      setCanClockIn(new Date() >= activationTime);
-    }, 1000 * 30); // Check every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [operator, isWorkDay, isClockedIn]);
+    setCanClockIn(true);
+  }, []);
 
 
   const getLocation = (): Promise<{ latitude: number, longitude: number }> => {
@@ -1449,17 +1426,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               </div>
             )}
 
-            {!canClockIn && !isWorkDay && !currentShiftInfo && (
-              <p className="text-sm text-muted-foreground text-center bg-muted/50 p-3 rounded-lg">
-                Puoi timbrare fino a 90 minuti prima dell'inizio del tuo turno.
-              </p>
-            )}
           </CardContent>
           <CardFooter className="bg-muted/50 p-6 flex flex-col gap-3">
             <Button
               className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98] bg-[#22c55e] hover:bg-[#16a34a] text-white border-none"
               size="lg"
-              disabled={isProcessing || (!canClockIn && !currentShiftInfo)}
+              disabled={isProcessing}
               onClick={() => performClocking('entrata')}
             >
               {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-6 w-6 fill-current" />}
