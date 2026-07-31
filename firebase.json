@@ -1,10 +1,12 @@
 {
   "firestore": {
     "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "indexes": "firestore.indexes.json",
+    "database": "(default)"
   },
   "apphosting": {
     "backendId": "studio",
-    "rootDir": "."
+    "rootDir": ".",
+    "alwaysDeployFromSource": true
   }
 }

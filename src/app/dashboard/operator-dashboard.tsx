@@ -1345,7 +1345,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </div>
               )}
             </CardContent>
-            <CardFooter className="bg-muted/50 p-6">
+            <CardFooter className="bg-muted/50 p-6 flex flex-col gap-3">
               <Button
                 className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98]"
                 variant="destructive"
@@ -1355,6 +1355,24 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-6 w-6 fill-current" />}
                 Termina Turno
               </Button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-1">
+                <Button
+                  className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center"
+                  onClick={() => openForgottenDialog('entrata')}
+                >
+                  <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+                  Timbratura Mancata
+                </Button>
+
+                <Button
+                  className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center"
+                  onClick={() => setIsMakeupDialogOpen(true)}
+                >
+                  <PlusCircle className="mr-2 h-5 w-5 shrink-0" />
+                  Inizio Recupero Anticipo
+                </Button>
+              </div>
             </CardFooter>
           </Card>
         </>
@@ -1429,7 +1447,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
           </CardContent>
           <CardFooter className="bg-muted/50 p-6 flex flex-col gap-3">
             <Button
-              className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98] bg-[#22c55e] hover:bg-[#16a34a] text-white border-none"
+              className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98] bg-[#22c55e] hover:bg-[#16a34a] text-white border-none shadow-md"
               size="lg"
               disabled={isProcessing}
               onClick={() => performClocking('entrata')}
@@ -1438,15 +1456,23 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               Inizia Turno
             </Button>
 
-            <Button
-              variant="ghost"
-              className="w-full text-muted-foreground"
-              size="sm"
-              onClick={() => setIsMakeupDialogOpen(true)}
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Inizia Recupero / Anticipo
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-1">
+              <Button
+                className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center"
+                onClick={() => openForgottenDialog('entrata')}
+              >
+                <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+                Timbratura Mancata
+              </Button>
+
+              <Button
+                className="w-full h-12 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center"
+                onClick={() => setIsMakeupDialogOpen(true)}
+              >
+                <PlusCircle className="mr-2 h-5 w-5 shrink-0" />
+                Inizio Recupero Anticipo
+              </Button>
+            </div>
           </CardFooter>
         </Card>
       </>
