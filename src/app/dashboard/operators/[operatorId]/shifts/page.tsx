@@ -2375,7 +2375,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryHours}h (€{ordCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">{monthlySummary.ordinaryHours}h effettuate</div>
+                                            <div className="text-xs text-muted-foreground">Ore totali: {monthlySummary.ordinaryHours}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-amber-500/5 border-amber-500/20">
@@ -2384,7 +2384,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <CardTitle className="text-xl font-bold">{monthlySummary.overtimeHours}h (€{ovtCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">{monthlySummary.overtimeHours}h effettuate</div>
+                                            <div className="text-xs text-muted-foreground">Ore totali: {monthlySummary.overtimeHours}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-blue-500/5 border-blue-500/20">
@@ -2393,7 +2393,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <CardTitle className="text-xl font-bold">{monthlySummary.ferieDays} giorni (€{ferCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">{monthlySummary.ferieHours}h effettuate</div>
+                                            <div className="text-xs text-muted-foreground">Ore totali: {monthlySummary.ferieHours}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-purple-500/5 border-purple-500/20">
@@ -2403,7 +2403,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                         </CardHeader>
                                         <CardContent>
                                             <div className="text-xs text-muted-foreground">
-                                                {monthlySummary.permessoHours}h effettuate
+                                                Ore totali: {monthlySummary.permessoHours}h effettuate
                                                 {((monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime) && (
                                                     <span className="text-purple-700 dark:text-purple-300 font-semibold block mt-0.5">
                                                         (scalati {monthlySummary.recuperoStraordinariHours || 0}h dagli straordinari)
@@ -2418,7 +2418,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <CardTitle className="text-xl font-bold">{monthlySummary.malattiaDays} giorni (€{malCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">{(monthlySummary.malattiaDays || 0) * 8}h effettuate</div>
+                                            <div className="text-xs text-muted-foreground">Ore totali: {(monthlySummary.malattiaDays || 0) * 8}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-green-500/5 border-green-500/20">
