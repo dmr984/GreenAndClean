@@ -900,9 +900,8 @@ export const processMonthlyData = (
     }
 
     let calculatedMalattiaCost = monthlySummary.malattiaCost || 0;
-    if (calculatedMalattiaCost === 0 && monthlySummary.malattiaDays > 0) {
-        const sickRate = (operator.sickLeaveRate !== undefined) ? operator.sickLeaveRate : 1;
-        calculatedMalattiaCost = monthlySummary.malattiaDays * 8 * rate * sickRate;
+    if (calculatedMalattiaCost === 0 && monthlySummary.malattiaDays > 0 && operator.sickLeaveRate) {
+        calculatedMalattiaCost = monthlySummary.malattiaDays * 8 * operator.sickLeaveRate;
         monthlySummary.malattiaCost = calculatedMalattiaCost;
     }
 

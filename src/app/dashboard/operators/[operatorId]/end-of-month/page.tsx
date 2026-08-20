@@ -567,7 +567,6 @@ export default function EndOfMonthPage() {
                             title="Costo Ferie" 
                             value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext="Costo approvato manually"
                         />
                         {!(operator.scheduleType === 'monthly' && finalPermessoHours === 0) && (
                             <>
@@ -581,7 +580,6 @@ export default function EndOfMonthPage() {
                                     title="Costo Permessi" 
                                     value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                                     icon={Euro}
-                                    subtext="Costo approvato manually"
                                 />
                             </>
                         )}
@@ -594,7 +592,6 @@ export default function EndOfMonthPage() {
                             title="Costo Malattia" 
                             value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
-                            subtext={`Costo approvato manually`}
                         />
                         <SummaryCard
                             title="Assenze (giorni)"
