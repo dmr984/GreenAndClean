@@ -304,8 +304,11 @@ export default function LeaveRequestsPage() {
     const [isCleanHistoryConfirmOpen, setIsCleanHistoryConfirmOpen] = useState(false);
 
     const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
+    const [selectedHistoryRequests, setSelectedHistoryRequests] = useState<Set<string>>(new Set());
     const [isBatchApproving, setIsBatchApproving] = useState(false);
+    const [isBatchDeletingHistory, setIsBatchDeletingHistory] = useState(false);
     const [isBatchConfirmOpen, setIsBatchConfirmOpen] = useState(false);
+    const [isBatchHistoryConfirmOpen, setIsBatchHistoryConfirmOpen] = useState(false);
     const [batchApplyContractual, setBatchApplyContractual] = useState(true);
     
     useEffect(() => {
@@ -419,11 +422,35 @@ export default function LeaveRequestsPage() {
         try {
             await batch.commit();
             toast({ title: "Successo!", description: "Lo storico delle richieste è stato pulito."});
+            setSelectedHistoryRequests(new Set());
         } catch (error) {
             console.error("Error cleaning request history:", error);
             toast({ title: "Errore", description: "Impossibile pulire lo storico.", variant: "destructive"});
         } finally {
             setIsCleanHistoryConfirmOpen(false);
+        }
+    };
+
+    const handleBatchDeleteHistory = async () => {
+        if (!firestore || !operatorId || selectedHistoryRequests.size === 0) return;
+        setIsBatchDeletingHistory(true);
+
+        const batch = writeBatch(firestore);
+        selectedHistoryRequests.forEach(reqId => {
+            const docRef = doc(firestore, `app-users/${operatorId}/requests`, reqId);
+            batch.delete(docRef);
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: "Successo!", description: `${selectedHistoryRequests.size} richieste eliminate dallo storico.` });
+            setSelectedHistoryRequests(new Set());
+            setIsBatchHistoryConfirmOpen(false);
+        } catch (error) {
+            console.error("Error deleting selected history requests:", error);
+            toast({ title: "Errore", description: "Impossibile eliminare le richieste selezionate dallo storico.", variant: "destructive" });
+        } finally {
+            setIsBatchDeletingHistory(false);
         }
     };
 
@@ -486,37 +513,37 @@ export default function LeaveRequestsPage() {
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
 
     const renderTable = (reqs: Request[], isPending: boolean) => {
+        const selectedSet = isPending ? selectedRequests : selectedHistoryRequests;
+        const setSelectedSet = isPending ? setSelectedRequests : setSelectedHistoryRequests;
 
         const handleSelectAll = (checked: boolean) => {
             if (checked) {
-                setSelectedRequests(new Set(reqs.map(r => r.id)));
+                setSelectedSet(new Set(reqs.map(r => r.id)));
             } else {
-                setSelectedRequests(new Set());
+                setSelectedSet(new Set());
             }
         };
 
         const handleSelectOne = (reqId: string, checked: boolean) => {
-            const newSet = new Set(selectedRequests);
+            const newSet = new Set(selectedSet);
             if (checked) {
                 newSet.add(reqId);
             } else {
                 newSet.delete(reqId);
             }
-            setSelectedRequests(newSet);
+            setSelectedSet(newSet);
         };
 
         return (
             <Table>
                 <TableHeader>
                     <TableRow>
-                        {isPending && (
-                            <TableHead className="w-12">
-                                <Checkbox
-                                    checked={reqs.length > 0 && selectedRequests.size === reqs.length}
-                                    onCheckedChange={handleSelectAll}
-                                />
-                            </TableHead>
-                        )}
+                        <TableHead className="w-12">
+                            <Checkbox
+                                checked={reqs.length > 0 && selectedSet.size === reqs.length}
+                                onCheckedChange={handleSelectAll}
+                            />
+                        </TableHead>
                         <TableHead>Tipo</TableHead>
                         <TableHead>Dal</TableHead>
                         <TableHead>Al</TableHead>
@@ -527,17 +554,15 @@ export default function LeaveRequestsPage() {
                 </TableHeader>
                 <TableBody>
                     {reqs.length === 0 ? (
-                        <TableRow><TableCell colSpan={isPending ? 6 : 5} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={6} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
                     ) : reqs.map(req => (
                         <TableRow key={req.id}>
-                            {isPending && (
-                                <TableCell>
-                                    <Checkbox 
-                                        checked={selectedRequests.has(req.id)}
-                                        onCheckedChange={(checked) => handleSelectOne(req.id, !!checked)}
-                                    />
-                                </TableCell>
-                            )}
+                            <TableCell>
+                                <Checkbox 
+                                    checked={selectedSet.has(req.id)}
+                                    onCheckedChange={(checked) => handleSelectOne(req.id, !!checked)}
+                                />
+                            </TableCell>
                             <TableCell className="capitalize font-medium">
                                 {req.type.replace('_', ' ')}
                                 {req.type === 'permesso' && req.deductFromOvertime && (
@@ -619,11 +644,19 @@ export default function LeaveRequestsPage() {
             </Card>
 
             <Card>
-                <CardHeader className="flex items-center justify-between">
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <CardTitle>Storico Richieste</CardTitle>
-                    <Button variant="destructive" size="sm" onClick={() => setIsCleanHistoryConfirmOpen(true)}>
-                        <Trash2 className="mr-2 h-4 w-4"/> Pulisci Storico
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {selectedHistoryRequests.size > 0 && (
+                            <Button variant="destructive" size="sm" onClick={() => setIsBatchHistoryConfirmOpen(true)} disabled={isBatchDeletingHistory}>
+                                {isBatchDeletingHistory ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}
+                                Elimina Selezionate ({selectedHistoryRequests.size})
+                            </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => setIsCleanHistoryConfirmOpen(true)}>
+                            <Trash2 className="mr-2 h-4 w-4"/> Pulisci Tutto lo Storico
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {renderTable(historicalRequests, false)}
@@ -656,6 +689,23 @@ export default function LeaveRequestsPage() {
                     <AlertDialogFooter>
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
                         <AlertDialogAction onClick={handleCleanHistory}>Conferma e Pulisci</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={isBatchHistoryConfirmOpen} onOpenChange={setIsBatchHistoryConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Conferma eliminazione richieste</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Sei sicuro di voler eliminare le {selectedHistoryRequests.size} richieste selezionate dallo storico? L'azione è permanente e non può essere annullata.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleBatchDeleteHistory} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Elimina Selezionate ({selectedHistoryRequests.size})
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
