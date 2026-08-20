@@ -2372,7 +2372,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <Card className="bg-primary/5 border-primary/20">
                                         <CardHeader className="pb-2">
                                             <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ore Ordinarie</CardDescription>
-                                            <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryHours}h (€{ordCost.toFixed(2)})</CardTitle>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryWorkedDays || Math.ceil((monthlySummary.ordinaryHours || 0) / 8)} giorni (€{ordCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="text-xs text-muted-foreground">Ore totali: {monthlySummary.ordinaryHours}h effettuate</div>
