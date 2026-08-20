@@ -2372,45 +2372,38 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <Card className="bg-primary/5 border-primary/20">
                                         <CardHeader className="pb-2">
                                             <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ore Ordinarie</CardDescription>
-                                            <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryHours}h <span className="text-xs font-normal text-muted-foreground ml-1">(€{ordCost.toFixed(2)})</span></CardTitle>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryHours}h (€{ordCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">
-                                                Su {monthlySummary.netExpectedHours !== undefined ? monthlySummary.netExpectedHours : monthlySummary.expectedMonthlyHours}h previste
-                                                {(monthlySummary.expectedMonthlyHours || 0) > (monthlySummary.netExpectedHours || 0) && (
-                                                    <span className="block text-[10px] text-muted-foreground/80 font-normal">
-                                                        ({monthlySummary.expectedMonthlyHours}h contrattuali - {(monthlySummary.expectedMonthlyHours || 0) - (monthlySummary.netExpectedHours || 0)}h assenze)
-                                                    </span>
-                                                )}
-                                            </div>
+                                            <div className="text-xs text-muted-foreground">{monthlySummary.ordinaryHours}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-amber-500/5 border-amber-500/20">
                                         <CardHeader className="pb-2">
                                             <CardDescription className="text-xs font-semibold uppercase tracking-wider">Straordinari</CardDescription>
-                                            <CardTitle className="text-xl font-bold">{monthlySummary.overtimeHours}h <span className="text-xs font-normal text-amber-600 dark:text-amber-400 ml-1">(€{ovtCost.toFixed(2)})</span></CardTitle>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.overtimeHours}h (€{ovtCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">Approvati questo mese • <strong>€{ovtCost.toFixed(2)}</strong></div>
+                                            <div className="text-xs text-muted-foreground">{monthlySummary.overtimeHours}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-blue-500/5 border-blue-500/20">
                                         <CardHeader className="pb-2">
                                             <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ferie</CardDescription>
-                                            <CardTitle className="text-xl font-bold">{monthlySummary.ferieDays} gg <span className="text-xs font-normal text-blue-600 dark:text-blue-400 ml-1">(€{ferCost.toFixed(2)})</span></CardTitle>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.ferieDays} giorni (€{ferCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">{monthlySummary.ferieHours}h godute • <strong>€{ferCost.toFixed(2)}</strong></div>
+                                            <div className="text-xs text-muted-foreground">{monthlySummary.ferieHours}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-purple-500/5 border-purple-500/20">
                                         <CardHeader className="pb-2">
                                             <CardDescription className="text-xs font-semibold uppercase tracking-wider">Permessi</CardDescription>
-                                            <CardTitle className="text-xl font-bold">{monthlySummary.permessoHours}h <span className="text-xs font-normal text-purple-600 dark:text-purple-400 ml-1">(€{perCost.toFixed(2)})</span></CardTitle>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.permessoHours}h (€{perCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
                                             <div className="text-xs text-muted-foreground">
-                                                Permessi usufruiti • <strong>€{perCost.toFixed(2)}</strong>
+                                                {monthlySummary.permessoHours}h effettuate
                                                 {((monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime) && (
                                                     <span className="text-purple-700 dark:text-purple-300 font-semibold block mt-0.5">
                                                         (scalati {monthlySummary.recuperoStraordinariHours || 0}h dagli straordinari)
@@ -2422,10 +2415,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <Card className="bg-rose-500/5 border-rose-500/20">
                                         <CardHeader className="pb-2">
                                             <CardDescription className="text-xs font-semibold uppercase tracking-wider">Malattia</CardDescription>
-                                            <CardTitle className="text-xl font-bold">{monthlySummary.malattiaDays} gg <span className="text-xs font-normal text-rose-600 dark:text-rose-400 ml-1">(€{malCost.toFixed(2)})</span></CardTitle>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.malattiaDays} giorni (€{malCost.toFixed(2)})</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">Giorni di malattia • <strong>€{malCost.toFixed(2)}</strong></div>
+                                            <div className="text-xs text-muted-foreground">{(monthlySummary.malattiaDays || 0) * 8}h effettuate</div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-green-500/5 border-green-500/20">
@@ -2434,7 +2427,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <CardTitle className="text-xl font-bold">€{(monthlySummary?.estimatedTotalCost || 0).toFixed(2)}</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">Totale stimato (ord., stra., ferie, perm. e mal.)</div>
+                                            <div className="text-xs text-muted-foreground">Totale stimato</div>
                                         </CardContent>
                                     </Card>
                                 </div>
