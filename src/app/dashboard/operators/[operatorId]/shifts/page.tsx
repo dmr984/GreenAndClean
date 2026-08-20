@@ -110,6 +110,10 @@ type StraordinarioEvent = {
     timestamp: Timestamp;
     latitude?: number;
     longitude?: number;
+    isAuto?: boolean;
+    originalTime?: string | null;
+    suggestedTime?: string | null;
+    rectificationStatus?: string | null;
 };
 
 type StraordinarioShift = {
@@ -118,6 +122,7 @@ type StraordinarioShift = {
     status: 'in_corso' | 'in_attesa_di_approvazione' | 'approvato' | 'rifiutato';
     date: Timestamp;
     approvedHours?: number;
+    isAuto?: boolean;
 };
 
 type CombinedShiftHistoryItem = (Shift | StraordinarioShift) & { type: 'regular' | 'overtime' };
@@ -146,11 +151,12 @@ type ApprovalContext = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
 };
@@ -783,7 +789,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                 );
                 const processed = processShift(updatedEvents, new Set());
                 if (processed) {
-                    setDetailShift({ ...detailShift, ...processed, events: updatedEvents });
+                    const updatedShift = { ...detailShift, ...processed, events: updatedEvents };
+                    setDetailShift(updatedShift);
+                    // Check if all rectifications for this shift are now approved/resolved
+                    const hasPendingRects = updatedEvents.some(e => e.status === 'sospesa' && e.suggestedTime && e.id !== event.id);
+                    if (!hasPendingRects) {
+                        handleApprovalProcess(updatedShift);
+                    }
                 }
             }
         } catch (error) {
@@ -1790,7 +1802,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
         newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
         
         const docRef = doc(firestore, `app-users/${operator.id}/straordinari`, editingOvertimeShift.id);
-        const updatePayload: { events: StraordinarioEvent[], status: StraordinarioShift['status'] } = { 
+        const updatePayload: { events: StraordinarioEvent[], status: StraordinarioShift['status'], isAuto?: boolean } = { 
             events: newEvents,
             status: 'in_attesa_di_approvazione', // Always require re-approval after edit
             isAuto: false
@@ -2153,7 +2165,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                 const dateObj = date instanceof Date ? date : (date as Timestamp).toDate();
                                                 const note = dailyNotes.find(n => isSameDay(parse(n.date, 'yyyy-MM-dd', new Date()), dateObj));
 
-                                                let timbratureString = '';
+                                                let timbratureNode: React.ReactNode = null;
                                                 let effectiveDurationString = '';
                                                 let accountingHoursString = '';
 
@@ -2171,18 +2183,33 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                     
                                                     effectiveDurationString = formatMinutes(worked);
 
-                                                    timbratureString = sortedEvents.map(e => {
-                                                        const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                        let referenceTime = '';
-                                                        
-                                                        if (e.type === 'entrata' && calculationStart) {
-                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                        } else if (e.type === 'uscita' && calculationEnd) {
-                                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                                        }
-                                                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                                    }).join(' | ');
+                                                    timbratureNode = (
+                                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                                            {sortedEvents.map((e, idx) => {
+                                                                const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                                let referenceTime = '';
+                                                                
+                                                                if (e.type === 'entrata' && calculationStart) {
+                                                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                                } else if (e.type === 'uscita' && calculationEnd) {
+                                                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                                }
+                                                                const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+
+                                                                return (
+                                                                    <span key={idx} className="inline-flex items-baseline gap-1">
+                                                                        <span>{typeFormatted}: <strong>{originalTime}</strong> {referenceTime}</span>
+                                                                        {e.originalTime && (
+                                                                            <span className="text-red-600 dark:text-red-400 font-mono font-bold text-xs">
+                                                                                {e.originalTime}
+                                                                            </span>
+                                                                        )}
+                                                                        {idx < sortedEvents.length - 1 && <span className="text-muted-foreground ml-1">|</span>}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
                                                     
                                                     const parts = [];
                                                     if (ordinary > 0) parts.push(`${ordinary}h ordinarie`);
@@ -2212,17 +2239,32 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                     const schedule = operator.workSchedule[dayName];
                                                     const { calculationStart, calculationEnd } = calculateShiftDetails(overtimeShift.events as Timbratura[], schedule, false, operator);
                                                     
-                                                    timbratureString = sortedEvents.map(e => {
-                                                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                                                         let referenceTime = '';
-                                                         if (e.type === 'entrata' && calculationStart) {
-                                                            referenceTime = `(${format(calculationStart, 'HH:mm')})`;
-                                                         } else if (e.type === 'uscita' && calculationEnd) {
-                                                            referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
-                                                         }
-                                                         const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
-                                                         return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
-                                                    }).join(' | ');
+                                                    timbratureNode = (
+                                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                                            {sortedEvents.map((e, idx) => {
+                                                                const originalTime = format(e.timestamp.toDate(), 'HH:mm');
+                                                                let referenceTime = '';
+                                                                if (e.type === 'entrata' && calculationStart) {
+                                                                    referenceTime = `(${format(calculationStart, 'HH:mm')})`;
+                                                                } else if (e.type === 'uscita' && calculationEnd) {
+                                                                    referenceTime = `(${format(calculationEnd, 'HH:mm')})`;
+                                                                }
+                                                                const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+
+                                                                return (
+                                                                    <span key={idx} className="inline-flex items-baseline gap-1">
+                                                                        <span>{typeFormatted}: <strong>{originalTime}</strong> {referenceTime}</span>
+                                                                        {e.originalTime && (
+                                                                            <span className="text-red-600 dark:text-red-400 font-mono font-bold text-xs">
+                                                                                {e.originalTime}
+                                                                            </span>
+                                                                        )}
+                                                                        {idx < sortedEvents.length - 1 && <span className="text-muted-foreground ml-1">|</span>}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
                                                     
                                                     const { workedMinutes } = getShiftDurations(overtimeShift.events);
                                                     effectiveDurationString = formatMinutes(workedMinutes);
@@ -2232,7 +2274,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                 return (
                                                     <TableRow key={`${shift.id}-${index}`}>
                                                         <TableCell className="whitespace-nowrap">{formatDate(date)}</TableCell>
-                                                        <TableCell className="text-xs max-w-[300px] truncate" title={timbratureString}>{timbratureString}</TableCell>
+                                                        <TableCell className="text-xs max-w-[450px]">{timbratureNode}</TableCell>
                                                         <TableCell className="whitespace-nowrap">{effectiveDurationString}</TableCell>
                                                         <TableCell className="whitespace-nowrap text-xs">{accountingHoursString}</TableCell>
                                                         <TableCell className="whitespace-nowrap">
@@ -2313,7 +2355,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                             <Card className="bg-primary/5 border-primary/20">
                                 <CardHeader className="pb-2">
                                     <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ore Ordinarie</CardDescription>
@@ -2334,15 +2376,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </Card>
                             <Card className="bg-blue-500/5 border-blue-500/20">
                                 <CardHeader className="pb-2">
-                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Permessi / Ferie</CardDescription>
-                                    <CardTitle className="text-2xl font-bold">{monthlySummary.ferieHours + monthlySummary.permessoHours}h</CardTitle>
+                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ferie</CardDescription>
+                                    <CardTitle className="text-2xl font-bold">{monthlySummary.ferieDays} gg ({monthlySummary.ferieHours}h)</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-xs text-muted-foreground">Giorni di ferie goduti</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-purple-500/5 border-purple-500/20">
+                                <CardHeader className="pb-2">
+                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Permessi</CardDescription>
+                                    <CardTitle className="text-2xl font-bold">{monthlySummary.permessoHours}h</CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="text-xs text-muted-foreground">
-                                        Giustificati
+                                        Permessi usufruiti
                                         {((monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime) && (
                                             <span className="text-purple-700 dark:text-purple-300 font-semibold block mt-0.5">
-                                                (scalato dagli straordinari)
+                                                (scalati {monthlySummary.recuperoStraordinariHours || 0}h dagli straordinari)
                                             </span>
                                         )}
                                     </div>
@@ -2354,7 +2405,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <CardTitle className="text-2xl font-bold">€{(monthlySummary?.estimatedTotalCost || 0).toFixed(2)}</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-xs text-muted-foreground">Basato su ord. + stra.</div>
+                                    <div className="text-xs text-muted-foreground">Comprensivo di ord., stra., ferie, permessi e malattia</div>
                                 </CardContent>
                             </Card>
                         </div>
@@ -2399,8 +2450,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                 const leaveHours = dayPermessoHours > 0 ? dayPermessoHours : (detail.shift?.permissionHours || 0);
                                                 const isDeductedFromOvertime = requestPermessiOnDay.some(r => r.type === 'recupero_straordinari' || r.deductFromOvertime === true);
 
+                                                const isFerie = detail.status === 'ferie';
+                                                const isMalattia = detail.status === 'malattia';
+
                                                 return (
-                                                    <TableRow key={idx} className={cn(isHoliday && "bg-orange-500/5", isWeekend && !isHoliday && "bg-muted/30")}>
+                                                    <TableRow key={idx} className={cn(isHoliday && "bg-orange-500/5", isWeekend && !isHoliday && "bg-muted/30", (isFerie || isMalattia) && "bg-blue-500/5")}>
                                                         <TableCell className="font-medium py-4">
                                                             <div className="flex flex-col">
                                                                 <span className="capitalize">{format(detail.date, 'eeee', { locale: it })}</span>
@@ -2408,9 +2462,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <div className="flex flex-wrap gap-1">
+                                                            <div className="flex flex-wrap gap-1 items-center">
                                                                 {isHoliday && <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200">Festivo</Badge>}
-                                                                {isAbsence && <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200">Assenza</Badge>}
+                                                                {isFerie && <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200 font-semibold">Ferie</Badge>}
+                                                                {isMalattia && <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 font-semibold">Malattia</Badge>}
+                                                                {isAbsence && !isFerie && !isMalattia && <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200">Assenza</Badge>}
                                                                 {publicNote && <span className="text-xs italic text-muted-foreground block w-full mt-1">"{publicNote}"</span>}
                                                             </div>
                                                         </TableCell>
@@ -2710,7 +2766,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                   <span className="flex items-center gap-1 font-mono">
                                                      {t.status === 'sospesa' && t.suggestedTime && !t.originalTime ? '--:--:--' : originalTime} {referenceTime}
                                                   </span>
-                                                  {(t.status === 'sospesa' && t.suggestedTime) && (
+                                                  {(t.status === 'sospesa' && t.suggestedTime) ? (
                                                       t.originalTime ? (
                                                           <Badge variant="outline" className="text-[10px] h-auto px-1.5 py-0.5 border-orange-400 text-orange-600 bg-orange-50 dark:bg-orange-950/20 font-semibold block mt-1 w-fit">
                                                               Rettifica richiesta da {t.originalTime} a {t.suggestedTime}
@@ -2720,7 +2776,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                                               Richiesta inserimento: {t.suggestedTime}
                                                           </Badge>
                                                       )
-                                                  )}
+                                                  ) : (t.rectificationStatus === 'approvata' || t.originalTime) && t.originalTime ? (
+                                                       <span className="text-xs font-mono font-bold text-red-600 dark:text-red-400 block mt-0.5">
+                                                           {t.originalTime}
+                                                       </span>
+                                                  ) : null}
                                                </div>
                                             </TableCell>
                                             <TableCell className={cn("capitalize whitespace-nowrap", t.isAuto && "text-muted-foreground italic")}>{t.type.replace('_', ' ')}</TableCell>
@@ -2770,8 +2830,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         </Table>
                     </div>
 
-                    <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                        {(detailShift?.status === 'in_sospeso' || detailShift?.status === 'in_corso') ? (
+                      <ResponsiveDialogFooter className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                        {(detailShift?.status === 'in_sospeso' || detailShift?.status === 'in_corso' || detailShift?.events.some(e => e.rectificationStatus === 'approvata' || e.status === 'sospesa')) ? (
                              <>
                                <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => handleRejectShift(detailShift)}>
                                   <XCircle className="mr-2 h-4 w-4"/> Rifiuta
@@ -2780,9 +2840,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                     <Pencil className="mr-2 h-4 w-4" /> Modifica
                                 </Button>
                                <Button className="w-full sm:col-span-1" onClick={() => handleApprovalProcess(detailShift)}>
-                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva
+                                  <CheckCircle className="mr-2 h-4 w-4"/> Approva Turno
                                </Button>
-                            </>
+                             </>
                         ) : (
                              <>
                                 <Button variant="destructive" className="w-full sm:col-span-1" onClick={() => { setShiftToDelete(detailShift); setIsConfirmingDelete(true); }}>
@@ -2794,7 +2854,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                 <ResponsiveDialogClose asChild>
                                     <Button className="w-full sm:col-span-1" variant="outline">Chiudi</Button>
                                 </ResponsiveDialogClose>
-                            </>
+                             </>
                         )}
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>

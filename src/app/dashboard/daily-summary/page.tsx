@@ -168,7 +168,15 @@ const DailySummaryPage = () => {
                                                 <div className="p-3 border rounded-md">
                                                     <p className="text-xs font-bold uppercase mb-1">Dettaglio Giorno</p>
                                                     <Separator className="my-1"/>
-                                                    <p className='text-sm'>ORD: <span className='font-bold'>{detail?.shift?.ordinaryHours || 0}h</span> | STR: <span className='font-bold'>{detail?.shift?.overtimeHours || 0}h</span></p>
+                                                    {detail?.status === 'ferie' ? (
+                                                        <p className='text-sm text-blue-600 font-bold'>IN FERIE ({detail?.request?.hours || 8}h)</p>
+                                                    ) : detail?.status === 'malattia' ? (
+                                                        <p className='text-sm text-orange-600 font-bold'>IN MALATTIA ({detail?.request?.hours || 8}h)</p>
+                                                    ) : detail?.status === 'festa' ? (
+                                                        <p className='text-sm text-purple-600 font-bold'>FESTIVO</p>
+                                                    ) : (
+                                                        <p className='text-sm'>ORD: <span className='font-bold'>{detail?.shift?.ordinaryHours || 0}h</span> | STR: <span className='font-bold'>{detail?.shift?.overtimeHours || 0}h</span></p>
+                                                    )}
                                                 </div>
                                                 <div className="p-3 border rounded-md">
                                                     <p className="text-xs font-bold uppercase mb-1">Cumulativo Mese</p>

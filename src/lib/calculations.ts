@@ -461,14 +461,15 @@ export const processMonthlyData = (
         }[],
         employmentStartDate?: Date,
         overrides?: any
-    }
+    },
+    employmentStartDateOverride?: Date
 ): { monthlySummary: MonthlySummary, dailyDetails: DailyDetail[] } => {
     
     const monthInterval = { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) };
     const today = startOfDay(new Date());
 
     // Prioritize explicitly passed start date, otherwise use operator field if it exists
-    const effectiveEmploymentStartDate = data.employmentStartDate || (operator.employmentStartDate ? operator.employmentStartDate.toDate() : undefined);
+    const effectiveEmploymentStartDate = employmentStartDateOverride || data.employmentStartDate || (operator.employmentStartDate ? operator.employmentStartDate.toDate() : undefined);
 
     const detailsMap = new Map<string, DailyDetail>();
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
@@ -635,13 +636,16 @@ export const processMonthlyData = (
         }
 
         const dayReqs = data.requests.filter(r => r.status === 'approvato' && (r.type === 'permesso' || r.type === 'recupero_straordinari') && isSameDay(r.startDate.toDate(), detail.date));
-        const effectivePermissionHours = dayReqs.reduce((max, r) => Math.max(max, r.hours || 0), 0);
-        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && r.type === 'permesso' && r.deductFromOvertime === true && isSameDay(r.startDate.toDate(), detail.date));
+        const effectivePermissionHours = dayReqs.filter(r => r.type === 'permesso' && !r.deductFromOvertime).reduce((max, r) => Math.max(max, r.hours || 0), 0);
+        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && (r.type === 'recupero_straordinari' || (r.type === 'permesso' && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
         const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
 
         if (detail.shift) {
             detail.shift.permissionHours = effectivePermissionHours;
-            detail.shift.recuperoHours = 0;
+            detail.shift.recuperoHours = deductHours;
+            if (deductHours > 0) {
+                detail.shift.ordinaryHours += deductHours;
+            }
         }
 
         const dailyNote = data.dailyNotes?.find(n => n.date === format(detail.date, 'yyyy-MM-dd'));
@@ -651,7 +655,7 @@ export const processMonthlyData = (
 
         const isConfirmedShift = detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata');
         if (deductHours > 0 && isConfirmedShift) {
-            const noteText = `${deductHours} ${deductHours === 1 ? 'ora' : 'ore'} di permesso compensate da straordinari`;
+            const noteText = `${deductHours} ${deductHours === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari precedenti`;
             if (!detail.note) {
                 detail.note = {
                     date: format(detail.date, 'yyyy-MM-dd'),
@@ -659,7 +663,7 @@ export const processMonthlyData = (
                     showOnMonthlyReport: true,
                     showOnEOMReport: true
                 };
-            } else {
+            } else if (!detail.note.publicNote?.includes('straordinari')) {
                 detail.note.publicNote = detail.note.publicNote ? `${detail.note.publicNote} (${noteText})` : noteText;
             }
         }
@@ -813,9 +817,8 @@ export const processMonthlyData = (
         totalRecuperoStraordinariHours += hours;
     });
 
-    // Adjust total ordinary and overtime hours by the recovered hours
-    // Subtract from overtime, add to ordinary
-    totalOrdinaryHours += totalRecuperoStraordinariHours;
+    // Adjust total overtime hours by the recovered hours
+    // (totalOrdinaryHours already includes recovered hours calculated at the daily detail level)
     totalOvertimeHours -= totalRecuperoStraordinariHours;
     if (totalOvertimeHours < 0) {
         totalOvertimeHours = 0;
@@ -882,10 +885,31 @@ export const processMonthlyData = (
     }
     const overtimeRate = operator.overtimeRate || (rate * 1.2); // Default 20% increase if not specified
 
+    // Compute fallback costs for ferie, permessi, and malattia if not explicitly set in dailyCosts
+    let calculatedFerieCost = monthlySummary.ferieCost || 0;
+    if (calculatedFerieCost === 0 && (monthlySummary.ferieHours > 0 || monthlySummary.ferieDays > 0)) {
+        const h = monthlySummary.ferieHours || (monthlySummary.ferieDays * 8);
+        calculatedFerieCost = h * rate;
+        monthlySummary.ferieCost = calculatedFerieCost;
+    }
+
+    let calculatedPermessoCost = monthlySummary.permessoCost || 0;
+    if (calculatedPermessoCost === 0 && monthlySummary.permessoHours > 0) {
+        calculatedPermessoCost = monthlySummary.permessoHours * rate;
+        monthlySummary.permessoCost = calculatedPermessoCost;
+    }
+
+    let calculatedMalattiaCost = monthlySummary.malattiaCost || 0;
+    if (calculatedMalattiaCost === 0 && monthlySummary.malattiaDays > 0) {
+        const sickRate = (operator.sickLeaveRate !== undefined) ? operator.sickLeaveRate : 1;
+        calculatedMalattiaCost = monthlySummary.malattiaDays * 8 * rate * sickRate;
+        monthlySummary.malattiaCost = calculatedMalattiaCost;
+    }
+
     if (operator.salaryType === 'fixed' && operator.fixedSalary) {
-        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate);
+        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
     } else {
-        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate);
+        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
     }
 
     return {

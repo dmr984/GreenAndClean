@@ -188,7 +188,15 @@ export default function DailySummaryPrintClient() {
 
                                     <div className="flex justify-between items-center text-black text-sm font-bold mt-6 pt-2">
                                         <div>
-                                            ORD: {detail.shift?.ordinaryHours || 0}h | STR: {detail.shift?.overtimeHours || 0}h
+                                            {detail.status === 'ferie' ? (
+                                                <span className="text-blue-700">IN FERIE ({detail.request?.hours || 8}h)</span>
+                                            ) : detail.status === 'malattia' ? (
+                                                <span className="text-orange-700">IN MALATTIA ({detail.request?.hours || 8}h)</span>
+                                            ) : detail.status === 'festa' ? (
+                                                <span className="text-purple-700">FESTIVO</span>
+                                            ) : (
+                                                `ORD: ${detail.shift?.ordinaryHours || 0}h | STR: ${detail.shift?.overtimeHours || 0}h`
+                                            )}
                                         </div>
                                         <div className="uppercase">
                                             CUMULATIVO: ORD: {cumulative?.ordinary || 0}h | STR: {cumulative?.overtime || 0}h

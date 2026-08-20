@@ -66,11 +66,12 @@ type Operator = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
 };

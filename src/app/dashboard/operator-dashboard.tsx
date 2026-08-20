@@ -43,6 +43,7 @@ type ClockingEvent = {
   suggestedTime?: string | null;
   originalTime?: string | null;
   rectificationStatus?: 'in_approvazione' | 'approvata' | 'rifiutata' | null;
+  ignoreContractualStart?: boolean;
 };
 
 type Shift = {
@@ -455,7 +456,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     const today = startOfDay(new Date());
 
     // Find events for today that are not 'confermata'
-    const todayEvents = clockings.filter(e => {
+    const todayEvents = activeData.filter(e => {
       const eventDate = e.timestamp?.toDate();
       return eventDate && isSameDay(eventDate, today) && e.status === 'sospesa';
     });
@@ -1550,7 +1551,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               <span className="text-xl font-bold text-purple-600 dark:text-purple-400">{(computedMonthlySummary?.permessoHours || 0).toFixed(1)} h</span>
               {((computedMonthlySummary?.recuperoStraordinariHours || 0) > 0 || computedMonthlySummary?.isPermessoDeductedFromOvertime) && (
                 <span className="text-[9px] font-semibold text-purple-700 dark:text-purple-300 block mt-0.5 opacity-90">
-                  (scalato dagli straordinari)
+                  (scalati {(computedMonthlySummary?.recuperoStraordinariHours || 0).toFixed(1)}h dagli straordinari)
                 </span>
               )}
             </div>
@@ -1606,7 +1607,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     <div className="flex items-center gap-6">
                       <div className="flex flex-col">
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Inizio</span>
-                        <div className="flex items-baseline gap-1.5">
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
                           <span className="text-base font-mono font-bold">
                             {shift.entry
                               ? (shift.entry.status === 'sospesa' && shift.entry.suggestedTime && !shift.entry.originalTime
@@ -1618,22 +1619,19 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                               )
                               : '--:--'}
                           </span>
-                          {shift.entry?.suggestedTime && (
+                          {shift.entry?.suggestedTime && shift.entry.status === 'sospesa' && (
                             <span className="text-[10px] font-mono text-amber-600 font-bold">
                               ({shift.entry.suggestedTime})
                             </span>
                           )}
                         </div>
-                        {(shift.entry?.rectificationStatus === 'in_approvazione' || (!shift.entry?.rectificationStatus && shift.entry?.suggestedTime)) && (
-                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
-                        )}
-                        {shift.entry?.rectificationStatus === 'approvata' && (
-                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit flex flex-col">
-                            <span>Richiesta approvata</span>
-                            {shift.entry.originalTime && (
-                              <span className="text-[9px] text-muted-foreground font-mono font-medium">Orario timbrato: {shift.entry.originalTime}</span>
-                            )}
+                        {shift.entry?.originalTime && (shift.entry.rectificationStatus === 'approvata' || shift.entry.status === 'confermata') && (
+                          <span className="text-xs font-mono font-bold text-red-600 dark:text-red-400 block mt-0.5">
+                            {shift.entry.originalTime}
                           </span>
+                        )}
+                        {(shift.entry?.rectificationStatus === 'in_approvazione' || (!shift.entry?.rectificationStatus && shift.entry?.suggestedTime && shift.entry?.status === 'sospesa')) && (
+                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
                         )}
                         {shift.entry?.rectificationStatus === 'rifiutata' && (
                           <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
@@ -1642,7 +1640,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       <div className="h-8 w-px bg-border/50" />
                       <div className="flex flex-col">
                         <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight">Fine</span>
-                        <div className="flex items-baseline gap-1.5">
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
                           <span className="text-base font-mono font-bold">
                             {shift.exit
                               ? (shift.exit.status === 'sospesa' && shift.exit.suggestedTime && !shift.exit.originalTime
@@ -1654,22 +1652,19 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                               )
                               : '--:--'}
                           </span>
-                          {shift.exit?.suggestedTime && (
+                          {shift.exit?.suggestedTime && shift.exit.status === 'sospesa' && (
                             <span className="text-[10px] font-mono text-amber-600 font-bold">
                               ({shift.exit.suggestedTime})
                             </span>
                           )}
                         </div>
-                        {(shift.exit?.rectificationStatus === 'in_approvazione' || (!shift.exit?.rectificationStatus && shift.exit?.suggestedTime)) && (
-                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
-                        )}
-                        {shift.exit?.rectificationStatus === 'approvata' && (
-                          <span className="text-[9px] text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit flex flex-col">
-                            <span>Richiesta approvata</span>
-                            {shift.exit.originalTime && (
-                              <span className="text-[9px] text-muted-foreground font-mono font-medium">Orario timbrato: {shift.exit.originalTime}</span>
-                            )}
+                        {shift.exit?.originalTime && (shift.exit.rectificationStatus === 'approvata' || shift.exit.status === 'confermata') && (
+                          <span className="text-xs font-mono font-bold text-red-600 dark:text-red-400 block mt-0.5">
+                            {shift.exit.originalTime}
                           </span>
+                        )}
+                        {(shift.exit?.rectificationStatus === 'in_approvazione' || (!shift.exit?.rectificationStatus && shift.exit?.suggestedTime && shift.exit?.status === 'sospesa')) && (
+                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
                         )}
                         {shift.exit?.rectificationStatus === 'rifiutata' && (
                           <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
@@ -1724,7 +1719,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
                   {/* Daily details section */}
                   {(() => {
-                    const daySchedule = getScheduleForDate(operator, shift.date);
+                    const daySchedule = getScheduleForDate(operator as any, shift.date);
                     const contractualHours = daySchedule?.totalHours || 0;
                     
                     const shiftEvents: any[] = [];
@@ -1739,7 +1734,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       { date: shift.date, events: shiftEvents },
                       daySchedule,
                       shift.entry?.ignoreContractualStart,
-                      operator || undefined
+                      (operator as any) || undefined
                     );
                     const ordinaryH = shiftRes.ordinary;
                     const overtimeH = shiftRes.overtime;

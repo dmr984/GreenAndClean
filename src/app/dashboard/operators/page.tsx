@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp } from 'firebase/firestore';
+import { format } from 'date-fns';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,9 +77,12 @@ type Operator = {
     monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
+    salaryType?: 'hourly' | 'fixed';
+    hourlyRate?: number;
+    overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
-    employmentStartDate?: any;
+    employmentStartDate?: Timestamp;
     notificationTokens?: string[];
 };
 
