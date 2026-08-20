@@ -466,9 +466,9 @@ export default function LeaveRequestsPage() {
             const docRef = doc(firestore, `app-users/${operatorId}/requests`, request.id);
             const dailyCosts: Record<string, number> = {};
             
-            if (batchApplyContractual) {
-                const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
+            const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
 
+            if (batchApplyContractual) {
                 if (request.type === 'permesso') {
                     const cost = (request.hours || 0) * (operator.hourlyRate || 0);
                     if (days.length > 0) {
@@ -489,9 +489,14 @@ export default function LeaveRequestsPage() {
                         dailyCosts[dateKey] = contractualHours * rate;
                     });
                 }
+            } else {
+                days.forEach(day => {
+                    const dateKey = formatISO(day, { representation: 'date' });
+                    dailyCosts[dateKey] = 0;
+                });
             }
             
-            batch.update(docRef, { status: 'approvato', viewedByOperator: false, dailyCosts });
+            batch.update(docRef, { status: 'approvato', viewedByOperator: false, dailyCosts, applyContractualRate: batchApplyContractual });
         }
 
         try {

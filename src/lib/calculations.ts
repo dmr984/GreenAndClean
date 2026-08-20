@@ -769,9 +769,18 @@ export const processMonthlyData = (
         expectedMonthlyHours += operator.workSchedule[dayName]?.totalHours || 0;
     });
     
+    let hasFerieRequestWithCosts = false;
+    let hasMalattiaRequestWithCosts = false;
+    let hasPermessoRequestWithCosts = false;
+
     totalFerieCost = 0; totalMalattiaCost = 0; totalPermessoCost = 0;
     data.requests.forEach(req => {
         if (req.status !== 'approvato' || !req.dailyCosts) return;
+
+        if (req.type === 'ferie') hasFerieRequestWithCosts = true;
+        else if (req.type === 'malattia') hasMalattiaRequestWithCosts = true;
+        else if (req.type === 'permesso') hasPermessoRequestWithCosts = true;
+
         for (const dateStr in req.dailyCosts) {
             const cost = req.dailyCosts[dateStr];
             if (isWithinInterval(parse(dateStr, 'yyyy-MM-dd', new Date()), monthInterval)) {
@@ -885,22 +894,22 @@ export const processMonthlyData = (
     }
     const overtimeRate = operator.overtimeRate || (rate * 1.2); // Default 20% increase if not specified
 
-    // Compute fallback costs for ferie, permessi, and malattia if not explicitly set in dailyCosts
+    // Compute fallback costs for ferie, permessi, and malattia ONLY if no explicit dailyCosts request exists
     let calculatedFerieCost = monthlySummary.ferieCost || 0;
-    if (calculatedFerieCost === 0 && (monthlySummary.ferieHours > 0 || monthlySummary.ferieDays > 0)) {
+    if (!hasFerieRequestWithCosts && calculatedFerieCost === 0 && (monthlySummary.ferieHours > 0 || monthlySummary.ferieDays > 0)) {
         const h = monthlySummary.ferieHours || (monthlySummary.ferieDays * 8);
         calculatedFerieCost = h * rate;
         monthlySummary.ferieCost = calculatedFerieCost;
     }
 
     let calculatedPermessoCost = monthlySummary.permessoCost || 0;
-    if (calculatedPermessoCost === 0 && monthlySummary.permessoHours > 0) {
+    if (!hasPermessoRequestWithCosts && calculatedPermessoCost === 0 && monthlySummary.permessoHours > 0) {
         calculatedPermessoCost = monthlySummary.permessoHours * rate;
         monthlySummary.permessoCost = calculatedPermessoCost;
     }
 
     let calculatedMalattiaCost = monthlySummary.malattiaCost || 0;
-    if (calculatedMalattiaCost === 0 && monthlySummary.malattiaDays > 0 && operator.sickLeaveRate) {
+    if (!hasMalattiaRequestWithCosts && calculatedMalattiaCost === 0 && monthlySummary.malattiaDays > 0 && operator.sickLeaveRate) {
         calculatedMalattiaCost = monthlySummary.malattiaDays * 8 * operator.sickLeaveRate;
         monthlySummary.malattiaCost = calculatedMalattiaCost;
     }
