@@ -67,6 +67,11 @@ type Operator = {
     monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
+    hourlyRate?: number;
+    overtimeRate?: number;
+    salaryType?: string;
+    fixedSalary?: number;
+    sickLeaveRate?: number;
 };
 
 type Timbratura = {
@@ -2355,60 +2360,79 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            <Card className="bg-primary/5 border-primary/20">
-                                <CardHeader className="pb-2">
-                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ore Ordinarie</CardDescription>
-                                    <CardTitle className="text-2xl font-bold">{monthlySummary.ordinaryHours}h</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-xs text-muted-foreground">Su {monthlySummary.expectedMonthlyHours}h previste</div>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-amber-500/5 border-amber-500/20">
-                                <CardHeader className="pb-2">
-                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Straordinari</CardDescription>
-                                    <CardTitle className="text-2xl font-bold">{monthlySummary.overtimeHours}h</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-xs text-muted-foreground">Approvati questo mese</div>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-blue-500/5 border-blue-500/20">
-                                <CardHeader className="pb-2">
-                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ferie</CardDescription>
-                                    <CardTitle className="text-2xl font-bold">{monthlySummary.ferieDays} gg ({monthlySummary.ferieHours}h)</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-xs text-muted-foreground">Giorni di ferie goduti</div>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-purple-500/5 border-purple-500/20">
-                                <CardHeader className="pb-2">
-                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Permessi</CardDescription>
-                                    <CardTitle className="text-2xl font-bold">{monthlySummary.permessoHours}h</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-xs text-muted-foreground">
-                                        Permessi usufruiti
-                                        {((monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime) && (
-                                            <span className="text-purple-700 dark:text-purple-300 font-semibold block mt-0.5">
-                                                (scalati {monthlySummary.recuperoStraordinariHours || 0}h dagli straordinari)
-                                            </span>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-green-500/5 border-green-500/20">
-                                <CardHeader className="pb-2">
-                                    <CardDescription className="text-xs font-semibold uppercase tracking-wider">Costo Stimato</CardDescription>
-                                    <CardTitle className="text-2xl font-bold">€{(monthlySummary?.estimatedTotalCost || 0).toFixed(2)}</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-xs text-muted-foreground">Comprensivo di ord., stra., ferie, permessi e malattia</div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                        {(() => {
+                            const ordCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+                            const ovtCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
+                            const ferCost = monthlySummary.ferieCost || 0;
+                            const perCost = monthlySummary.permessoCost || 0;
+                            const malCost = monthlySummary.malattiaCost || 0;
+
+                            return (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                    <Card className="bg-primary/5 border-primary/20">
+                                        <CardHeader className="pb-2">
+                                            <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ore Ordinarie</CardDescription>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryHours}h <span className="text-xs font-normal text-muted-foreground ml-1">(€{ordCost.toFixed(2)})</span></CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-xs text-muted-foreground">Su {monthlySummary.expectedMonthlyHours}h previste • <strong>€{ordCost.toFixed(2)}</strong></div>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-amber-500/5 border-amber-500/20">
+                                        <CardHeader className="pb-2">
+                                            <CardDescription className="text-xs font-semibold uppercase tracking-wider">Straordinari</CardDescription>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.overtimeHours}h <span className="text-xs font-normal text-amber-600 dark:text-amber-400 ml-1">(€{ovtCost.toFixed(2)})</span></CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-xs text-muted-foreground">Approvati questo mese • <strong>€{ovtCost.toFixed(2)}</strong></div>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-blue-500/5 border-blue-500/20">
+                                        <CardHeader className="pb-2">
+                                            <CardDescription className="text-xs font-semibold uppercase tracking-wider">Ferie</CardDescription>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.ferieDays} gg <span className="text-xs font-normal text-blue-600 dark:text-blue-400 ml-1">(€{ferCost.toFixed(2)})</span></CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-xs text-muted-foreground">{monthlySummary.ferieHours}h godute • <strong>€{ferCost.toFixed(2)}</strong></div>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-purple-500/5 border-purple-500/20">
+                                        <CardHeader className="pb-2">
+                                            <CardDescription className="text-xs font-semibold uppercase tracking-wider">Permessi</CardDescription>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.permessoHours}h <span className="text-xs font-normal text-purple-600 dark:text-purple-400 ml-1">(€{perCost.toFixed(2)})</span></CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-xs text-muted-foreground">
+                                                Permessi usufruiti • <strong>€{perCost.toFixed(2)}</strong>
+                                                {((monthlySummary.recuperoStraordinariHours || 0) > 0 || monthlySummary.isPermessoDeductedFromOvertime) && (
+                                                    <span className="text-purple-700 dark:text-purple-300 font-semibold block mt-0.5">
+                                                        (scalati {monthlySummary.recuperoStraordinariHours || 0}h dagli straordinari)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-rose-500/5 border-rose-500/20">
+                                        <CardHeader className="pb-2">
+                                            <CardDescription className="text-xs font-semibold uppercase tracking-wider">Malattia</CardDescription>
+                                            <CardTitle className="text-xl font-bold">{monthlySummary.malattiaDays} gg <span className="text-xs font-normal text-rose-600 dark:text-rose-400 ml-1">(€{malCost.toFixed(2)})</span></CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-xs text-muted-foreground">Giorni di malattia • <strong>€{malCost.toFixed(2)}</strong></div>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-green-500/5 border-green-500/20">
+                                        <CardHeader className="pb-2">
+                                            <CardDescription className="text-xs font-semibold uppercase tracking-wider">Costo Stimato</CardDescription>
+                                            <CardTitle className="text-xl font-bold">€{(monthlySummary?.estimatedTotalCost || 0).toFixed(2)}</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-xs text-muted-foreground">Totale stimato (ord., stra., ferie, perm. e mal.)</div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            );
+                        })()}
 
                         <Card>
                             <CardHeader>
