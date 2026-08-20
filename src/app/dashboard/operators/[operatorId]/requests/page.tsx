@@ -507,8 +507,21 @@ export default function LeaveRequestsPage() {
         }
     };
     
-    const pendingRequests = requests.filter(r => r.status === 'in_attesa');
-    const historicalRequests = requests.filter(r => r.status !== 'in_attesa');
+    const pendingRequests = [...requests]
+        .filter(r => r.status === 'in_attesa')
+        .sort((a, b) => {
+            const timeA = a.startDate?.toMillis ? a.startDate.toMillis() : 0;
+            const timeB = b.startDate?.toMillis ? b.startDate.toMillis() : 0;
+            return timeB - timeA;
+        });
+
+    const historicalRequests = [...requests]
+        .filter(r => r.status !== 'in_attesa')
+        .sort((a, b) => {
+            const timeA = a.startDate?.toMillis ? a.startDate.toMillis() : 0;
+            const timeB = b.startDate?.toMillis ? b.startDate.toMillis() : 0;
+            return timeB - timeA;
+        });
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
 

@@ -186,7 +186,13 @@ export default function RequestsPage() {
                         </TableHeader>
                         <TableBody>
                             {requests.length > 0 ? (
-                                requests.map((req) => (
+                                [...requests]
+                                    .sort((a, b) => {
+                                        const timeA = a.startDate?.toMillis ? a.startDate.toMillis() : 0;
+                                        const timeB = b.startDate?.toMillis ? b.startDate.toMillis() : 0;
+                                        return timeB - timeA;
+                                    })
+                                    .map((req) => (
                                     <TableRow key={req.id}>
                                         <TableCell>
                                             {req.viewedByOperator === false && <Circle fill="red" className="h-2 w-2 text-red-500" />}
