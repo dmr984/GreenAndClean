@@ -308,9 +308,70 @@ export default function LeaveRequestsPage() {
     const [selectedHistoryRequests, setSelectedHistoryRequests] = useState<Set<string>>(new Set());
     const [isBatchApproving, setIsBatchApproving] = useState(false);
     const [isBatchDeletingHistory, setIsBatchDeletingHistory] = useState(false);
+    const [isUpdatingHistoryRates, setIsUpdatingHistoryRates] = useState(false);
     const [isBatchConfirmOpen, setIsBatchConfirmOpen] = useState(false);
     const [isBatchHistoryConfirmOpen, setIsBatchHistoryConfirmOpen] = useState(false);
     const [batchApplyContractual, setBatchApplyContractual] = useState(true);
+
+    const handleBulkUpdateHistoryContractualRate = async (applyRate: boolean) => {
+        if (!firestore || !operatorId || selectedHistoryRequests.size === 0 || !operator) return;
+        setIsUpdatingHistoryRates(true);
+
+        const batch = writeBatch(firestore);
+        const selectedRequestsList = requests.filter(r => selectedHistoryRequests.has(r.id));
+
+        for (const request of selectedRequestsList) {
+            const docRef = doc(firestore, `app-users/${operatorId}/requests`, request.id);
+            const dailyCosts: Record<string, number> = {};
+            const days = eachDayOfInterval({ start: request.startDate.toDate(), end: request.endDate.toDate() });
+
+            if (applyRate) {
+                if (request.type === 'permesso') {
+                    const cost = (request.hours || 0) * (operator.hourlyRate || 0);
+                    if (days.length > 0) {
+                        const dateKey = formatISO(days[0], { representation: 'date' });
+                        dailyCosts[dateKey] = cost;
+                    }
+                } else if (request.type === 'ferie' || request.type === 'malattia') {
+                    days.forEach(day => {
+                        const dateKey = formatISO(day, { representation: 'date' });
+                        const dayName = dayIndexToName[getDay(day)];
+                        const contractualHours = operator.workSchedule?.[dayName]?.totalHours || 0;
+                        let rate = 0;
+                        if (request.type === 'ferie') {
+                            rate = operator.hourlyRate || 0;
+                        } else if (request.type === 'malattia') {
+                            rate = operator.sickLeaveRate || 0;
+                        }
+                        dailyCosts[dateKey] = contractualHours * rate;
+                    });
+                }
+            } else {
+                days.forEach(day => {
+                    const dateKey = formatISO(day, { representation: 'date' });
+                    dailyCosts[dateKey] = 0;
+                });
+            }
+
+            batch.update(docRef, { dailyCosts, applyContractualRate: applyRate, viewedByOperator: false });
+        }
+
+        try {
+            await batch.commit();
+            toast({ 
+                title: 'Successo!', 
+                description: applyRate 
+                    ? `Tariffa contrattuale applicata a ${selectedHistoryRequests.size} richieste.`
+                    : `Tariffa contrattuale rimossa (impostata a €0) per ${selectedHistoryRequests.size} richieste.`
+            });
+            setSelectedHistoryRequests(new Set());
+        } catch (error) {
+            console.error("Error bulk updating contractual rates:", error);
+            toast({ title: 'Errore', description: 'Impossibile aggiornare le tariffe per le richieste selezionate.', variant: 'destructive' });
+        } finally {
+            setIsUpdatingHistoryRates(false);
+        }
+    };
     
     useEffect(() => {
         if (!firestore || !operatorId) return;
@@ -690,12 +751,34 @@ export default function LeaveRequestsPage() {
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <CardTitle>Storico Richieste</CardTitle>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         {selectedHistoryRequests.size > 0 && (
-                            <Button variant="destructive" size="sm" onClick={() => setIsBatchHistoryConfirmOpen(true)} disabled={isBatchDeletingHistory}>
-                                {isBatchDeletingHistory ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}
-                                Elimina Selezionate ({selectedHistoryRequests.size})
-                            </Button>
+                            <>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" 
+                                    onClick={() => handleBulkUpdateHistoryContractualRate(true)}
+                                    disabled={isUpdatingHistoryRates || isBatchDeletingHistory}
+                                >
+                                    {isUpdatingHistoryRates ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-2 h-4 w-4 text-emerald-500" />}
+                                    Applica Tariffa ({selectedHistoryRequests.size})
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="border-slate-400/50 text-slate-600 dark:text-slate-300 hover:bg-slate-500/10" 
+                                    onClick={() => handleBulkUpdateHistoryContractualRate(false)}
+                                    disabled={isUpdatingHistoryRates || isBatchDeletingHistory}
+                                >
+                                    {isUpdatingHistoryRates ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <XCircle className="mr-2 h-4 w-4 text-slate-400" />}
+                                    Rimuovi Tariffa (€0) ({selectedHistoryRequests.size})
+                                </Button>
+                                <Button variant="destructive" size="sm" onClick={() => setIsBatchHistoryConfirmOpen(true)} disabled={isBatchDeletingHistory || isUpdatingHistoryRates}>
+                                    {isBatchDeletingHistory ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}
+                                    Elimina Selezionate ({selectedHistoryRequests.size})
+                                </Button>
+                            </>
                         )}
                         <Button variant="outline" size="sm" onClick={() => setIsCleanHistoryConfirmOpen(true)}>
                             <Trash2 className="mr-2 h-4 w-4"/> Pulisci Tutto lo Storico
