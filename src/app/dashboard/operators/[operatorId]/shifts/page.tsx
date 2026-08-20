@@ -69,7 +69,7 @@ type Operator = {
     overtimeHourTrigger?: number;
     hourlyRate?: number;
     overtimeRate?: number;
-    salaryType?: string;
+    salaryType?: 'fixed' | 'hourly';
     fixedSalary?: number;
     sickLeaveRate?: number;
 };
