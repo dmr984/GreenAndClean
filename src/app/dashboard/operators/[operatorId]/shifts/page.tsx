@@ -2375,7 +2375,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                                             <CardTitle className="text-xl font-bold">{monthlySummary.ordinaryHours}h <span className="text-xs font-normal text-muted-foreground ml-1">(€{ordCost.toFixed(2)})</span></CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="text-xs text-muted-foreground">Su {monthlySummary.expectedMonthlyHours}h previste • <strong>€{ordCost.toFixed(2)}</strong></div>
+                                            <div className="text-xs text-muted-foreground">
+                                                Su {monthlySummary.netExpectedHours !== undefined ? monthlySummary.netExpectedHours : monthlySummary.expectedMonthlyHours}h previste
+                                                {(monthlySummary.expectedMonthlyHours || 0) > (monthlySummary.netExpectedHours || 0) && (
+                                                    <span className="block text-[10px] text-muted-foreground/80 font-normal">
+                                                        ({monthlySummary.expectedMonthlyHours}h contrattuali - {(monthlySummary.expectedMonthlyHours || 0) - (monthlySummary.netExpectedHours || 0)}h assenze)
+                                                    </span>
+                                                )}
+                                            </div>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-amber-500/5 border-amber-500/20">

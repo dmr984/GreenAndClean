@@ -130,6 +130,7 @@ export type MonthlySummary = {
     festiveHours: number;
     estimatedTotalCost: number;
     expectedMonthlyHours: number;
+    netExpectedHours?: number;
     recuperoStraordinariHours?: number;
     isPermessoDeductedFromOvertime?: boolean;
     totalDueOverride?: number;
@@ -845,6 +846,9 @@ export const processMonthlyData = (
         }
     }
 
+    const totalAbsenceHours = (ferieHours || 0) + (malattiaDays ? malattiaDays * 8 : 0) + Math.max(0, (totalPermessoHours || 0) - totalRecuperoStraordinariHours);
+    const netExpectedHours = Math.max(0, expectedMonthlyHours - totalAbsenceHours);
+
     const monthlySummary: MonthlySummary = {
         ordinaryWorkedDays, absenceDays, ordinaryHours: totalOrdinaryHours,
         overtimeHours: totalOvertimeHours, ferieCost: totalFerieCost,
@@ -853,6 +857,7 @@ export const processMonthlyData = (
         festiveHours,
         estimatedTotalCost: 0, // Will calculate below
         expectedMonthlyHours,
+        netExpectedHours,
         recuperoStraordinariHours: totalRecuperoStraordinariHours,
         isPermessoDeductedFromOvertime: totalRecuperoStraordinariHours > 0
     };
