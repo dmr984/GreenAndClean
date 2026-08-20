@@ -64,6 +64,7 @@ type Request = {
     createdAt: Timestamp;
     dailyCosts?: { [date: string]: number };
     viewedByOperator?: boolean;
+    applyContractualRate?: boolean;
 };
 
 const EditRequestDialog = ({ request, onSave, onClose }: { request: Request; onSave: (data: Partial<Request>) => void; onClose: () => void; }) => {
@@ -566,13 +567,14 @@ export default function LeaveRequestsPage() {
                         <TableHead>Dal</TableHead>
                         <TableHead>Al</TableHead>
                         <TableHead>Ore</TableHead>
+                        <TableHead>Tariffa</TableHead>
                         { !isPending && <TableHead>Stato</TableHead> }
                         <TableHead className='text-right'>Azioni</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {reqs.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={7} className="h-24 text-center">Nessuna richiesta trovata.</TableCell></TableRow>
                     ) : reqs.map(req => (
                         <TableRow key={req.id}>
                             <TableCell>
@@ -592,6 +594,30 @@ export default function LeaveRequestsPage() {
                             <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                             <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                             <TableCell>{req.hours || '-'}</TableCell>
+                            <TableCell>
+                                {(() => {
+                                    if (req.status !== 'approvato') return <span className="text-muted-foreground text-xs">-</span>;
+                                    
+                                    const hasPositiveCost = req.dailyCosts && Object.values(req.dailyCosts).some(v => v > 0);
+                                    const isExplicitZero = (req.applyContractualRate === false) || (req.dailyCosts && Object.keys(req.dailyCosts).length > 0 && Object.values(req.dailyCosts).every(v => v === 0));
+
+                                    if (hasPositiveCost || req.applyContractualRate === true) {
+                                        return (
+                                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[11px] gap-1 font-semibold whitespace-nowrap">
+                                                <CheckCircle className="h-3 w-3 text-emerald-500" /> Contrattuale Applicata
+                                            </Badge>
+                                        );
+                                    } else if (isExplicitZero) {
+                                        return (
+                                            <Badge variant="outline" className="bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20 text-[11px] gap-1 font-normal whitespace-nowrap">
+                                                <XCircle className="h-3 w-3 text-slate-400" /> Senza Tariffa (€0)
+                                            </Badge>
+                                        );
+                                    } else {
+                                        return <span className="text-muted-foreground text-xs">-</span>;
+                                    }
+                                })()}
+                            </TableCell>
                             {!isPending && 
                                 <TableCell>
                                     <Badge variant={req.status === 'approvato' ? 'secondary' : 'destructive'}>
