@@ -40,8 +40,8 @@ type Operator = {
     workSchedule: WorkSchedule;
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
-    ordinaryHourTrigger?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
     monthlyContractualHours?: number;
 };
 

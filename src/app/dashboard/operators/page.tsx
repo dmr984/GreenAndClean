@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp, deleteField } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -73,7 +73,8 @@ type Operator = {
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
     ordinaryHourTrigger?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
     monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
@@ -116,7 +117,8 @@ export default function ManageOperatorsPage() {
     const [newEntryTolerance, setNewEntryTolerance] = useState<number | string>(15);
     const [newOrdinaryHalfHourTrigger, setNewOrdinaryHalfHourTrigger] = useState<number | string>(25);
     const [newOrdinaryHourTrigger, setNewOrdinaryHourTrigger] = useState<number | string>(45);
-    const [newScheduleType, setNewScheduleType] = useState<'daily' | 'monthly'>('daily');
+    const [newScheduleType, setNewScheduleType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+    const [newWeeklyContractualHours, setNewWeeklyContractualHours] = useState<number | string>('');
     const [newMonthlyContractualHours, setNewMonthlyContractualHours] = useState<number | string>('');
     const [newEmploymentStartDate, setNewEmploymentStartDate] = useState<string>('');
 
@@ -136,7 +138,8 @@ export default function ManageOperatorsPage() {
     const [editingEntryTolerance, setEditingEntryTolerance] = useState<number | string>(15);
     const [editingOrdinaryHalfHourTrigger, setEditingOrdinaryHalfHourTrigger] = useState<number | string>('');
     const [editingOrdinaryHourTrigger, setEditingOrdinaryHourTrigger] = useState<number | string>('');
-    const [editingScheduleType, setEditingScheduleType] = useState<'daily' | 'monthly'>('daily');
+    const [editingScheduleType, setEditingScheduleType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+    const [editingWeeklyContractualHours, setEditingWeeklyContractualHours] = useState<number | string>('');
     const [editingMonthlyContractualHours, setEditingMonthlyContractualHours] = useState<number | string>('');
     const [editingEmploymentStartDate, setEditingEmploymentStartDate] = useState<string>('');
 
@@ -258,6 +261,7 @@ export default function ManageOperatorsPage() {
         const ordinaryHalfHourTrigger = action === 'add' ? newOrdinaryHalfHourTrigger : editingOrdinaryHalfHourTrigger;
         const ordinaryHourTrigger = action === 'add' ? newOrdinaryHourTrigger : editingOrdinaryHourTrigger;
         const scheduleType = action === 'add' ? newScheduleType : editingScheduleType;
+        const weeklyContractualHours = action === 'add' ? newWeeklyContractualHours : editingWeeklyContractualHours;
         const monthlyContractualHours = action === 'add' ? newMonthlyContractualHours : editingMonthlyContractualHours;
         const employmentStartDateStr = action === 'add' ? newEmploymentStartDate : editingEmploymentStartDate;
 
@@ -298,28 +302,46 @@ export default function ManageOperatorsPage() {
             }
         }
         
-        const operatorData: Omit<Operator, 'id'> = {
+        let parsedEmploymentStartDate: Timestamp | undefined = undefined;
+        if (employmentStartDateStr && employmentStartDateStr.trim()) {
+            try {
+                const [y, m, d] = employmentStartDateStr.split('-').map(Number);
+                const dateObj = new Date(y, m - 1, d, 0, 0, 0, 0);
+                if (!isNaN(dateObj.getTime())) {
+                    parsedEmploymentStartDate = Timestamp.fromDate(dateObj);
+                }
+            } catch (err) {
+                console.error("Error parsing employment start date:", err);
+            }
+        }
+
+        const operatorData: any = {
             username: operatorCode.trim(),
             role: 'operator' as const,
-            firstName,
-            lastName,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
             requireGps,
             workSchedule: finalWorkSchedule,
-            entryTolerance: entryTolerance ? parseFloat(String(entryTolerance)) : undefined,
-            ordinaryHalfHourTrigger: ordinaryHalfHourTrigger ? parseFloat(String(ordinaryHalfHourTrigger)) : undefined,
-            ordinaryHourTrigger: ordinaryHourTrigger ? parseFloat(String(ordinaryHourTrigger)) : undefined,
+            entryTolerance: entryTolerance ? parseFloat(String(entryTolerance).replace(',', '.')) : undefined,
+            ordinaryHalfHourTrigger: ordinaryHalfHourTrigger ? parseFloat(String(ordinaryHalfHourTrigger).replace(',', '.')) : undefined,
+            ordinaryHourTrigger: ordinaryHourTrigger ? parseFloat(String(ordinaryHourTrigger).replace(',', '.')) : undefined,
             scheduleType,
-            monthlyContractualHours: scheduleType === 'monthly' ? parseFloat(String(monthlyContractualHours)) || 0 : undefined,
-            overtimeHalfHourTrigger: overtimeHalfHourTrigger ? parseFloat(String(overtimeHalfHourTrigger)) : undefined,
-            overtimeHourTrigger: overtimeHourTrigger ? parseFloat(String(overtimeHourTrigger)) : undefined,
+            weeklyContractualHours: scheduleType === 'weekly' ? parseFloat(String(weeklyContractualHours).replace(',', '.')) || 0 : undefined,
+            monthlyContractualHours: scheduleType === 'monthly' ? parseFloat(String(monthlyContractualHours).replace(',', '.')) || 0 : undefined,
+            overtimeHalfHourTrigger: overtimeHalfHourTrigger ? parseFloat(String(overtimeHalfHourTrigger).replace(',', '.')) : undefined,
+            overtimeHourTrigger: overtimeHourTrigger ? parseFloat(String(overtimeHourTrigger).replace(',', '.')) : undefined,
             salaryType,
-            hourlyRate: salaryType === 'hourly' ? parseFloat(String(hourlyRate)) || 0 : 0,
-            overtimeRate: parseFloat(String(overtimeRate)) || 0,
-            fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary)) || 0 : 0,
-            sickLeaveRate: parseFloat(String(sickLeaveRate)) || 0,
-            employmentStartDate: employmentStartDateStr ? Timestamp.fromDate(new Date(employmentStartDateStr)) : undefined,
+            hourlyRate: salaryType === 'hourly' ? parseFloat(String(hourlyRate).replace(',', '.')) || 0 : 0,
+            overtimeRate: parseFloat(String(overtimeRate).replace(',', '.')) || 0,
+            fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary).replace(',', '.')) || 0 : 0,
+            sickLeaveRate: parseFloat(String(sickLeaveRate).replace(',', '.')) || 0,
         };
 
+        if (parsedEmploymentStartDate) {
+            operatorData.employmentStartDate = parsedEmploymentStartDate;
+        } else if (action === 'edit' && selectedOperator?.employmentStartDate && (!employmentStartDateStr || !employmentStartDateStr.trim())) {
+            operatorData.employmentStartDate = deleteField();
+        }
 
         const cleanedData = Object.fromEntries(
             Object.entries(operatorData).filter(([_, v]) => v !== undefined)
@@ -348,6 +370,7 @@ export default function ManageOperatorsPage() {
                 setNewOrdinaryHalfHourTrigger(25);
                 setNewOrdinaryHourTrigger(45);
                 setNewScheduleType('daily');
+                setNewWeeklyContractualHours('');
                 setNewMonthlyContractualHours('');
                 setNewEmploymentStartDate('');
               }).catch((error: any) => {
@@ -404,7 +427,14 @@ export default function ManageOperatorsPage() {
             });
     };
 
-    const formatWorkSchedule = (schedule: WorkSchedule) => {
+    const formatWorkSchedule = (operator: Operator) => {
+        if (operator.scheduleType === 'weekly') {
+            return `Monte Ore: ${operator.weeklyContractualHours || 0}h / sett.`;
+        }
+        if (operator.scheduleType === 'monthly') {
+            return `Monte Ore: ${operator.monthlyContractualHours || 0}h / mese`;
+        }
+        const schedule = operator.workSchedule;
         if (!schedule || Object.keys(schedule).length === 0) return 'N/D';
         const dayMapping: Record<DayOfWeek, string> = { monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Gio', friday: 'Ven', saturday: 'Sab', sunday: 'Dom' };
         
@@ -418,7 +448,7 @@ export default function ManageOperatorsPage() {
                 }
                 return display;
             })
-            .join(' | ');
+            .join(' | ') || 'N/D';
     };
     
     if (isUserLoading) {
@@ -457,7 +487,7 @@ export default function ManageOperatorsPage() {
                                 value={schedule[day]?.totalHours || ''}
                                 onChange={(e) => handler(day, 'totalHours', e.target.value)}
                                 min="0"
-                                step="0.5"
+                                step="any"
                             />
                         </div>
                          <div className="space-y-1">
@@ -478,6 +508,7 @@ export default function ManageOperatorsPage() {
                                 value={schedule[day]?.breakMinutes || ''}
                                 onChange={(e) => handler(day, 'breakMinutes', e.target.value)}
                                 min="0"
+                                step="any"
                             />
                         </div>
                     </div>
@@ -508,8 +539,10 @@ export default function ManageOperatorsPage() {
       setOrdinaryHalfHourTrigger: (val: string | number) => void,
       ordinaryHourTrigger: string | number,
       setOrdinaryHourTrigger: (val: string | number) => void,
-      scheduleType: 'daily' | 'monthly',
-      setScheduleType: (val: 'daily' | 'monthly') => void,
+      scheduleType: 'daily' | 'weekly' | 'monthly',
+      setScheduleType: (val: 'daily' | 'weekly' | 'monthly') => void,
+      weeklyContractualHours: string | number,
+      setWeeklyContractualHours: (val: string | number) => void,
       monthlyContractualHours: string | number,
       setMonthlyContractualHours: (val: string | number) => void
     ) => (
@@ -531,17 +564,17 @@ export default function ManageOperatorsPage() {
           <>
             <div>
               <Label htmlFor={`${type}-hourlyRate`}>Tariffa Oraria (€)</Label>
-              <Input id={`${type}-hourlyRate`} type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 8.50" />
+              <Input id={`${type}-hourlyRate`} type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} min="0" step="any" placeholder="Es: 8.50" />
             </div>
              <div>
                 <Label htmlFor={`${type}-sickLeaveRate`}>Tariffa Malattia (€/h)</Label>
-                <Input id={`${type}-sickLeaveRate`} type="number" value={sickLeaveRate} onChange={(e) => setSickLeaveRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 7.00" />
+                <Input id={`${type}-sickLeaveRate`} type="number" value={sickLeaveRate} onChange={(e) => setSickLeaveRate(e.target.value)} min="0" step="any" placeholder="Es: 7.00" />
              </div>
           </>
         ) : (
           <div className="md:col-span-3">
             <Label htmlFor={`${type}-fixedSalary`}>Importo Fisso Mensile (€)</Label>
-            <Input id={`${type}-fixedSalary`} type="number" value={fixedSalary} onChange={(e) => setFixedSalary(e.target.value)} min="0" step="0.01" placeholder="Es: 1500.00" />
+            <Input id={`${type}-fixedSalary`} type="number" value={fixedSalary} onChange={(e) => setFixedSalary(e.target.value)} min="0" step="any" placeholder="Es: 1500.00" />
           </div>
         )}
         
@@ -560,18 +593,18 @@ export default function ManageOperatorsPage() {
 
         <div>
             <Label htmlFor={`${type}-overtimeRate`}>Tariffa Straordinari (€/h)</Label>
-            <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="0.0001" placeholder="Es: 10.00" />
+            <Input id={`${type}-overtimeRate`} type="number" value={overtimeRate} onChange={(e) => setOvertimeRate(e.target.value)} min="0" step="any" placeholder="Es: 10.00" />
         </div>
         <div className='md:col-span-3 mt-4 mb-2'>
             <h4 className="font-semibold text-lg">Regole Straordinari (Default 25/45)</h4>
         </div>
         <div>
           <Label htmlFor={`${type}-halfHourTrigger`}>Scatto Strat. Mezz'ora (min)</Label>
-          <Input id={`${type}-halfHourTrigger`} type="number" value={overtimeHalfHourTrigger} onChange={(e) => setOvertimeHalfHourTrigger(e.target.value)} min="0" max="60" placeholder="Es: 25" />
+          <Input id={`${type}-halfHourTrigger`} type="number" value={overtimeHalfHourTrigger} onChange={(e) => setOvertimeHalfHourTrigger(e.target.value)} min="0" max="60" step="any" placeholder="Es: 25" />
         </div>
         <div>
           <Label htmlFor={`${type}-hourTrigger`}>Scatto Strat. Ora (min)</Label>
-          <Input id={`${type}-hourTrigger`} type="number" value={overtimeHourTrigger} onChange={(e) => setOvertimeHourTrigger(e.target.value)} min="0" max="60" placeholder="Es: 45" />
+          <Input id={`${type}-hourTrigger`} type="number" value={overtimeHourTrigger} onChange={(e) => setOvertimeHourTrigger(e.target.value)} min="0" max="60" step="any" placeholder="Es: 45" />
         </div>
 
         <div className='md:col-span-3 mt-4 mb-2'>
@@ -579,15 +612,15 @@ export default function ManageOperatorsPage() {
         </div>
         <div>
           <Label htmlFor={`${type}-entryTolerance`}>Tolleranza Entrata (min)</Label>
-          <Input id={`${type}-entryTolerance`} type="number" value={entryTolerance} onChange={(e) => setEntryTolerance(e.target.value)} min="0" max="60" placeholder="Es: 15" />
+          <Input id={`${type}-entryTolerance`} type="number" value={entryTolerance} onChange={(e) => setEntryTolerance(e.target.value)} min="0" max="60" step="any" placeholder="Es: 15" />
         </div>
         <div>
           <Label htmlFor={`${type}-ordHalfTrigger`}>Scatto Ord. Mezz'ora (min)</Label>
-          <Input id={`${type}-ordHalfTrigger`} type="number" value={ordinaryHalfHourTrigger} onChange={(e) => setOrdinaryHalfHourTrigger(e.target.value)} min="0" max="60" placeholder="Es: 25" />
+          <Input id={`${type}-ordHalfTrigger`} type="number" value={ordinaryHalfHourTrigger} onChange={(e) => setOrdinaryHalfHourTrigger(e.target.value)} min="0" max="60" step="any" placeholder="Es: 25" />
         </div>
         <div>
           <Label htmlFor={`${type}-ordHourTrigger`}>Scatto Ord. Ora (min)</Label>
-          <Input id={`${type}-ordHourTrigger`} type="number" value={ordinaryHourTrigger} onChange={(e) => setOrdinaryHourTrigger(e.target.value)} min="0" max="60" placeholder="Es: 45" />
+          <Input id={`${type}-ordHourTrigger`} type="number" value={ordinaryHourTrigger} onChange={(e) => setOrdinaryHourTrigger(e.target.value)} min="0" max="60" step="any" placeholder="Es: 45" />
         </div>
 
         <div className='md:col-span-3 mt-4 mb-2'>
@@ -595,20 +628,43 @@ export default function ManageOperatorsPage() {
         </div>
         <div className='md:col-span-1'>
           <Label htmlFor={`${type}-scheduleType`}>Calcolo Ore</Label>
-          <Select value={scheduleType} onValueChange={v => setScheduleType(v as 'daily' | 'monthly')}>
+          <Select value={scheduleType} onValueChange={v => setScheduleType(v as 'daily' | 'weekly' | 'monthly')}>
             <SelectTrigger id={`${type}-scheduleType`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="daily">Giornaliero (Standard)</SelectItem>
+              <SelectItem value="weekly">Monte Ore Settimanale</SelectItem>
               <SelectItem value="monthly">Monte Ore Mensile</SelectItem>
             </SelectContent>
           </Select>
         </div>
+        {scheduleType === 'weekly' && (
+             <div className='md:col-span-2'>
+                <Label htmlFor={`${type}-weeklyHours`}>Ore Contrattuali Settimanali (Totali)</Label>
+                <Input 
+                    id={`${type}-weeklyHours`} 
+                    type="number" 
+                    step="any" 
+                    value={weeklyContractualHours} 
+                    onChange={(e) => setWeeklyContractualHours(e.target.value)} 
+                    min="0" 
+                    placeholder="Es: 4.5 oppure 36" 
+                />
+            </div>
+        )}
         {scheduleType === 'monthly' && (
              <div className='md:col-span-2'>
                 <Label htmlFor={`${type}-monthlyHours`}>Ore Contrattuali Mensili (Totali)</Label>
-                <Input id={`${type}-monthlyHours`} type="number" value={monthlyContractualHours} onChange={(e) => setMonthlyContractualHours(e.target.value)} min="0" placeholder="Es: 160" />
+                <Input 
+                    id={`${type}-monthlyHours`} 
+                    type="number" 
+                    step="any" 
+                    value={monthlyContractualHours} 
+                    onChange={(e) => setMonthlyContractualHours(e.target.value)} 
+                    min="0" 
+                    placeholder="Es: 160" 
+                />
             </div>
         )}
       </>
@@ -666,6 +722,7 @@ export default function ManageOperatorsPage() {
                                             newOrdinaryHalfHourTrigger, setNewOrdinaryHalfHourTrigger,
                                             newOrdinaryHourTrigger, setNewOrdinaryHourTrigger,
                                             newScheduleType, setNewScheduleType,
+                                            newWeeklyContractualHours, setNewWeeklyContractualHours,
                                             newMonthlyContractualHours, setNewMonthlyContractualHours
                                           )}
                                         </div>
@@ -674,7 +731,7 @@ export default function ManageOperatorsPage() {
                                             <Label htmlFor="new-gps">Richiedi Geolocalizzazione (GPS)</Label>
                                         </div>
                                         <div>
-                                            <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
+                                            <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo (Opzionale per Monte Ore)</Label>
                                              <Separator className="my-2" />
                                             {renderWorkScheduleFields(
                                                 newWorkSchedule, 
@@ -725,7 +782,7 @@ export default function ManageOperatorsPage() {
                                                 <TableCell>
                                                     {operator.requireGps ?? true ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />}
                                                 </TableCell>
-                                                <TableCell>{formatWorkSchedule(operator.workSchedule)}</TableCell>
+                                                <TableCell>{formatWorkSchedule(operator)}</TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                                     <Button variant="ghost" size="icon" onClick={() => { 
                                                         setSelectedOperator(operator); 
@@ -745,8 +802,21 @@ export default function ManageOperatorsPage() {
                                                         setEditingOrdinaryHalfHourTrigger(operator.ordinaryHalfHourTrigger ?? 25); 
                                                         setEditingOrdinaryHourTrigger(operator.ordinaryHourTrigger ?? 45); 
                                                         setEditingScheduleType(operator.scheduleType || 'daily'); 
+                                                        setEditingWeeklyContractualHours(operator.weeklyContractualHours || '');
                                                         setEditingMonthlyContractualHours(operator.monthlyContractualHours || ''); 
-                                                        setEditingEmploymentStartDate(operator.employmentStartDate ? format(operator.employmentStartDate.toDate(), 'yyyy-MM-dd') : '');
+                                                        let empDateStr = '';
+                                                        if (operator.employmentStartDate) {
+                                                            if (typeof (operator.employmentStartDate as any).toDate === 'function') {
+                                                                try { empDateStr = format((operator.employmentStartDate as any).toDate(), 'yyyy-MM-dd'); } catch (e) { empDateStr = ''; }
+                                                            } else if (operator.employmentStartDate as any instanceof Date) {
+                                                                try { empDateStr = format(operator.employmentStartDate as any, 'yyyy-MM-dd'); } catch (e) { empDateStr = ''; }
+                                                            } else if (typeof operator.employmentStartDate === 'string') {
+                                                                empDateStr = (operator.employmentStartDate as string).slice(0, 10);
+                                                            } else if ((operator.employmentStartDate as any).seconds) {
+                                                                try { empDateStr = format(new Date((operator.employmentStartDate as any).seconds * 1000), 'yyyy-MM-dd'); } catch (e) { empDateStr = ''; }
+                                                            }
+                                                        }
+                                                        setEditingEmploymentStartDate(empDateStr);
                                                         setIsEditDialogOpen(true);
                                                     }}>
                                                         <Pencil className="h-4 w-4" />
@@ -803,6 +873,7 @@ export default function ManageOperatorsPage() {
                                     editingOrdinaryHalfHourTrigger, setEditingOrdinaryHalfHourTrigger,
                                     editingOrdinaryHourTrigger, setEditingOrdinaryHourTrigger,
                                     editingScheduleType, setEditingScheduleType,
+                                    editingWeeklyContractualHours, setEditingWeeklyContractualHours,
                                     editingMonthlyContractualHours, setEditingMonthlyContractualHours
                                   )}
                             </div>
@@ -811,7 +882,7 @@ export default function ManageOperatorsPage() {
                                 <Label htmlFor="edit-gps">Richiedi Geolocalizzazione (GPS)</Label>
                             </div>
                             <div>
-                                <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo</Label>
+                                <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo (Opzionale per Monte Ore)</Label>
                                 <Separator className="my-2" />
                                 {renderWorkScheduleFields(
                                     editingWorkSchedule, 

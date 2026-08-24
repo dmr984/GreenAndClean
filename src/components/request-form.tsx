@@ -39,7 +39,7 @@ type WorkSchedule = {
 };
 type Operator = {
     workSchedule?: WorkSchedule;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
 };
 
 
@@ -160,7 +160,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
         if (role === 'operator' && day < startOfDay(new Date())) return true;
         if (bookedDays.some(bookedDay => isSameDay(day, bookedDay))) return true;
 
-        if (operator?.workSchedule) {
+        if (operator?.workSchedule && operator.scheduleType !== 'monthly' && operator.scheduleType !== 'weekly' && Object.keys(operator.workSchedule).length > 0) {
             const dayName = dayIndexToName[getDay(day)];
             const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
             if (!isContractualDay) return true;
@@ -233,7 +233,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="ferie">Ferie</SelectItem>
-                                    {!(role === 'operator' && operator?.scheduleType === 'monthly') && (
+                                    {!(role === 'operator' && (operator?.scheduleType === 'monthly' || operator?.scheduleType === 'weekly')) && (
                                         <SelectItem value="permesso">Permesso</SelectItem>
                                     )}
                                     {role === 'admin' && <SelectItem value="malattia">Malattia</SelectItem>}

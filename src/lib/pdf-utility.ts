@@ -14,8 +14,9 @@ export type Operator = {
     hourlyRate?: number;
     overtimeRate?: number;
     fixedSalary?: number;
-    sickLeaveRate?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
+    monthlyContractualHours?: number;
 };
 
 export type ManualTotals = {
@@ -141,18 +142,19 @@ export const generateDetailedOperatorPdf = async (
         y += 15;
 
         // 2. Statistics Summary
-        const finalFerieDays = overrides.ferieDays ?? summary.ferieDays ?? 0;
-        const finalPermessoHours = overrides.permessoHours ?? summary.permessoHours ?? 0;
-        const finalMalattiaDays = overrides.malattiaDays ?? summary.malattiaDays ?? 0;
-        const finalOrdinaryWorkedDays = overrides.ordinaryWorkedDays ?? summary.ordinaryWorkedDays ?? 0;
-        const finalOvertimeHours = overrides.overtimeHours ?? summary.overtimeHours ?? 0;
+        const finalFerieDays = overrides.ferieDays !== undefined ? Number(overrides.ferieDays) : (summary.ferieDays ?? 0);
+        const finalPermessoHours = overrides.permessoHours !== undefined ? Number(overrides.permessoHours) : (summary.permessoHours ?? 0);
+        const finalMalattiaDays = overrides.malattiaDays !== undefined ? Number(overrides.malattiaDays) : (summary.malattiaDays ?? 0);
+        const finalOrdinaryWorkedDays = overrides.ordinaryWorkedDays !== undefined ? Number(overrides.ordinaryWorkedDays) : (summary.ordinaryWorkedDays ?? 0);
+        const finalOrdinaryHours = overrides.ordinaryHours !== undefined ? Number(overrides.ordinaryHours) : (summary.ordinaryHours ?? 0);
+        const finalOvertimeHours = overrides.overtimeHours !== undefined ? Number(overrides.overtimeHours) : (summary.overtimeHours ?? 0);
 
-        const isMonthly = op.scheduleType === 'monthly';
-        const showPermessi = !(isMonthly && finalPermessoHours === 0);
+        const isMonteOre = op.scheduleType === 'monthly' || op.scheduleType === 'weekly';
+        const showPermessi = !(isMonteOre && finalPermessoHours === 0);
 
         const summaryBody = [
             [`GIORNI ORDINARI LAVORATI: ${finalOrdinaryWorkedDays}`, { content: `FERIE: ${finalFerieDays}`, styles: { halign: 'right' }} ],
-            [`ORE ORDINARIE: ${summary.ordinaryHours}`, { content: showPermessi ? `ORE PERMESSI: ${finalPermessoHours}` : '', styles: { halign: 'right' }}],
+            [`ORE ORDINARIE: ${finalOrdinaryHours}`, { content: showPermessi ? `ORE PERMESSI: ${finalPermessoHours}` : '', styles: { halign: 'right' }}],
             [`ORE STRAORDINARIE: ${finalOvertimeHours}`, { content: `GIORNI MALATTIA: ${finalMalattiaDays}`, styles: { halign: 'right' }}],
         ];
 
@@ -162,7 +164,7 @@ export const generateDetailedOperatorPdf = async (
             body: summaryBody,
             styles: { fontSize: 10, textColor: [0, 0, 0], cellPadding: 1 },
         });
-        y = (doc as any).lastAutoTable.finalY + 5;
+        y = (doc as any).lastAutoTable.finalY + 3;
 
         // 3. Costs
         const ordinaryCost = overrides.ordinaryCost !== undefined 
@@ -177,9 +179,9 @@ export const generateDetailedOperatorPdf = async (
 
         doc.setDrawColor(200);
         doc.line(margin, y, pageWidth - margin, y);
-        y += 5;
+        y += 3;
 
-        const costBody = [
+        const costBody: any[] = [
             [`${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'COSTO ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, { content: `COSTO STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, styles: { halign: 'right' }}]
         ];
         
@@ -187,9 +189,21 @@ export const generateDetailedOperatorPdf = async (
         const finalPermessoCost = overrides.permessoCost !== undefined ? Number(overrides.permessoCost) : (summary.permessoCost || 0);
         const finalMalattiaCost = overrides.malattiaCost !== undefined ? Number(overrides.malattiaCost) : (summary.malattiaCost || 0);
 
-        if (finalFerieCost || finalPermessoCost || finalMalattiaCost) {
+        if (finalFerieCost > 0) {
             costBody.push([
-                `COSTO FERIE/PERM/MAL: ${(finalFerieCost + finalPermessoCost + finalMalattiaCost).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
+                `COSTO FERIE: ${finalFerieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
+                { content: '', styles: { halign: 'right' } }
+            ]);
+        }
+        if (finalPermessoCost > 0) {
+            costBody.push([
+                `COSTO PERMESSI: ${finalPermessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
+                { content: '', styles: { halign: 'right' } }
+            ]);
+        }
+        if (finalMalattiaCost > 0) {
+            costBody.push([
+                `COSTO MALATTIA: ${finalMalattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
                 { content: '', styles: { halign: 'right' } }
             ]);
         }
@@ -200,28 +214,39 @@ export const generateDetailedOperatorPdf = async (
             body: costBody,
             styles: { fontSize: 10, textColor: [0, 0, 0], cellPadding: 1 },
         });
-        y = (doc as any).lastAutoTable.finalY + 5;
+        y = (doc as any).lastAutoTable.finalY + 3;
 
         doc.setDrawColor(0);
         doc.setLineWidth(0.5);
         doc.line(margin, y, pageWidth - margin, y);
-        y += 8;
+        y += 7;
 
-        doc.setFontSize(14);
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
         doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
-        y += 15;
+        y += 12;
 
         // 4. Daily Details
-        doc.setFontSize(14);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
         doc.text("Dettaglio Giornaliero", margin, y);
         y += 3;
-        doc.setLineWidth(0.2);
+        doc.setLineWidth(0.4);
         doc.line(margin, y, pageWidth - margin, y);
-        y += 8;
+        y += 6;
 
         details.forEach(detail => {
-            if (y > pageHeight - 30) {
+            // Estimate needed height for this entry
+            let estimatedHeight = 16;
+            if (detail.note) estimatedHeight += 6;
+            if (detail.makeupActivityFor && detail.makeupActivityFor.length > 0) estimatedHeight += 10;
+            if (detail.shift && detail.shift.allShifts) {
+                estimatedHeight += (detail.shift.allShifts.length * 6) + 4;
+            }
+
+            if (y + estimatedHeight > pageHeight - 15) {
                 doc.addPage();
                 y = 20;
             }
@@ -230,44 +255,73 @@ export const generateDetailedOperatorPdf = async (
             const restOfDate = format(detail.date, 'dd MMMM', { locale: it });
             const dateStr = `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${restOfDate}`;
 
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            doc.text(dateStr, margin, y);
-            y += 5;
-
             doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0, 0, 0);
+            doc.text(dateStr, margin, y);
+            y += 4.5;
 
             if (detail.note) {
+                doc.setFontSize(9);
                 doc.setFont('helvetica', 'italic');
+                doc.setTextColor(0, 0, 0);
                 const splitNote = doc.splitTextToSize(`"${detail.note.note}"`, pageWidth - margin * 2);
                 doc.text(splitNote, margin, y);
-                y += (splitNote.length * 5);
-                doc.setFont('helvetica', 'normal');
+                y += (splitNote.length * 4.2);
+            }
+
+            if (detail.makeupActivityFor && detail.makeupActivityFor.length > 0) {
+                doc.setFontSize(8.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(147, 51, 234);
+                doc.text(`Recupero per: ${detail.makeupActivityFor.join(', ')}`, margin, y);
+                y += 3.8;
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'italic');
+                doc.setTextColor(100, 100, 100);
+                doc.text(`(Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)`, margin, y);
+                y += 4;
+                doc.setTextColor(0, 0, 0);
             }
 
             if (detail.shift && detail.shift.allShifts) {
-                detail.shift.allShifts.forEach((shiftBlock: any, idx: number) => {
+                detail.shift.allShifts.forEach((shiftBlock: any) => {
                     const timbratureString = shiftBlock.events.map((e: any) => {
                         const originalTime = format(e.timestamp.toDate(), 'HH:mm');
-                        let refTime = '';
+                        let referenceTime = '';
                         if (e.type === 'entrata' && shiftBlock.calculationStart) {
-                            refTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
+                            referenceTime = `(${format(shiftBlock.calculationStart, 'HH:mm')})`;
                         } else if (e.type === 'uscita' && shiftBlock.calculationEnd) {
-                            refTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
+                            referenceTime = `(${format(shiftBlock.calculationEnd, 'HH:mm')})`;
                         }
-                        const typeLabel = e.type.charAt(0).toUpperCase() + e.type.slice(1);
-                        return `${typeLabel}: ${originalTime} ${refTime}`.trim();
+                        const typeFormatted = e.type.charAt(0).toUpperCase() + e.type.slice(1).replace('_', ' ');
+                        return `${typeFormatted}: ${originalTime} ${referenceTime}`.trim();
                     }).join(' | ');
 
-                    // doc.text(`Turno ${idx + 1}: ${timbratureString}`, margin, y);
-                    // y += 5;
+                    if (timbratureString) {
+                        doc.setFontSize(8);
+                        doc.setFont('helvetica', 'italic');
+                        doc.setTextColor(55, 65, 81); // gray-700
+                        const splitTimbrature = doc.splitTextToSize(timbratureString, pageWidth - margin * 2);
+                        doc.text(splitTimbrature, margin, y);
+                        y += (splitTimbrature.length * 3.8);
+                    }
                 });
+
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(0, 0, 0);
+
+                const totalPerm = (detail.shift.permissionHours || 0) + (detail.shift.recuperoHours || 0);
+                const isDeducted = (detail.shift.recuperoHours || 0) > 0;
+                const stats = `Ore Previste: ${detail.shift.contractualHours}h | Ore Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h | Permesso: ${totalPerm}h${isDeducted ? ' (scalato dagli straordinari)' : ''}`;
                 
-                const stats = `Ore Previste: ${detail.shift.contractualHours}h | Ordinarie: ${detail.shift.ordinaryHours}h | Straordinario: ${detail.shift.overtimeHours}h${showPermessi ? ` | Permesso: ${detail.shift.permissionHours}h` : ''}`;
                 doc.text(stats, margin, y);
-                y += 6;
+                y += 4.5;
             } else if (!detail.note) {
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(0, 0, 0);
                 let statusText = '';
                 switch (detail.status) {
                     case 'mancata_timbratura': statusText = 'Assente'; break;
@@ -278,14 +332,14 @@ export const generateDetailedOperatorPdf = async (
                 }
                 if (statusText) {
                     doc.text(statusText, margin, y);
-                    y += 5;
+                    y += 4.5;
                 }
             }
 
             doc.setDrawColor(220);
             doc.setLineWidth(0.1);
             doc.line(margin, y, pageWidth - margin, y);
-            y += 6;
+            y += 4.5;
         });
 
         const blob = doc.output('blob');

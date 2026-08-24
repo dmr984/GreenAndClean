@@ -32,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
 import { Switch } from '@/components/ui/switch';
 import { FirestorePermissionError, errorEmitter } from '@/firebase';
+import { RequestForm } from '@/components/request-form';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -63,7 +64,8 @@ type Operator = {
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
     ordinaryHourTrigger?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
     monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
@@ -72,6 +74,7 @@ type Operator = {
     salaryType?: 'fixed' | 'hourly';
     fixedSalary?: number;
     sickLeaveRate?: number;
+    employmentStartDate?: Timestamp;
 };
 
 type Timbratura = {
@@ -235,6 +238,7 @@ export default function ShiftApprovalPage() {
     const [approvalContext, setApprovalContext] = useState<ApprovalContext>(null);
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
+    const [isAddRequestOpen, setIsAddRequestOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
     const [isMultiSelect, setIsMultiSelect] = useState(false);
     const [multipleShiftDates, setMultipleShiftDates] = useState<Date[]>([]);
@@ -1928,7 +1932,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <CardHeader className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div>
                         <div className='flex items-center gap-2'>
                            <h1 className="text-3xl font-bold tracking-tight">{operator.firstName} {operator.lastName}</h1>
@@ -1936,9 +1940,17 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                          </div>
                         <p className="text-muted-foreground">Gestione Turni (Codice: {operator.username})</p>
                     </div>
-                    <Button onClick={() => setIsAddShiftOpen(true)}>
-                        <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" onClick={() => router.push(`/dashboard/operators/${operator.id}/requests`)}>
+                            <FileText className="mr-2 h-4 w-4 text-muted-foreground" /> Gestione Richieste
+                        </Button>
+                        <Button variant="secondary" onClick={() => setIsAddRequestOpen(true)} className="border border-input">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" /> Aggiungi Richiesta (Ferie/Malattie/Permessi)
+                        </Button>
+                        <Button onClick={() => setIsAddShiftOpen(true)}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale
+                        </Button>
+                    </div>
                 </CardHeader>
             </Card>
 
@@ -2361,7 +2373,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                         </div>
 
                         {(() => {
-                            const ordCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+                            const ordCost = operator.salaryType === 'fixed'
+                                ? (operator.fixedSalary || 0)
+                                : (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
                             const ovtCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
                             const ferCost = monthlySummary.ferieCost || 0;
                             const perCost = monthlySummary.permessoCost || 0;
@@ -2544,6 +2558,26 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            <ResponsiveDialog open={isAddRequestOpen} onOpenChange={setIsAddRequestOpen}>
+                <ResponsiveDialogContent className="sm:max-w-xl">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle>Aggiungi Richiesta per {operator.firstName} {operator.lastName}</ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription>
+                            Inserisci direttamente una richiesta di Ferie, Malattia o Permesso per questo operatore.
+                        </ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+                    <div className="py-2">
+                        <RequestForm 
+                            userId={operator.id} 
+                            onFinished={() => {
+                                setIsAddRequestOpen(false);
+                            }} 
+                            role="admin" 
+                        />
+                    </div>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
 
             <ResponsiveDialog open={isAddShiftOpen} onOpenChange={setIsAddShiftOpen}>
                 <ResponsiveDialogContent>

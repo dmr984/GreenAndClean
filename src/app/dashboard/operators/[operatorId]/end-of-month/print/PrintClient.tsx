@@ -34,7 +34,8 @@ type Operator = {
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
     ordinaryHourTrigger?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
     monthlyContractualHours?: number;
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
@@ -45,6 +46,7 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    employmentStartDate?: Timestamp;
 };
 
 type Request = {

@@ -34,7 +34,9 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
+    monthlyContractualHours?: number;
 };
 
 type ManualTotals = {
@@ -769,7 +771,7 @@ const MonthlyReportPage = () => {
                                                     <InfoCard opId={op.id} title="Malattia (g)" value={finalMalattiaDays} icon={Stethoscope} visibilityKey="malattiaDays" editKey="malattiaDays" currentRawValue={finalMalattiaDays} />
                                                     <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" editKey="malattiaCost" currentRawValue={malattiaCost} />
                                                     
-                                                    {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                                                    {!( (op.scheduleType === 'monthly' || op.scheduleType === 'weekly') && finalPermessoHours === 0) && (
                                                         <>
                                                             <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" editKey="permessoHours" currentRawValue={finalPermessoHours} />
                                                             <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" editKey="permessoCost" currentRawValue={permessoCost} />

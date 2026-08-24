@@ -1,9 +1,31 @@
 // src/lib/calculations.ts
 
 import { Timestamp } from 'firebase/firestore';
-import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays, parse, endOfDay as dateFnsEndOfDay, isSunday } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, isSameDay, set, startOfDay, addDays, subDays, parse, endOfDay as dateFnsEndOfDay, isSunday, startOfWeek } from 'date-fns';
 import { isPublicHoliday } from '@/lib/holidays';
 import { it } from 'date-fns/locale';
+
+// Helper to safely parse employment start date from various formats
+export const parseEmploymentStartDate = (val: any): Date | undefined => {
+    if (!val) return undefined;
+    if (typeof val.toDate === 'function') {
+        try { return val.toDate(); } catch (e) { return undefined; }
+    }
+    if (val instanceof Date) return isNaN(val.getTime()) ? undefined : val;
+    if (typeof val === 'string') {
+        const d = new Date(val.includes('T') ? val : val + 'T00:00:00');
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    if (typeof val === 'number') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    if (val.seconds !== undefined) {
+        const d = new Date(val.seconds * 1000);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    return undefined;
+};
 
 // Type Definitions
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -29,7 +51,8 @@ type Operator = {
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
     ordinaryHourTrigger?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
     monthlyContractualHours?: number;
     overtimeHalfHourTrigger?: number;
     overtimeHourTrigger?: number;
@@ -343,8 +366,8 @@ export const calculateShiftDetails = (
         }
     }
 
-    const isMonthly = operator?.scheduleType === 'monthly';
-    const isOvertimeExit = isMonthly ? false : (contractualEndTime ? clockOutTime > contractualEndTime : false);
+    const isMonteOre = operator?.scheduleType === 'monthly' || operator?.scheduleType === 'weekly';
+    const isOvertimeExit = isMonteOre ? false : (contractualEndTime ? clockOutTime > contractualEndTime : false);
     
     // Choose which triggers to use
     const hTrigger = isOvertimeExit ? (operator?.overtimeHourTrigger ?? 45) : (operator?.ordinaryHourTrigger ?? 45);
@@ -413,13 +436,13 @@ export const calculateHours = (
 
     const { workedMinutes, breakMinutes, calculationStart, calculationEnd, earlyOvertimeHours } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, operator);
     
-    const isMonthly = operator?.scheduleType === 'monthly';
-    const contractualHours = (isMonthly ? Infinity : schedule?.totalHours) || 0;
+    const isMonteOre = operator?.scheduleType === 'monthly' || operator?.scheduleType === 'weekly';
+    const contractualHours = (isMonteOre ? Infinity : schedule?.totalHours) || 0;
     const contractualMinutes = contractualHours * 60;
     const isMakeupShift = !!clockInEvent?.makeupOfDay;
     const isWorkDay = isMakeupShift || contractualHours > 0;
     
-    if (!isWorkDay && !isMonthly) {
+    if (!isWorkDay && !isMonteOre) {
         const overtime = roundOvertimeHours(workedMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger) + (earlyOvertimeHours || 0);
         return { ordinary: 0, overtime, leave: 0, worked: workedMinutes, break: breakMinutes, calculationStart, calculationEnd };
     }
@@ -429,10 +452,8 @@ export const calculateHours = (
     const ordinaryHours = roundOrdinaryHours(ordinaryMinutes); // Internally handles half-hour blocks based on exact workedMinutes
     const overtimeHours = roundOvertimeHours(overtimeMinutes, operator?.overtimeHalfHourTrigger, operator?.overtimeHourTrigger) + (earlyOvertimeHours || 0);
     
-    // Monthly workers never accrue daily leave (Infinity check prevents it), skip if IS monthly
-    // Per gli operatori mensili non calcoliamo automaticamente i permessi per coprire i "buchi" giornalieri.
-    // Il calcolo si basa sul monte ore mensile totale.
-    const leaveHours = (!isMonthly && isWorkDay && ordinaryHours < contractualHours) ? contractualHours - ordinaryHours : 0;
+    // Monthly/Weekly workers never accrue daily leave (Infinity check prevents it)
+    const leaveHours = (!isMonteOre && isWorkDay && ordinaryHours < contractualHours) ? contractualHours - ordinaryHours : 0;
 
     return { 
         ordinary: ordinaryHours, 
@@ -470,7 +491,7 @@ export const processMonthlyData = (
     const today = startOfDay(new Date());
 
     // Prioritize explicitly passed start date, otherwise use operator field if it exists
-    const effectiveEmploymentStartDate = employmentStartDateOverride || data.employmentStartDate || (operator.employmentStartDate ? operator.employmentStartDate.toDate() : undefined);
+    const effectiveEmploymentStartDate = parseEmploymentStartDate(employmentStartDateOverride || data.employmentStartDate || operator.employmentStartDate);
 
     const detailsMap = new Map<string, DailyDetail>();
     const allDaysOfMonth = eachDayOfInterval(monthInterval);
@@ -675,6 +696,7 @@ export const processMonthlyData = (
             const dayName = dayIndexToName[getDay(detail.date)];
             const isWorkDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
             const isHoliday = isPublicHoliday(detail.date);
+            const isMonteOre = operator?.scheduleType === 'monthly' || operator?.scheduleType === 'weekly';
             
             const makeupNote = makeupTargets[startOfDay(detail.date).toISOString()];
             
@@ -685,6 +707,9 @@ export const processMonthlyData = (
                 detail.status = 'riposo';
             } else if (isHoliday) {
                 detail.status = 'festa';
+            } else if (isMonteOre) {
+                // For monte ore (weekly or monthly), unworked days are NEVER marked as absence/mancata timbratura
+                detail.status = 'riposo';
             } else if (isWorkDay && detail.date < today) {
                 detail.status = 'mancata_timbratura';
             } else if (!isWorkDay && detail.date <= today) {
@@ -766,8 +791,14 @@ export const processMonthlyData = (
         }
 
         // Calculate expected hours for the month
-        const dayName = dayIndexToName[getDay(detail.date)];
-        expectedMonthlyHours += operator.workSchedule[dayName]?.totalHours || 0;
+        if (operator.scheduleType === 'monthly' && operator.monthlyContractualHours) {
+            expectedMonthlyHours = operator.monthlyContractualHours;
+        } else if (operator.scheduleType === 'weekly' && operator.weeklyContractualHours) {
+            expectedMonthlyHours = Math.round((operator.weeklyContractualHours / 7) * allDaysOfMonth.length);
+        } else {
+            const dayName = dayIndexToName[getDay(detail.date)];
+            expectedMonthlyHours += operator.workSchedule[dayName]?.totalHours || 0;
+        }
     });
     
     let hasFerieRequestWithCosts = false;
@@ -844,6 +875,36 @@ export const processMonthlyData = (
              totalOrdinaryHours = totalWorked;
              totalOvertimeHours = 0;
         }
+    } else if (operator.scheduleType === 'weekly' && operator.weeklyContractualHours) {
+        // Group worked hours by week (Monday - Sunday) within the month
+        const weeklyMap: { [weekKey: string]: number } = {};
+        dailyDetails.forEach(d => {
+            if (!isWithinInterval(d.date, monthInterval)) return;
+            const opId = operator.id;
+            const day = format(d.date, 'd');
+            const manualStatus = data.overrides?.[`${opId}-O-${day}`];
+            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
+            if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
+                const weekKey = format(startOfWeek(d.date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+                weeklyMap[weekKey] = (weeklyMap[weekKey] || 0) + (d.shift.ordinaryHours || 0) + (d.shift.overtimeHours || 0);
+            }
+        });
+
+        let newTotalOrd = 0;
+        let newTotalOvt = 0;
+        const target = operator.weeklyContractualHours;
+
+        Object.values(weeklyMap).forEach(weekTotal => {
+            if (weekTotal > target) {
+                newTotalOrd += target;
+                newTotalOvt += (weekTotal - target);
+            } else {
+                newTotalOrd += weekTotal;
+            }
+        });
+
+        totalOrdinaryHours = newTotalOrd;
+        totalOvertimeHours = newTotalOvt;
     }
 
     const totalAbsenceHours = (ferieHours || 0) + (malattiaDays ? malattiaDays * 8 : 0) + Math.max(0, (totalPermessoHours || 0) - totalRecuperoStraordinariHours);
@@ -893,8 +954,7 @@ export const processMonthlyData = (
     // Calculate estimated cost
     let rate = operator.hourlyRate || 0;
     if (operator.salaryType === 'fixed' && !operator.hourlyRate && operator.fixedSalary) {
-        // Fallback for calculating overtime rate if hourlyRate isn't specified
-        const monthlyHours = operator.monthlyContractualHours || expectedMonthlyHours || 160; 
+        const monthlyHours = operator.monthlyContractualHours || (operator.weeklyContractualHours ? (operator.weeklyContractualHours / 7) * allDaysOfMonth.length : expectedMonthlyHours) || 160; 
         rate = operator.fixedSalary / monthlyHours;
     }
     const overtimeRate = operator.overtimeRate || (rate * 1.2); // Default 20% increase if not specified

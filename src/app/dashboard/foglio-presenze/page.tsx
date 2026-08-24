@@ -16,7 +16,9 @@ type Operator = {
     firstName: string;
     lastName: string;
     salaryType?: 'hourly' | 'fixed';
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
+    monthlyContractualHours?: number;
     workSchedule: any;
 };
 

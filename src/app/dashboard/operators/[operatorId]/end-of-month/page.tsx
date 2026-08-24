@@ -18,8 +18,8 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours, calculatePureOvertime } from '@/lib/calculations';
 import { Input } from '@/components/ui/input';
+import { processMonthlyData, calculateShiftDetails, type DailyDetail, type MonthlySummary, calculateHours, calculatePureOvertime, parseEmploymentStartDate } from '@/lib/calculations';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -51,7 +51,8 @@ type Operator = {
     entryTolerance?: number;
     ordinaryHalfHourTrigger?: number;
     ordinaryHourTrigger?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
     monthlyContractualHours?: number;
     contractType?: 'weekly' | 'monthly';
     totalMonthlyHours?: number;
@@ -62,6 +63,7 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
+    employmentStartDate?: Timestamp;
 };
 
 type Request = {
@@ -235,9 +237,7 @@ export default function EndOfMonthPage() {
             return { monthlySummary: {} as MonthlySummary, dailyDetails: [] as DailyDetail[] };
         }
         
-        const employmentDate = (operator as any).employmentStartDate 
-            ? (operator as any).employmentStartDate.toDate() 
-            : undefined;
+        const employmentDate = parseEmploymentStartDate((operator as any).employmentStartDate);
 
         return processMonthlyData(currentMonth, operator, monthlyData, employmentDate);
     }, [operator, currentMonth, monthlyData, isLoading]);
@@ -434,7 +434,9 @@ export default function EndOfMonthPage() {
     const finalMalattiaDays = monthlySummary.malattiaDays ?? 0;
     const finalAbsenceDays = monthlySummary.absenceDays ?? 0;
 
-    const ordinaryCost = (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
+    const ordinaryCost = operator.salaryType === 'fixed'
+        ? (operator.fixedSalary || 0)
+        : (monthlySummary.ordinaryHours || 0) * (operator.hourlyRate || 0);
     const overtimeCost = (monthlySummary.overtimeHours || 0) * (operator.overtimeRate || 0);
     const ferieCost = monthlySummary.ferieCost || 0;
     const permessoCost = monthlySummary.permessoCost || 0;
@@ -568,7 +570,7 @@ export default function EndOfMonthPage() {
                             value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
                             icon={Euro}
                         />
-                        {!(operator.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                        {!( (operator.scheduleType === 'monthly' || operator.scheduleType === 'weekly') && finalPermessoHours === 0) && (
                             <>
                                 <SummaryCard 
                                     title="Permessi (ore)" 

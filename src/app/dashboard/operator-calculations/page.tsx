@@ -38,7 +38,9 @@ type Operator = {
     overtimeRate?: number;
     fixedSalary?: number;
     sickLeaveRate?: number;
-    scheduleType?: 'daily' | 'monthly';
+    scheduleType?: 'daily' | 'weekly' | 'monthly';
+    weeklyContractualHours?: number;
+    monthlyContractualHours?: number;
 };
 
 type ManualTotals = {
@@ -649,7 +651,7 @@ const OperatorCalculationsPage = () => {
                                                     <InfoCard opId={op.id} title="Ferie (h)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" subtext={summaryData.ferieHours ? `(${summaryData.ferieHours}h)` : ''} />
                                                     <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" />
                                                     
-                                                    {!(op.scheduleType === 'monthly' && finalPermessoHours === 0) && (
+                                                    {!( (op.scheduleType === 'monthly' || op.scheduleType === 'weekly') && finalPermessoHours === 0) && (
                                                         <>
                                                             <InfoCard opId={op.id} title="Permessi (h)" value={finalPermessoHours} icon={UserCheck} visibilityKey="permessoHours" subtext={(summaryData.recuperoStraordinariHours || 0) > 0 || summaryData.isPermessoDeductedFromOvertime ? "(scalato dagli straordinari)" : undefined} />
                                                             <InfoCard opId={op.id} title="Totale Permessi" value={`${permessoCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="permessoCost" />
