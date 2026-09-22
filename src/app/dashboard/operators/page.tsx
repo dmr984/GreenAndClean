@@ -382,13 +382,21 @@ export default function ManageOperatorsPage() {
             });
         } else if (action === 'edit' && selectedOperator) {
             const operatorRef = doc(firestore, 'app-users', selectedOperator.id);
+            const isCodeChanged = cleanedData.username && cleanedData.username !== selectedOperator.username;
             updateDoc(operatorRef, cleanedData as any)
             .then(() => {
-                toast({ title: "Successo", description: "Dati operatore aggiornati." });
+                if (isCodeChanged) {
+                    toast({
+                        title: "Codice Operatore Modificato",
+                        description: `Codice aggiornato a "${cleanedData.username}". L'operatore verrà disconnesso automaticamente e dovrà accedere con il nuovo codice.`
+                    });
+                } else {
+                    toast({ title: "Successo", description: "Dati operatore aggiornati." });
+                }
                 setIsEditDialogOpen(false);
                 setSelectedOperator(null);
             }).catch((error: any) => {
-                 if (error.code === 'permission-denied') {
+                if (error.code === 'permission-denied') {
                     errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'update', path: operatorRef.path, requestResourceData: operatorData }));
                 } else {
                      toast({ title: "Errore", description: "Impossibile aggiornare l'operatore.", variant: "destructive" });

@@ -1,6 +1,9 @@
 'use client';
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useFirestore } from '@/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 type User = {
   id: string;
@@ -13,6 +16,7 @@ type User = {
 interface UserContextType {
   user: User | null;
   isLoading: boolean;
+  logout: () => void;
 }
 
 export const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -36,46 +40,169 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const firestore = useFirestore();
+  const { toast } = useToast();
+
+  const handleForceLogout = useCallback((message: string) => {
+    try {
+      sessionStorage.setItem('code_changed_logout', message);
+    } catch (e) {
+      console.error("Failed to set sessionStorage", e);
+    }
+    localStorage.removeItem('user');
+    sendUserToServiceWorker(null);
+    setUser(null);
+    setIsLoading(false);
+    toast({
+      variant: "destructive",
+      title: "Accesso scaduto",
+      description: message,
+      duration: 8000,
+    });
+    router.replace('/');
+  }, [router, toast]);
+
+  const logout = useCallback(() => {
+    try {
+      sessionStorage.removeItem('code_changed_logout');
+    } catch (e) {
+      // ignore
+    }
+    localStorage.removeItem('user');
+    sendUserToServiceWorker(null);
+    setUser(null);
+    setIsLoading(false);
+    router.replace('/');
+  }, [router]);
 
   useEffect(() => {
-    const checkUser = () => {
-      let userFound: User | null = null;
+    let initialUser: User | null = null;
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        initialUser = JSON.parse(storedUser);
+      }
+    } catch (error) {
+      console.error("Failed to parse user from localStorage", error);
+      localStorage.removeItem('user');
+    }
+
+    if (!initialUser || !initialUser.id) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
+    setUser(initialUser);
+
+    if ('serviceWorker' in navigator && navigator.serviceWorker?.ready) {
+      navigator.serviceWorker.ready.then(() => {
+        sendUserToServiceWorker(initialUser);
+      });
+    }
+
+    if (!firestore) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Monitor the user document in Firestore in real time
+    const userDocRef = doc(firestore, 'app-users', initialUser.id);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      setIsLoading(false);
+
+      if (!docSnap.exists()) {
+        console.warn("User document deleted from Firestore, forcing logout.");
+        handleForceLogout("Il tuo account non è più attivo. Effettua l'accesso o contatta l'amministratore.");
+        return;
+      }
+
+      const data = docSnap.data();
+      const serverUsername = data?.username;
+
+      // Read currently stored user from localStorage
+      let currentLocalUser: User = initialUser!;
       try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          userFound = JSON.parse(storedUser);
-          setUser(userFound);
-          if ('serviceWorker' in navigator && navigator.serviceWorker?.ready) {
-            navigator.serviceWorker.ready.then(() => {
-              sendUserToServiceWorker(userFound);
-            });
-          }
+        const currentRaw = localStorage.getItem('user');
+        if (currentRaw) {
+          currentLocalUser = JSON.parse(currentRaw);
         }
-      } catch (error) {
-        console.error("Failed to parse user from localStorage", error);
-        localStorage.removeItem('user');
-      } finally {
-        setIsLoading(false);
+      } catch (err) {
+        // fallback
       }
-      
-      // Gatekeeper logic
-      // If loading is finished and no user is found, redirect to login page,
-      // but only if we are not already on the login page.
-      if (!userFound && !pathname.startsWith('/_next') && pathname !== '/') {
-          router.replace('/');
+
+      // If the administrator changed the operator code (username), force operator to log in again
+      if (
+        serverUsername &&
+        currentLocalUser?.username &&
+        serverUsername.trim() !== currentLocalUser.username.trim()
+      ) {
+        console.warn(
+          "Operator code was changed on server from",
+          currentLocalUser.username,
+          "to",
+          serverUsername
+        );
+        handleForceLogout(
+          "Il tuo codice operatore è stato modificato dall'amministratore. Effettua nuovamente l'accesso con il nuovo codice."
+        );
+        return;
       }
-       // If a user IS found, but they are on the login page, redirect to dashboard.
-      if (userFound && pathname === '/') {
-        router.replace('/dashboard');
+
+      // Keep user state in sync if other info changed (firstName, lastName, role)
+      if (
+        data.firstName !== currentLocalUser.firstName ||
+        data.lastName !== currentLocalUser.lastName ||
+        data.role !== currentLocalUser.role
+      ) {
+        const updatedUser: User = {
+          ...currentLocalUser,
+          firstName: data.firstName ?? currentLocalUser.firstName,
+          lastName: data.lastName ?? currentLocalUser.lastName,
+          role: data.role ?? currentLocalUser.role,
+        };
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        sendUserToServiceWorker(updatedUser);
       }
+    }, (error) => {
+      console.error("Error listening to user document in UserProvider:", error);
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
     };
+  }, [firestore, handleForceLogout]);
 
-    checkUser();
+  // Gatekeeper routing logic
+  useEffect(() => {
+    if (isLoading) return;
 
-    // Optional: Listen for storage changes to sync across tabs
+    if (!user && !pathname.startsWith('/_next') && pathname !== '/') {
+      router.replace('/');
+    }
+
+    if (user && pathname === '/') {
+      router.replace('/dashboard');
+    }
+  }, [user, isLoading, pathname, router]);
+
+  // Sync across browser tabs
+  useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'user') {
-        window.location.reload(); // Simplest way to re-evaluate auth state across tabs
+        if (!event.newValue) {
+          setUser(null);
+          router.replace('/');
+        } else {
+          try {
+            setUser(JSON.parse(event.newValue));
+          } catch {
+            setUser(null);
+            router.replace('/');
+          }
+        }
       }
     };
 
@@ -83,10 +210,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [pathname, router]);
+  }, [router]);
 
   return (
-    <UserContext.Provider value={{ user, isLoading }}>
+    <UserContext.Provider value={{ user, isLoading, logout }}>
       {children}
     </UserContext.Provider>
   );

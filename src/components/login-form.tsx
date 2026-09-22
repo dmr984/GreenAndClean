@@ -2,12 +2,12 @@
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 type User = {
   id: string;
@@ -22,6 +22,18 @@ export default function LoginForm() {
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = React.useState(false);
   const [operatorCode, setOperatorCode] = useState('');
+  const [logoutNotice, setLogoutNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const notice = sessionStorage.getItem('code_changed_logout');
+      if (notice) {
+        setLogoutNotice(notice);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,6 +73,12 @@ export default function LoginForm() {
             role: selectedUser.role,
         };
         
+        try {
+            sessionStorage.removeItem('code_changed_logout');
+        } catch (e) {
+            // ignore
+        }
+
         localStorage.setItem('user', JSON.stringify(userToStore));
         
         // Invia i dati utente al Service Worker dopo il login
@@ -82,6 +100,12 @@ export default function LoginForm() {
 
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
+      {logoutNotice && (
+        <div className="p-3 text-sm rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-start gap-2">
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <span>{logoutNotice}</span>
+        </div>
+      )}
       <div className="grid gap-2">
         <Label htmlFor="operator-code">Codice Operatore</Label>
         <Input 
