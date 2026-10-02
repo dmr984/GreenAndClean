@@ -901,6 +901,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
             batch.delete(docRef);
         });
 
+        if (shiftToDelete.id) {
+            const requestsRef = collection(firestore, `app-users/${operator.id}/requests`);
+            const q = query(requestsRef, where('associatedShiftId', '==', shiftToDelete.id));
+            const requestsSnap = await getDocs(q);
+            requestsSnap.forEach(d => batch.delete(d.ref));
+        }
+
         try {
             await batch.commit();
             toast({ title: 'Successo', description: 'Turno eliminato.' });

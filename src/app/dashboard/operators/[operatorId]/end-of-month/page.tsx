@@ -141,7 +141,7 @@ export default function EndOfMonthPage() {
     
     const [operator, setOperator] = useState<Operator | null>(null);
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
-    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[] }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [] });
+    const [monthlyData, setMonthlyData] = useState<{ timbrature: Timbratura[], requests: Request[], dailyNotes: DailyNote[], straordinari: any[], overrides?: any }>({ timbrature: [], requests: [], dailyNotes: [], straordinari: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isCleanConfirmOpen, setIsCleanConfirmOpen] = useState(false);
@@ -205,19 +205,24 @@ export default function EndOfMonthPage() {
                 where('date', '<=', queryEnd)
             );
     
-            const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap] = await Promise.all([
+            const monthId = format(currentMonth, 'yyyy-MM');
+            const overridesRef = doc(firestore, 'reports', `foglio-presenze-overrides-${monthId}`);
+
+            const [timbratureSnapshot, requestsSnapshot, notesSnapshot, straordinariSnap, overridesSnap] = await Promise.all([
                 getDocs(timbratureQuery),
                 getDocs(requestsQuery),
                 getDocs(notesQuery),
-                getDocs(straordinariQuery)
+                getDocs(straordinariQuery),
+                getDoc(overridesRef)
             ]);
 
             const timbratureData = timbratureSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Timbratura));
             const requestsData = requestsSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Request));
             const notesData = notesSnapshot.docs.map(d => ({ date: d.id, ...d.data() } as DailyNote));
             const straordinariData = straordinariSnap.docs.map(d => ({id: d.id, ...d.data()} as any));
+            const centralOverrides = overridesSnap.exists() ? (overridesSnap.data().overrides || {}) : {};
             
-            setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData, straordinari: straordinariData });
+            setMonthlyData({ timbrature: timbratureData, requests: requestsData, dailyNotes: notesData, straordinari: straordinariData, overrides: centralOverrides });
         } catch (error) {
             console.error("Error fetching monthly data:", error);
             toast({ title: 'Errore', description: 'Impossibile caricare i dati del mese.', variant: 'destructive' });

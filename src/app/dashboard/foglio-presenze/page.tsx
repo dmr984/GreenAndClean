@@ -111,7 +111,15 @@ export default function FoglioPresenzePage() {
     }, [firestore, operators, currentMonth, selectedOperatorIds, overrides]);
 
     const handleOverride = (key: string, value: string) => {
-        setOverrides(prev => ({ ...prev, [key]: value }));
+        setOverrides(prev => {
+            const next = { ...prev };
+            if (!value || value.trim() === '') {
+                delete next[key];
+            } else {
+                next[key] = value;
+            }
+            return next;
+        });
     };
 
     const visibleOperators = operators.filter(op => selectedOperatorIds.includes(op.id));
@@ -231,7 +239,7 @@ export default function FoglioPresenzePage() {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-O-${day}`];
-                                                if (m === undefined) {
+                                                if (m === undefined || m.trim() === '') {
                                                     const today = new Date();
                                                     today.setHours(0, 0, 0, 0);
                                                     if (dayDate && dayDate <= today) {
@@ -275,7 +283,7 @@ export default function FoglioPresenzePage() {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-S-${day}`];
-                                                                                                if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
+                                                if ((m === undefined || m.trim() === '') && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
                                                     const today = new Date();
                                                     today.setHours(0, 0, 0, 0);
                                                     if (dayDate <= today) m = '-';
@@ -300,7 +308,7 @@ export default function FoglioPresenzePage() {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
                                                 let m = overrides[`${op.id}-B-${day}`];
-                                                                                                if (m === undefined && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
+                                                if ((m === undefined || m.trim() === '') && dayDate && (isSaturday(dayDate) || isSunday(dayDate))) {
                                                     const today = new Date();
                                                     today.setHours(0, 0, 0, 0);
                                                     if (dayDate <= today) m = '-';

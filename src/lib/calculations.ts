@@ -506,7 +506,7 @@ export const processMonthlyData = (
         });
     });
 
-    const allTimbrature = data.timbrature.filter(t => t.timestamp && typeof t.timestamp.toDate === 'function');
+    const allTimbrature = data.timbrature.filter(t => t.timestamp && typeof t.timestamp.toDate === 'function' && t.status !== 'rifiutata');
     
     const modernEvents = allTimbrature.filter(e => e.shiftId);
     const legacyEvents = allTimbrature.filter(e => !e.shiftId);

@@ -207,6 +207,11 @@ const MonthlyReportPage = () => {
         const queryEnd = addMonths(monthEnd, 1);
 
         try {
+            const monthId = format(date, 'yyyy-MM');
+            const overridesRef = doc(firestore, 'reports', `foglio-presenze-overrides-${monthId}`);
+            const overridesSnap = await getDoc(overridesRef);
+            const centralOverrides = overridesSnap.exists() ? (overridesSnap.data().overrides || {}) : {};
+
             const promises = operators.map(async (op) => {
                 const timbratureQuery = query(
                     collection(firestore, `app-users/${op.id}/timbrature`),
@@ -238,7 +243,7 @@ const MonthlyReportPage = () => {
                 if ((op as any).employmentStartDate) {
                     employmentStartDate = (op as any).employmentStartDate.toDate();
                 }
-                const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData }, employmentStartDate);
+                const { monthlySummary } = processMonthlyData(date, op, { timbrature: timbratureData, requests: requestsData, straordinari: straordinariData, overrides: centralOverrides }, employmentStartDate);
                 return { opId: op.id, summary: monthlySummary, employmentStartDate };
             });
 
