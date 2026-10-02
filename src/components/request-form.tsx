@@ -22,7 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 type ExistingRequest = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'assenza';
     status: 'in_attesa' | 'approvato' | 'rifiutato';
     startDate: Timestamp;
     endDate: Timestamp;
@@ -45,7 +45,7 @@ type Operator = {
 
 // 1. Define Zod schema
 const requestSchema = z.object({
-  requestType: z.enum(['ferie', 'permesso', 'malattia'], { required_error: 'Devi selezionare un tipo.' }),
+  requestType: z.enum(['ferie', 'permesso', 'malattia', 'assenza'], { required_error: 'Devi selezionare un tipo.' }),
   selectedDates: z.array(z.date()).nonempty({ message: 'Devi selezionare almeno un giorno.' }),
   hours: z.string().optional(),
   deductFromOvertime: z.boolean().optional(),
@@ -180,7 +180,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             const newRequestData: any = {
                 userId: userId,
                 type: data.requestType,
-                status: 'in_attesa' as const,
+                status: (role === 'admin' && data.requestType === 'assenza') ? 'approvato' : ('in_attesa' as const),
                 startDate: Timestamp.fromDate(startOfDay(date)),
                 endDate: Timestamp.fromDate(startOfDay(date)),
                 reason: data.reason || "",
@@ -237,6 +237,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                         <SelectItem value="permesso">Permesso</SelectItem>
                                     )}
                                     {role === 'admin' && <SelectItem value="malattia">Malattia</SelectItem>}
+                                    {role === 'admin' && <SelectItem value="assenza">Assenza</SelectItem>}
                                 </SelectContent>
                             </Select>
                             {errors.requestType && <p className="text-xs text-destructive mt-1">{errors.requestType.message}</p>}

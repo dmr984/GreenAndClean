@@ -28,7 +28,7 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 type Request = {
     id: string;
     userId: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'assenza';
     status: 'in_attesa' | 'approvato' | 'rifiutato';
     startDate: Timestamp;
     endDate: Timestamp;

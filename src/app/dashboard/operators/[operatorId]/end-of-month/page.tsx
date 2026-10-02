@@ -68,7 +68,7 @@ type Operator = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
@@ -102,7 +102,7 @@ type MonthlyTotals = {
 
 type AddRequestContext = {
     date: Date;
-    type: 'ferie' | 'permesso' | 'malattia';
+    type: 'ferie' | 'permesso' | 'malattia' | 'assenza';
     hours?: string;
     reason?: string;
 } | null;
@@ -831,6 +831,7 @@ export default function EndOfMonthPage() {
                                     <SelectItem value="ferie">Ferie</SelectItem>
                                     <SelectItem value="malattia">Malattia</SelectItem>
                                     <SelectItem value="permesso">Permesso</SelectItem>
+                                    <SelectItem value="assenza">Assenza</SelectItem>
                                 </SelectContent>
                              </Select>
                         </div>

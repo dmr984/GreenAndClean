@@ -239,63 +239,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }, [firestore, authUser]);
 
   useEffect(() => {
-    if (!firestore || !authUser?.id) return;
-    if (checkRunRef.current) return;
-
-    const checkAndVoidOpenShifts = async () => {
-      checkRunRef.current = true;
-      const todayStart = startOfDay(new Date());
-
-      try {
-        // Query for all events before today
-        const q = query(
-          collection(firestore, `app-users/${authUser.id}/timbrature`),
-          where('timestamp', '<', todayStart),
-          orderBy('timestamp', 'desc'),
-          limit(20) // Check the last 20 events to find any missing exits
-        );
-
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) return;
-
-        const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ClockingEvent));
-        const entrateSenzaUscita = events.filter(e => e.type === 'entrata' && !events.some(u => u.type === 'uscita' && u.shiftId === e.shiftId));
-
-        for (const entrata of entrateSenzaUscita) {
-          const eventDate = entrata.timestamp?.toDate ? entrata.timestamp.toDate() : new Date();
-          const endOfEventDay = endOfDay(eventDate);
-
-          const voidClockOut: Omit<ClockingEvent, 'id'> = {
-            userId: authUser.id,
-            type: 'uscita',
-            timestamp: Timestamp.fromDate(endOfEventDay),
-            latitude: 0,
-            longitude: 0,
-            status: 'sospesa',
-            viewedByOperator: false,
-            shiftId: entrata.shiftId,
-            isAuto: true,
-          };
-
-          try {
-            await addDoc(collection(firestore, `app-users/${authUser.id}/timbrature`), voidClockOut);
-            toast({
-              variant: 'destructive',
-              title: 'Turno Annullato Automaticamente',
-              description: `Non hai timbrato l'uscita il ${format(eventDate, 'dd/MM/yyyy')}. Il turno è stato annullato.`,
-              duration: 10000,
-            });
-          } catch (error) {
-            console.error("Failed to void open shift:", error);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking voided open shifts:", error);
-      }
-    };
-
-    checkAndVoidOpenShifts();
-
+    // Disabled auto-voiding shifts at midnight to prevent unwanted void clockouts
+    // and shift cancellations when an operator forgets to clock out.
   }, [firestore, authUser, toast]);
 
   const [pendingVoidedShifts, setPendingVoidedShifts] = useState<ClockingEvent[]>([]);
@@ -397,7 +342,9 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
-  const { data: todayClockings } = useCollection<ClockingEvent>(todayClockingsQuery);
+  const { data: todayClockings, isLoading: isLoadingTodayClockings } = useCollection<ClockingEvent>(todayClockingsQuery);
+
+  const isClockingDataLoading = isUserLoading || isLoadingClockings || isLoadingTodayClockings || clockings === undefined || todayClockings === undefined;
 
   const lastEvent = useMemo(() => {
     const activeList = (todayClockings && todayClockings.length > 0) ? todayClockings : clockings;
@@ -520,6 +467,29 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       }
     });
 
+    // Reconcile orphan exits on the same calendar day with open entries
+    const groupEntries = Object.entries(groups);
+    for (const [shiftId, group] of groupEntries) {
+      if (!group.entry && group.exit) {
+        const exitDayStr = format(group.date, 'yyyy-MM-dd');
+        const matchingEntry = groupEntries.find(([otherId, otherGroup]) => {
+          if (otherId === shiftId) return false;
+          if (otherGroup.entry && !otherGroup.exit) {
+            return format(otherGroup.date, 'yyyy-MM-dd') === exitDayStr;
+          }
+          return false;
+        });
+        if (matchingEntry) {
+          const [, otherGroup] = matchingEntry;
+          otherGroup.exit = group.exit;
+          if (group.pauses.length > 0) {
+            otherGroup.pauses.push(...group.pauses);
+          }
+          delete groups[shiftId];
+        }
+      }
+    }
+
     return Object.values(groups)
       // Remove groups where the only entry was a rejected insertion (no real clocking at all)
       .filter(g => g.entry || g.exit)
@@ -629,7 +599,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   };
 
   const performClocking = async (type: 'entrata' | 'uscita', skipCheck = false, makeupDayInfo?: string) => {
-    if (!firestore || !operator || isProcessing) return;
+    if (!firestore || !operator || isProcessing || isClockingDataLoading) return;
 
     // Safety check: if less than 5 minutes since last event, ask for confirmation
     if (!skipCheck && lastEvent && lastEvent.timestamp) {
@@ -1297,6 +1267,37 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       );
     });
 
+    if (isClockingDataLoading) {
+      return (
+        <Card className="overflow-hidden border-none shadow-xl bg-gradient-to-br from-card to-muted/30">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Clock className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-2xl font-bold tracking-tight">Gestione Turno</CardTitle>
+                <CardDescription>Caricamento dati...</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center gap-4 py-12">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm font-medium text-muted-foreground text-center animate-pulse">
+              Caricamento timbrature in corso...<br />
+              Attendi che i dati siano caricati per evitare timbrature orfane.
+            </p>
+          </CardContent>
+          <CardFooter className="bg-muted/50 p-6">
+            <Button className="w-full h-14 text-lg font-bold" disabled>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Caricamento in corso...
+            </Button>
+          </CardFooter>
+        </Card>
+      );
+    }
+
     if (isClockedIn) {
       return (
         <>
@@ -1350,7 +1351,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               <Button
                 className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98]"
                 variant="destructive"
-                disabled={isProcessing}
+                disabled={isProcessing || isClockingDataLoading}
                 onClick={() => performClocking('uscita')}
               >
                 {isProcessing ? <Loader2 className="animate-spin" /> : <Square className="mr-2 h-6 w-6 fill-current" />}
@@ -1360,6 +1361,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-1">
                 <Button
                   className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center p-2"
+                  disabled={isProcessing || isClockingDataLoading}
                   onClick={() => openForgottenDialog('entrata')}
                 >
                   <AlertCircle className="mr-2 h-6 w-6 shrink-0" />
@@ -1456,7 +1458,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <Button
               className="w-full h-14 text-lg font-bold transition-all active:scale-[0.98] bg-[#22c55e] hover:bg-[#16a34a] text-white border-none shadow-md"
               size="lg"
-              disabled={isProcessing}
+              disabled={isProcessing || isClockingDataLoading}
               onClick={() => performClocking('entrata')}
             >
               {isProcessing ? <Loader2 className="animate-spin" /> : <Play className="mr-2 h-6 w-6 fill-current" />}
@@ -1466,6 +1468,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-1">
               <Button
                 className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-amber-500 hover:bg-amber-600 text-white shadow-sm border-none flex items-center justify-center p-2"
+                disabled={isProcessing || isClockingDataLoading}
                 onClick={() => openForgottenDialog('entrata')}
               >
                 <AlertCircle className="mr-2 h-6 w-6 shrink-0" />
@@ -1477,6 +1480,7 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
               <Button
                 className="w-full h-14 text-sm font-bold transition-all active:scale-[0.98] bg-sky-600 hover:bg-sky-700 text-white shadow-sm border-none flex items-center justify-center p-2"
+                disabled={isProcessing || isClockingDataLoading}
                 onClick={() => setIsMakeupDialogOpen(true)}
               >
                 <PlusCircle className="mr-2 h-6 w-6 shrink-0" />

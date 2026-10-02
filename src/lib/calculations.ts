@@ -80,7 +80,7 @@ type Timbratura = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
@@ -524,6 +524,54 @@ export const processMonthlyData = (
         }
     });
 
+    // Reconcile orphan exits with open entries on the same calendar day:
+    const orphanExitShiftIds = Object.keys(modernShiftsById).filter(id => {
+        const evs = modernShiftsById[id];
+        return !evs.some(e => e.type === 'entrata') && evs.some(e => e.type === 'uscita');
+    });
+
+    for (const exitShiftId of orphanExitShiftIds) {
+        const exitEvs = modernShiftsById[exitShiftId];
+        const exitEvent = exitEvs.find(e => e.type === 'uscita')!;
+        const exitDay = format(exitEvent.timestamp.toDate(), 'yyyy-MM-dd');
+
+        const matchingEntryShiftId = Object.keys(modernShiftsById).find(id => {
+            if (id === exitShiftId) return false;
+            const evs = modernShiftsById[id];
+            const hasEntrata = evs.some(e => e.type === 'entrata');
+            const hasUscita = evs.some(e => e.type === 'uscita');
+            if (!hasEntrata || hasUscita) return false;
+            const entryEvent = evs.find(e => e.type === 'entrata')!;
+            return format(entryEvent.timestamp.toDate(), 'yyyy-MM-dd') === exitDay;
+        });
+
+        if (matchingEntryShiftId) {
+            modernShiftsById[matchingEntryShiftId].push(...exitEvs);
+            delete modernShiftsById[exitShiftId];
+        }
+    }
+
+    // Also reconcile any unassigned/legacy exits with an open modern shift on the same day
+    const remainingLegacyEvents: Timbratura[] = [];
+    for (const legEvent of legacyEvents) {
+        if (legEvent.type === 'uscita') {
+            const legDay = format(legEvent.timestamp.toDate(), 'yyyy-MM-dd');
+            const matchingEntryShiftId = Object.keys(modernShiftsById).find(id => {
+                const evs = modernShiftsById[id];
+                const hasEntrata = evs.some(e => e.type === 'entrata');
+                const hasUscita = evs.some(e => e.type === 'uscita');
+                if (!hasEntrata || hasUscita) return false;
+                const entryEvent = evs.find(e => e.type === 'entrata')!;
+                return format(entryEvent.timestamp.toDate(), 'yyyy-MM-dd') === legDay;
+            });
+            if (matchingEntryShiftId) {
+                modernShiftsById[matchingEntryShiftId].push(legEvent);
+                continue;
+            }
+        }
+        remainingLegacyEvents.push(legEvent);
+    }
+
     Object.values(modernShiftsById).forEach(events => {
         const entrataEvent = events.find(e => e.type === 'entrata');
         if (entrataEvent) {
@@ -536,7 +584,7 @@ export const processMonthlyData = (
 
     // Process legacy events by day
     const legacyShiftsByDay: { [date: string]: Timbratura[] } = {};
-    legacyEvents.forEach(event => {
+    remainingLegacyEvents.forEach(event => {
         const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
         if (!legacyShiftsByDay[dayString]) {
             legacyShiftsByDay[dayString] = [];
@@ -654,6 +702,13 @@ export const processMonthlyData = (
         if (leaveRequest) {
             detail.status = leaveRequest.type as 'ferie' | 'malattia';
             detail.request = leaveRequest;
+            detail.shift = null;
+        }
+
+        const assenzaRequest = data.requests.find(r => r.type === 'assenza' && r.status === 'approvato' && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
+        if (assenzaRequest) {
+            detail.status = 'mancata_timbratura';
+            detail.request = assenzaRequest;
             detail.shift = null;
         }
 

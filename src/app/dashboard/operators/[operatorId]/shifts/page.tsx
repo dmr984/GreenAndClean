@@ -159,7 +159,7 @@ type ApprovalContext = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
@@ -171,7 +171,7 @@ type Request = {
 
 type AddRequestContext = {
     date: Date;
-    type: 'ferie' | 'permesso' | 'malattia';
+    type: 'ferie' | 'permesso' | 'malattia' | 'assenza';
     hours?: string;
     reason?: string;
 } | null;
@@ -432,6 +432,55 @@ export default function ShiftApprovalPage() {
                     shiftsById[event.shiftId].push(event);
                 }
             }
+
+            // Reconcile orphan exits with open entries on the same calendar day:
+            const orphanExitShiftIds = Object.keys(shiftsById).filter(id => {
+                const evs = shiftsById[id];
+                return !evs.some(e => e.type === 'entrata') && evs.some(e => e.type === 'uscita');
+            });
+
+            for (const exitShiftId of orphanExitShiftIds) {
+                const exitEvs = shiftsById[exitShiftId];
+                const exitEvent = exitEvs.find(e => e.type === 'uscita')!;
+                const exitDay = format(exitEvent.timestamp.toDate(), 'yyyy-MM-dd');
+
+                const matchingEntryShiftId = Object.keys(shiftsById).find(id => {
+                    if (id === exitShiftId) return false;
+                    const evs = shiftsById[id];
+                    const hasEntrata = evs.some(e => e.type === 'entrata');
+                    const hasUscita = evs.some(e => e.type === 'uscita');
+                    if (!hasEntrata || hasUscita) return false;
+                    const entryEvent = evs.find(e => e.type === 'entrata')!;
+                    return format(entryEvent.timestamp.toDate(), 'yyyy-MM-dd') === exitDay;
+                });
+
+                if (matchingEntryShiftId) {
+                    shiftsById[matchingEntryShiftId].push(...exitEvs);
+                    delete shiftsById[exitShiftId];
+                }
+            }
+
+            // Also reconcile any unassigned/legacy exits with an open modern shift on the same day
+            const remainingLegacyEvents: Timbratura[] = [];
+            for (const legEvent of legacyEvents) {
+                if (legEvent.type === 'uscita') {
+                    const legDay = format(legEvent.timestamp.toDate(), 'yyyy-MM-dd');
+                    const matchingEntryShiftId = Object.keys(shiftsById).find(id => {
+                        const evs = shiftsById[id];
+                        const hasEntrata = evs.some(e => e.type === 'entrata');
+                        const hasUscita = evs.some(e => e.type === 'uscita');
+                        if (!hasEntrata || hasUscita) return false;
+                        const entryEvent = evs.find(e => e.type === 'entrata')!;
+                        return format(entryEvent.timestamp.toDate(), 'yyyy-MM-dd') === legDay;
+                    });
+                    if (matchingEntryShiftId) {
+                        shiftsById[matchingEntryShiftId].push(legEvent);
+                        continue;
+                    }
+                }
+                remainingLegacyEvents.push(legEvent);
+            }
+
             const modernShifts: Shift[] = [];
             for (const shiftId in shiftsById) {
                 const dayEvents = shiftsById[shiftId];
@@ -447,7 +496,7 @@ export default function ShiftApprovalPage() {
 
             // 3. Process legacy events
             const legacyShiftsByDay: { [date: string]: Timbratura[] } = {};
-            for (const event of legacyEvents) {
+            for (const event of remainingLegacyEvents) {
                 const dayString = format(event.timestamp.toDate(), 'yyyy-MM-dd');
                 if (!legacyShiftsByDay[dayString]) {
                     legacyShiftsByDay[dayString] = [];
@@ -1057,7 +1106,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     timestamp: newEventDetails.timestamp,
                     ...updatePayload,
                     isOvertime: editingShift.isOvertime,
-                    isAuto: true,
+                    isAuto: false,
                 };
                 batch.set(newDocRef, newEventPayload);
                 newEventsForState.push({ ...newEventPayload, id: newDocRef.id });
@@ -2571,7 +2620,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext) => {
                     <ResponsiveDialogHeader>
                         <ResponsiveDialogTitle>Aggiungi Richiesta per {operator.firstName} {operator.lastName}</ResponsiveDialogTitle>
                         <ResponsiveDialogDescription>
-                            Inserisci direttamente una richiesta di Ferie, Malattia o Permesso per questo operatore.
+                            Inserisci direttamente una richiesta di Ferie, Malattia, Permesso o Assenza per questo operatore.
                         </ResponsiveDialogDescription>
                     </ResponsiveDialogHeader>
                     <div className="py-2">

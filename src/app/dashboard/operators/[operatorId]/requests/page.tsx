@@ -54,7 +54,7 @@ type Operator = {
 type Request = {
     id: string; // Document ID of the request
     userId: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'assenza';
     status: 'in_attesa' | 'approvato' | 'rifiutato';
     startDate: Timestamp;
     endDate: Timestamp;
