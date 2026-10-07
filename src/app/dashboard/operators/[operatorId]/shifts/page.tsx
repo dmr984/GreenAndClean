@@ -870,6 +870,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             type: 'shift_approved',
             title: 'Turno Approvato ✅',
             body: `Il tuo turno del ${shiftDateFormatted} è stato approvato dall'amministratore.`,
+            variables: {
+                data: shiftDateFormatted,
+                operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                ore: (regularShift.workDuration / 60).toFixed(1) + 'h',
+            },
             url: '/dashboard'
         });
     } catch (err) {
@@ -1838,6 +1843,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 type: 'shift_modified',
                 title: 'Nuovo Turno Inserito 📋',
                 body: `L'amministratore ha registrato un nuovo turno per te.`,
+                variables: {
+                    data: format(datesToProcess[0] || new Date(), 'dd MMMM', { locale: it }),
+                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                },
                 url: '/dashboard'
             });
         } catch (error) {
@@ -1891,6 +1900,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 type: 'shift_rejected',
                 title: 'Straordinario Rifiutato ❌',
                 body: `Il tuo turno straordinario del ${shiftDateFormatted} è stato rifiutato.`,
+                variables: {
+                    data: shiftDateFormatted,
+                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                    tipo: 'straordinario',
+                },
                 url: '/dashboard'
             });
         } else { // approve
@@ -1907,6 +1921,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 type: 'shift_approved',
                 title: 'Straordinario Approvato ✅',
                 body: `Il tuo turno straordinario del ${shiftDateFormatted} (${approvedOvertime}h) è stato approvato.`,
+                variables: {
+                    data: shiftDateFormatted,
+                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                    ore: String(approvedOvertime),
+                    tipo: 'straordinario',
+                },
                 url: '/dashboard'
             });
         }
@@ -2183,6 +2203,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 type: 'request_approved',
                 title: `Richiesta ${typeLabel} Approvata ✅`,
                 body: `La tua richiesta di ${request.type} del ${dateStr} è stata approvata dall'amministratore.`,
+                variables: {
+                    data: dateStr,
+                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                    tipo: request.type,
+                },
                 url: '/dashboard'
             });
         } catch (error) {
@@ -2205,6 +2230,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 type: 'request_rejected',
                 title: 'Richiesta Rifiutata ❌',
                 body: `Una tua richiesta è stata rifiutata dall'amministratore.`,
+                variables: {
+                    data: format(new Date(), 'dd MMMM', { locale: it }),
+                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                },
                 url: '/dashboard'
             });
         } catch (error) {

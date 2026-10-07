@@ -2,12 +2,53 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, onSnapshot, updateDoc, serverTimestamp, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, serverTimestamp, doc, getDoc, getDocs, Timestamp, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Bell, BellRing, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
+
+const VAPID_PUBLIC_KEY = 'BNpjt10Qajh1JTCFZfe2fJtfNBG1SKFoxBnowhfvW0o0oOMLZjLrIvjsyr5RWBAZ8Qr79NfiZav1QTGFVUPWotA';
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function syncPushSubscription(userId: string, firestore: any) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey,
+      });
+    }
+    if (subscription) {
+      const subJson = subscription.toJSON();
+      const endpointHash = btoa(subscription.endpoint).slice(-30).replace(/[^a-zA-Z0-9]/g, '_');
+      const subDocRef = doc(firestore, `app-users/${userId}/push-subscriptions`, endpointHash);
+      await setDoc(subDocRef, {
+        endpoint: subJson.endpoint,
+        keys: subJson.keys,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      console.log('Push subscription sincronizzata con successo per operatore:', userId);
+    }
+  } catch (err) {
+    console.warn('Errore sincronizzazione push subscription:', err);
+  }
+}
 
 interface OperatorNotificationListenerProps {
   userId: string;
@@ -78,6 +119,11 @@ export function OperatorNotificationListener({ userId }: OperatorNotificationLis
           description: 'Riceverai promemoria e avvisi sui tuoi turni direttamente sul tuo telefono.',
         });
 
+        // Sincronizza sottoscrizione Web Push per ricevere le notifiche anche ad app chiusa
+        if (firestore && userId) {
+          syncPushSubscription(userId, firestore);
+        }
+
         // Invia notifica di benvenuto per registrare il canale
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.ready.then((reg) => {
@@ -112,6 +158,11 @@ export function OperatorNotificationListener({ userId }: OperatorNotificationLis
     const currentPerm = Notification.permission;
     setPermission(currentPerm);
 
+    // Se già concesse, assicurati che la sottoscrizione push sia registrata
+    if (currentPerm === 'granted' && firestore && userId) {
+      syncPushSubscription(userId, firestore);
+    }
+
     // Se le notifiche non sono ancora concesse (o sono state rifiutate), mostra il popup all'apertura dell'app
     if (currentPerm !== 'granted') {
       setIsPermissionModalOpen(true);
@@ -136,7 +187,7 @@ export function OperatorNotificationListener({ userId }: OperatorNotificationLis
         };
       }
     }
-  }, []);
+  }, [firestore, userId]);
 
   // 2. Caricamento impostazioni operatore per promemoria turni
   useEffect(() => {

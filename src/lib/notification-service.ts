@@ -1,4 +1,6 @@
 import { Firestore, doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { format } from 'date-fns';
+import { it } from 'date-fns/locale';
 
 export interface NotificationSettings {
   // Flag di abilitazione per evento
@@ -50,9 +52,19 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 
 export function applyTemplate(template: string, vars: Record<string, string | undefined>): string {
   let result = template;
-  for (const [key, val] of Object.entries(vars)) {
+  const todayFormatted = format(new Date(), 'dd MMMM', { locale: it });
+  const defaultVars: Record<string, string> = {
+    data: vars.data || todayFormatted,
+    operatore: vars.operatore || 'Operatore',
+    tipo: vars.tipo || 'turno',
+    ore: vars.ore || '',
+  };
+  const merged = { ...defaultVars, ...vars };
+
+  for (const [key, val] of Object.entries(merged)) {
     if (val !== undefined && val !== null) {
-      result = result.replaceAll(`{${key}}`, val);
+      const regex = new RegExp(`\\{${key}\\}`, 'gi');
+      result = result.replace(regex, String(val));
     }
   }
   return result;
@@ -165,6 +177,26 @@ export async function sendNotificationToOperator(
       createdAt: serverTimestamp(),
       read: false,
     });
+
+    // Invia vera notifica Push Web al browser/dispositivo dell'operatore (anche ad app chiusa o schermo bloccato)
+    try {
+      if (typeof window !== 'undefined') {
+        fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            operatorId,
+            title: finalTitle,
+            body: finalBody,
+            url: notification.url || '/dashboard',
+          }),
+        }).catch((err) => {
+          console.warn('Errore invio push notification via /api/send-push:', err);
+        });
+      }
+    } catch (pushErr) {
+      console.warn('Errore chiamata push notification:', pushErr);
+    }
 
     return true;
   } catch (error) {

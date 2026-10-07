@@ -55,60 +55,25 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   console.log('Service Worker: Push ricevuto.');
 
-  if (!event.data) {
-    console.error('Push event ma nessun dato.');
-    return;
+  let pushData = {};
+  if (event.data) {
+    try {
+      pushData = event.data.json();
+    } catch (e) {
+      pushData = { title: 'Notifica Turno', body: event.data.text() };
+    }
   }
 
-  const pushData = event.data.json();
-  
   const title = pushData.title || 'Nuova Notifica';
   const options = {
     body: pushData.body || '',
-    icon: pushData.icon || '/icon-192x192.png',
-    data: pushData.data || {}
+    icon: pushData.icon || 'https://i.postimg.cc/GhwM2hg1/1764199658760.png',
+    badge: pushData.badge || 'https://i.postimg.cc/GhwM2hg1/1764199658760.png',
+    vibrate: [200, 100, 200],
+    data: pushData.data || { url: '/dashboard' }
   };
 
-  const notificationPromise = getUserData().then(user => {
-      if (!user) {
-          // Se non c'è utente, mostra solo notifiche generiche (senza role/userId)
-          if (!pushData.role && !pushData.userId) {
-              return self.registration.showNotification(title, options);
-          }
-          console.log('Nessun utente loggato, notifica ignorata:', pushData);
-          return Promise.resolve();
-      }
-
-      // Controlla se la notifica è per un ruolo specifico
-      if (pushData.role) {
-          if (user.role === pushData.role) {
-              return self.registration.showNotification(title, options);
-          } else {
-              console.log(`Notifica per ruolo ${pushData.role} ignorata, l'utente è ${user.role}`);
-              return Promise.resolve();
-          }
-      }
-
-      // Controlla se la notifica è per un utente specifico
-      if (pushData.userId) {
-          if (user.id === pushData.userId) {
-              return self.registration.showNotification(title, options);
-          } else {
-              console.log(`Notifica per utente ${pushData.userId} ignorata, l'utente è ${user.id}`);
-              return Promise.resolve();
-          }
-      }
-      
-      // Notifica generica, mostrata a tutti gli utenti loggati
-      return self.registration.showNotification(title, options);
-
-  }).catch(err => {
-      console.error("Errore nel mostrare la notifica:", err);
-      // Fallback per mostrare la notifica se il DB fallisce
-      return self.registration.showNotification(title, options);
-  });
-
-  event.waitUntil(notificationPromise);
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 
