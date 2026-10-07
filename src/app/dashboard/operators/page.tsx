@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -85,6 +85,11 @@ type Operator = {
     sickLeaveRate?: number;
     employmentStartDate?: Timestamp;
     notificationTokens?: string[];
+    shiftRemindersEnabled?: boolean;
+    useWorkScheduleReminders?: boolean;
+    reminderAdvanceMinutes?: number;
+    entryReminderTime?: string;
+    exitReminderTime?: string;
 };
 
 export default function ManageOperatorsPage() {
@@ -121,6 +126,11 @@ export default function ManageOperatorsPage() {
     const [newWeeklyContractualHours, setNewWeeklyContractualHours] = useState<number | string>('');
     const [newMonthlyContractualHours, setNewMonthlyContractualHours] = useState<number | string>('');
     const [newEmploymentStartDate, setNewEmploymentStartDate] = useState<string>('');
+    const [newShiftRemindersEnabled, setNewShiftRemindersEnabled] = useState(false);
+    const [newUseWorkScheduleReminders, setNewUseWorkScheduleReminders] = useState(true);
+    const [newReminderAdvanceMinutes, setNewReminderAdvanceMinutes] = useState<number | string>(10);
+    const [newEntryReminderTime, setNewEntryReminderTime] = useState('');
+    const [newExitReminderTime, setNewExitReminderTime] = useState('');
 
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
@@ -142,6 +152,11 @@ export default function ManageOperatorsPage() {
     const [editingWeeklyContractualHours, setEditingWeeklyContractualHours] = useState<number | string>('');
     const [editingMonthlyContractualHours, setEditingMonthlyContractualHours] = useState<number | string>('');
     const [editingEmploymentStartDate, setEditingEmploymentStartDate] = useState<string>('');
+    const [editingShiftRemindersEnabled, setEditingShiftRemindersEnabled] = useState(false);
+    const [editingUseWorkScheduleReminders, setEditingUseWorkScheduleReminders] = useState(true);
+    const [editingReminderAdvanceMinutes, setEditingReminderAdvanceMinutes] = useState<number | string>(10);
+    const [editingEntryReminderTime, setEditingEntryReminderTime] = useState('');
+    const [editingExitReminderTime, setEditingExitReminderTime] = useState('');
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -467,6 +482,121 @@ export default function ManageOperatorsPage() {
          return <div className="flex items-center justify-center h-full"><p className="text-muted-foreground">Accesso Negato.</p></div>;
     }
 
+    const renderReminderFields = (
+        prefix: 'new' | 'edit',
+        enabled: boolean,
+        setEnabled: (val: boolean) => void,
+        useSchedule: boolean,
+        setUseSchedule: (val: boolean) => void,
+        advanceMinutes: number | string,
+        setAdvanceMinutes: (val: number | string) => void,
+        entryTime: string,
+        setEntryTime: (val: string) => void,
+        exitTime: string,
+        setExitTime: (val: string) => void
+    ) => (
+        <div className="border rounded-lg p-4 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                    <Label htmlFor={`${prefix}-reminders-enabled`} className="font-semibold text-sm cursor-pointer flex items-center gap-2">
+                        <Bell className="h-4 w-4 text-primary" />
+                        Promemoria Notifiche Turno (Entrata / Uscita)
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                        Invia una notifica sul telefono dell'operatore per ricordargli di timbrare.
+                    </p>
+                </div>
+                <Switch 
+                    id={`${prefix}-reminders-enabled`}
+                    checked={enabled}
+                    onCheckedChange={setEnabled}
+                />
+            </div>
+
+            {enabled && (
+                <div className="pt-2 border-t space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-4 pt-1">
+                        <label className="flex items-center space-x-2 text-xs font-medium cursor-pointer">
+                            <input 
+                                type="radio" 
+                                name={`${prefix}-reminder-mode`}
+                                checked={useSchedule}
+                                onChange={() => setUseSchedule(true)}
+                                className="h-4 w-4 text-primary accent-primary"
+                            />
+                            <span>Basato su orario turno di lavoro</span>
+                        </label>
+                        <label className="flex items-center space-x-2 text-xs font-medium cursor-pointer">
+                            <input 
+                                type="radio" 
+                                name={`${prefix}-reminder-mode`}
+                                checked={!useSchedule}
+                                onChange={() => setUseSchedule(false)}
+                                className="h-4 w-4 text-primary accent-primary"
+                            />
+                            <span>Orari fissi personalizzati</span>
+                        </label>
+                    </div>
+
+                    {useSchedule ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <Label htmlFor={`${prefix}-advance`} className="text-xs text-muted-foreground">
+                                    Promemoria Entrata: anticipo
+                                </Label>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Input 
+                                        id={`${prefix}-advance`}
+                                        type="number"
+                                        min={0}
+                                        max={60}
+                                        value={advanceMinutes}
+                                        onChange={(e) => setAdvanceMinutes(e.target.value)}
+                                        className="h-8 text-xs w-24"
+                                    />
+                                    <span className="text-xs text-muted-foreground">minuti prima del turno</span>
+                                </div>
+                            </div>
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Promemoria Uscita</Label>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    All'orario di fine turno programmato (se non ha ancora timbrato l'uscita).
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <Label htmlFor={`${prefix}-entry-time`} className="text-xs text-muted-foreground">
+                                    Orario Notifica Entrata
+                                </Label>
+                                <Input 
+                                    id={`${prefix}-entry-time`}
+                                    type="time"
+                                    value={entryTime}
+                                    onChange={(e) => setEntryTime(e.target.value)}
+                                    className="h-8 text-xs mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor={`${prefix}-exit-time`} className="text-xs text-muted-foreground">
+                                    Orario Notifica Uscita
+                                </Label>
+                                <Input 
+                                    id={`${prefix}-exit-time`}
+                                    type="time"
+                                    value={exitTime}
+                                    onChange={(e) => setExitTime(e.target.value)}
+                                    className="h-8 text-xs mt-1"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+
     const renderWorkScheduleFields = (
         schedule: WorkSchedule,
         handler: (day: DayOfWeek, field: keyof DailySchedule, value: string | number) => void,
@@ -779,7 +909,7 @@ export default function ManageOperatorsPage() {
                                         const pending = pendingCounts[operator.id];
                                         const totalPending = (pending?.shifts || 0) + (pending?.leaves || 0);
                                         return (
-                                            <TableRow key={operator.id} onClick={() => router.push(`/dashboard/operators/${operator.id}`)} className="cursor-pointer">
+                                            <TableRow key={operator.id} onClick={() => router.push(`/dashboard/operators/${operator.id}/shifts`)} className="cursor-pointer">
                                                 <TableCell className="font-medium">
                                                     <div className="flex items-center gap-2">
                                                         <span>{operator.username}</span>
@@ -825,6 +955,11 @@ export default function ManageOperatorsPage() {
                                                             }
                                                         }
                                                         setEditingEmploymentStartDate(empDateStr);
+                                                        setEditingShiftRemindersEnabled(operator.shiftRemindersEnabled ?? false);
+                                                        setEditingUseWorkScheduleReminders(operator.useWorkScheduleReminders ?? true);
+                                                        setEditingReminderAdvanceMinutes(operator.reminderAdvanceMinutes ?? 10);
+                                                        setEditingEntryReminderTime(operator.entryReminderTime || '');
+                                                        setEditingExitReminderTime(operator.exitReminderTime || '');
                                                         setIsEditDialogOpen(true);
                                                     }}>
                                                         <Pencil className="h-4 w-4" />

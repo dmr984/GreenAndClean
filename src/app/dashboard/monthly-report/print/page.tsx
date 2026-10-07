@@ -264,6 +264,19 @@ const PrintPageContent = () => {
 
             let itemsOnCurrentPage = 0;
 
+            if (globalCompact && currentMonth) {
+                const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text(`REPORT MENSILE SINTETICO - ${periodText}`, pageWidth / 2, y, { align: 'center' });
+                y += 6;
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(0.5);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 10;
+            }
+
             filteredOperators.forEach((op) => {
                 const summary = summaries.get(op.id);
                 if (!summary) return;
@@ -286,7 +299,7 @@ const PrintPageContent = () => {
                     const nameWidth = doc.getTextWidth(`${op.firstName} ${op.lastName} `);
                     const totalText = `TOTALE: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
                     
-                    doc.setTextColor(150);
+                    doc.setTextColor(0, 0, 0);
                     doc.text("....................................................................................................", margin + nameWidth, y);
                     doc.setTextColor(0, 0, 0);
                     doc.setFont('helvetica', 'bold');
@@ -307,9 +320,9 @@ const PrintPageContent = () => {
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.setFontSize(12);
+                doc.setFontSize(13);
                 doc.setFont('helvetica', 'bold');
-                doc.setTextColor(100);
+                doc.setTextColor(0, 0, 0);
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
                 y += 10;
                 
@@ -461,11 +474,13 @@ const PrintPageContent = () => {
             </header>
 
             <main className="flex justify-center bg-gray-300 print:bg-transparent print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white shadow-lg print:shadow-none print:w-full print:max-w-none" style={{ margin: '0 auto' }}>
+                <div id="print-content" className="w-full max-w-4xl bg-white shadow-lg print:shadow-none print:w-full print:max-w-none p-6 print:p-0" style={{ margin: '0 auto' }}>
                     
                     {globalCompact && currentMonth && (
-                        <div className="mb-6 text-center border-b-2 border-black pb-2 print:hidden p-4">
-                            <h1 className="text-2xl font-bold uppercase">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h1>
+                        <div className="mb-6 text-center border-b-2 border-black pb-3 pt-1">
+                            <h1 className="text-2xl font-black uppercase text-black tracking-wide">
+                                REPORT MENSILE SINTETICO - {format(currentMonth, 'MMMM yyyy', { locale: it })}
+                            </h1>
                         </div>
                     )}
 
@@ -492,11 +507,11 @@ const PrintPageContent = () => {
                             
                             if (globalCompact || opVisibility.compactMode) {
                                 return (
-                                    <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-2 p-2 print:p-0">
+                                    <div key={op.id} className="text-sm text-black print:break-inside-avoid pb-2.5 p-2 print:p-0 border-b border-gray-200 print:border-black/30">
                                         <div className="flex justify-between items-baseline gap-2">
-                                            <p className="font-bold text-lg text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
-                                            <div className="flex-1 mb-1"></div>
-                                            <p className="font-bold text-lg text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                            <p className="font-extrabold text-lg text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
+                                            <div className="flex-1 border-b border-dotted border-black mx-3 mb-1"></div>
+                                            <p className="font-extrabold text-lg text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
                                         </div>
                                     </div>
                                 )
@@ -528,36 +543,36 @@ const PrintPageContent = () => {
                                 )}>
                                     
                                     <div className="flex-1 flex flex-col justify-center">
-                                        <div className='flex justify-between items-end mb-4'>
-                                            <p className="font-bold text-2xl lg:text-3xl text-black uppercase">{op.firstName} {op.lastName}</p>
-                                            <p className='text-lg lg:text-xl text-gray-700 font-bold'>MESE: {periodText}</p>
+                                        <div className='flex justify-between items-end mb-4 border-b border-black pb-2'>
+                                            <p className="font-black text-2xl lg:text-3xl text-black uppercase">{op.firstName} {op.lastName}</p>
+                                            <p className='text-lg lg:text-xl text-black font-black uppercase'>MESE: {periodText}</p>
                                         </div>
                                         
-                                        <table className="w-full text-base lg:text-xl mt-2 mb-4">
+                                        <table className="w-full text-base lg:text-xl mt-2 mb-4 text-black">
                                             <tbody>
                                                 {bodyData.map((row, i) => (
                                                     <tr key={i}>
-                                                        <td className="py-2 w-1/2 align-bottom">{row[0]}</td>
-                                                        <td className="py-2 text-right font-medium w-1/2 align-bottom">{row[1]}</td>
+                                                        <td className="py-2 w-1/2 align-bottom font-medium text-black">{row[0]}</td>
+                                                        <td className="py-2 text-right font-bold w-1/2 align-bottom text-black">{row[1]}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
                                         
-                                        <div className="text-right font-bold text-2xl lg:text-4xl mt-4 pt-2 text-black">
+                                        <div className="text-right font-black text-2xl lg:text-4xl mt-4 pt-2 text-black">
                                             <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
                                         </div>
                                     </div>
 
                                     <div className="mt-8 flex flex-col justify-end">
-                                        <div className='mb-4 italic text-gray-800 text-sm lg:text-base leading-relaxed'>
+                                        <div className='mb-4 italic text-black font-medium text-sm lg:text-base leading-relaxed'>
                                             <p>
-                                                Io sottoscritto, <span className='font-bold'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
+                                                Io sottoscritto, <span className='font-bold text-black'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold text-black'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
                                             </p>
                                         </div>
 
                                         <div className='pt-1'>
-                                            <p className="text-lg lg:text-xl text-black font-bold">FIRMA: __________________________________________________</p>
+                                            <p className="text-lg lg:text-xl text-black font-black">FIRMA: __________________________________________________</p>
                                         </div>
                                     </div>
                                 </div>

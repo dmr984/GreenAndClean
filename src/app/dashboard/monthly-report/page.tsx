@@ -717,7 +717,7 @@ const MonthlyReportPage = () => {
                                                             checked={selectedOperatorIds.has(op.id)}
                                                             onCheckedChange={(checked) => handleSelectOperator(op.id, Boolean(checked))}
                                                         />
-                                                        <Link href={`/dashboard/operators/${op.id}/end-of-month`}>
+                                                        <Link href={`/dashboard/operators/${op.id}/shifts?tab=report`}>
                                                             <CardTitle className="hover:underline text-lg">{op.firstName} {op.lastName}</CardTitle>
                                                             {!isCompact && <CardDescription>Codice: {op.username}</CardDescription>}
                                                         </Link>

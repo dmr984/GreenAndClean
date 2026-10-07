@@ -13,6 +13,7 @@ import { useFirestore } from '@/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ChangeCodeDialog } from '@/components/change-code-dialog';
+import { NotificationBell } from '@/components/notification-bell';
 
 type Operator = {
   id: string;
@@ -84,14 +85,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SheetTrigger>
               <SheetContent side="left" className="flex flex-col">
                  <SheetHeader className="text-left">
-                  <SheetTitle className="flex items-center gap-3">
-                     <Avatar>
-                        <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
-                      </Avatar>
-                     <div>
-                        <p className="text-base font-semibold leading-none">{`${user?.firstName} ${user?.lastName}`}</p>
-                        <p className="text-xs leading-tight text-muted-foreground mt-1">Codice: {user?.username}</p>
+                  <SheetTitle className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                       <Avatar>
+                          <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
+                       </Avatar>
+                       <div>
+                          <p className="text-base font-semibold leading-none">{`${user?.firstName} ${user?.lastName}`}</p>
+                          <p className="text-xs leading-tight text-muted-foreground mt-1">Codice: {user?.username}</p>
+                       </div>
                      </div>
+                     {user?.role === 'admin' && <NotificationBell />}
                   </SheetTitle>
                  </SheetHeader>
                  <Separator className="my-2"/>
@@ -180,14 +184,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex justify-end items-center gap-4">
-             {/* Rimossa NotificationManager */}
+             {user?.role === 'admin' && <NotificationBell />}
           </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
             {children}
         </main>
     </div>
-    <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} />
+    <ChangeCodeDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} userId={user?.id || null} role={user?.role} />
     </>
   );
 }

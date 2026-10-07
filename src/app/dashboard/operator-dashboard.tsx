@@ -27,6 +27,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { processMonthlyData, calculateHours, getScheduleForDate } from '@/lib/calculations';
+import { OperatorNotificationListener } from '@/components/operator-notification-listener';
 
 type ClockingEvent = {
   id: string;
@@ -1498,6 +1499,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
   return (
     <div className="space-y-6">
+      {authUser?.id && <OperatorNotificationListener userId={authUser.id} />}
+
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>

@@ -152,7 +152,7 @@ export function AdminDashboard() {
                                 const pending = pendingCounts[operator.id];
                                 const totalPending = (pending?.shifts || 0) + (pending?.leaves || 0) + (pending?.overtime || 0);
                                 return (
-                                <Link key={operator.id} href={`/dashboard/operators/${operator.id}`} passHref>
+                                <Link key={operator.id} href={`/dashboard/operators/${operator.id}/shifts`} passHref>
                                     <Button variant="outline" className="w-full h-20 justify-start p-4 text-left relative">
                                         <div className='flex items-center gap-3'>
                                             <User className='h-5 w-5 flex-shrink-0'/>

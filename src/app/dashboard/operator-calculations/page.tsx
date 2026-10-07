@@ -633,7 +633,7 @@ const OperatorCalculationsPage = () => {
                                                             />
                                                         </div>
                                                     )}
-                                                    <Link href={`/dashboard/operators/${op.id}/end-of-month`} onClick={(e) => e.stopPropagation()}>
+                                                    <Link href={`/dashboard/operators/${op.id}/shifts?tab=report`} onClick={(e) => e.stopPropagation()}>
                                                         <Button variant="outline" size="sm" className="h-8 text-xs">Dettagli</Button>
                                                     </Link>
                                                 </div>
