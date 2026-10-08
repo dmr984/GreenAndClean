@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Plane, UserCheck, Stethoscope, AlertTriangle, Euro, Bell } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Plane, UserCheck, Stethoscope, AlertTriangle, Euro, Bell, BellRing } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +34,7 @@ import { generateDetailedOperatorPdf } from '@/lib/pdf-utility';
 import { Switch } from '@/components/ui/switch';
 import { FirestorePermissionError, errorEmitter } from '@/firebase';
 import { RequestForm } from '@/components/request-form';
-import { sendNotificationToOperator } from '@/lib/notification-service';
+import { sendNotificationToOperator, getNotificationSettings, DEFAULT_NOTIFICATION_SETTINGS, applyTemplate, type NotificationSettings } from '@/lib/notification-service';
 
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -256,6 +256,13 @@ export default function ShiftApprovalPage() {
     const [breakTimes, setBreakTimes] = useState<{ start: string, end: string }>({ start: '', end: '' });
     const [approvalContext, setApprovalContext] = useState<ApprovalContext>(null);
     const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+    const [notifSettings, setNotifSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
+
+    useEffect(() => {
+        if (firestore) {
+            getNotificationSettings(firestore).then(setNotifSettings);
+        }
+    }, [firestore]);
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [isAddRequestOpen, setIsAddRequestOpen] = useState(false);
     const [newShiftDate, setNewShiftDate] = useState<Date | undefined>(new Date());
@@ -864,19 +871,31 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         await batch.commit();
         toast({ title: 'Successo', description: 'Turno approvato e richieste registrate.' });
         
-        // Invia notifica push sul telefono dell'operatore
-        const shiftDateFormatted = format(regularShift.date, 'dd MMMM', { locale: it });
-        sendNotificationToOperator(firestore, operator.id, {
-            type: 'shift_approved',
-            title: 'Turno Approvato ✅',
-            body: `Il tuo turno del ${shiftDateFormatted} è stato approvato dall'amministratore.`,
-            variables: {
-                data: shiftDateFormatted,
-                operatore: `${operator.firstName} ${operator.lastName}`.trim(),
-                ore: (regularShift.workDuration / 60).toFixed(1) + 'h',
-            },
-            url: '/dashboard'
-        });
+        // Invia notifica push sul telefono dell'operatore solo se confermato dall'amministratore
+        if (shouldNotify) {
+            const shiftDateFormatted = format(regularShift.date, 'dd MMMM', { locale: it });
+            const ordinarieNum = approvedOrdinary;
+            const straordinarieNum = approvedOvertime;
+            const ordinarieText = ordinarieNum > 0 ? `${ordinarieNum}h ordinarie` : '';
+            const straordinarieText = straordinarieNum > 0 ? `${straordinarieNum}h straordinarie` : '';
+            const totaleOre = ordinarieNum + straordinarieNum;
+            const totaleText = `${totaleOre}h`;
+
+            sendNotificationToOperator(firestore, operator.id, {
+                type: 'shift_approved',
+                title: 'Turno Approvato ✅',
+                body: `Ciao ${operator.firstName}. Il tuo turno del ${shiftDateFormatted} è stato approvato dall'amministratore. Totale: ${ordinarieText} ${straordinarieText}`.trim(),
+                variables: {
+                    data: shiftDateFormatted,
+                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                    ordinarie: ordinarieText,
+                    straordinarie: straordinarieText,
+                    totale: totaleText,
+                    ore: totaleText,
+                },
+                url: '/dashboard'
+            });
+        }
     } catch (err) {
         console.error(err);
         toast({ title: 'Errore', description: 'Impossibile approvare il turno.', variant: 'destructive' });
@@ -2253,11 +2272,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                         <p className="text-muted-foreground">Gestione Turni (Codice: {operator.username})</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="secondary" onClick={() => setIsAddRequestOpen(true)} className="border border-input">
-                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" /> Aggiungi Richiesta (Ferie/Malattie/Permessi/Assenze)
+                        <Button variant="secondary" onClick={() => setIsAddRequestOpen(true)} className="border border-input text-xs sm:text-sm">
+                            <CalendarIcon className="mr-1.5 h-4 w-4 text-primary" />
+                            <span className="hidden sm:inline">Aggiungi Richiesta (Ferie/Malattie/Permessi/Assenze)</span>
+                            <span className="sm:hidden">Aggiungi Richiesta</span>
                         </Button>
-                        <Button onClick={() => setIsAddShiftOpen(true)}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Turno Manuale
+                        <Button onClick={() => setIsAddShiftOpen(true)} className="text-xs sm:text-sm">
+                            <PlusCircle className="mr-1.5 h-4 w-4" />
+                            <span className="hidden sm:inline">Aggiungi Turno Manuale</span>
+                            <span className="sm:hidden">Nuovo Turno</span>
                         </Button>
                     </div>
                 </CardHeader>
@@ -2784,30 +2807,29 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
                 <TabsContent value="report">
                     <div className="space-y-6">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
-                                <h2 className="text-2xl font-bold tracking-tight">Riepilogo Mensile</h2>
-                                <p className="text-muted-foreground">Analisi delle ore e dei costi per {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
+                                <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Riepilogo Mensile</h2>
+                                <p className="text-xs sm:text-sm text-muted-foreground">Analisi delle ore e dei costi per {format(currentMonth, 'MMMM yyyy', { locale: it })}</p>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <div className="flex items-center gap-1 bg-background border rounded-md p-1">
-                                    <Button variant="ghost" size="icon" onClick={() => handleMonthChange('prev')}><ChevronLeft className="h-4 w-4" /></Button>
-                                    <div className="px-3 py-1 text-sm font-medium min-w-[120px] text-center capitalize">
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                                <div className="flex items-center gap-1 bg-background border rounded-md p-0.5 sm:p-1">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => handleMonthChange('prev')}><ChevronLeft className="h-4 w-4" /></Button>
+                                    <div className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium min-w-[100px] sm:min-w-[120px] text-center capitalize">
                                         {format(currentMonth, 'MMMM yyyy', { locale: it })}
                                     </div>
-                                    <Button variant="ghost" size="icon" onClick={() => handleMonthChange('next')}><ChevronRight className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => handleMonthChange('next')}><ChevronRight className="h-4 w-4" /></Button>
                                 </div>
-                                <Button variant="outline" size="sm" onClick={() => handleMonthChange('current')}><CalendarIcon className="mr-2 h-4 w-4" /> Oggi</Button>
-                                <div className="h-8 w-px bg-border mx-1" />
-                                <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={isDownloading}>
-                                    {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                                <Button variant="outline" size="sm" className="h-8 text-xs px-2 sm:px-3" onClick={() => handleMonthChange('current')}><CalendarIcon className="mr-1.5 h-3.5 w-3.5" /> Oggi</Button>
+                                <Button variant="outline" size="sm" className="h-8 text-xs px-2 sm:px-3" onClick={handleDownloadPdf} disabled={isDownloading}>
+                                    {isDownloading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
                                     PDF
                                 </Button>
-                                <Button variant="outline" size="sm" onClick={handleOpenPrintPreview}>
-                                    <Printer className="mr-2 h-4 w-4" />
+                                <Button variant="outline" size="sm" className="h-8 text-xs px-2 sm:px-3" onClick={handleOpenPrintPreview}>
+                                    <Printer className="mr-1.5 h-3.5 w-3.5" />
                                     Stampa
                                 </Button>
-                                <Button variant="destructive" size="sm" onClick={() => setIsCleanConfirmOpen(true)}><Trash2 className="mr-2 h-4 w-4" /> Pulisci Mese</Button>
+                                <Button variant="destructive" size="sm" className="h-8 text-xs px-2 sm:px-3" onClick={() => setIsCleanConfirmOpen(true)}><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Pulisci</Button>
                             </div>
                         </div>
 
@@ -3558,7 +3580,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             </ResponsiveDialog>
 
             <AlertDialog open={isApproveDialogOpen} onOpenChange={(open) => { if (!open) setApprovalContext(null); setIsApproveDialogOpen(open); }}>
-                <AlertDialogContent>
+                <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-lg max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
                      <AlertDialogHeader>
                         <AlertDialogTitle>Riepilogo e Approvazione Turno</AlertDialogTitle>
                         <AlertDialogDescription>Verifica e modifica le ore calcolate prima di approvare il turno. Le ore verranno registrate come richieste separate.</AlertDialogDescription>
@@ -3651,12 +3673,69 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                     </div>
                                 </div>
                             )}
+                            {/* Anteprima Notifica Operatore in Tempo Reale */}
+                            {(() => {
+                                const previewShiftDate = approvalContext?.shift?.date 
+                                    ? (approvalContext.shift.date instanceof Date 
+                                        ? approvalContext.shift.date 
+                                        : (approvalContext.shift.date as any).toDate 
+                                            ? (approvalContext.shift.date as any).toDate() 
+                                            : new Date((approvalContext.shift.date as any).seconds * 1000))
+                                    : new Date();
+                                const previewDateFormatted = format(previewShiftDate, 'dd MMMM', { locale: it });
+                                const previewOrd = parseFloat(approvalContext?.ordinaryHours || '0') || 0;
+                                const previewStraord = parseFloat(approvalContext?.overtimeHours || '0') || 0;
+                                const previewOrdText = previewOrd > 0 ? `${previewOrd}h ordinarie` : '';
+                                const previewStraordText = previewStraord > 0 ? `${previewStraord}h straordinarie` : '';
+                                const previewTotale = `${previewOrd + previewStraord}h`;
+
+                                const tplTitle = notifSettings.templateShiftApprovedTitle || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedTitle || 'Turno Approvato ✅';
+                                const tplBody = notifSettings.templateShiftApprovedBody || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedBody || "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} {straordinarie}.";
+
+                                const livePreviewTitle = applyTemplate(tplTitle, {
+                                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                                    data: previewDateFormatted,
+                                    ordinarie: previewOrdText,
+                                    straordinarie: previewStraordText,
+                                    totale: previewTotale,
+                                    ore: previewTotale,
+                                });
+
+                                const livePreviewBody = applyTemplate(tplBody, {
+                                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                                    data: previewDateFormatted,
+                                    ordinarie: previewOrdText,
+                                    straordinarie: previewStraordText,
+                                    totale: previewTotale,
+                                    ore: previewTotale,
+                                });
+
+                                return (
+                                    <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-2">
+                                        <div className="flex items-center justify-between text-xs font-semibold text-primary">
+                                            <div className="flex items-center gap-1.5">
+                                                <BellRing className="h-4 w-4 text-primary" />
+                                                <span>Anteprima Messaggio all'Operatore 📱</span>
+                                            </div>
+                                            <Badge variant="outline" className="text-[10px] bg-background">Inviata con "Approva e Invia Notifica"</Badge>
+                                        </div>
+                                        <div className="rounded-lg bg-background p-2.5 border shadow-xs text-xs space-y-1">
+                                            <p className="font-bold text-foreground text-xs">{livePreviewTitle}</p>
+                                            <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">{livePreviewBody}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     )}
-                     <AlertDialogFooter>
-                        <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <Button type="button" variant="outline" onClick={() => handleApprovalClick(approvalContext, false)} disabled={isProcessingApprove}>Approva Senza Notificare</Button>
-                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext, true)} disabled={isProcessingApprove} className="gap-1.5"><Bell className="h-4 w-4" /> Approva e Invia Notifica</AlertDialogAction>
+                     <AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
+                        <AlertDialogCancel className="w-full sm:w-auto">Annulla</AlertDialogCancel>
+                        <Button type="button" variant="outline" onClick={() => handleApprovalClick(approvalContext, false)} disabled={isProcessingApprove} className="w-full sm:w-auto">
+                            Approva Senza Notificare
+                        </Button>
+                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext, true)} disabled={isProcessingApprove} className="w-full sm:w-auto gap-1.5">
+                            <Bell className="h-4 w-4" /> Approva e Invia Notifica
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

@@ -176,18 +176,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
            </div>
 
-          <div className="flex-1 flex justify-center">
-            <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-lg">
-                <span className="uppercase tracking-wider whitespace-nowrap">SERVECO SRL</span>
-                <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={32} height={32} className="h-8 w-8 rounded-full"/>
+          <div className="flex-1 flex justify-center min-w-0">
+            <Link href="/dashboard" className="flex items-center gap-2 sm:gap-3 font-semibold text-sm sm:text-base md:text-lg truncate">
+                <span className="uppercase tracking-wider whitespace-nowrap truncate">SERVECO SRL</span>
+                <Image src="https://i.postimg.cc/GhwM2hg1/1764199658760.png" alt="Serveco Logo" width={28} height={28} className="h-7 w-7 sm:h-8 sm:w-8 rounded-full shrink-0"/>
             </Link>
           </div>
 
-          <div className="flex justify-end items-center gap-4">
+          <div className="flex justify-end items-center gap-2 sm:gap-4 shrink-0">
              {user?.role === 'admin' && <NotificationBell />}
           </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 lg:gap-6 p-4 lg:p-6">
+        <main className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6 p-2 sm:p-4 lg:p-6 max-w-full overflow-x-hidden">
             {children}
         </main>
     </div>

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { adminFirestore } from '@/lib/firebase-admin';
 
-export const VAPID_PUBLIC_KEY = 'BNpjt10Qajh1JTCFZfe2fJtfNBG1SKFoxBnowhfvW0o0oOMLZjLrIvjsyr5RWBAZ8Qr79NfiZav1QTGFVUPWotA';
-export const VAPID_PRIVATE_KEY = '_iRSH-DU27JgosEh7qPxW4R6crJd-kIAAmr7N12Ttec';
+const VAPID_PUBLIC_KEY = 'BNpjt10Qajh1JTCFZfe2fJtfNBG1SKFoxBnowhfvW0o0oOMLZjLrIvjsyr5RWBAZ8Qr79NfiZav1QTGFVUPWotA';
+const VAPID_PRIVATE_KEY = '_iRSH-DU27JgosEh7qPxW4R6crJd-kIAAmr7N12Ttec';
 
 webpush.setVapidDetails(
   'mailto:info@greenandclean.it',

@@ -7,6 +7,8 @@ import { InstallPWA } from '@/components/install-pwa';
 import { PWAManager } from '@/components/pwa-manager';
 import { UpdateNotifier } from '@/components/update-notifier';
 
+import { AntiScreenshotShield } from '@/components/anti-screenshot-shield';
+
 export const metadata: Metadata = {
   title: 'SERVECO GREEN & CLEAN',
   description: 'Gestisci le tue operazioni con facilità.',
@@ -32,6 +34,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#1a1a1a" />
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
+        <AntiScreenshotShield />
         <PWAManager />
         <FirebaseClientProvider>
           <UserProvider>

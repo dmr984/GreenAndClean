@@ -65,7 +65,7 @@ const ResponsiveDialogContent = ({
  
   return (
     <DrawerContent {...props}>
-        <div className="mx-auto w-full max-w-sm">{children}</div>
+        <div className="mx-auto w-full max-w-lg">{children}</div>
     </DrawerContent>
   )
 }

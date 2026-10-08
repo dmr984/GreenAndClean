@@ -35,7 +35,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   notifyShiftModified: true,
 
   templateShiftApprovedTitle: 'Turno Approvato ✅',
-  templateShiftApprovedBody: 'Il tuo turno del {data} è stato approvato dall\'amministratore.',
+  templateShiftApprovedBody: "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} {straordinarie}.",
 
   templateShiftRejectedTitle: 'Turno Rifiutato ❌',
   templateShiftRejectedBody: 'Il tuo turno del {data} è stato rifiutato o annullato.',
@@ -53,13 +53,34 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 export function applyTemplate(template: string, vars: Record<string, string | undefined>): string {
   let result = template;
   const todayFormatted = format(new Date(), 'dd MMMM', { locale: it });
+
+  // Normalizza straordinarie: se 0 o assente, non deve apparire
+  let rawStraordinarie = vars.straordinarie;
+  let formattedStraordinarie = '';
+  if (rawStraordinarie) {
+    const trimmed = rawStraordinarie.trim();
+    if (trimmed !== '0' && trimmed !== '0h' && trimmed !== '0h straordinarie' && trimmed !== '0 straordinari' && !trimmed.startsWith('0')) {
+      formattedStraordinarie = trimmed;
+    }
+  }
+
+  // Normalizza ordinarie
+  let rawOrdinarie = vars.ordinarie;
+  let formattedOrdinarie = '';
+  if (rawOrdinarie) {
+    formattedOrdinarie = rawOrdinarie.trim();
+  }
+
   const defaultVars: Record<string, string> = {
     data: vars.data || todayFormatted,
     operatore: vars.operatore || 'Operatore',
     tipo: vars.tipo || 'turno',
     ore: vars.ore || '',
+    ordinarie: formattedOrdinarie,
+    straordinarie: formattedStraordinarie,
+    totale: vars.totale || vars.ore || '',
   };
-  const merged = { ...defaultVars, ...vars };
+  const merged = { ...defaultVars, ...vars, ordinarie: formattedOrdinarie, straordinarie: formattedStraordinarie };
 
   for (const [key, val] of Object.entries(merged)) {
     if (val !== undefined && val !== null) {
@@ -67,6 +88,12 @@ export function applyTemplate(template: string, vars: Record<string, string | un
       result = result.replace(regex, String(val));
     }
   }
+
+  // Pulizia automatica: spazi multipli, spazi prima di punteggiatura (es. "8h ordinarie ." -> "8h ordinarie.")
+  result = result.replace(/[ \t]{2,}/g, ' ');
+  result = result.replace(/\s+([.,;:!?])/g, '$1');
+  result = result.trim();
+
   return result;
 }
 
@@ -105,6 +132,9 @@ export interface NotificationPayload {
     operatore?: string;
     data?: string;
     ore?: string;
+    ordinarie?: string;
+    straordinarie?: string;
+    totale?: string;
     tipo?: string;
     dal?: string;
     al?: string;

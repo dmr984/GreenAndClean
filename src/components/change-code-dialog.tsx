@@ -338,12 +338,15 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId, role }: ChangeC
                                     <div className="rounded-md bg-blue-500/10 border border-blue-500/20 p-2.5 text-xs text-foreground space-y-1.5">
                                         <p className="font-semibold text-blue-700 dark:text-blue-400">Variabili dinamiche utilizzabili nei testi:</p>
                                         <div className="flex flex-wrap gap-1.5 text-[11px]">
+                                            <Badge variant="outline" className="bg-background font-mono">{'{operatore}'} (nome)</Badge>
                                             <Badge variant="outline" className="bg-background font-mono">{'{data}'} (data turno)</Badge>
+                                            <Badge variant="outline" className="bg-background font-mono text-primary border-primary/30">{'{ordinarie}'} (es. 8h ordinarie)</Badge>
+                                            <Badge variant="outline" className="bg-background font-mono text-primary border-primary/30">{'{straordinarie}'} (se &gt; 0, altrimenti omesso)</Badge>
+                                            <Badge variant="outline" className="bg-background font-mono">{'{totale}'} (somma ore)</Badge>
                                             <Badge variant="outline" className="bg-background font-mono">{'{ore}'} (ore lavorate)</Badge>
                                             <Badge variant="outline" className="bg-background font-mono">{'{tipo}'} (tipo richiesta)</Badge>
                                             <Badge variant="outline" className="bg-background font-mono">{'{dal}'} (data inizio)</Badge>
                                             <Badge variant="outline" className="bg-background font-mono">{'{al}'} (data fine)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{operatore}'} (nome)</Badge>
                                         </div>
                                     </div>
 
@@ -369,7 +372,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId, role }: ChangeC
                                                 value={notifSettings.templateShiftApprovedBody ?? DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedBody}
                                                 onChange={(e) => setNotifSettings(prev => ({ ...prev, templateShiftApprovedBody: e.target.value }))}
                                                 className="text-xs min-h-[60px]"
-                                                placeholder="Il tuo turno del {data} è stato approvato dall'amministratore."
+                                                placeholder="Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} {straordinarie}."
                                             />
                                         </div>
                                     </div>
