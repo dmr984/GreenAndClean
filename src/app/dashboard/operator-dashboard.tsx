@@ -1837,14 +1837,19 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </div>
               </>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="forgotten-start-time">Orario Suggerito</Label>
+            <div className="space-y-2 px-1">
+              <Label htmlFor="forgotten-start-time" className="cursor-pointer">Orario Suggerito</Label>
               <input
                 id="forgotten-start-time"
                 type="time"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 value={forgottenStartTime}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForgottenStartTime(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    (e.currentTarget as any).showPicker?.();
+                  } catch (_) {}
+                }}
               />
             </div>
           </div>
@@ -1880,26 +1885,36 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               </strong>.
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="py-4 px-2 sm:px-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div className="space-y-2">
-                <Label htmlFor="suggested-entry-time">Orario Inizio</Label>
+                <Label htmlFor="suggested-entry-time" className="cursor-pointer text-xs sm:text-sm font-medium">Orario Inizio</Label>
                 <input
                   id="suggested-entry-time"
                   type="time"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   value={suggestedEntryTime}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuggestedEntryTime(e.target.value)}
+                  onClick={(e) => {
+                    try {
+                      (e.currentTarget as any).showPicker?.();
+                    } catch (_) {}
+                  }}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="suggested-exit-time">Orario Fine</Label>
+                <Label htmlFor="suggested-exit-time" className="cursor-pointer text-xs sm:text-sm font-medium">Orario Fine</Label>
                 <input
                   id="suggested-exit-time"
                   type="time"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   value={suggestedExitTime}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuggestedExitTime(e.target.value)}
+                  onClick={(e) => {
+                    try {
+                      (e.currentTarget as any).showPicker?.();
+                    } catch (_) {}
+                  }}
                 />
               </div>
             </div>

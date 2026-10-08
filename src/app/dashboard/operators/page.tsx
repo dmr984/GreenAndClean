@@ -279,6 +279,11 @@ export default function ManageOperatorsPage() {
         const weeklyContractualHours = action === 'add' ? newWeeklyContractualHours : editingWeeklyContractualHours;
         const monthlyContractualHours = action === 'add' ? newMonthlyContractualHours : editingMonthlyContractualHours;
         const employmentStartDateStr = action === 'add' ? newEmploymentStartDate : editingEmploymentStartDate;
+        const shiftRemindersEnabled = action === 'add' ? newShiftRemindersEnabled : editingShiftRemindersEnabled;
+        const useWorkScheduleReminders = action === 'add' ? newUseWorkScheduleReminders : editingUseWorkScheduleReminders;
+        const reminderAdvanceMinutes = action === 'add' ? newReminderAdvanceMinutes : editingReminderAdvanceMinutes;
+        const entryReminderTime = action === 'add' ? newEntryReminderTime : editingEntryReminderTime;
+        const exitReminderTime = action === 'add' ? newExitReminderTime : editingExitReminderTime;
 
         if (!firestore || !firstName.trim() || !lastName.trim() || !operatorCode.trim()) {
             toast({
@@ -350,6 +355,11 @@ export default function ManageOperatorsPage() {
             overtimeRate: parseFloat(String(overtimeRate).replace(',', '.')) || 0,
             fixedSalary: salaryType === 'fixed' ? parseFloat(String(fixedSalary).replace(',', '.')) || 0 : 0,
             sickLeaveRate: parseFloat(String(sickLeaveRate).replace(',', '.')) || 0,
+            shiftRemindersEnabled: !!shiftRemindersEnabled,
+            useWorkScheduleReminders: !!useWorkScheduleReminders,
+            reminderAdvanceMinutes: typeof reminderAdvanceMinutes === 'number' ? reminderAdvanceMinutes : parseInt(String(reminderAdvanceMinutes)) || 10,
+            entryReminderTime: entryReminderTime || '',
+            exitReminderTime: exitReminderTime || '',
         };
 
         if (parsedEmploymentStartDate) {
@@ -878,6 +888,16 @@ export default function ManageOperatorsPage() {
                                                 'new'
                                             )}
                                         </div>
+                                        <div className="pt-2">
+                                            {renderReminderFields(
+                                                'new',
+                                                newShiftRemindersEnabled, setNewShiftRemindersEnabled,
+                                                newUseWorkScheduleReminders, setNewUseWorkScheduleReminders,
+                                                newReminderAdvanceMinutes, setNewReminderAdvanceMinutes,
+                                                newEntryReminderTime, setNewEntryReminderTime,
+                                                newExitReminderTime, setNewExitReminderTime
+                                            )}
+                                        </div>
                                     </div>
                                     <DialogFooter>
                                         <Button type="submit">Salva Operatore</Button>
@@ -1032,6 +1052,16 @@ export default function ManageOperatorsPage() {
                                     (day, field, value) => handleWorkScheduleChange(setEditingWorkSchedule, day, field, value), 
                                     (day) => handleCopyFromPreviousDay(setEditingWorkSchedule, day),
                                     'edit'
+                                )}
+                            </div>
+                            <div className="pt-2">
+                                {renderReminderFields(
+                                    'edit',
+                                    editingShiftRemindersEnabled, setEditingShiftRemindersEnabled,
+                                    editingUseWorkScheduleReminders, setEditingUseWorkScheduleReminders,
+                                    editingReminderAdvanceMinutes, setEditingReminderAdvanceMinutes,
+                                    editingEntryReminderTime, setEditingEntryReminderTime,
+                                    editingExitReminderTime, setEditingExitReminderTime
                                 )}
                             </div>
                         </div>
