@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Shield, ShieldAlert } from 'lucide-react';
-import Image from 'next/image';
+import { useUser } from '@/hooks/use-user';
 
 export function AntiScreenshotShield() {
   const pathname = usePathname();
+  const { user } = useUser();
   const [isBlurred, setIsBlurred] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
 
@@ -154,6 +155,22 @@ export function AntiScreenshotShield() {
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] bg-destructive text-destructive-foreground px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-4">
           <ShieldAlert className="h-4 w-4 shrink-0" />
           <span>Cattura schermo bloccata per la protezione dei dati.</span>
+        </div>
+      )}
+      {/* Filigrana forense dinamica: impressa sottilmente in sottofondo (visibile in eventuali screenshot/foto) */}
+      {!isPrintPage && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 pointer-events-none select-none z-[9990] overflow-hidden opacity-[0.03] dark:opacity-[0.04] grid grid-cols-2 sm:grid-cols-3 gap-y-24 gap-x-12 p-6"
+        >
+          {Array.from({ length: 18 }).map((_, i) => (
+            <div
+              key={i}
+              className="transform -rotate-12 text-[10px] sm:text-xs font-mono font-semibold text-foreground tracking-wider select-none"
+            >
+              SERVECO • {user ? `${user.firstName} ${user.lastName}`.trim() || user.username : 'GREEN & CLEAN'}
+            </div>
+          ))}
         </div>
       )}
     </>

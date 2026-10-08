@@ -35,6 +35,7 @@ import { useRouter } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { CustomTimePicker } from '@/components/ui/custom-time-picker';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
@@ -580,24 +581,24 @@ export default function ManageOperatorsPage() {
                                 <Label htmlFor={`${prefix}-entry-time`} className="text-xs text-muted-foreground">
                                     Orario Notifica Entrata
                                 </Label>
-                                <Input 
+                                <CustomTimePicker 
                                     id={`${prefix}-entry-time`}
-                                    type="time"
+                                    label="Orario Notifica Entrata"
                                     value={entryTime}
-                                    onChange={(e) => setEntryTime(e.target.value)}
-                                    className="h-8 text-xs mt-1"
+                                    onChange={setEntryTime}
+                                    className="h-9 text-xs mt-1"
                                 />
                             </div>
                             <div>
                                 <Label htmlFor={`${prefix}-exit-time`} className="text-xs text-muted-foreground">
                                     Orario Notifica Uscita
                                 </Label>
-                                <Input 
+                                <CustomTimePicker 
                                     id={`${prefix}-exit-time`}
-                                    type="time"
+                                    label="Orario Notifica Uscita"
                                     value={exitTime}
-                                    onChange={(e) => setExitTime(e.target.value)}
-                                    className="h-8 text-xs mt-1"
+                                    onChange={setExitTime}
+                                    className="h-9 text-xs mt-1"
                                 />
                             </div>
                         </div>

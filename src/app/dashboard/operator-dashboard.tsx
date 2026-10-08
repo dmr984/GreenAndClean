@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { processMonthlyData, calculateHours, getScheduleForDate } from '@/lib/calculations';
 import { OperatorNotificationListener } from '@/components/operator-notification-listener';
+import { CustomTimePicker } from '@/components/ui/custom-time-picker';
 
 type ClockingEvent = {
   id: string;
@@ -1200,12 +1201,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     Inserisci l'orario effettivo in cui sei uscito:
                   </Label>
                   <div className="flex gap-2">
-                    <input
+                    <CustomTimePicker
                       id={`suggested-time-${voidedShift.id}`}
-                      type="time"
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      label="Orario Effettivo di Uscita"
+                      placeholder="Seleziona orario di uscita"
                       value={suggestedTimes[voidedShift.id] || ""}
-                      onChange={(e) => setSuggestedTimes(prev => ({ ...prev, [voidedShift.id]: e.target.value }))}
+                      onChange={(val) => setSuggestedTimes(prev => ({ ...prev, [voidedShift.id]: val }))}
                     />
                   </div>
                 </div>
@@ -1838,18 +1839,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               </>
             )}
             <div className="space-y-2 px-1">
-              <Label htmlFor="forgotten-start-time" className="cursor-pointer">Orario Suggerito</Label>
-              <input
+              <Label htmlFor="forgotten-start-time">Orario Suggerito</Label>
+              <CustomTimePicker
                 id="forgotten-start-time"
-                type="time"
-                className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                label="Orario Suggerito"
+                placeholder="Seleziona orario"
                 value={forgottenStartTime}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForgottenStartTime(e.target.value)}
-                onClick={(e) => {
-                  try {
-                    (e.currentTarget as any).showPicker?.();
-                  } catch (_) {}
-                }}
+                onChange={setForgottenStartTime}
               />
             </div>
           </div>
@@ -1885,36 +1881,26 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               </strong>.
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
-          <div className="py-4 px-2 sm:px-4 space-y-4">
+          <div className="py-4 px-3 sm:px-4 space-y-4">
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div className="space-y-2">
-                <Label htmlFor="suggested-entry-time" className="cursor-pointer text-xs sm:text-sm font-medium">Orario Inizio</Label>
-                <input
+                <Label htmlFor="suggested-entry-time" className="text-xs sm:text-sm font-medium">Orario Inizio</Label>
+                <CustomTimePicker
                   id="suggested-entry-time"
-                  type="time"
-                  className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  label="Orario Inizio"
+                  placeholder="--:--"
                   value={suggestedEntryTime}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuggestedEntryTime(e.target.value)}
-                  onClick={(e) => {
-                    try {
-                      (e.currentTarget as any).showPicker?.();
-                    } catch (_) {}
-                  }}
+                  onChange={setSuggestedEntryTime}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="suggested-exit-time" className="cursor-pointer text-xs sm:text-sm font-medium">Orario Fine</Label>
-                <input
+                <Label htmlFor="suggested-exit-time" className="text-xs sm:text-sm font-medium">Orario Fine</Label>
+                <CustomTimePicker
                   id="suggested-exit-time"
-                  type="time"
-                  className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  label="Orario Fine"
+                  placeholder="--:--"
                   value={suggestedExitTime}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuggestedExitTime(e.target.value)}
-                  onClick={(e) => {
-                    try {
-                      (e.currentTarget as any).showPicker?.();
-                    } catch (_) {}
-                  }}
+                  onChange={setSuggestedExitTime}
                 />
               </div>
             </div>
