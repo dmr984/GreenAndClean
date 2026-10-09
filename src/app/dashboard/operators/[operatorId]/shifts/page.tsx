@@ -161,6 +161,8 @@ type ApprovalContext = {
     ignoreContractualStart: boolean;
     makeupOfDay: string; // New field for makeup day
     sendNotification?: boolean;
+    customNotificationTitle?: string;
+    customNotificationBody?: string;
 } | null;
 
 type Request = {
@@ -259,9 +261,21 @@ export default function ShiftApprovalPage() {
     const [notifSettings, setNotifSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
 
     useEffect(() => {
-        if (firestore) {
-            getNotificationSettings(firestore).then(setNotifSettings);
-        }
+        if (!firestore) return;
+        const unsubscribe = onSnapshot(doc(firestore, 'settings', 'notifications'), (docSnap) => {
+            if (docSnap.exists()) {
+                setNotifSettings({
+                    ...DEFAULT_NOTIFICATION_SETTINGS,
+                    ...docSnap.data()
+                });
+            } else {
+                setNotifSettings(DEFAULT_NOTIFICATION_SETTINGS);
+            }
+        }, (err) => {
+            console.error('Errore listener impostazioni notifiche:', err);
+        });
+
+        return () => unsubscribe();
     }, [firestore]);
     const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
     const [isAddRequestOpen, setIsAddRequestOpen] = useState(false);
@@ -881,10 +895,16 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             const totaleOre = ordinarieNum + straordinarieNum;
             const totaleText = `${totaleOre}h`;
 
+            // Se l'amministratore ha modificato il messaggio nel pop-up di approvazione, invia esattamente quello!
+            const customTitleToSend = currentContext.customNotificationTitle;
+            const customBodyToSend = currentContext.customNotificationBody;
+
             sendNotificationToOperator(firestore, operator.id, {
                 type: 'shift_approved',
-                title: 'Turno Approvato ✅',
-                body: `Ciao ${operator.firstName}. Il tuo turno del ${shiftDateFormatted} è stato approvato dall'amministratore. Totale: ${ordinarieText} ${straordinarieText}`.trim(),
+                title: customTitleToSend || 'Turno Approvato ✅',
+                body: customBodyToSend || `Ciao ${operator.firstName}. Il tuo turno del ${shiftDateFormatted} è stato approvato dall'amministratore. Totale: ${ordinarieText} ${straordinarieText}`.trim(),
+                customTitle: customTitleToSend,
+                customBody: customBodyToSend,
                 variables: {
                     data: shiftDateFormatted,
                     operatore: `${operator.firstName} ${operator.lastName}`.trim(),
@@ -1936,10 +1956,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             await updateDoc(shiftRef, updateData);
             toast({ title: 'Successo', description: 'Turno straordinario approvato.' });
 
+            const customTitleToSend = approvalContext?.customNotificationTitle;
+            const customBodyToSend = approvalContext?.customNotificationBody;
+
             sendNotificationToOperator(firestore, operator.id, {
                 type: 'shift_approved',
-                title: 'Straordinario Approvato ✅',
-                body: `Il tuo turno straordinario del ${shiftDateFormatted} (${approvedOvertime}h) è stato approvato.`,
+                title: customTitleToSend || 'Straordinario Approvato ✅',
+                body: customBodyToSend || `Il tuo turno straordinario del ${shiftDateFormatted} (${approvedOvertime}h) è stato approvato.`,
+                customTitle: customTitleToSend,
+                customBody: customBodyToSend,
                 variables: {
                     data: shiftDateFormatted,
                     operatore: `${operator.firstName} ${operator.lastName}`.trim(),
@@ -3580,16 +3605,16 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             </ResponsiveDialog>
 
             <AlertDialog open={isApproveDialogOpen} onOpenChange={(open) => { if (!open) setApprovalContext(null); setIsApproveDialogOpen(open); }}>
-                <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-lg max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+                <AlertDialogContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[92dvh] overflow-y-auto overflow-x-hidden p-5 sm:p-8">
                      <AlertDialogHeader>
-                        <AlertDialogTitle>Riepilogo e Approvazione Turno</AlertDialogTitle>
+                        <AlertDialogTitle className="text-xl">Riepilogo e Approvazione Turno</AlertDialogTitle>
                         <AlertDialogDescription>Verifica e modifica le ore calcolate prima di approvare il turno. Le ore verranno registrate come richieste separate.</AlertDialogDescription>
                     </AlertDialogHeader>
                     {approvalContext && (
                         <div className="py-4 space-y-4">
                             {approvalContext.shift.events.some(e => e.isAuto) && (
                                 <div className="bg-amber-100 dark:bg-amber-900/30 p-3 rounded-md border border-amber-200 flex items-start gap-2">
-                                    <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+                                    <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
                                     <div className="text-xs text-amber-800 dark:text-amber-200">
                                         <p className="font-bold">Attenzione: Timbrature Automatiche</p>
                                         <p>Questo turno contiene timbrature generate dal sistema. Verifica che le ore calcolate siano corrette o usa i suggerimenti dell'operatore nel dettaglio del turno prima di procedere.</p>
@@ -3597,83 +3622,89 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                 </div>
                             )}
                             {!approvalContext.isOvertimeShift && (
-                                <>
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox 
-                                        id="ignore-contractual" 
-                                        checked={approvalContext.ignoreContractualStart} 
-                                        onCheckedChange={(checked) => handleApprovalContextChange('ignoreContractualStart', !!checked)}
-                                    />
-                                    <Label htmlFor="ignore-contractual" className="text-sm font-normal">
-                                        Ignora orario di inizio contrattuale
-                                    </Label>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="approve-makeup-day">Recupero del Giorno (Opzionale)</Label>
-                                    <Input id="approve-makeup-day" type="date" value={approvalContext.makeupOfDay} onChange={e => handleApprovalContextChange('makeupOfDay', e.target.value)} />
-                                </div>
-                                </>
-                            )}
-                            {!approvalContext.isOvertimeShift && (
-                                <div>
-                                    <Label htmlFor="ordinary-hours">Ore Ordinarie Lavorate</Label>
-                                    <Input id="ordinary-hours" type="number" value={approvalContext.ordinaryHours} onChange={(e) => handleApprovalContextChange('ordinaryHours', e.target.value)} step="0.5" min="0" />
-                                    <p className="text-xs text-muted-foreground mt-1">Le ore di lavoro che rientrano nel contratto.</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-3.5 rounded-lg border">
+                                    <div className="flex items-center space-x-2 pt-2">
+                                        <Checkbox 
+                                            id="ignore-contractual" 
+                                            checked={approvalContext.ignoreContractualStart} 
+                                            onCheckedChange={(checked) => handleApprovalContextChange('ignoreContractualStart', !!checked)}
+                                        />
+                                        <Label htmlFor="ignore-contractual" className="text-xs sm:text-sm font-normal cursor-pointer">
+                                            Ignora orario di inizio contrattuale
+                                        </Label>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="approve-makeup-day" className="text-xs">Recupero del Giorno (Opzionale)</Label>
+                                        <Input id="approve-makeup-day" type="date" className="h-9 text-xs" value={approvalContext.makeupOfDay} onChange={e => handleApprovalContextChange('makeupOfDay', e.target.value)} />
+                                    </div>
                                 </div>
                             )}
-                            <div>
-                                <Label htmlFor="overtime-hours">Ore di Straordinario</Label>
-                                <Input id="overtime-hours" type="number" value={approvalContext.overtimeHours} onChange={(e) => handleApprovalContextChange('overtimeHours', e.target.value)} step="0.5" min="0" />
-                                <p className="text-xs text-muted-foreground mt-1">Le ore che superano il monte ore giornaliero.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {!approvalContext.isOvertimeShift && (
+                                    <div className="space-y-1">
+                                        <Label htmlFor="ordinary-hours" className="text-xs sm:text-sm font-medium">Ore Ordinarie Lavorate</Label>
+                                        <Input id="ordinary-hours" type="number" className="h-10 text-sm font-semibold" value={approvalContext.ordinaryHours} onChange={(e) => handleApprovalContextChange('ordinaryHours', e.target.value)} step="0.5" min="0" />
+                                        <p className="text-[11px] text-muted-foreground">Ore rientranti nel contratto.</p>
+                                    </div>
+                                )}
+                                <div className="space-y-1">
+                                    <Label htmlFor="overtime-hours" className="text-xs sm:text-sm font-medium">Ore di Straordinario</Label>
+                                    <Input id="overtime-hours" type="number" className="h-10 text-sm font-semibold text-amber-500" value={approvalContext.overtimeHours} onChange={(e) => handleApprovalContextChange('overtimeHours', e.target.value)} step="0.5" min="0" />
+                                    <p className="text-[11px] text-muted-foreground">Ore oltre il monte ore giornaliero.</p>
+                                </div>
+                                {!approvalContext.isOvertimeShift && (
+                                    <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+                                        <Label htmlFor="leave-hours" className="text-xs sm:text-sm font-medium">Ore Ammanco / Permesso</Label>
+                                        <div className="flex gap-2 items-center">
+                                            <Input id="leave-hours" type="number" className="h-10 text-sm font-semibold flex-1" value={approvalContext.leaveHours} onChange={(e) => handleApprovalContextChange('leaveHours', e.target.value)} step="0.5" min="0" />
+                                            <Button variant="outline" size="sm" className="h-10 px-3 text-xs" type="button" onClick={() => {
+                                                handleApprovalContextChange('leaveHours', '0');
+                                                handleApprovalContextChange('createLeaveRequest', false);
+                                                handleApprovalContextChange('createOvertimeRecovery', false);
+                                            }}>Azzera</Button>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">Ore mancanti rispetto al monte ore.</p>
+                                    </div>
+                                )}
                             </div>
-                            {!approvalContext.isOvertimeShift && (
-                                <div>
-                                    <Label htmlFor="leave-hours">Ore di Permesso / Recupero (Ammanco Ore)</Label>
-                                    <div className="flex gap-2 items-center">
-                                        <Input id="leave-hours" type="number" className="flex-1" value={approvalContext.leaveHours} onChange={(e) => handleApprovalContextChange('leaveHours', e.target.value)} step="0.5" min="0" />
-                                        <Button variant="outline" size="sm" type="button" onClick={() => {
-                                            handleApprovalContextChange('leaveHours', '0');
-                                            handleApprovalContextChange('createLeaveRequest', false);
-                                            handleApprovalContextChange('createOvertimeRecovery', false);
-                                        }}>Azzera</Button>
+
+                            {!approvalContext.isOvertimeShift && parseFloat(approvalContext.leaveHours || '0') > 0 && (
+                                <div className="flex flex-col sm:flex-row gap-3 bg-muted/40 p-3 rounded-lg border border-border">
+                                    <div className="flex items-center space-x-2 flex-1">
+                                        <Checkbox 
+                                            id="include-leave" 
+                                            checked={approvalContext.createLeaveRequest} 
+                                            onCheckedChange={(checked) => {
+                                                handleApprovalContextChange('createLeaveRequest', !!checked);
+                                                if (checked) handleApprovalContextChange('createOvertimeRecovery', false);
+                                            }} 
+                                        />
+                                        <Label htmlFor="include-leave" className="text-xs sm:text-sm font-normal cursor-pointer">
+                                            Crea richiesta di permesso per queste ore
+                                        </Label>
                                     </div>
-                                    <p className="text-xs text-muted-foreground mt-1">Le ore mancanti rispetto al monte ore giornaliero.</p>
-                                    <div className="flex flex-col space-y-2 mt-3 bg-muted/50 p-3 rounded-lg border border-border">
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox 
-                                                id="include-leave" 
-                                                checked={approvalContext.createLeaveRequest} 
-                                                onCheckedChange={(checked) => {
-                                                    handleApprovalContextChange('createLeaveRequest', !!checked);
-                                                    if (checked) handleApprovalContextChange('createOvertimeRecovery', false);
-                                                }} 
-                                            />
-                                            <Label htmlFor="include-leave" className="text-sm font-normal cursor-pointer">
-                                                Crea richiesta di permesso per queste ore
+                                    <div className="flex items-center space-x-2 flex-1">
+                                        <Checkbox 
+                                            id="recover-overtime" 
+                                            checked={approvalContext.createOvertimeRecovery} 
+                                            onCheckedChange={(checked) => {
+                                                handleApprovalContextChange('createOvertimeRecovery', !!checked);
+                                                if (checked) handleApprovalContextChange('createLeaveRequest', false);
+                                            }} 
+                                        />
+                                        <div className="grid gap-0.5 leading-none">
+                                            <Label htmlFor="recover-overtime" className="text-xs sm:text-sm font-normal cursor-pointer">
+                                                Recupera ore da straordinari
                                             </Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox 
-                                                id="recover-overtime" 
-                                                checked={approvalContext.createOvertimeRecovery} 
-                                                onCheckedChange={(checked) => {
-                                                    handleApprovalContextChange('createOvertimeRecovery', !!checked);
-                                                    if (checked) handleApprovalContextChange('createLeaveRequest', false);
-                                                }} 
-                                            />
-                                            <div className="grid gap-0.5 leading-none">
-                                                <Label htmlFor="recover-overtime" className="text-sm font-normal cursor-pointer">
-                                                    Recupera ore da straordinari
-                                                </Label>
-                                                <p className="text-xs text-muted-foreground">
-                                                    (Disponibili: {monthlySummary.overtimeHours}h di straordinario questo mese)
-                                                </p>
-                                            </div>
+                                            <p className="text-[10px] text-muted-foreground">
+                                                (Disponibili: {monthlySummary.overtimeHours}h questo mese)
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
                             )}
-                            {/* Anteprima Notifica Operatore in Tempo Reale */}
+
+                            {/* Anteprima Notifica Operatore in Tempo Reale & Modificabile */}
                             {(() => {
                                 const previewShiftDate = approvalContext?.shift?.date 
                                     ? (approvalContext.shift.date instanceof Date 
@@ -3710,18 +3741,71 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                     ore: previewTotale,
                                 });
 
+                                const currentTitleValue = approvalContext.customNotificationTitle !== undefined
+                                    ? approvalContext.customNotificationTitle
+                                    : livePreviewTitle;
+
+                                const currentBodyValue = approvalContext.customNotificationBody !== undefined
+                                    ? approvalContext.customNotificationBody
+                                    : livePreviewBody;
+
+                                const isBodyModified = (approvalContext.customNotificationBody !== undefined && approvalContext.customNotificationBody !== livePreviewBody) ||
+                                    (approvalContext.customNotificationTitle !== undefined && approvalContext.customNotificationTitle !== livePreviewTitle);
+
                                 return (
-                                    <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-2">
-                                        <div className="flex items-center justify-between text-xs font-semibold text-primary">
+                                    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-primary">
                                             <div className="flex items-center gap-1.5">
                                                 <BellRing className="h-4 w-4 text-primary" />
-                                                <span>Anteprima Messaggio all'Operatore 📱</span>
+                                                <span>Anteprima Messaggio all'Operatore (Personalizzabile) 📱</span>
                                             </div>
-                                            <Badge variant="outline" className="text-[10px] bg-background">Inviata con "Approva e Invia Notifica"</Badge>
+                                            <div className="flex items-center gap-2">
+                                                {isBodyModified && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            handleApprovalContextChange('customNotificationBody', undefined);
+                                                            handleApprovalContextChange('customNotificationTitle', undefined);
+                                                        }}
+                                                        className="h-6 px-2 text-[11px] text-amber-600 dark:text-amber-400 hover:text-foreground underline"
+                                                        title="Ripristina il messaggio automatico generato dal modello"
+                                                    >
+                                                        Ripristina da Modello
+                                                    </Button>
+                                                )}
+                                                <Badge variant="outline" className="text-[10px] bg-background">Inviata con "Approva e Invia Notifica"</Badge>
+                                            </div>
                                         </div>
-                                        <div className="rounded-lg bg-background p-2.5 border shadow-xs text-xs space-y-1">
-                                            <p className="font-bold text-foreground text-xs">{livePreviewTitle}</p>
-                                            <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">{livePreviewBody}</p>
+
+                                        <div className="space-y-2.5">
+                                            <div>
+                                                <Label htmlFor="preview-msg-title" className="text-[11px] font-medium text-muted-foreground">
+                                                    Titolo Notifica
+                                                </Label>
+                                                <Input
+                                                    id="preview-msg-title"
+                                                    value={currentTitleValue}
+                                                    onChange={(e) => handleApprovalContextChange('customNotificationTitle', e.target.value)}
+                                                    className="h-8 text-xs font-semibold bg-background mt-1"
+                                                    placeholder="Titolo della notifica..."
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <Label htmlFor="preview-msg-body" className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
+                                                    <span>Testo Messaggio Notifica (puoi modificarlo liberamente qui prima di inviare)</span>
+                                                    {isBodyModified && <span className="text-[10px] text-amber-500 font-normal">Modificato manualmente</span>}
+                                                </Label>
+                                                <Textarea
+                                                    id="preview-msg-body"
+                                                    value={currentBodyValue}
+                                                    onChange={(e) => handleApprovalContextChange('customNotificationBody', e.target.value)}
+                                                    className="text-xs min-h-[75px] bg-background leading-relaxed mt-1 resize-y font-normal"
+                                                    placeholder="Scrivi o personalizza il messaggio per l'operatore..."
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -3733,7 +3817,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                         <Button type="button" variant="outline" onClick={() => handleApprovalClick(approvalContext, false)} disabled={isProcessingApprove} className="w-full sm:w-auto">
                             Approva Senza Notificare
                         </Button>
-                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext, true)} disabled={isProcessingApprove} className="w-full sm:w-auto gap-1.5">
+                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext, true)} disabled={isProcessingApprove} className="w-full sm:w-auto gap-1.5 bg-primary text-primary-foreground font-semibold">
                             <Bell className="h-4 w-4" /> Approva e Invia Notifica
                         </AlertDialogAction>
                     </AlertDialogFooter>

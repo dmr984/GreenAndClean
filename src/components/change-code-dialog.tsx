@@ -18,7 +18,7 @@ import {
   NotificationSettings, 
   DEFAULT_NOTIFICATION_SETTINGS 
 } from "@/lib/notification-service";
-import { Bell, KeyRound, CheckCircle2, ShieldCheck, Loader2, RotateCcw, MessageSquareCode, Sliders } from "lucide-react";
+import { Bell, KeyRound, CheckCircle2, ShieldCheck, Loader2, RotateCcw, MessageSquareCode, Sliders, Copy } from "lucide-react";
 
 interface ChangeCodeDialogProps {
     isOpen: boolean;
@@ -336,17 +336,43 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId, role }: ChangeC
                                 {/* Sotto-tab 2: Struttura Messaggi (Template personalizzati) */}
                                 <TabsContent value="templates" className="pt-2 space-y-4 overflow-y-auto flex-1 pr-1.5">
                                     <div className="rounded-md bg-blue-500/10 border border-blue-500/20 p-2.5 text-xs text-foreground space-y-1.5">
-                                        <p className="font-semibold text-blue-700 dark:text-blue-400">Variabili dinamiche utilizzabili nei testi:</p>
+                                        <div className="flex items-center justify-between">
+                                            <p className="font-semibold text-blue-700 dark:text-blue-400">Variabili dinamiche utilizzabili nei testi:</p>
+                                            <span className="text-[10px] text-muted-foreground italic">Clicca per copiare</span>
+                                        </div>
                                         <div className="flex flex-wrap gap-1.5 text-[11px]">
-                                            <Badge variant="outline" className="bg-background font-mono">{'{operatore}'} (nome)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{data}'} (data turno)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono text-primary border-primary/30">{'{ordinarie}'} (es. 8h ordinarie)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono text-primary border-primary/30">{'{straordinarie}'} (se &gt; 0, altrimenti omesso)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{totale}'} (somma ore)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{ore}'} (ore lavorate)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{tipo}'} (tipo richiesta)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{dal}'} (data inizio)</Badge>
-                                            <Badge variant="outline" className="bg-background font-mono">{'{al}'} (data fine)</Badge>
+                                            {[
+                                                { tag: '{operatore}', desc: 'nome' },
+                                                { tag: '{data}', desc: 'data turno' },
+                                                { tag: '{ordinarie}', desc: 'es. 8h ordinarie' },
+                                                { tag: '{straordinarie}', desc: 'se > 0, altrimenti omesso' },
+                                                { tag: '{totale}', desc: 'somma ore' },
+                                                { tag: '{ore}', desc: 'ore lavorate' },
+                                                { tag: '{tipo}', desc: 'tipo richiesta' },
+                                                { tag: '{dal}', desc: 'data inizio' },
+                                                { tag: '{al}', desc: 'data fine' },
+                                            ].map(({ tag, desc }) => (
+                                                <button
+                                                    key={tag}
+                                                    type="button"
+                                                    data-selectable="true"
+                                                    onClick={() => {
+                                                        try {
+                                                            navigator.clipboard.writeText(tag);
+                                                            toast({
+                                                                title: "Copiato! 📋",
+                                                                description: `Variabile ${tag} copiata negli appunti.`,
+                                                            });
+                                                        } catch (_) {}
+                                                    }}
+                                                    title={`Clicca per copiare ${tag}`}
+                                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-input bg-background font-mono text-[11px] text-foreground hover:bg-primary/20 hover:border-primary/50 cursor-pointer active:scale-95 transition-all select-all shadow-xs"
+                                                >
+                                                    <span className="font-bold text-primary">{tag}</span>
+                                                    <Copy className="h-3 w-3 text-muted-foreground/70" />
+                                                    <span className="text-[10px] text-muted-foreground font-sans">({desc})</span>
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
 

@@ -127,6 +127,8 @@ export interface NotificationPayload {
   type: NotificationType;
   title?: string;
   body?: string;
+  customTitle?: string;
+  customBody?: string;
   url?: string;
   variables?: {
     operatore?: string;
@@ -190,9 +192,9 @@ export async function sendNotificationToOperator(
 
     const vars = notification.variables || {};
 
-    // Calcola titolo e corpo finali applicando i template personalizzati se presenti
-    let finalTitle = templateTitle ? applyTemplate(templateTitle, vars) : (notification.title || 'Notifica');
-    let finalBody = templateBody ? applyTemplate(templateBody, vars) : (notification.body || '');
+    // Calcola titolo e corpo finali: se sono forniti customTitle o customBody espliciti (dall'anteprima modificata dall'admin), usali direttamente!
+    let finalTitle = notification.customTitle || (templateTitle ? applyTemplate(templateTitle, vars) : (notification.title || 'Notifica'));
+    let finalBody = notification.customBody || (templateBody ? applyTemplate(templateBody, vars) : (notification.body || ''));
 
     // Se per qualche motivo il template non ha variabili o fallisce, fai fallback su title e body espliciti
     if (!finalTitle && notification.title) finalTitle = notification.title;

@@ -19,7 +19,7 @@ export function AntiScreenshotShield() {
         -ms-user-select: none !important;
         user-select: none !important;
       }
-      input, textarea, [contenteditable="true"] {
+      input, textarea, [contenteditable="true"], .selectable, [data-selectable="true"] {
         -webkit-touch-callout: default !important;
         -webkit-user-select: text !important;
         -moz-user-select: text !important;
