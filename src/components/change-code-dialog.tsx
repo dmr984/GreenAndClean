@@ -175,7 +175,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId, role }: ChangeC
 
     return (
         <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-            <DialogContent className={role === 'admin' ? "w-[96vw] max-w-6xl h-[94vh] max-h-[96vh] flex flex-col p-4 sm:p-6" : "sm:max-w-md"}>
+            <DialogContent className={role === 'admin' ? "w-[96vw] sm:max-w-5xl md:max-w-6xl lg:max-w-7xl h-[92vh] max-h-[96vh] flex flex-col p-4 sm:p-7" : "sm:max-w-md"}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         {role === 'admin' ? 'Impostazioni Amministrazione' : 'Modifica Profilo'}

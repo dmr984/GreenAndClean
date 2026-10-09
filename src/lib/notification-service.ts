@@ -50,6 +50,61 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   templateShiftModifiedBody: 'L\'amministratore ha registrato o modificato un turno per te ({data}).',
 };
 
+export function parseHoursInput(val: string | number | undefined | null): number {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  const cleaned = String(val).replace(',', '.').trim();
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+}
+
+export function formatHoursLabel(rawVal: string | number | undefined | null, type: 'ordinarie' | 'straordinarie' | 'totale' = 'totale'): string {
+  const hoursNum = parseHoursInput(rawVal);
+  if (hoursNum <= 0) return '';
+
+  const integerHours = Math.floor(hoursNum);
+  const minutes = Math.round((hoursNum - integerHours) * 60);
+
+  if (type === 'straordinarie') {
+    if (integerHours === 0 && minutes > 0) {
+      return `${minutes} minuti di straordinari`;
+    }
+    if (integerHours > 0 && minutes > 0) {
+      const hourWord = integerHours === 1 ? '1 ora' : `${integerHours} ore`;
+      return `${hourWord} e ${minutes} minuti di straordinari`;
+    }
+    if (integerHours === 1) {
+      return `1 ora di straordinario`;
+    }
+    return `${integerHours} ore di straordinari`;
+  } else if (type === 'ordinarie') {
+    if (integerHours === 0 && minutes > 0) {
+      return `${minutes} minuti ordinari`;
+    }
+    if (integerHours > 0 && minutes > 0) {
+      const hourWord = integerHours === 1 ? '1 ora' : `${integerHours} ore`;
+      return `${hourWord} e ${minutes} minuti ordinarie`;
+    }
+    if (integerHours === 1) {
+      return `1 ora ordinaria`;
+    }
+    return `${integerHours} ore ordinarie`;
+  } else {
+    // totale
+    if (integerHours === 0 && minutes > 0) {
+      return `${minutes} minuti`;
+    }
+    if (integerHours > 0 && minutes > 0) {
+      const hourWord = integerHours === 1 ? '1 ora' : `${integerHours} ore`;
+      return `${hourWord} e ${minutes} minuti`;
+    }
+    if (integerHours === 1) {
+      return `1 ora`;
+    }
+    return `${integerHours} ore`;
+  }
+}
+
 export function applyTemplate(template: string, vars: Record<string, string | undefined>): string {
   let result = template;
   const todayFormatted = format(new Date(), 'dd MMMM', { locale: it });
@@ -59,7 +114,8 @@ export function applyTemplate(template: string, vars: Record<string, string | un
   let formattedStraordinarie = '';
   if (rawStraordinarie) {
     const trimmed = rawStraordinarie.trim();
-    if (trimmed !== '0' && trimmed !== '0h' && trimmed !== '0h straordinarie' && trimmed !== '0 straordinari' && !trimmed.startsWith('0')) {
+    const isZero = trimmed === '0' || trimmed === '0h' || trimmed === '0,0' || trimmed === '0.0' || trimmed === '0 ore' || trimmed === '0 minuti' || trimmed === '0h straordinarie' || trimmed === '0 straordinari';
+    if (!isZero) {
       formattedStraordinarie = trimmed;
     }
   }
@@ -69,7 +125,8 @@ export function applyTemplate(template: string, vars: Record<string, string | un
   let formattedOrdinarie = '';
   if (rawOrdinarie) {
     const trimmed = rawOrdinarie.trim();
-    if (trimmed !== '0' && trimmed !== '0h' && trimmed !== '0h ordinarie' && trimmed !== '0 ordinari' && !trimmed.startsWith('0')) {
+    const isZero = trimmed === '0' || trimmed === '0h' || trimmed === '0,0' || trimmed === '0.0' || trimmed === '0 ore' || trimmed === '0h ordinarie' || trimmed === '0 ordinari';
+    if (!isZero) {
       formattedOrdinarie = trimmed;
     }
   }
