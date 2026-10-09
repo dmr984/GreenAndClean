@@ -398,7 +398,7 @@ export function ChangeCodeDialog({ isOpen, onOpenChange, userId, role }: ChangeC
                                                 value={notifSettings.templateShiftApprovedBody ?? DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedBody}
                                                 onChange={(e) => setNotifSettings(prev => ({ ...prev, templateShiftApprovedBody: e.target.value }))}
                                                 className="text-xs min-h-[60px]"
-                                                placeholder="Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} {straordinarie}."
+                                                placeholder="Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} e {straordinarie}."
                                             />
                                         </div>
                                     </div>

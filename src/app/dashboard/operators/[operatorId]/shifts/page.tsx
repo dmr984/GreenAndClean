@@ -3721,7 +3721,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                 const previewTotale = `${previewOrd + previewStraord}h`;
 
                                 const tplTitle = notifSettings.templateShiftApprovedTitle || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedTitle || 'Turno Approvato ✅';
-                                const tplBody = notifSettings.templateShiftApprovedBody || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedBody || "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} {straordinarie}.";
+                                const tplBody = notifSettings.templateShiftApprovedBody || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedBody || "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} e {straordinarie}.";
 
                                 const livePreviewTitle = applyTemplate(tplTitle, {
                                     operatore: `${operator.firstName} ${operator.lastName}`.trim(),

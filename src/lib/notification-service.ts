@@ -35,7 +35,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   notifyShiftModified: true,
 
   templateShiftApprovedTitle: 'Turno Approvato ✅',
-  templateShiftApprovedBody: "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} {straordinarie}.",
+  templateShiftApprovedBody: "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} e {straordinarie}.",
 
   templateShiftRejectedTitle: 'Turno Rifiutato ❌',
   templateShiftRejectedBody: 'Il tuo turno del {data} è stato rifiutato o annullato.',
@@ -54,7 +54,7 @@ export function applyTemplate(template: string, vars: Record<string, string | un
   let result = template;
   const todayFormatted = format(new Date(), 'dd MMMM', { locale: it });
 
-  // Normalizza straordinarie: se 0 o assente, non deve apparire
+  // Normalizza straordinarie: se 0 o assente, non deve apparire (stringa vuota)
   let rawStraordinarie = vars.straordinarie;
   let formattedStraordinarie = '';
   if (rawStraordinarie) {
@@ -64,13 +64,49 @@ export function applyTemplate(template: string, vars: Record<string, string | un
     }
   }
 
-  // Normalizza ordinarie
+  // Normalizza ordinarie: se 0 o assente, non deve apparire (stringa vuota)
   let rawOrdinarie = vars.ordinarie;
   let formattedOrdinarie = '';
   if (rawOrdinarie) {
-    formattedOrdinarie = rawOrdinarie.trim();
+    const trimmed = rawOrdinarie.trim();
+    if (trimmed !== '0' && trimmed !== '0h' && trimmed !== '0h ordinarie' && trimmed !== '0 ordinari' && !trimmed.startsWith('0')) {
+      formattedOrdinarie = trimmed;
+    }
   }
 
+  // 1. Gestione Intelligente della coppia {ordinarie} e {straordinarie} con congiunzioni ("e", "ed", "e/o", "+", "più", ",")
+  // Se l'utente scrive "{ordinarie} e {straordinarie}" nel template:
+  // - Se entrambe > 0: "8h ordinarie e 2h straordinarie"
+  // - Se solo ordinarie > 0: "8h ordinarie" (la congiunzione "e" scompare automaticamente!)
+  // - Se solo straordinarie > 0: "2h straordinarie" (la congiunzione "e" scompare automaticamente!)
+  // - Se entrambe 0: scompare l'intero blocco
+  const pairRegexOrdStr = /\{ordinarie\}\s*(e|ed|e\/o|\+|più|,)?\s*\{straordinarie\}/gi;
+  result = result.replace(pairRegexOrdStr, (_match, conj) => {
+    const conjunction = conj ? conj.trim() : 'e';
+    if (formattedOrdinarie && formattedStraordinarie) {
+      return `${formattedOrdinarie} ${conjunction} ${formattedStraordinarie}`;
+    } else if (formattedOrdinarie) {
+      return formattedOrdinarie;
+    } else if (formattedStraordinarie) {
+      return formattedStraordinarie;
+    }
+    return '';
+  });
+
+  const pairRegexStrOrd = /\{straordinarie\}\s*(e|ed|e\/o|\+|più|,)?\s*\{ordinarie\}/gi;
+  result = result.replace(pairRegexStrOrd, (_match, conj) => {
+    const conjunction = conj ? conj.trim() : 'e';
+    if (formattedStraordinarie && formattedOrdinarie) {
+      return `${formattedStraordinarie} ${conjunction} ${formattedOrdinarie}`;
+    } else if (formattedStraordinarie) {
+      return formattedStraordinarie;
+    } else if (formattedOrdinarie) {
+      return formattedOrdinarie;
+    }
+    return '';
+  });
+
+  // 2. Sostituzione delle variabili residue
   const defaultVars: Record<string, string> = {
     data: vars.data || todayFormatted,
     operatore: vars.operatore || 'Operatore',
@@ -89,9 +125,16 @@ export function applyTemplate(template: string, vars: Record<string, string | un
     }
   }
 
-  // Pulizia automatica: spazi multipli, spazi prima di punteggiatura (es. "8h ordinarie ." -> "8h ordinarie.")
+  // 3. Pulizia automatica delle congiunzioni rimaste isolate:
+  // Es: "Totale: 8h ordinarie e." -> "Totale: 8h ordinarie."
+  result = result.replace(/\s+(e|ed|e\/o|\+|più|,)\s*([.,;:!?\n]|$)/gi, '$2');
+  // Es: "Totale: e 2h straordinarie." -> "Totale: 2h straordinarie."
+  result = result.replace(/([:;]\s*)(e|ed|e\/o|\+|più|,)\s+/gi, '$1');
+
+  // 4. Pulizia spazi e punteggiatura
   result = result.replace(/[ \t]{2,}/g, ' ');
   result = result.replace(/\s+([.,;:!?])/g, '$1');
+  result = result.replace(/,\s*\./g, '.');
   result = result.trim();
 
   return result;
