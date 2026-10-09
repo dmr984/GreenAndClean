@@ -294,6 +294,19 @@ export default function ShiftApprovalPage() {
     const [isConfirmingNoLeave, setIsConfirmingNoLeave] = useState(false);
     const [orphanedEvents, setOrphanedEvents] = useState<Timbratura[]>([]);
     const [eventToDelete, setEventToDelete] = useState<Timbratura | null>(null);
+    const [isEditOrphanOpen, setIsEditOrphanOpen] = useState(false);
+    const [orphanEditState, setOrphanEditState] = useState<{
+        dayDate: Date;
+        dayISO: string;
+        events: Timbratura[];
+        entrata: string;
+        uscita: string;
+        pausa: string;
+        fine_pausa: string;
+        ignoreContractualStart: boolean;
+        makeupOfDay: string;
+    } | null>(null);
+    const [isSavingOrphan, setIsSavingOrphan] = useState(false);
     const [isProcessingApprove, setIsProcessingApprove] = useState(false);
     const [requestToApprove, setRequestToApprove] = useState<Request | null>(null);
     const [isSendReminderOpen, setIsSendReminderOpen] = useState(false);
@@ -2168,6 +2181,147 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         }
     };
 
+    const handleOpenOrphanEdit = (dayISO: string, events: Timbratura[], specificEvent?: Timbratura) => {
+        const dayDate = new Date(dayISO);
+        const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
+
+        events.forEach(e => {
+            if (e.timestamp && typeof (e.timestamp as any).toDate === 'function' && !times[e.type]) {
+                times[e.type] = format(e.timestamp.toDate(), 'HH:mm');
+            }
+        });
+
+        const clockInEvent = events.find(e => e.type === 'entrata');
+        const defaultIgnoreContractual = clockInEvent?.ignoreContractualStart || false;
+        const defaultMakeupDay = clockInEvent?.makeupOfDay || '';
+
+        setOrphanEditState({
+            dayDate,
+            dayISO,
+            events,
+            entrata: times.entrata,
+            uscita: times.uscita,
+            pausa: times.pausa,
+            fine_pausa: times.fine_pausa,
+            ignoreContractualStart: defaultIgnoreContractual,
+            makeupOfDay: defaultMakeupDay,
+        });
+        setIsEditOrphanOpen(true);
+    };
+
+    const handleSaveOrphanEdit = async () => {
+        if (!firestore || !operator || !orphanEditState) return;
+
+        const { dayDate, events, entrata, uscita, pausa, fine_pausa, ignoreContractualStart, makeupOfDay } = orphanEditState;
+
+        if (!entrata && !uscita) {
+            toast({ title: 'Dati mancanti', description: 'Inserisci almeno un orario di entrata o di uscita.', variant: 'destructive' });
+            return;
+        }
+
+        if ((pausa && !fine_pausa) || (!pausa && fine_pausa)) {
+            toast({ title: 'Pausa incompleta', description: 'Devi inserire sia l\'inizio che la fine della pausa.', variant: 'destructive' });
+            return;
+        }
+
+        if (entrata && uscita && pausa && fine_pausa) {
+            const pausaErr = validatePauseWithinShift(entrata, uscita, pausa, fine_pausa, dayDate);
+            if (pausaErr) {
+                toast({ title: 'Pausa non valida', description: pausaErr, variant: 'destructive' });
+                return;
+            }
+        }
+
+        setIsSavingOrphan(true);
+        try {
+            const batch = writeBatch(firestore);
+            const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
+            const newShiftId = doc(timbratureCollectionRef).id;
+
+            const createTimestamp = (timeStr: string): Timestamp => {
+                const [h, m] = timeStr.split(':').map(Number);
+                return Timestamp.fromDate(set(dayDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 }));
+            };
+
+            const desiredList: { type: 'entrata' | 'uscita' | 'pausa' | 'fine_pausa'; time: string }[] = [];
+            if (entrata) desiredList.push({ type: 'entrata', time: entrata });
+            if (pausa) desiredList.push({ type: 'pausa', time: pausa });
+            if (fine_pausa) desiredList.push({ type: 'fine_pausa', time: fine_pausa });
+            if (uscita) desiredList.push({ type: 'uscita', time: uscita });
+
+            const existingByType = new Map<string, Timbratura>();
+            events.forEach(e => {
+                if (!existingByType.has(e.type)) {
+                    existingByType.set(e.type, e);
+                }
+            });
+
+            const usedExistingIds = new Set<string>();
+
+            desiredList.forEach(item => {
+                const existing = existingByType.get(item.type);
+                const ts = createTimestamp(item.time);
+
+                if (existing) {
+                    usedExistingIds.add(existing.id);
+                    const docRef = doc(timbratureCollectionRef, existing.id);
+                    const updatePayload: any = {
+                        timestamp: ts,
+                        status: 'sospesa',
+                        viewedByOperator: false,
+                        shiftId: newShiftId,
+                        makeupOfDay: makeupOfDay || null,
+                        isAuto: false,
+                        suggestedTime: null,
+                    };
+                    if (item.type === 'entrata') {
+                        updatePayload.ignoreContractualStart = !!ignoreContractualStart;
+                    }
+                    batch.update(docRef, updatePayload);
+                } else {
+                    const newDocRef = doc(timbratureCollectionRef);
+                    const newPayload: any = {
+                        userId: operator.id,
+                        type: item.type,
+                        timestamp: ts,
+                        status: 'sospesa',
+                        viewedByOperator: false,
+                        shiftId: newShiftId,
+                        makeupOfDay: makeupOfDay || null,
+                        isAuto: false,
+                        isOvertime: false,
+                    };
+                    if (item.type === 'entrata') {
+                        newPayload.ignoreContractualStart = !!ignoreContractualStart;
+                    }
+                    batch.set(newDocRef, newPayload);
+                }
+            });
+
+            events.forEach(e => {
+                if (!usedExistingIds.has(e.id)) {
+                    const docRef = doc(timbratureCollectionRef, e.id);
+                    batch.delete(docRef);
+                }
+            });
+
+            await batch.commit();
+
+            toast({
+                title: 'Turno salvato con successo! 🎉',
+                description: 'Le timbrature di entrata e uscita sono state collegate e il turno è pronto per l\'approvazione.',
+            });
+
+            setIsEditOrphanOpen(false);
+            setOrphanEditState(null);
+        } catch (error) {
+            console.error('Error saving orphan shift:', error);
+            toast({ title: 'Errore', description: 'Impossibile salvare il turno orfano.', variant: 'destructive' });
+        } finally {
+            setIsSavingOrphan(false);
+        }
+    };
+
 
     const handleDeleteOrphanedEvent = async () => {
         if (!firestore || !eventToDelete || !operatorId) return;
@@ -2353,23 +2507,68 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 {Object.entries(orphanedEventsByDay).map(([dayISO, events]) => (
-                                    <div key={dayISO} className="p-3 border rounded-md bg-background">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-semibold">{formatDate(new Date(dayISO))}</h4>
-                                            <Button size="sm" onClick={() => handleFixOrphanedShift(events)}>
-                                                <Wand2 className="mr-2 h-4 w-4" />
-                                                Unisci e Crea Turno
-                                            </Button>
+                                    <div key={dayISO} className="p-3.5 sm:p-4 border rounded-xl bg-background shadow-sm space-y-3">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b">
+                                            <div>
+                                                <h4 className="font-bold text-base sm:text-lg">{formatDate(new Date(dayISO))}</h4>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Clicca su una timbratura o sul tasto "Modifica / Completa" per impostare entrate e uscite.
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                                                <Button size="sm" onClick={() => handleOpenOrphanEdit(dayISO, events)} className="gap-1.5 font-semibold bg-primary text-primary-foreground">
+                                                    <Pencil className="h-4 w-4" />
+                                                    Modifica / Completa Turno
+                                                </Button>
+                                                <Button size="sm" variant="outline" onClick={() => handleFixOrphanedShift(events)} title="Collega automaticamente gli eventi esistenti">
+                                                    <Wand2 className="h-3.5 w-3.5 mr-1" />
+                                                    Unisci
+                                                </Button>
+                                            </div>
                                         </div>
                                         <Table>
                                             <TableBody>
                                                 {events.map(event => (
-                                                    <TableRow key={event.id}>
-                                                        <TableCell>{event.timestamp ? format(event.timestamp.toDate(), 'p', { locale: it }) : 'N/D'}</TableCell>
-                                                        <TableCell className="capitalize">{event.type}</TableCell>
-                                                        <TableCell className="text-right">
-                                                            <Button variant="ghost" size="icon" onClick={() => setEventToDelete(event)}>
-                                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                                    <TableRow 
+                                                        key={event.id}
+                                                        className="cursor-pointer hover:bg-amber-500/10 transition-colors group"
+                                                        onClick={() => handleOpenOrphanEdit(dayISO, events, event)}
+                                                        title="Clicca per entrare e modificare entrate e uscite"
+                                                    >
+                                                        <TableCell className="font-semibold text-sm sm:text-base">
+                                                            <div className="flex items-center gap-2">
+                                                                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                                                <span>{event.timestamp && typeof (event.timestamp as any).toDate === 'function' ? format(event.timestamp.toDate(), 'HH:mm', { locale: it }) : 'N/D'}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="capitalize">
+                                                            <Badge variant="outline" className={cn(
+                                                                "text-xs font-semibold px-2.5 py-0.5",
+                                                                event.type === 'entrata' ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300" :
+                                                                event.type === 'uscita' ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300" :
+                                                                "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
+                                                            )}>
+                                                                {event.type}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right space-x-1">
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="sm" 
+                                                                className="h-8 px-2.5 text-xs gap-1 border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+                                                                onClick={(e) => { e.stopPropagation(); handleOpenOrphanEdit(dayISO, events, event); }}
+                                                            >
+                                                                <Pencil className="h-3.5 w-3.5" />
+                                                                Modifica
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                                onClick={(e) => { e.stopPropagation(); setEventToDelete(event); }}
+                                                                title="Elimina questa timbratura orfana"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
                                                             </Button>
                                                         </TableCell>
                                                     </TableRow>
@@ -3622,6 +3821,152 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                     <ResponsiveDialogFooter>
                         <Button variant="outline" onClick={() => { setIsEditShiftOpen(false); setIsEditOvertimeOpen(false); }}>Annulla</Button>
                         <Button onClick={isEditShiftOpen ? handleEditShift : handleEditOvertimeShift}>Salva Modifiche</Button>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
+
+            <ResponsiveDialog open={isEditOrphanOpen} onOpenChange={setIsEditOrphanOpen}>
+                <ResponsiveDialogContent className="sm:max-w-xl">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle className="flex items-center gap-2 text-xl font-bold">
+                            <AlertCircle className="h-5 w-5 text-amber-600" />
+                            Modifica Timbrature Orfane
+                        </ResponsiveDialogTitle>
+                        <ResponsiveDialogDescription className="text-sm">
+                            {orphanEditState && (
+                                <span>
+                                    Giorno: <strong className="text-foreground">{formatDate(orphanEditState.dayDate)}</strong>. Imposta o modifica gli orari di entrata e uscita per formare un turno valido.
+                                </span>
+                            )}
+                        </ResponsiveDialogDescription>
+                    </ResponsiveDialogHeader>
+
+                    {orphanEditState && (() => {
+                        const daySchedule = getScheduleForDate(operator, orphanEditState.dayDate);
+                        const hasSchedule = !!(daySchedule?.startTime || daySchedule?.endTime);
+
+                        return (
+                            <div className="space-y-4 py-3">
+                                {hasSchedule && (
+                                    <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-lg border border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                        <div className="text-amber-800 dark:text-amber-200">
+                                            <span className="font-semibold">Orario contrattuale previsto:</span>{' '}
+                                            {daySchedule.startTime || '--:--'} – {daySchedule.endTime || '--:--'}
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 self-start sm:self-auto"
+                                            onClick={() => {
+                                                setOrphanEditState(prev => prev ? ({
+                                                    ...prev,
+                                                    entrata: prev.entrata || daySchedule.startTime || '',
+                                                    uscita: prev.uscita || daySchedule.endTime || '',
+                                                }) : null);
+                                            }}
+                                        >
+                                            Usa orario contrattuale
+                                        </Button>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1.5 p-3 rounded-lg border bg-emerald-500/5 border-emerald-500/20">
+                                        <Label htmlFor="orphan-entrata" className="text-sm font-semibold flex items-center justify-between text-emerald-700 dark:text-emerald-400">
+                                            <span>Orario Entrata*</span>
+                                            {!orphanEditState.entrata && <span className="text-[11px] text-destructive font-normal">Mancante</span>}
+                                        </Label>
+                                        <Input
+                                            id="orphan-entrata"
+                                            type="time"
+                                            className="h-10 text-base font-bold bg-background"
+                                            value={orphanEditState.entrata}
+                                            onChange={(e) => setOrphanEditState(prev => prev ? ({ ...prev, entrata: e.target.value }) : null)}
+                                            placeholder="HH:mm"
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">Es. 08:30 (inizio del turno lavorativo)</p>
+                                    </div>
+
+                                    <div className="space-y-1.5 p-3 rounded-lg border bg-rose-500/5 border-rose-500/20">
+                                        <Label htmlFor="orphan-uscita" className="text-sm font-semibold flex items-center justify-between text-rose-700 dark:text-rose-400">
+                                            <span>Orario Uscita*</span>
+                                            {!orphanEditState.uscita && <span className="text-[11px] text-destructive font-normal">Mancante</span>}
+                                        </Label>
+                                        <Input
+                                            id="orphan-uscita"
+                                            type="time"
+                                            className="h-10 text-base font-bold bg-background"
+                                            value={orphanEditState.uscita}
+                                            onChange={(e) => setOrphanEditState(prev => prev ? ({ ...prev, uscita: e.target.value }) : null)}
+                                            placeholder="HH:mm"
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">Es. 13:30 (fine del turno lavorativo)</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="orphan-pausa" className="text-xs font-semibold text-muted-foreground">Inizio Pausa (Opzionale)</Label>
+                                        <Input
+                                            id="orphan-pausa"
+                                            type="time"
+                                            className="h-9 text-sm bg-background"
+                                            value={orphanEditState.pausa}
+                                            onChange={(e) => setOrphanEditState(prev => prev ? ({ ...prev, pausa: e.target.value }) : null)}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="orphan-fine-pausa" className="text-xs font-semibold text-muted-foreground">Fine Pausa (Opzionale)</Label>
+                                        <Input
+                                            id="orphan-fine-pausa"
+                                            type="time"
+                                            className="h-9 text-sm bg-background"
+                                            value={orphanEditState.fine_pausa}
+                                            onChange={(e) => setOrphanEditState(prev => prev ? ({ ...prev, fine_pausa: e.target.value }) : null)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="pt-2 border-t space-y-3">
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id="orphan-ignore-contractual"
+                                            checked={orphanEditState.ignoreContractualStart}
+                                            onCheckedChange={(checked) => setOrphanEditState(prev => prev ? ({ ...prev, ignoreContractualStart: !!checked }) : null)}
+                                        />
+                                        <Label htmlFor="orphan-ignore-contractual" className="text-xs sm:text-sm font-normal cursor-pointer">
+                                            Ignora orario di inizio contrattuale
+                                        </Label>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label htmlFor="orphan-makeup-day" className="text-xs font-medium text-muted-foreground">Recupero del Giorno (Opzionale)</Label>
+                                        <Input
+                                            id="orphan-makeup-day"
+                                            type="date"
+                                            className="h-9 text-xs"
+                                            value={orphanEditState.makeupOfDay}
+                                            onChange={(e) => setOrphanEditState(prev => prev ? ({ ...prev, makeupOfDay: e.target.value }) : null)}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    <ResponsiveDialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
+                        <Button variant="outline" onClick={() => setIsEditOrphanOpen(false)} disabled={isSavingOrphan}>
+                            Annulla
+                        </Button>
+                        <Button
+                            onClick={handleSaveOrphanEdit}
+                            disabled={isSavingOrphan}
+                            className="gap-2 bg-primary font-semibold"
+                        >
+                            {isSavingOrphan ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                            Salva e Unisci Turno
+                        </Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>
