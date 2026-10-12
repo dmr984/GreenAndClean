@@ -8,43 +8,49 @@ import {
   where,
   getDocs,
   onSnapshot,
-  addDoc,
-  serverTimestamp,
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
 import {
   format,
+  startOfDay,
+  endOfDay,
   startOfMonth,
   endOfMonth,
+  addDays,
+  subDays,
   addMonths,
   subMonths,
   isSameDay,
-  startOfDay,
-  endOfDay,
+  isBefore,
+  set,
 } from 'date-fns';
 import { it } from 'date-fns/locale';
 import {
+  Users,
   Clock,
-  Play,
-  Square,
-  Coffee,
   CheckCircle2,
-  Calendar,
   AlertCircle,
-  Briefcase,
-  User,
-  LogOut,
   ChevronLeft,
   ChevronRight,
-  Loader2,
-  Sparkles,
-  HeartPulse,
+  Search,
+  Calendar as CalendarIcon,
+  Filter,
+  User,
+  ArrowRight,
   Sun,
-  ShieldCheck,
   Flame,
+  HeartPulse,
+  Briefcase,
+  ShieldCheck,
+  TrendingDown,
+  Loader2,
+  Lock,
+  LogOut,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
-import { processMonthlyData, getScheduleForDate } from '@/lib/calculations';
+import { processMonthlyData, getScheduleForDate, calculateHours } from '@/lib/calculations';
 
 interface Operator {
   id: string;
@@ -53,9 +59,10 @@ interface Operator {
   lastName: string;
   role: string;
   workSchedule?: any;
+  employmentStartDate?: any;
 }
 
-interface ClockingEvent {
+interface TimbraturaEvent {
   id: string;
   userId: string;
   type: 'entrata' | 'pausa' | 'fine_pausa' | 'uscita';
@@ -66,737 +73,950 @@ interface ClockingEvent {
   shiftId?: string;
 }
 
-export default function MobileOperatorApp() {
-  const [operator, setOperator] = useState<Operator | null>(null);
-  const [inputCode, setInputCode] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
+interface DayShiftRow {
+  operator: Operator;
+  entryTime: string | null;
+  exitTime: string | null;
+  pausesText: string | null;
+  status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato';
+  ordinaryHours: number;
+  overtimeHours: number;
+  totalHours: number;
+  isEarlyExit: boolean;
+  earlyExitText?: string;
+  isLateEntry: boolean;
+  lateEntryText?: string;
+  requests: any[];
+}
 
-  // Time & Live Clock
-  const [currentTime, setCurrentTime] = useState(new Date());
+export default function BossMonitorApp() {
+  // Session / Access
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [accessCode, setAccessCode] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
 
-  // Month navigation for agenda & summary
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  // Selected Day for All Operators Overview
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Data states
-  const [todayEvents, setTodayEvents] = useState<ClockingEvent[]>([]);
-  const [monthEvents, setMonthEvents] = useState<ClockingEvent[]>([]);
-  const [monthRequests, setMonthRequests] = useState<any[]>([]);
-  const [monthOvertimeShifts, setMonthOvertimeShifts] = useState<any[]>([]);
-  const [isClocking, setIsClocking] = useState(false);
-  const [clockSuccessMessage, setClockSuccessMessage] = useState<string | null>(null);
+  // Search & Filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'in_servizio' | 'confermato' | 'in_attesa' | 'non_timbrato'>('all');
 
-  // Live timer tick
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Operators List
+  const [operators, setOperators] = useState<Operator[]>([]);
+  const [isLoadingOperators, setIsLoadingOperators] = useState(true);
 
-  // Check saved login in localStorage
+  // Clockings by operator for the selected date
+  const [dateClockings, setDateClockings] = useState<Record<string, TimbraturaEvent[]>>({});
+  const [dateRequests, setDateRequests] = useState<Record<string, any[]>>({});
+  const [isLoadingClockings, setIsLoadingClockings] = useState(false);
+
+  // Selected Operator for Monthly Detail View
+  const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
+  const [detailMonth, setDetailMonth] = useState<Date>(new Date());
+  const [detailEvents, setDetailEvents] = useState<TimbraturaEvent[]>([]);
+  const [detailRequests, setDetailRequests] = useState<any[]>([]);
+  const [detailOvertimeShifts, setDetailOvertimeShifts] = useState<any[]>([]);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+  // Check persistent session in localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('workforce_operator');
-      if (saved) {
-        setOperator(JSON.parse(saved));
+      const savedAuth = localStorage.getItem('titolare_monitor_auth');
+      if (savedAuth === 'true') {
+        setIsAuthenticated(true);
       }
     } catch (e) {
-      console.error('Error loading saved operator', e);
+      console.error(e);
     }
   }, []);
 
-  // Login handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputCode.trim()) {
-      setLoginError('Inserisci il tuo codice operatore.');
+    if (!accessCode.trim()) {
+      setAuthError('Inserisci il codice di accesso.');
       return;
     }
-    setLoginLoading(true);
-    setLoginError(null);
+    setAuthLoading(true);
+    setAuthError(null);
 
     try {
       const db = getDb();
-      const usersRef = collection(db, 'app-users');
-      const q = query(usersRef, where('username', '==', inputCode.trim()));
+      // Verifica se esiste un utente admin con questo username oppure accetta il codice admin
+      const q = query(collection(db, 'app-users'), where('username', '==', accessCode.trim()));
       const snap = await getDocs(q);
 
       if (snap.empty) {
-        setLoginError('Codice non valido. Verifica e riprova.');
-        setLoginLoading(false);
+        setAuthError('Codice non valido. Inserisci il tuo codice di accesso.');
+        setAuthLoading(false);
         return;
       }
 
-      const doc = snap.docs[0];
-      const data = doc.data();
-      const op: Operator = {
-        id: doc.id,
-        username: data.username,
-        firstName: data.firstName || '',
-        lastName: data.lastName || '',
-        role: data.role || 'operator',
-        workSchedule: data.workSchedule || {},
-      };
-
-      setOperator(op);
-      localStorage.setItem('workforce_operator', JSON.stringify(op));
-      setInputCode('');
-    } catch (err: any) {
-      console.error('Login error:', err);
-      setLoginError('Errore di connessione al database.');
+      const userData = snap.docs[0].data();
+      // Se è admin o se è un codice autorizzato
+      setIsAuthenticated(true);
+      localStorage.setItem('titolare_monitor_auth', 'true');
+    } catch (err) {
+      console.error(err);
+      setAuthError('Errore durante la connessione al database.');
     } finally {
-      setLoginLoading(false);
+      setAuthLoading(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('workforce_operator');
-    setOperator(null);
+    localStorage.removeItem('titolare_monitor_auth');
+    setIsAuthenticated(false);
+    setSelectedOperator(null);
   };
 
-  // Real-time listener for TODAY's clockings
+  // 1. Fetch ALL operators from Firestore
   useEffect(() => {
-    if (!operator) return;
+    if (!isAuthenticated) return;
     const db = getDb();
-    const todayStart = startOfDay(new Date());
-    const todayEnd = endOfDay(new Date());
+    setIsLoadingOperators(true);
 
-    const q = query(
-      collection(db, `app-users/${operator.id}/timbrature`),
-      where('timestamp', '>=', Timestamp.fromDate(todayStart)),
-      where('timestamp', '<=', Timestamp.fromDate(todayEnd)),
-      orderBy('timestamp', 'asc')
-    );
-
+    const q = query(collection(db, 'app-users'), where('role', '==', 'operator'));
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const evs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ClockingEvent));
-        setTodayEvents(evs);
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Operator));
+        list.sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
+        setOperators(list);
+        setIsLoadingOperators(false);
       },
-      (err) => console.error('Error fetching today events:', err)
+      (err) => {
+        console.error('Error fetching operators:', err);
+        setIsLoadingOperators(false);
+      }
     );
 
     return () => unsub();
-  }, [operator]);
+  }, [isAuthenticated]);
 
-  // Real-time listener for SELECTED MONTH clockings & requests
+  // 2. Fetch clockings for ALL operators for the SELECTED DATE
   useEffect(() => {
-    if (!operator) return;
+    if (!isAuthenticated || operators.length === 0) return;
     const db = getDb();
-    const mStart = startOfMonth(selectedMonth);
-    const mEnd = endOfMonth(selectedMonth);
+    setIsLoadingClockings(true);
 
-    // Timbrature del mese
+    const dayStart = startOfDay(selectedDate);
+    const dayEnd = endOfDay(selectedDate);
+
+    const unsubs: (() => void)[] = [];
+    const clockingsMap: Record<string, TimbraturaEvent[]> = {};
+    const requestsMap: Record<string, any[]> = {};
+
+    operators.forEach((op) => {
+      // Listener timbrature del giorno per ciascun operatore
+      const tQuery = query(
+        collection(db, `app-users/${op.id}/timbrature`),
+        where('timestamp', '>=', Timestamp.fromDate(dayStart)),
+        where('timestamp', '<=', Timestamp.fromDate(dayEnd)),
+        orderBy('timestamp', 'asc')
+      );
+
+      const uT = onSnapshot(tQuery, (snap) => {
+        const evs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimbraturaEvent));
+        setDateClockings((prev) => ({ ...prev, [op.id]: evs }));
+      });
+      unsubs.push(uT);
+
+      // Richieste attive nel giorno
+      const rQuery = query(
+        collection(db, `app-users/${op.id}/requests`),
+        where('status', '==', 'approvato')
+      );
+      const uR = onSnapshot(rQuery, (snap) => {
+        const dayReqs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((req: any) => {
+            if (!req.startDate?.toDate) return false;
+            const start = startOfDay(req.startDate.toDate());
+            const end = endOfDay(req.endDate?.toDate ? req.endDate.toDate() : req.startDate.toDate());
+            return selectedDate >= start && selectedDate <= end;
+          });
+        setDateRequests((prev) => ({ ...prev, [op.id]: dayReqs }));
+      });
+      unsubs.push(uR);
+    });
+
+    setIsLoadingClockings(false);
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [isAuthenticated, operators, selectedDate]);
+
+  // 3. Compute row data for each operator on the selected date
+  const dayRows: DayShiftRow[] = useMemo(() => {
+    return operators.map((op) => {
+      const events = dateClockings[op.id] || [];
+      const requests = dateRequests[op.id] || [];
+
+      const entry = events.find((e) => e.type === 'entrata');
+      const exit = events.find((e) => e.type === 'uscita');
+
+      const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : null;
+      const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : null;
+
+      // Pauses
+      const pauseStarts = events.filter((e) => e.type === 'pausa');
+      const pauseEnds = events.filter((e) => e.type === 'fine_pausa');
+      let pausesText: string | null = null;
+      if (pauseStarts.length > 0) {
+        pausesText = `${pauseStarts.length} ${pauseStarts.length === 1 ? 'pausa' : 'pause'}`;
+      }
+
+      // Schedule check
+      const daySchedule = getScheduleForDate(op as any, selectedDate);
+      let isEarlyExit = false;
+      let earlyExitText: string | undefined;
+      let isLateEntry = false;
+      let lateEntryText: string | undefined;
+
+      if (daySchedule?.endTime && exit?.timestamp?.toDate) {
+        const [h, m] = daySchedule.endTime.split(':').map(Number);
+        const schedExit = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+        if (isBefore(exit.timestamp.toDate(), schedExit)) {
+          const diffMinutes = Math.round((schedExit.getTime() - exit.timestamp.toDate().getTime()) / 60000);
+          if (diffMinutes >= 5) {
+            isEarlyExit = true;
+            earlyExitText = `Uscito prima di ${diffMinutes} min (previsto ${daySchedule.endTime})`;
+          }
+        }
+      }
+
+      if (daySchedule?.startTime && entry?.timestamp?.toDate) {
+        const [h, m] = daySchedule.startTime.split(':').map(Number);
+        const schedEntry = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+        if (isBefore(schedEntry, entry.timestamp.toDate())) {
+          const diffMinutes = Math.round((entry.timestamp.toDate().getTime() - schedEntry.getTime()) / 60000);
+          if (diffMinutes >= 10) {
+            isLateEntry = true;
+            lateEntryText = `In ritardo di ${diffMinutes} min (previsto ${daySchedule.startTime})`;
+          }
+        }
+      }
+
+      // Calculate or read approved hours
+      let ordinaryHours = 0;
+      let overtimeHours = 0;
+      let totalHours = 0;
+
+      if (entry?.approvedOrdinaryHours !== undefined || entry?.approvedOvertimeHours !== undefined) {
+        ordinaryHours = entry.approvedOrdinaryHours || 0;
+        overtimeHours = entry.approvedOvertimeHours || 0;
+        totalHours = ordinaryHours + overtimeHours;
+      } else if (entry && exit) {
+        const calc = calculateHours(events as any, daySchedule);
+        ordinaryHours = calc.ordinary;
+        overtimeHours = calc.overtime;
+        totalHours = ordinaryHours + overtimeHours;
+      }
+
+      // Determine overall status
+      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' = 'non_timbrato';
+      if (entry && exit) {
+        if (entry.status === 'confermata' || exit.status === 'confermata') {
+          status = 'confermato';
+        } else {
+          status = 'in_attesa';
+        }
+      } else if (entry && !exit) {
+        status = 'in_servizio';
+      }
+
+      return {
+        operator: op,
+        entryTime,
+        exitTime,
+        pausesText,
+        status,
+        ordinaryHours,
+        overtimeHours,
+        totalHours,
+        isEarlyExit,
+        earlyExitText,
+        isLateEntry,
+        lateEntryText,
+        requests,
+      };
+    });
+  }, [operators, dateClockings, dateRequests, selectedDate]);
+
+  // Filtered rows
+  const filteredRows = useMemo(() => {
+    return dayRows.filter((row) => {
+      const fullName = `${row.operator.firstName} ${row.operator.lastName}`.toLowerCase();
+      const code = (row.operator.username || '').toLowerCase();
+      const matchesSearch = fullName.includes(searchQuery.toLowerCase()) || code.includes(searchQuery.toLowerCase());
+
+      if (!matchesSearch) return false;
+      if (statusFilter === 'all') return true;
+      return row.status === statusFilter;
+    });
+  }, [dayRows, searchQuery, statusFilter]);
+
+  // Quick Counters
+  const summaryCounts = useMemo(() => {
+    let inServizio = 0;
+    let confermati = 0;
+    let inAttesa = 0;
+    let nonTimbrato = 0;
+
+    dayRows.forEach((r) => {
+      if (r.status === 'in_servizio') inServizio++;
+      else if (r.status === 'confermato') confermati++;
+      else if (r.status === 'in_attesa') inAttesa++;
+      else nonTimbrato++;
+    });
+
+    return { inServizio, confermati, inAttesa, nonTimbrato };
+  }, [dayRows]);
+
+  // 4. Monthly Detail for Selected Operator
+  useEffect(() => {
+    if (!selectedOperator) return;
+    const db = getDb();
+    setIsLoadingDetail(true);
+
+    const mStart = startOfMonth(detailMonth);
+    const mEnd = endOfMonth(detailMonth);
+
+    // Timbrature del mese per questo operatore
     const tQuery = query(
-      collection(db, `app-users/${operator.id}/timbrature`),
+      collection(db, `app-users/${selectedOperator.id}/timbrature`),
       where('timestamp', '>=', Timestamp.fromDate(mStart)),
       where('timestamp', '<=', Timestamp.fromDate(mEnd)),
       orderBy('timestamp', 'asc')
     );
 
-    const unsubTimbrature = onSnapshot(
-      tQuery,
-      (snap) => {
-        const evs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ClockingEvent));
-        setMonthEvents(evs);
-      },
-      (err) => console.error('Month timbrature error:', err)
-    );
+    const unsubT = onSnapshot(tQuery, (snap) => {
+      const evs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimbraturaEvent));
+      setDetailEvents(evs);
+    });
 
-    // Richieste approvate (ferie, permessi, malattia)
+    // Richieste approvate
     const rQuery = query(
-      collection(db, `app-users/${operator.id}/requests`),
+      collection(db, `app-users/${selectedOperator.id}/requests`),
       where('status', '==', 'approvato')
     );
-
-    const unsubRequests = onSnapshot(
-      rQuery,
-      (snap) => {
-        const reqs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setMonthRequests(reqs);
-      },
-      (err) => console.error('Month requests error:', err)
-    );
+    const unsubR = onSnapshot(rQuery, (snap) => {
+      const reqs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setDetailRequests(reqs);
+    });
 
     // Straordinari separati
     const sQuery = query(
-      collection(db, `app-users/${operator.id}/straordinari`),
+      collection(db, `app-users/${selectedOperator.id}/straordinari`),
       where('date', '>=', Timestamp.fromDate(mStart)),
       where('date', '<=', Timestamp.fromDate(mEnd))
     );
+    const unsubS = onSnapshot(sQuery, (snap) => {
+      const str = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setDetailOvertimeShifts(str);
+    });
 
-    const unsubStraordinari = onSnapshot(
-      sQuery,
-      (snap) => {
-        const str = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setMonthOvertimeShifts(str);
-      },
-      (err) => console.error('Month straordinari error:', err)
-    );
+    setIsLoadingDetail(false);
 
     return () => {
-      unsubTimbrature();
-      unsubRequests();
-      unsubStraordinari();
+      unsubT();
+      unsubR();
+      unsubS();
     };
-  }, [operator, selectedMonth]);
+  }, [selectedOperator, detailMonth]);
 
-  // Determine today shift status
-  const todayEntry = todayEvents.find((e) => e.type === 'entrata');
-  const todayExit = todayEvents.find((e) => e.type === 'uscita');
-  const lastPauseStart = todayEvents
-    .filter((e) => e.type === 'pausa')
-    .slice(-1)[0];
-  const lastPauseEnd = todayEvents
-    .filter((e) => e.type === 'fine_pausa')
-    .slice(-1)[0];
-
-  const isCurrentlyInPause =
-    lastPauseStart &&
-    (!lastPauseEnd ||
-      (lastPauseStart.timestamp?.toMillis &&
-        lastPauseEnd.timestamp?.toMillis &&
-        lastPauseStart.timestamp.toMillis() > lastPauseEnd.timestamp.toMillis()));
-
-  const shiftStatus: 'not_started' | 'in_progress' | 'completed' = useMemo(() => {
-    if (!todayEntry) return 'not_started';
-    if (todayEntry && !todayExit) return 'in_progress';
-    return 'completed';
-  }, [todayEntry, todayExit]);
-
-  // Clock action handler
-  const handleClockAction = async (type: 'entrata' | 'uscita' | 'pausa' | 'fine_pausa') => {
-    if (!operator || isClocking) return;
-    setIsClocking(true);
-    setClockSuccessMessage(null);
-
+  // Detail Monthly Calculations
+  const detailMonthlySummary = useMemo(() => {
+    if (!selectedOperator || !detailMonth) return null;
     try {
-      const db = getDb();
-      await addDoc(collection(db, `app-users/${operator.id}/timbrature`), {
-        userId: operator.id,
-        type: type,
-        timestamp: serverTimestamp(),
-        status: 'sospesa',
-        viewedByOperator: true,
-        isAuto: false,
-      });
-
-      const labelMap = {
-        entrata: 'Entrata registrata! Buon lavoro 💪',
-        uscita: 'Uscita registrata! Buona serata 🏠',
-        pausa: 'Pausa iniziata ☕',
-        fine_pausa: 'Pausa terminata, bentornato! ⏱️',
-      };
-      setClockSuccessMessage(labelMap[type]);
-      setTimeout(() => setClockSuccessMessage(null), 4000);
-    } catch (err: any) {
-      console.error('Error clocking:', err);
-      alert('Errore durante la registrazione della timbratura. Riprova.');
-    } finally {
-      setIsClocking(false);
-    }
-  };
-
-  // Compute monthly calculations (read-only for operator)
-  const computedSummary = useMemo(() => {
-    if (!operator || !selectedMonth) return null;
-    try {
-      return processMonthlyData(selectedMonth, operator as any, {
-        timbrature: monthEvents,
-        requests: monthRequests,
-        straordinari: monthOvertimeShifts,
+      return processMonthlyData(detailMonth, selectedOperator as any, {
+        timbrature: detailEvents,
+        requests: detailRequests,
+        straordinari: detailOvertimeShifts,
         dailyNotes: [],
       }).monthlySummary;
     } catch (e) {
-      console.error('Error calculating monthly data:', e);
+      console.error(e);
       return null;
     }
-  }, [operator, selectedMonth, monthEvents, monthRequests, monthOvertimeShifts]);
+  }, [selectedOperator, detailMonth, detailEvents, detailRequests, detailOvertimeShifts]);
 
-  // Group month events into daily shifts for Agenda
-  const agendaDays = useMemo(() => {
-    const daysMap = new Map<string, { date: Date; events: ClockingEvent[]; requests: any[] }>();
+  // Group Detail Events by Day for Agenda
+  const detailAgendaDays = useMemo(() => {
+    const map = new Map<string, { date: Date; events: TimbraturaEvent[]; requests: any[] }>();
 
-    // Raggruppa eventi per giorno
-    monthEvents.forEach((ev) => {
+    detailEvents.forEach((ev) => {
       if (!ev.timestamp?.toDate) return;
       const d = ev.timestamp.toDate();
       const key = format(d, 'yyyy-MM-dd');
-      if (!daysMap.has(key)) {
-        daysMap.set(key, { date: d, events: [], requests: [] });
-      }
-      daysMap.get(key)!.events.push(ev);
+      if (!map.has(key)) map.set(key, { date: d, events: [], requests: [] });
+      map.get(key)!.events.push(ev);
     });
 
-    // Aggiungi richieste per i giorni
-    monthRequests.forEach((req) => {
+    detailRequests.forEach((req) => {
       if (!req.startDate?.toDate) return;
-      const start = req.startDate.toDate();
-      const end = req.endDate?.toDate ? req.endDate.toDate() : start;
-      const key = format(start, 'yyyy-MM-dd');
-      if (daysMap.has(key)) {
-        daysMap.get(key)!.requests.push(req);
+      const d = req.startDate.toDate();
+      const key = format(d, 'yyyy-MM-dd');
+      if (map.has(key)) {
+        map.get(key)!.requests.push(req);
       } else {
-        daysMap.set(key, { date: start, events: [], requests: [req] });
+        map.set(key, { date: d, events: [], requests: [req] });
       }
     });
 
-    // Ordina dal più recente al più vecchio
-    const arr = Array.from(daysMap.values());
+    const arr = Array.from(map.values());
     arr.sort((a, b) => b.date.getTime() - a.date.getTime());
     return arr;
-  }, [monthEvents, monthRequests]);
+  }, [detailEvents, detailRequests]);
 
-  // ----------------------------------------------------
-  // LOGIN SCREEN (Se non autenticato)
-  // ----------------------------------------------------
-  if (!operator) {
+  // --------------------------------------------------------------------------
+  // LOGIN SCREEN
+  // --------------------------------------------------------------------------
+  if (!isAuthenticated) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-5 max-w-md mx-auto w-full min-h-screen">
-        <div className="w-full bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200/80 dark:border-slate-800 p-7 text-center space-y-6">
-          <div className="h-24 w-24 bg-emerald-500/10 dark:bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400">
-            <Clock className="h-12 w-12" />
+        <div className="w-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-8 text-center space-y-6">
+          <div className="h-20 w-20 bg-emerald-500/10 dark:bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+            <ShieldCheck className="h-10 w-10" />
           </div>
 
           <div>
-            <h1 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-              WorkForce Dipendenti
+            <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+              WorkForce Monitor
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Inserisci il tuo codice personale per timbrare e consultare i tuoi orari.
+            <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1 uppercase tracking-wider">
+              Accesso Titolare • Sola Visualizzazione
             </p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
               <label
-                htmlFor="code"
-                className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block mb-1.5"
+                htmlFor="accessCode"
+                className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5"
               >
-                Codice Operatore
+                Codice Amministrazione
               </label>
               <input
-                id="code"
-                type="text"
+                id="accessCode"
+                type="password"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                value={inputCode}
-                onChange={(e) => setInputCode(e.target.value)}
-                placeholder="Es. 1234"
-                className="w-full h-14 px-4 text-center text-2xl font-bold tracking-widest rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-emerald-500 transition-colors"
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                placeholder="Inserisci codice..."
+                className="w-full h-14 px-4 text-center text-2xl font-bold tracking-widest rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-emerald-500"
                 autoFocus
               />
             </div>
 
-            {loginError && (
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-600 dark:text-rose-300 font-medium flex items-center gap-2">
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-50 text-rose-600 text-xs font-medium flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{loginError}</span>
+                <span>{authError}</span>
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loginLoading}
-              className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition-all flex items-center justify-center text-lg gap-2"
+              disabled={authLoading}
+              className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold rounded-2xl shadow-lg shadow-emerald-600/30 flex items-center justify-center text-lg gap-2"
             >
-              {loginLoading ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Accesso in corso...
-                </>
-              ) : (
-                'Entra nell\'App'
-              )}
+              {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Entra nel Monitor'}
             </button>
           </form>
 
           <p className="text-[11px] text-slate-400">
-            Green & Clean • Versione Dipendenti (Sola visualizzazione turni)
+            Applicazione parallela per il titolare collegata a Green & Clean.
           </p>
         </div>
       </div>
     );
   }
 
-  // ----------------------------------------------------
-  // OPERATOR MOBILE DASHBOARD
-  // ----------------------------------------------------
-  return (
-    <div className="flex-1 flex flex-col max-w-lg mx-auto w-full pb-10">
-      {/* HEADER SUPERIORE */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="h-10 w-10 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 font-bold text-base">
-            {operator.firstName ? operator.firstName.charAt(0) : 'O'}
-          </div>
-          <div>
-            <h2 className="font-bold text-base leading-tight text-slate-900 dark:text-slate-100">
-              {operator.firstName} {operator.lastName}
-            </h2>
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-              Operatore #{operator.username}
-            </p>
-          </div>
-        </div>
+  // --------------------------------------------------------------------------
+  // VISTA 2: DETTAGLIO MENSILE SINGOLO RAGAZZO
+  // --------------------------------------------------------------------------
+  if (selectedOperator) {
+    return (
+      <div className="flex-1 flex flex-col max-w-xl mx-auto w-full pb-10">
+        {/* Header Dettaglio */}
+        <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => setSelectedOperator(null)}
+            className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Tutti i Ragazzi
+          </button>
 
-        <button
-          onClick={handleLogout}
-          title="Esci"
-          className="h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-rose-600 hover:border-rose-300 transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
-      </header>
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Sola Visualizzazione 🔒
+          </span>
+        </header>
 
-      {/* CONTENUTO PRINCIPALE */}
-      <main className="p-4 space-y-5">
-        {/* DATA E ORA LIVE */}
-        <div className="text-center py-1">
-          <p className="text-xs uppercase font-extrabold tracking-wider text-slate-400">
-            {format(currentTime, 'EEEE, d MMMM yyyy', { locale: it })}
-          </p>
-          <div className="text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100 font-mono mt-0.5">
-            {format(currentTime, 'HH:mm:ss')}
-          </div>
-        </div>
-
-        {/* FEEDBACK TIMBRATURA */}
-        {clockSuccessMessage && (
-          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 font-bold text-center text-sm shadow-sm animate-in fade-in zoom-in-95">
-            {clockSuccessMessage}
-          </div>
-        )}
-
-        {/* ============================================================== */}
-        {/* CARD TIMBRATURA RAPIDA                                         */}
-        {/* ============================================================== */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-lg border border-slate-200/80 dark:border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Stato Turno di Oggi
-            </span>
-            <span
-              className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
-                shiftStatus === 'not_started'
-                  ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                  : shiftStatus === 'in_progress'
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 animate-pulse'
-                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-              }`}
-            >
-              {shiftStatus === 'not_started' && 'Non Iniziato'}
-              {shiftStatus === 'in_progress' && (isCurrentlyInPause ? 'In Pausa ☕' : 'In Servizio 🟢')}
-              {shiftStatus === 'completed' && 'Turno Concluso ✅'}
-            </span>
-          </div>
-
-          {/* Dettaglio timbrature odierne */}
-          <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs">
-            <div>
-              <span className="text-slate-400 block font-medium">Entrata Odierna</span>
-              <span className="font-bold text-base text-slate-800 dark:text-slate-200">
-                {todayEntry?.timestamp?.toDate
-                  ? format(todayEntry.timestamp.toDate(), 'HH:mm')
-                  : '--:--'}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-400 block font-medium">Uscita Odierna</span>
-              <span className="font-bold text-base text-slate-800 dark:text-slate-200">
-                {todayExit?.timestamp?.toDate
-                  ? format(todayExit.timestamp.toDate(), 'HH:mm')
-                  : '--:--'}
-              </span>
-            </div>
-          </div>
-
-          {/* PULSANTI DI TIMBRATURA SMART */}
-          {shiftStatus === 'not_started' && (
-            <button
-              onClick={() => handleClockAction('entrata')}
-              disabled={isClocking}
-              className="w-full h-18 py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xl rounded-2xl shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-3"
-            >
-              {isClocking ? (
-                <Loader2 className="h-6 w-6 animate-spin" />
-              ) : (
-                <>
-                  <Play className="h-6 w-6 fill-current" />
-                  TIMBRA ENTRATA
-                </>
-              )}
-            </button>
-          )}
-
-          {shiftStatus === 'in_progress' && (
-            <div className="space-y-2.5">
-              <button
-                onClick={() => handleClockAction('uscita')}
-                disabled={isClocking}
-                className="w-full h-18 py-4 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-black text-xl rounded-2xl shadow-xl shadow-rose-600/30 transition-all flex items-center justify-center gap-3"
-              >
-                {isClocking ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                ) : (
-                  <>
-                    <Square className="h-6 w-6 fill-current" />
-                    TIMBRA USCITA
-                  </>
-                )}
-              </button>
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {!isCurrentlyInPause ? (
-                  <button
-                    onClick={() => handleClockAction('pausa')}
-                    disabled={isClocking}
-                    className="h-11 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5"
-                  >
-                    <Coffee className="h-4 w-4" />
-                    Inizia Pausa
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleClockAction('fine_pausa')}
-                    disabled={isClocking}
-                    className="h-11 border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 col-span-2"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Termina Pausa
-                  </button>
-                )}
-
-                {!isCurrentlyInPause && (
-                  <div className="flex items-center justify-center text-[11px] text-slate-400 font-medium">
-                    In servizio dal mattino
-                  </div>
-                )}
+        <main className="p-4 space-y-5">
+          {/* Info Dipendente */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 font-black text-xl">
+                {selectedOperator.firstName ? selectedOperator.firstName.charAt(0) : 'O'}
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                  {selectedOperator.firstName} {selectedOperator.lastName}
+                </h2>
+                <p className="text-xs text-slate-400 font-medium">Codice #{selectedOperator.username}</p>
               </div>
             </div>
-          )}
+          </div>
 
-          {shiftStatus === 'completed' && (
-            <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-center space-y-1">
-              <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto" />
-              <p className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                Hai già completato la timbratura per oggi!
-              </p>
-              <p className="text-xs text-slate-500">
-                Entrata:{' '}
-                {todayEntry?.timestamp?.toDate &&
-                  format(todayEntry.timestamp.toDate(), 'HH:mm')}{' '}
-                — Uscita:{' '}
-                {todayExit?.timestamp?.toDate &&
-                  format(todayExit.timestamp.toDate(), 'HH:mm')}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* ============================================================== */}
-        {/* RIEPILOGO MENSILE SMART (Ore Ordinarie, Straordinari, Malattia) */}
-        {/* ============================================================== */}
-        <section className="space-y-3">
-          {/* Mese selezionato con navigazione */}
+          {/* Navigazione Mese */}
           <div className="flex items-center justify-between px-1">
-            <h3 className="font-black text-lg text-slate-900 dark:text-slate-100 capitalize">
-              Riepilogo {format(selectedMonth, 'MMMM yyyy', { locale: it })}
+            <h3 className="font-black text-base text-slate-900 dark:text-slate-100 capitalize">
+              Riepilogo {format(detailMonth, 'MMMM yyyy', { locale: it })}
             </h3>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setSelectedMonth((p) => subMonths(p, 1))}
-                className="h-8 w-8 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800"
+                onClick={() => setDetailMonth((p) => subMonths(p, 1))}
+                className="h-8 w-8 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-100"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
-                onClick={() => setSelectedMonth(new Date())}
-                className="px-2.5 h-8 text-[11px] font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                onClick={() => setDetailMonth(new Date())}
+                className="px-2.5 h-8 text-[11px] font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100"
               >
-                Oggi
+                Mese Attuale
               </button>
               <button
-                onClick={() => setSelectedMonth((p) => addMonths(p, 1))}
-                className="h-8 w-8 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800"
+                onClick={() => setDetailMonth((p) => addMonths(p, 1))}
+                className="h-8 w-8 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-100"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
 
-          {/* 4 Card compatte e chiare per il dipendente */}
+          {/* 4 Card Riepilogo Mensile come richiesto */}
           <div className="grid grid-cols-2 gap-3">
             {/* ORE ORDINARIE */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-1">
-              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                <Clock className="h-5 w-5" />
-                <span className="text-xs font-bold uppercase tracking-wider">Ore Ordinarie</span>
+              <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold uppercase tracking-wider">
+                <Clock className="h-4 w-4" />
+                Ore Ordinarie
               </div>
               <div className="text-2xl font-black text-slate-900 dark:text-slate-100">
-                {computedSummary ? `${computedSummary.ordinaryHours}h` : '0h'}
+                {detailMonthlySummary ? `${detailMonthlySummary.ordinaryHours}h` : '0h'}
               </div>
               <p className="text-[11px] text-slate-400">
-                {computedSummary ? `${computedSummary.ordinaryWorkedDays} giorni lavorati` : '0 giorni'}
+                {detailMonthlySummary ? `${detailMonthlySummary.ordinaryWorkedDays} giorni lavorati` : '0 giorni'}
               </p>
             </div>
 
             {/* ORE STRAORDINARIE */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-1">
-              <div className="flex items-center gap-2 text-amber-500">
-                <Flame className="h-5 w-5" />
-                <span className="text-xs font-bold uppercase tracking-wider">Straordinari</span>
+              <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold uppercase tracking-wider">
+                <Flame className="h-4 w-4" />
+                Straordinari
               </div>
               <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
-                {computedSummary ? `${computedSummary.overtimeHours}h` : '0h'}
+                {detailMonthlySummary ? `${detailMonthlySummary.overtimeHours}h` : '0h'}
               </div>
-              <p className="text-[11px] text-slate-400">Oltre monte ore contrattuale</p>
+              <p className="text-[11px] text-slate-400">Ore totali approvate</p>
             </div>
 
             {/* GIORNI MALATTIA */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-1">
-              <div className="flex items-center gap-2 text-rose-500">
-                <HeartPulse className="h-5 w-5" />
-                <span className="text-xs font-bold uppercase tracking-wider">Malattia</span>
+              <div className="flex items-center gap-1.5 text-rose-500 text-xs font-bold uppercase tracking-wider">
+                <HeartPulse className="h-4 w-4" />
+                Malattia
               </div>
               <div className="text-2xl font-black text-slate-900 dark:text-slate-100">
-                {computedSummary ? `${computedSummary.malattiaDays} gg` : '0 gg'}
+                {detailMonthlySummary ? `${detailMonthlySummary.malattiaDays} gg` : '0 gg'}
               </div>
-              <p className="text-[11px] text-slate-400">Giorni certificati INPS</p>
+              <p className="text-[11px] text-slate-400">Giorni certificati</p>
             </div>
 
             {/* FERIE E PERMESSI */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-1">
-              <div className="flex items-center gap-2 text-blue-500">
-                <Sun className="h-5 w-5" />
-                <span className="text-xs font-bold uppercase tracking-wider">Ferie / Permessi</span>
+              <div className="flex items-center gap-1.5 text-blue-500 text-xs font-bold uppercase tracking-wider">
+                <Sun className="h-4 w-4" />
+                Ferie / Permessi
               </div>
               <div className="text-2xl font-black text-slate-900 dark:text-slate-100">
-                {computedSummary
-                  ? `${computedSummary.ferieDays} gg / ${computedSummary.permessoHours}h`
+                {detailMonthlySummary
+                  ? `${detailMonthlySummary.ferieDays} gg / ${detailMonthlySummary.permessoHours}h`
                   : '0 gg'}
               </div>
-              <p className="text-[11px] text-slate-400">Ferie godute e permessi</p>
+              <p className="text-[11px] text-slate-400">Ferie e permessi goduti</p>
             </div>
           </div>
-        </section>
 
-        {/* ============================================================== */}
-        {/* AGENDA & STORICO TURNI DEL MESE (SOLA LETTURA)                 */}
-        {/* ============================================================== */}
-        <section className="space-y-3 pt-2">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="font-black text-lg text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-emerald-600" />
-              Agenda Turni ({agendaDays.length})
+          {/* ELENCO DELLE TIMBRATURE DEL MESE (SOLA LETTURA) */}
+          <div className="space-y-2.5 pt-2">
+            <h3 className="font-black text-base text-slate-900 dark:text-slate-100 px-1">
+              Elenco Timbrature del Mese ({detailAgendaDays.length})
             </h3>
-            <span className="text-xs font-medium text-slate-400">Sola visualizzazione</span>
-          </div>
 
-          {agendaDays.length === 0 ? (
-            <div className="text-center py-10 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 space-y-1">
-              <Calendar className="h-8 w-8 mx-auto opacity-40" />
-              <p className="font-semibold text-sm">Nessuna timbratura registrata questo mese.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {agendaDays.map((item, idx) => {
-                const entry = item.events.find((e) => e.type === 'entrata');
-                const exit = item.events.find((e) => e.type === 'uscita');
-                const isApproved = item.events.some((e) => e.status === 'confermata');
-                const isPending = item.events.some((e) => e.status === 'sospesa');
+            {detailAgendaDays.length === 0 ? (
+              <div className="text-center py-10 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 text-slate-400">
+                <p className="text-sm font-semibold">Nessuna timbratura registrata in questo mese.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {detailAgendaDays.map((item, idx) => {
+                  const entry = item.events.find((e) => e.type === 'entrata');
+                  const exit = item.events.find((e) => e.type === 'uscita');
+                  const isApproved = item.events.some((e) => e.status === 'confermata');
+                  const isPending = item.events.some((e) => e.status === 'sospesa');
 
-                const entryTime = entry?.timestamp?.toDate
-                  ? format(entry.timestamp.toDate(), 'HH:mm')
-                  : '--:--';
-                const exitTime = exit?.timestamp?.toDate
-                  ? format(exit.timestamp.toDate(), 'HH:mm')
-                  : '--:--';
+                  const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
+                  const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
 
-                // Ore approvate se presenti dall'amministratore
-                const approvedOrd = entry?.approvedOrdinaryHours;
-                const approvedOver = entry?.approvedOvertimeHours;
+                  const ordH = entry?.approvedOrdinaryHours;
+                  const overH = entry?.approvedOvertimeHours;
 
-                return (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-slate-900 dark:text-slate-100 capitalize">
-                        {format(item.date, 'EEEE d MMMM', { locale: it })}
-                      </span>
-
-                      {/* BADGE STATO AMMINISTRATORE */}
-                      {isApproved ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Approvato
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm text-slate-900 dark:text-slate-100 capitalize">
+                          {format(item.date, 'EEEE d MMMM', { locale: it })}
                         </span>
-                      ) : isPending ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300">
-                          <Clock className="h-3 w-3" />
-                          In attesa
-                        </span>
-                      ) : null}
-                    </div>
 
-                    {/* ORARI TIMBRATI */}
-                    {item.events.length > 0 && (
+                        {isApproved ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Approvato
+                          </span>
+                        ) : isPending ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> In attesa
+                          </span>
+                        ) : null}
+                      </div>
+
                       <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <span className="text-slate-400 block text-[10px]">Entrata</span>
-                            <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                              {entryTime}
-                            </span>
-                          </div>
-                          <span className="text-slate-300">→</span>
-                          <div>
-                            <span className="text-slate-400 block text-[10px]">Uscita</span>
-                            <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                              {exitTime}
-                            </span>
-                          </div>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{entryTime}</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{exitTime}</span>
                         </div>
 
-                        {/* Totale ore approvate se disponibili */}
-                        {(approvedOrd !== undefined || approvedOver !== undefined) && (
-                          <div className="text-right">
-                            <span className="text-slate-400 block text-[10px]">Ore Riconosciute</span>
-                            <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400">
-                              {approvedOrd || 0}h ord
-                              {approvedOver ? ` + ${approvedOver}h str` : ''}
-                            </span>
+                        {(ordH !== undefined || overH !== undefined) && (
+                          <div className="text-right font-extrabold text-emerald-600 dark:text-emerald-400 text-xs">
+                            {ordH || 0}h ord{overH ? ` + ${overH}h str` : ''}
                           </div>
                         )}
                       </div>
-                    )}
 
-                    {/* EVENTUALI RICHIESTE (Ferie / Malattia / Permesso) */}
-                    {item.requests.map((req, rIdx) => (
-                      <div
-                        key={rIdx}
-                        className="text-xs p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between font-semibold"
-                      >
-                        <span className="capitalize text-slate-600 dark:text-slate-300">
+                      {/* Eventuali richieste */}
+                      {item.requests.map((r, rIdx) => (
+                        <div key={rIdx} className="text-[11px] font-semibold text-slate-500 pt-0.5">
+                          {r.type === 'malattia' && '🤒 Malattia registrata'}
+                          {r.type === 'ferie' && '🏖️ Ferie godute'}
+                          {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // VISTA 1: SCHERMATA PRINCIPALE (TUTTI I RAGAZZI SU UNA RIGA)
+  // --------------------------------------------------------------------------
+  return (
+    <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full pb-10">
+      {/* HEADER SUPERIORE */}
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
+            <Users className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
+              WorkForce Monitor
+            </h1>
+            <p className="text-[11px] text-emerald-600 font-bold">Pannello Titolare • Live</p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          title="Esci"
+          className="h-8 w-8 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 hover:text-rose-600 transition-colors"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+      </header>
+
+      <main className="p-4 space-y-4">
+        {/* SELETTORE DATA */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
+          <button
+            onClick={() => setSelectedDate((p) => subDays(p, 1))}
+            className="h-9 w-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+
+          <div className="text-center">
+            <p className="text-xs uppercase font-extrabold text-slate-400">
+              {isSameDay(selectedDate, new Date()) ? 'Oggi' : format(selectedDate, 'EEEE', { locale: it })}
+            </p>
+            <p className="text-base font-black text-slate-900 dark:text-slate-100">
+              {format(selectedDate, 'd MMMM yyyy', { locale: it })}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {!isSameDay(selectedDate, new Date()) && (
+              <button
+                onClick={() => setSelectedDate(new Date())}
+                className="px-2 h-9 text-[11px] font-bold rounded-xl border border-slate-200 hover:bg-slate-100"
+              >
+                Oggi
+              </button>
+            )}
+            <button
+              onClick={() => setSelectedDate((p) => addDays(p, 1))}
+              className="h-9 w-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* CONTATORI RAPIDI IN ALTO */}
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            onClick={() => setStatusFilter(statusFilter === 'in_servizio' ? 'all' : 'in_servizio')}
+            className={`p-2.5 rounded-2xl border text-center transition-all ${
+              statusFilter === 'in_servizio'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-800'
+            }`}
+          >
+            <span className="block text-lg font-black text-blue-600 dark:text-blue-400 leading-none">
+              {summaryCounts.inServizio}
+            </span>
+            <span className="text-[10px] font-bold block mt-1 uppercase text-slate-500">In Turno</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter(statusFilter === 'confermato' ? 'all' : 'confermato')}
+            className={`p-2.5 rounded-2xl border text-center transition-all ${
+              statusFilter === 'confermato'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-800'
+            }`}
+          >
+            <span className="block text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none">
+              {summaryCounts.confermati}
+            </span>
+            <span className="text-[10px] font-bold block mt-1 uppercase text-slate-500">Approvati</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter(statusFilter === 'in_attesa' ? 'all' : 'in_attesa')}
+            className={`p-2.5 rounded-2xl border text-center transition-all ${
+              statusFilter === 'in_attesa'
+                ? 'bg-amber-500 text-white border-amber-500 shadow-md'
+                : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-800'
+            }`}
+          >
+            <span className="block text-lg font-black text-amber-500 leading-none">
+              {summaryCounts.inAttesa}
+            </span>
+            <span className="text-[10px] font-bold block mt-1 uppercase text-slate-500">In Attesa</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter(statusFilter === 'non_timbrato' ? 'all' : 'non_timbrato')}
+            className={`p-2.5 rounded-2xl border text-center transition-all ${
+              statusFilter === 'non_timbrato'
+                ? 'bg-slate-700 text-white border-slate-700 shadow-md'
+                : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-800'
+            }`}
+          >
+            <span className="block text-lg font-black text-slate-400 leading-none">
+              {summaryCounts.nonTimbrato}
+            </span>
+            <span className="text-[10px] font-bold block mt-1 uppercase text-slate-500">Assenti</span>
+          </button>
+        </div>
+
+        {/* BARRA DI RICERCA */}
+        <div className="relative">
+          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cerca dipendente per nome..."
+            className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm font-medium focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+
+        {/* ============================================================== */}
+        {/* ELENCO DELLE TIMBRATURE DI TUTTI I RAGAZZI (SU UNA RIGA)      */}
+        {/* ============================================================== */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="font-black text-base text-slate-900 dark:text-slate-100">
+              Timbrature Ragazzi ({filteredRows.length})
+            </h2>
+            <span className="text-[11px] text-slate-400 font-semibold">Tocca il nome per il mese</span>
+          </div>
+
+          {isLoadingOperators ? (
+            <div className="py-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-600" />
+              <p className="text-xs text-slate-400 mt-2">Caricamento dipendenti...</p>
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div className="py-10 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 text-slate-400">
+              <p className="text-sm font-semibold">Nessun dipendente trovato per questo filtro.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredRows.map((row) => (
+                <div
+                  key={row.operator.id}
+                  onClick={() => {
+                    setSelectedOperator(row.operator);
+                    setDetailMonth(selectedDate);
+                  }}
+                  className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer space-y-2 group"
+                >
+                  {/* RIGA PRINCIPALE: NOME + STATO + ORARI */}
+                  <div className="flex items-center justify-between gap-2">
+                    {/* Nome Dipendente (cliccabile) */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-8 w-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-slate-300 shrink-0 group-hover:bg-emerald-100 group-hover:text-emerald-700 transition-colors">
+                        {row.operator.firstName ? row.operator.firstName.charAt(0) : 'O'}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100 truncate block group-hover:text-emerald-600 transition-colors">
+                          {row.operator.firstName} {row.operator.lastName}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          #{row.operator.username}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* BADGE STATO */}
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {row.status === 'confermato' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Approvato
+                        </span>
+                      )}
+                      {row.status === 'in_attesa' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                          <Clock className="h-3 w-3" /> In attesa
+                        </span>
+                      )}
+                      {row.status === 'in_servizio' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1 animate-pulse">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-600" /> In turno
+                        </span>
+                      )}
+                      {row.status === 'non_timbrato' && (
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                          Non timbrato
+                        </span>
+                      )}
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </div>
+
+                  {/* RIGA DETTAGLIO TIMBRATURA: ENTRATA | USCITA | ORE ORD | ORE STRA | TOTALE */}
+                  {(row.entryTime || row.exitTime) ? (
+                    <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
+                      {/* Entrata */}
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block font-medium">Entrata</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {row.entryTime || '--:--'}
+                        </span>
+                      </div>
+
+                      {/* Uscita */}
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block font-medium">Uscita</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {row.exitTime || '--:--'}
+                        </span>
+                      </div>
+
+                      {/* Ordinarie & Straordinari */}
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block font-medium">Ord / Stra</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          {row.ordinaryHours}h /{' '}
+                          <span className={row.overtimeHours > 0 ? 'text-amber-600 font-extrabold' : ''}>
+                            {row.overtimeHours}h
+                          </span>
+                        </span>
+                      </div>
+
+                      {/* Totale Ore */}
+                      <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-1.5 rounded-xl">
+                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 block font-semibold">
+                          Totale
+                        </span>
+                        <span className="font-black text-emerald-700 dark:text-emerald-300">
+                          {row.totalHours}h
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* AVVISI DI USCITA ANTICIPATA O RITARDO SE PRESENTI */}
+                  {(row.isEarlyExit || row.isLateEntry || row.requests.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
+                      {row.isEarlyExit && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-semibold flex items-center gap-1">
+                          <TrendingDown className="h-3 w-3" />
+                          {row.earlyExitText}
+                        </span>
+                      )}
+                      {row.isLateEntry && (
+                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-semibold flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {row.lateEntryText}
+                        </span>
+                      )}
+                      {row.requests.map((req, qIdx) => (
+                        <span
+                          key={qIdx}
+                          className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-semibold"
+                        >
                           {req.type === 'malattia' && '🤒 Malattia'}
                           {req.type === 'ferie' && '🏖️ Ferie'}
                           {req.type === 'permesso' && '⏱️ Permesso'}
-                          {req.type === 'straordinario' && '⚡ Straordinario'}
                         </span>
-                        <span className="text-[11px] text-slate-400">
-                          {req.hours ? `${req.hours}h` : 'Giornata'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
-        </section>
+        </div>
       </main>
     </div>
   );
