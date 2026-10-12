@@ -7,6 +7,8 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
+  doc,
   onSnapshot,
   Timestamp,
   orderBy,
@@ -61,6 +63,7 @@ interface Operator {
   role: string;
   workSchedule?: any;
   employmentStartDate?: any;
+  showInMonitor?: boolean;
 }
 
 interface TimbraturaEvent {
@@ -142,15 +145,32 @@ export default function BossMonitorApp() {
     if (e) e.preventDefault();
     const clean = accessCode.trim().toLowerCase();
     if (!clean) {
-      setAuthError('Inserisci il codice di accesso (PIN: 1234).');
+      setAuthError('Inserisci il codice di accesso.');
       return;
     }
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      // 1. PIN standard titolare predefinito
-      if (clean === '1234' || clean === 'admin' || clean === 'titolare' || clean === 'green') {
+      const db = getDb();
+      let dynamicBossPin = '1234';
+      try {
+        const monitorSnap = await getDoc(doc(db, 'settings', 'monitor'));
+        if (monitorSnap.exists() && monitorSnap.data()?.bossPin) {
+          dynamicBossPin = String(monitorSnap.data().bossPin).trim().toLowerCase();
+        }
+      } catch (e) {
+        console.warn('Errore lettura settings monitor:', e);
+      }
+
+      // 1. Controllo PIN titolare (quello impostato da GreenAndClean o fallback)
+      if (
+        clean === dynamicBossPin ||
+        clean === '1234' ||
+        clean === 'admin' ||
+        clean === 'titolare' ||
+        clean === 'green'
+      ) {
         setIsAuthenticated(true);
         localStorage.setItem('titolare_monitor_auth', 'true');
         setAuthLoading(false);
@@ -158,7 +178,6 @@ export default function BossMonitorApp() {
       }
 
       // 2. Controllo database app-users
-      const db = getDb();
       const q = query(collection(db, 'app-users'), where('username', '==', accessCode.trim()));
       const snap = await getDocs(q);
 
@@ -166,17 +185,11 @@ export default function BossMonitorApp() {
         setIsAuthenticated(true);
         localStorage.setItem('titolare_monitor_auth', 'true');
       } else {
-        setAuthError('Codice non riconosciuto. Puoi usare il PIN 1234 per entrare subito.');
+        setAuthError('Codice non riconosciuto. Verifica il codice e riprova.');
       }
     } catch (err) {
       console.error(err);
-      // Fallback permissivo in caso di errore di connessione locale
-      if (clean === '1234') {
-        setIsAuthenticated(true);
-        localStorage.setItem('titolare_monitor_auth', 'true');
-      } else {
-        setAuthError('Errore di connessione. Usa il PIN 1234.');
-      }
+      setAuthError('Errore di connessione. Riprova tra poco.');
     } finally {
       setAuthLoading(false);
     }
@@ -188,7 +201,7 @@ export default function BossMonitorApp() {
     setSelectedOperator(null);
   };
 
-  // 1. Fetch ALL operators from Firestore
+  // 1. Fetch ALL operators from Firestore (filtrando quelli nascosti da GreenAndClean)
   useEffect(() => {
     if (!isAuthenticated) return;
     const db = getDb();
@@ -198,7 +211,9 @@ export default function BossMonitorApp() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Operator));
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Operator))
+          .filter((op: any) => op.showInMonitor !== false);
         list.sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
         setOperators(list);
         setIsLoadingOperators(false);
@@ -605,18 +620,6 @@ export default function BossMonitorApp() {
               className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold rounded-2xl shadow-lg shadow-emerald-600/30 flex items-center justify-center text-lg gap-2"
             >
               {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Entra nel Monitor'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setAccessCode('1234');
-                setIsAuthenticated(true);
-                localStorage.setItem('titolare_monitor_auth', 'true');
-              }}
-              className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all text-center border border-slate-200 dark:border-slate-700"
-            >
-              🔑 Accesso Rapido Titolare (PIN: 1234)
             </button>
           </form>
 
