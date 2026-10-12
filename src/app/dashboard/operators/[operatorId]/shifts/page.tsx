@@ -138,8 +138,7 @@ type StraordinarioShift = {
 type CombinedShiftHistoryItem = 
     | (Shift & { itemType: 'regular' })
     | (StraordinarioShift & { itemType: 'overtime' })
-    | { itemType: 'request'; requestData: Request; date: Date; id: string }
-    | { itemType: 'auto_absence'; date: Date; id: string; contractualHours: number };
+    | { itemType: 'request'; requestData: Request; date: Date; id: string };
 
 
 type UnlockRequest = {
@@ -730,30 +729,40 @@ export default function ShiftApprovalPage() {
                 date: r.startDate?.toDate ? r.startDate.toDate() : new Date()
             }));
 
-        // Assenze automatiche post-mezzanotte per giornate lavorative del mese in cui non si è timbrato
-        const autoAbsenceItems = (dailyDetails || [])
-            .filter(d => d.status === 'mancata_timbratura' && !allRequests.some(r => r.status === 'approvato' && (r.type === 'assenza' || r.type === 'ferie' || r.type === 'malattia') && isSameDay(r.startDate.toDate(), d.date)))
-            .map(d => ({
-                id: `auto-absence-${format(d.date, 'yyyy-MM-dd')}`,
-                itemType: 'auto_absence' as const,
-                date: d.date,
-                contractualHours: getScheduleForDate(operator, d.date)?.totalHours || 0
-            }));
-    
-        const combined: CombinedShiftHistoryItem[] = [...approvedRegularShifts, ...historicalOvertimeShifts, ...historicalRequestsItems, ...autoAbsenceItems];
+        const combined: CombinedShiftHistoryItem[] = [...approvedRegularShifts, ...historicalOvertimeShifts, ...historicalRequestsItems];
     
         combined.sort((a, b) => {
             const getMillis = (item: CombinedShiftHistoryItem) => {
                 if (item.itemType === 'regular') return item.events[0]?.timestamp?.toMillis() || 0;
                 if (item.itemType === 'overtime') return (item as StraordinarioShift).date?.toMillis?.() || 0;
-                if (item.itemType === 'auto_absence') return item.date.getTime();
                 return item.requestData.startDate?.toMillis?.() || 0;
             };
             return getMillis(b) - getMillis(a);
         });
     
         return combined;
-    }, [allShifts, overtimeShifts, allRequests, dailyDetails, operator]);
+    }, [allShifts, overtimeShifts, allRequests]);
+
+    const pendingAbsences = useMemo(() => {
+        if (!operator || !dailyDetails) return [];
+        return (dailyDetails || []).filter(d => {
+            if (d.status !== 'mancata_timbratura') return false;
+            // Se esiste già una richiesta per questa data (in_attesa, approvata o rifiutata), non è in sospeso
+            const hasReq = (allRequests || []).some(r => {
+                if (!r.startDate?.toDate) return false;
+                return isSameDay(r.startDate.toDate(), d.date);
+            });
+            if (hasReq) return false;
+            // Se esiste un turno per questa data, non è assenza
+            const hasShift = allShifts.some(s => isSameDay(s.date, d.date));
+            if (hasShift) return false;
+            return true;
+        }).map(d => ({
+            id: `pending-absence-${format(d.date, 'yyyy-MM-dd')}`,
+            date: d.date,
+            contractualHours: getScheduleForDate(operator, d.date)?.totalHours || 0,
+        })).sort((a, b) => b.date.getTime() - a.date.getTime());
+    }, [dailyDetails, allRequests, allShifts, operator]);
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
@@ -770,6 +779,55 @@ export default function ShiftApprovalPage() {
             leaveHours: '0',
             createLeaveRequest: false
         }) : null);
+    };
+
+    const handleApproveAbsence = async (date: Date) => {
+        if (!firestore || !operatorId || !operator) return;
+        try {
+            const schedule = getScheduleForDate(operator, date);
+            const reqRef = collection(firestore, `app-users/${operatorId}/requests`);
+            await addDoc(reqRef, {
+                type: 'assenza',
+                status: 'approvato',
+                startDate: Timestamp.fromDate(startOfDay(date)),
+                endDate: Timestamp.fromDate(endOfDay(date)),
+                hours: schedule?.totalHours || 0,
+                reason: 'Mancata timbratura approvata come assenza',
+                createdAt: serverTimestamp(),
+                viewedByOperator: true
+            });
+            toast({
+                title: 'Assenza Approvata',
+                description: `L'assenza del ${format(date, 'EEEE d MMMM yyyy', { locale: it })} è stata approvata e inserita nel riepilogo turni.`
+            });
+        } catch (err) {
+            console.error('Errore approvazione assenza:', err);
+            toast({ title: 'Errore', description: 'Impossibile approvare l\'assenza.', variant: 'destructive' });
+        }
+    };
+
+    const handleRejectAbsence = async (date: Date) => {
+        if (!firestore || !operatorId || !operator) return;
+        try {
+            const reqRef = collection(firestore, `app-users/${operatorId}/requests`);
+            await addDoc(reqRef, {
+                type: 'assenza',
+                status: 'rifiutato',
+                startDate: Timestamp.fromDate(startOfDay(date)),
+                endDate: Timestamp.fromDate(endOfDay(date)),
+                hours: 0,
+                reason: 'Assenza non approvata / Rifiutata',
+                createdAt: serverTimestamp(),
+                viewedByOperator: true
+            });
+            toast({
+                title: 'Assenza Non Approvata',
+                description: `L'assenza del ${format(date, 'EEEE d MMMM yyyy', { locale: it })} è stata contrassegnata come non approvata.`
+            });
+        } catch (err) {
+            console.error('Errore rifiuto assenza:', err);
+            toast({ title: 'Errore', description: 'Impossibile registrare il rifiuto.', variant: 'destructive' });
+        }
     };
 
     const handleApprovalClick = async (context: ApprovalContext, shouldNotify: boolean = false) => {
@@ -2694,12 +2752,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                             </Card>
                         )}
 
-                        {/* 2. Turni e Timbrature Ordinarie in Attesa */}
-                        {pendingShifts.length > 0 && (
+                        {/* 2. Turni e Timbrature Ordinarie e Assenze in Attesa */}
+                        {(pendingShifts.length > 0 || pendingAbsences.length > 0) && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle className="text-base font-semibold">Turni e Timbrature in Attesa ({pendingShifts.length})</CardTitle>
-                                    <CardDescription>Revisiona e approva i turni registrati dall'operatore.</CardDescription>
+                                    <CardTitle className="text-base font-semibold">Turni e Assenze in Attesa ({pendingShifts.length + pendingAbsences.length})</CardTitle>
+                                    <CardDescription>Revisiona e approva i turni registrati e le assenze rilevate.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="border rounded-lg overflow-x-auto">
@@ -2778,6 +2836,45 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                         </TableRow>
                                                     )
                                                 })}
+                                                {pendingAbsences.map((absence) => (
+                                                    <TableRow key={absence.id} className="bg-red-50/50 dark:bg-red-950/20 border-l-4 border-l-red-500">
+                                                        <TableCell className='flex items-center gap-2 whitespace-nowrap font-medium text-red-950 dark:text-red-200'>
+                                                            <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+                                                            <span>{format(absence.date, 'EEEE d MMMM yyyy', { locale: it })}</span>
+                                                            <Badge variant="destructive" className="ml-1 bg-red-600 font-bold">Assenza</Badge>
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap text-muted-foreground text-xs font-mono">--:--</TableCell>
+                                                        <TableCell className="whitespace-nowrap text-muted-foreground text-xs font-mono">--:--</TableCell>
+                                                        <TableCell className="whitespace-nowrap text-xs font-semibold text-red-600">
+                                                            0h (Mancata timbratura)
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            <Badge className="bg-yellow-500 text-white font-bold text-xs">
+                                                                In attesa
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right whitespace-nowrap">
+                                                            <div className="flex items-center justify-end gap-1.5">
+                                                                <Button 
+                                                                    variant="outline" 
+                                                                    size="sm" 
+                                                                    onClick={() => handleApproveAbsence(absence.date)}
+                                                                    className="h-8 text-green-700 hover:text-green-800 hover:bg-green-100 border-green-300 font-bold gap-1"
+                                                                >
+                                                                    <CheckCircle className="h-4 w-4" /> Approva
+                                                                </Button>
+                                                                <Button 
+                                                                    variant="outline" 
+                                                                    size="sm" 
+                                                                    onClick={() => handleRejectAbsence(absence.date)}
+                                                                    className="h-8 text-rose-700 hover:text-rose-800 hover:bg-rose-100 border-rose-300 font-bold gap-1"
+                                                                >
+                                                                    <XCircle className="h-4 w-4" /> Non approvi
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
                                             </TableBody>
                                         </Table>
                                     </div>
@@ -2915,49 +3012,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             <TableCell className="text-right whitespace-nowrap">
                                                                 <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(reqItem.id)}>
                                                                     <Trash2 className="h-4 w-4 text-destructive" />
-                                                                </Button>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                }
-
-                                                if (shift.itemType === 'auto_absence') {
-                                                    return (
-                                                        <TableRow key={`auto-abs-${shift.id}-${index}`} className="bg-red-50/40 dark:bg-red-950/20">
-                                                            <TableCell className="whitespace-nowrap font-medium text-red-950 dark:text-red-200">
-                                                                {format(shift.date, 'PPP', { locale: it })}
-                                                            </TableCell>
-                                                            <TableCell className="text-xs max-w-[450px]">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 font-semibold">
-                                                                        Assenza (Mancata timbratura)
-                                                                    </Badge>
-                                                                    <span className="italic text-muted-foreground text-xs">
-                                                                        Nessuna timbratura registrata
-                                                                    </span>
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
-                                                                0h
-                                                            </TableCell>
-                                                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                                                                -
-                                                            </TableCell>
-                                                            <TableCell className="whitespace-nowrap">
-                                                                <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-medium">
-                                                                    Automatica dopo mezzanotte
-                                                                </Badge>
-                                                            </TableCell>
-                                                            <TableCell className="text-right whitespace-nowrap">
-                                                                <Button 
-                                                                    variant="outline" 
-                                                                    size="sm" 
-                                                                    className="text-xs h-7 gap-1 border-slate-300"
-                                                                    onClick={() => {
-                                                                        setAddRequestContext({ date: shift.date, type: 'assenza' });
-                                                                    }}
-                                                                >
-                                                                    <FileText className="h-3.5 w-3.5" /> Giustifica
                                                                 </Button>
                                                             </TableCell>
                                                         </TableRow>
