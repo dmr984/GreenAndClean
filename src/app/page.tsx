@@ -647,9 +647,7 @@ export default function BossMonitorApp() {
             Tutti i Ragazzi
           </button>
 
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Sola Visualizzazione 🔒
-          </span>
+          <div className="w-8" />
         </header>
 
         <main className="p-4 space-y-5">
