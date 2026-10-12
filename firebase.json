@@ -1,0 +1,7 @@
+{
+  "apphosting": {
+    "backendId": "workforce-hub",
+    "rootDir": ".",
+    "alwaysDeployFromSource": true
+  }
+}
