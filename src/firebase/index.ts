@@ -28,6 +28,8 @@ export function getSdks(firebaseApp: FirebaseApp) {
   };
 }
 
+export const getDb = () => initializeFirebase().firestore;
+
 /** Hook to access Firestore instance. */
 export const useFirestore = (): Firestore => {
   const context = useFirebase();

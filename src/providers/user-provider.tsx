@@ -179,7 +179,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   useEffect(() => {
     if (isLoading) return;
 
-    if (!user && !pathname.startsWith('/_next') && pathname !== '/') {
+    if (!user && !pathname.startsWith('/_next') && pathname !== '/' && !pathname.startsWith('/monitor')) {
       router.replace('/');
     }
 

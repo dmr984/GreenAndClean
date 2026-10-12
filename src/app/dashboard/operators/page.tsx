@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell, Smartphone, Lock, Search } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell, Smartphone, Lock, Search, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -990,6 +990,54 @@ export default function ManageOperatorsPage() {
                                 </DialogHeader>
 
                                 <div className="space-y-5 py-3 overflow-y-auto flex-1 pr-1">
+                                    {/* LINK APP TITOLARE ONLINE */}
+                                    <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="font-bold text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                                                <Smartphone className="h-4 w-4 text-emerald-600" />
+                                                Indirizzo Web App Titolare (Accessibile ovunque su 4G/5G/Wi-Fi)
+                                            </Label>
+                                            <Badge variant="outline" className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                                Online
+                                            </Badge>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                readOnly
+                                                value={typeof window !== 'undefined' ? `${window.location.origin}/monitor` : 'https://studio--studio-9716245358-f94b8.us-central1.hosted.app/monitor'}
+                                                className="font-mono text-xs h-9 bg-background select-all"
+                                            />
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shrink-0 h-9 gap-1 text-xs"
+                                                onClick={() => {
+                                                    const url = typeof window !== 'undefined' ? `${window.location.origin}/monitor` : 'https://studio--studio-9716245358-f94b8.us-central1.hosted.app/monitor';
+                                                    navigator.clipboard.writeText(url);
+                                                    toast({ title: 'Link Copiato!', description: 'Puoi inviarlo su WhatsApp o aprirlo sul browser del telefono.' });
+                                                }}
+                                            >
+                                                <Copy className="h-3.5 w-3.5" /> Copia Link
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="shrink-0 h-9"
+                                                onClick={() => {
+                                                    const url = typeof window !== 'undefined' ? `${window.location.origin}/monitor` : 'https://studio--studio-9716245358-f94b8.us-central1.hosted.app/monitor';
+                                                    window.open(url, '_blank');
+                                                }}
+                                                title="Apri nel browser"
+                                            >
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            📱 <strong>Installazione sul telefono</strong>: Apri questo link dal telefono con <strong>Chrome</strong> (Android) o <strong>Safari</strong> (iPhone), poi tocca <strong>"Aggiungi a schermata Home"</strong> per installarla come app.
+                                        </p>
+                                    </div>
+
                                     {/* 1. SEZIONE PIN */}
                                     <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
                                         <div className="flex items-center justify-between">
