@@ -307,12 +307,17 @@ export default function ShiftApprovalPage() {
         makeupOfDay: string;
     } | null>(null);
     const [isSavingOrphan, setIsSavingOrphan] = useState(false);
-    const [isProcessingApprove, setIsProcessingApprove] = useState(false);
     const [requestToApprove, setRequestToApprove] = useState<Request | null>(null);
+    const [isPaidForApproval, setIsPaidForApproval] = useState<boolean>(true);
+    const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set());
+    const [requestTypeFilter, setRequestTypeFilter] = useState<string>('all');
+    const [isBatchApprovalOpen, setIsBatchApprovalOpen] = useState(false);
+    const [isBatchApproving, setIsBatchApproving] = useState(false);
     const [isSendReminderOpen, setIsSendReminderOpen] = useState(false);
     const [reminderType, setReminderType] = useState<'entrata' | 'uscita' | 'custom'>('entrata');
     const [customReminderMsg, setCustomReminderMsg] = useState('');
     const [isSendingReminder, setIsSendingReminder] = useState(false);
+    const [isProcessingApprove, setIsProcessingApprove] = useState(false);
 
 
     // Monthly Data States (from end-of-month)
@@ -658,6 +663,22 @@ export default function ShiftApprovalPage() {
                 return timeB - timeA;
             });
     }, [allRequests]);
+
+    const requestCounts = useMemo(() => {
+        const c = { all: pendingRequests.length, malattia: 0, ferie: 0, permesso: 0, assenza: 0 };
+        pendingRequests.forEach(r => {
+            if (r.type === 'malattia') c.malattia++;
+            else if (r.type === 'ferie') c.ferie++;
+            else if (r.type === 'permesso') c.permesso++;
+            else if (r.type === 'assenza') c.assenza++;
+        });
+        return c;
+    }, [pendingRequests]);
+
+    const filteredPendingRequests = useMemo(() => {
+        if (requestTypeFilter === 'all') return pendingRequests;
+        return pendingRequests.filter(r => r.type === requestTypeFilter);
+    }, [pendingRequests, requestTypeFilter]);
     
     const orphanedEventsByDay = useMemo(() => {
         return orphanedEvents.reduce((acc, event) => {
@@ -2448,7 +2469,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         }
     };
 
-    const handleApproveRequest = async (request: Request, shouldNotify: boolean = false) => {
+    const handleApproveRequest = async (request: Request, shouldNotify: boolean = false, isPaid: boolean = true) => {
         if (!firestore || !operator) return;
         try {
             const docRef = doc(firestore, `app-users/${operator.id}/requests`, request.id);
@@ -2458,51 +2479,152 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             const end = request.endDate?.toDate ? request.endDate.toDate() : start;
             const days = eachDayOfInterval({ start, end });
             
-            if (request.type === 'permesso') {
-                const hours = request.hours || 0;
-                const rate = operator.hourlyRate || 0;
-                const cost = hours * rate;
-                const dateKey = format(days[0], 'yyyy-MM-dd');
-                dailyCosts[dateKey] = cost;
-            } else if (request.type === 'ferie') {
-                days.forEach(day => {
-                    const dayName = dayIndexToName[getDayFns(day)];
-                    const schedHours = operator.workSchedule?.[dayName]?.totalHours || 8;
-                    const cost = schedHours * (operator.hourlyRate || 0);
-                    const dateKey = format(day, 'yyyy-MM-dd');
+            if (isPaid) {
+                if (request.type === 'permesso') {
+                    const hours = request.hours || 0;
+                    const rate = operator.hourlyRate || 0;
+                    const cost = hours * rate;
+                    const dateKey = format(days[0], 'yyyy-MM-dd');
                     dailyCosts[dateKey] = cost;
-                });
-            } else if (request.type === 'malattia') {
-                const cost = 8 * (operator.sickLeaveRate || operator.hourlyRate || 0);
+                } else if (request.type === 'ferie') {
+                    days.forEach(day => {
+                        const dayName = dayIndexToName[getDayFns(day)];
+                        const schedHours = operator.workSchedule?.[dayName]?.totalHours || 8;
+                        const cost = schedHours * (operator.hourlyRate || 0);
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        dailyCosts[dateKey] = cost;
+                    });
+                } else if (request.type === 'malattia') {
+                    const cost = 8 * (operator.sickLeaveRate || operator.hourlyRate || 0);
+                    days.forEach(day => {
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        dailyCosts[dateKey] = cost;
+                    });
+                } else if (request.type === 'assenza') {
+                    days.forEach(day => {
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        dailyCosts[dateKey] = 0;
+                    });
+                }
+            } else {
                 days.forEach(day => {
                     const dateKey = format(day, 'yyyy-MM-dd');
-                    dailyCosts[dateKey] = cost;
+                    dailyCosts[dateKey] = 0;
                 });
             }
             
             await updateDoc(docRef, {
                 status: 'approvato',
                 viewedByOperator: false,
-                dailyCosts
+                dailyCosts,
+                isPaid
             });
-            toast({ title: 'Successo', description: 'Richiesta approvata.' });
+            toast({ title: 'Successo', description: `Richiesta approvata (${isPaid ? 'retribuita' : 'non retribuita'}).` });
 
             const typeLabel = request.type.charAt(0).toUpperCase() + request.type.slice(1);
             const dateStr = format(start, 'dd MMMM', { locale: it });
-            sendNotificationToOperator(firestore, operator.id, {
-                type: 'request_approved',
-                title: `Richiesta ${typeLabel} Approvata ✅`,
-                body: `La tua richiesta di ${request.type} del ${dateStr} è stata approvata dall'amministratore.`,
-                variables: {
-                    data: dateStr,
-                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
-                    tipo: request.type,
-                },
-                url: '/dashboard'
-            });
+            if (shouldNotify) {
+                sendNotificationToOperator(firestore, operator.id, {
+                    type: 'request_approved',
+                    title: `Richiesta ${typeLabel} Approvata ✅`,
+                    body: `La tua richiesta di ${request.type} del ${dateStr} (${isPaid ? 'retribuita' : 'non retribuita'}) è stata approvata dall'amministratore.`,
+                    variables: {
+                        data: dateStr,
+                        operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                        tipo: request.type,
+                    },
+                    url: '/dashboard'
+                });
+            }
         } catch (error) {
             console.error('Error approving request:', error);
             toast({ title: 'Errore', description: 'Impossibile approvare la richiesta.', variant: 'destructive' });
+        }
+    };
+
+    const handleBatchApprove = async (shouldNotify: boolean = false) => {
+        if (!firestore || !operator || selectedRequestIds.size === 0) return;
+        setIsBatchApproving(true);
+        try {
+            const batch = writeBatch(firestore);
+            const reqsToApprove = pendingRequests.filter(r => selectedRequestIds.has(r.id));
+
+            for (const req of reqsToApprove) {
+                const docRef = doc(firestore, `app-users/${operator.id}/requests`, req.id);
+                const dailyCosts: Record<string, number> = {};
+                const start = req.startDate?.toDate ? req.startDate.toDate() : new Date();
+                const end = req.endDate?.toDate ? req.endDate.toDate() : start;
+                const days = eachDayOfInterval({ start, end });
+
+                if (isPaidForApproval) {
+                    if (req.type === 'permesso') {
+                        const hours = req.hours || 0;
+                        const rate = operator.hourlyRate || 0;
+                        const cost = hours * rate;
+                        const dateKey = format(days[0], 'yyyy-MM-dd');
+                        dailyCosts[dateKey] = cost;
+                    } else if (req.type === 'ferie') {
+                        days.forEach(day => {
+                            const dayName = dayIndexToName[getDayFns(day)];
+                            const schedHours = operator.workSchedule?.[dayName]?.totalHours || 8;
+                            const cost = schedHours * (operator.hourlyRate || 0);
+                            const dateKey = format(day, 'yyyy-MM-dd');
+                            dailyCosts[dateKey] = cost;
+                        });
+                    } else if (req.type === 'malattia') {
+                        const cost = 8 * (operator.sickLeaveRate || operator.hourlyRate || 0);
+                        days.forEach(day => {
+                            const dateKey = format(day, 'yyyy-MM-dd');
+                            dailyCosts[dateKey] = cost;
+                        });
+                    } else if (req.type === 'assenza') {
+                        days.forEach(day => {
+                            const dateKey = format(day, 'yyyy-MM-dd');
+                            dailyCosts[dateKey] = 0;
+                        });
+                    }
+                } else {
+                    days.forEach(day => {
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        dailyCosts[dateKey] = 0;
+                    });
+                }
+
+                batch.update(docRef, {
+                    status: 'approvato',
+                    viewedByOperator: false,
+                    dailyCosts,
+                    isPaid: isPaidForApproval
+                });
+            }
+
+            await batch.commit();
+
+            if (shouldNotify) {
+                sendNotificationToOperator(firestore, operator.id, {
+                    type: 'request_approved',
+                    title: `Richieste Approvate (${reqsToApprove.length}) ✅`,
+                    body: `${reqsToApprove.length} richieste (${isPaidForApproval ? 'retribuite' : 'non retribuite'}) sono state approvate dall'amministratore.`,
+                    variables: {
+                        data: format(new Date(), 'dd MMMM', { locale: it }),
+                        operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                        tipo: 'richieste multiple',
+                    },
+                    url: '/dashboard'
+                });
+            }
+
+            toast({
+                title: 'Successo',
+                description: `${reqsToApprove.length} richieste approvate con successo (${isPaidForApproval ? 'retribuite' : 'non retribuite'}).`
+            });
+            setSelectedRequestIds(new Set());
+            setIsBatchApprovalOpen(false);
+        } catch (error) {
+            console.error('Error batch approving requests:', error);
+            toast({ title: 'Errore', description: 'Impossibile approvare le richieste selezionate.', variant: 'destructive' });
+        } finally {
+            setIsBatchApproving(false);
         }
     };
 
@@ -2668,19 +2790,130 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                         {pendingRequests.length > 0 && (
                             <Card className="border-blue-500/30 bg-blue-500/5">
                                 <CardHeader className="pb-3">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="text-base font-semibold flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                                            <CalendarIcon className="h-4 w-4" />
-                                            Richieste in Attesa ({pendingRequests.length})
-                                        </CardTitle>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div>
+                                            <CardTitle className="text-base font-semibold flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                                                <CalendarIcon className="h-4 w-4" />
+                                                Richieste in Attesa ({pendingRequests.length})
+                                            </CardTitle>
+                                            <CardDescription>Ferie, permessi, malattie e assenze inviate dall'operatore o in attesa di approvazione.</CardDescription>
+                                        </div>
+
+                                        {/* Bottoni Selezione Multipla */}
+                                        {selectedRequestIds.size > 0 && (
+                                            <div className="flex items-center gap-2 animate-in fade-in">
+                                                <Button 
+                                                    onClick={() => setIsBatchApprovalOpen(true)}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 shadow-sm"
+                                                    size="sm"
+                                                >
+                                                    <CheckCircle className="h-4 w-4 mr-1.5" />
+                                                    Approva Selezionate ({selectedRequestIds.size})
+                                                </Button>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    onClick={() => setSelectedRequestIds(new Set())}
+                                                    className="h-9 text-xs text-muted-foreground"
+                                                >
+                                                    Deseleziona
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
-                                    <CardDescription>Ferie, permessi, malattie e assenze inviate dall'operatore o in attesa di approvazione.</CardDescription>
+
+                                    {/* FILTRI RAPIDI PER TIPO (MALATTIE, FERIE, PERMESSI, ECC.) */}
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={requestTypeFilter === 'all' ? 'default' : 'outline'}
+                                            onClick={() => setRequestTypeFilter('all')}
+                                            className="h-7 text-xs px-2.5 rounded-full"
+                                        >
+                                            Tutte ({requestCounts.all})
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={requestTypeFilter === 'malattia' ? 'default' : 'outline'}
+                                            onClick={() => setRequestTypeFilter('malattia')}
+                                            className={cn(
+                                                "h-7 text-xs px-2.5 rounded-full",
+                                                requestTypeFilter === 'malattia' 
+                                                    ? "bg-amber-600 text-white hover:bg-amber-700" 
+                                                    : "border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-50"
+                                            )}
+                                        >
+                                            🤒 Malattie ({requestCounts.malattia})
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={requestTypeFilter === 'ferie' ? 'default' : 'outline'}
+                                            onClick={() => setRequestTypeFilter('ferie')}
+                                            className={cn(
+                                                "h-7 text-xs px-2.5 rounded-full",
+                                                requestTypeFilter === 'ferie' 
+                                                    ? "bg-blue-600 text-white hover:bg-blue-700" 
+                                                    : "border-blue-300 text-blue-800 dark:text-blue-300 hover:bg-blue-50"
+                                            )}
+                                        >
+                                            🏖️ Ferie ({requestCounts.ferie})
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={requestTypeFilter === 'permesso' ? 'default' : 'outline'}
+                                            onClick={() => setRequestTypeFilter('permesso')}
+                                            className={cn(
+                                                "h-7 text-xs px-2.5 rounded-full",
+                                                requestTypeFilter === 'permesso' 
+                                                    ? "bg-purple-600 text-white hover:bg-purple-700" 
+                                                    : "border-purple-300 text-purple-800 dark:text-purple-300 hover:bg-purple-50"
+                                            )}
+                                        >
+                                            ⏱️ Permessi ({requestCounts.permesso})
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={requestTypeFilter === 'assenza' ? 'default' : 'outline'}
+                                            onClick={() => setRequestTypeFilter('assenza')}
+                                            className={cn(
+                                                "h-7 text-xs px-2.5 rounded-full",
+                                                requestTypeFilter === 'assenza' 
+                                                    ? "bg-red-600 text-white hover:bg-red-700" 
+                                                    : "border-red-300 text-red-800 dark:text-red-300 hover:bg-red-50"
+                                            )}
+                                        >
+                                            ❌ Assenze ({requestCounts.assenza})
+                                        </Button>
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="border rounded-lg overflow-x-auto bg-background">
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
+                                                    <TableHead className="w-10">
+                                                        <Checkbox 
+                                                            checked={
+                                                                filteredPendingRequests.length > 0 && 
+                                                                filteredPendingRequests.every(r => selectedRequestIds.has(r.id))
+                                                            }
+                                                            onCheckedChange={(checked) => {
+                                                                const newSet = new Set(selectedRequestIds);
+                                                                if (checked) {
+                                                                    filteredPendingRequests.forEach(r => newSet.add(r.id));
+                                                                } else {
+                                                                    filteredPendingRequests.forEach(r => newSet.delete(r.id));
+                                                                }
+                                                                setSelectedRequestIds(newSet);
+                                                            }}
+                                                            aria-label="Seleziona tutte"
+                                                        />
+                                                    </TableHead>
                                                     <TableHead>Tipo</TableHead>
                                                     <TableHead>Dal</TableHead>
                                                     <TableHead>Al</TableHead>
@@ -2690,61 +2923,88 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {pendingRequests.map((req) => {
-                                                    const startDate = req.startDate?.toDate ? req.startDate.toDate() : new Date();
-                                                    const endDate = req.endDate?.toDate ? req.endDate.toDate() : startDate;
-                                                    return (
-                                                        <TableRow key={req.id}>
-                                                            <TableCell>
-                                                                <Badge variant="outline" className={cn(
-                                                                    req.type === 'ferie' && 'bg-blue-100 text-blue-700 border-blue-200 font-semibold',
-                                                                    req.type === 'malattia' && 'bg-amber-100 text-amber-700 border-amber-200 font-semibold',
-                                                                    req.type === 'permesso' && 'bg-purple-100 text-purple-700 border-purple-200 font-semibold',
-                                                                    req.type === 'assenza' && 'bg-red-100 text-red-700 border-red-200 font-semibold',
-                                                                    req.type === 'straordinario' && 'bg-orange-100 text-orange-700 border-orange-200 font-semibold'
-                                                                )}>
-                                                                    {req.type.charAt(0).toUpperCase() + req.type.slice(1)}
-                                                                </Badge>
-                                                            </TableCell>
-                                                            <TableCell className="font-medium whitespace-nowrap">{format(startDate, 'dd/MM/yyyy')}</TableCell>
-                                                            <TableCell className="font-medium whitespace-nowrap">{format(endDate, 'dd/MM/yyyy')}</TableCell>
-                                                            <TableCell className="whitespace-nowrap">
-                                                                {req.hours ? `${req.hours}h` : 'Intera giornata'}
-                                                            </TableCell>
-                                                            <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
-                                                                {req.reason || '-'}
-                                                            </TableCell>
-                                                            <TableCell className="text-right whitespace-nowrap">
-                                                                <div className="flex items-center justify-end gap-1">
-                                                                    <Button 
-                                                                        variant="outline" 
-                                                                        size="sm" 
-                                                                        onClick={() => setRequestToApprove(req)} 
-                                                                        className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                                                                    >
-                                                                        <CheckCircle className="h-4 w-4 mr-1" /> Approva
-                                                                    </Button>
-                                                                    <Button 
-                                                                        variant="outline" 
-                                                                        size="sm" 
-                                                                        onClick={() => handleRejectRequest(req.id)} 
-                                                                        className="h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
-                                                                    >
-                                                                        <XCircle className="h-4 w-4 mr-1" /> Rifiuta
-                                                                    </Button>
-                                                                    <Button 
-                                                                        variant="ghost" 
-                                                                        size="icon" 
-                                                                        onClick={() => handleDeleteRequest(req.id)} 
-                                                                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                                                                    >
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </Button>
-                                                                </div>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })}
+                                                {filteredPendingRequests.length === 0 ? (
+                                                    <TableRow>
+                                                        <TableCell colSpan={7} className="text-center py-6 text-sm text-muted-foreground">
+                                                            Nessuna richiesta trovata per questo filtro.
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ) : (
+                                                    filteredPendingRequests.map((req) => {
+                                                        const startDate = req.startDate?.toDate ? req.startDate.toDate() : new Date();
+                                                        const endDate = req.endDate?.toDate ? req.endDate.toDate() : startDate;
+                                                        const isSelected = selectedRequestIds.has(req.id);
+                                                        return (
+                                                            <TableRow key={req.id} className={isSelected ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}>
+                                                                <TableCell>
+                                                                    <Checkbox 
+                                                                        checked={isSelected}
+                                                                        onCheckedChange={(checked) => {
+                                                                            const newSet = new Set(selectedRequestIds);
+                                                                            if (checked) {
+                                                                                newSet.add(req.id);
+                                                                            } else {
+                                                                                newSet.delete(req.id);
+                                                                            }
+                                                                            setSelectedRequestIds(newSet);
+                                                                        }}
+                                                                        aria-label={`Seleziona richiesta ${req.id}`}
+                                                                    />
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <Badge variant="outline" className={cn(
+                                                                        req.type === 'ferie' && 'bg-blue-100 text-blue-700 border-blue-200 font-semibold',
+                                                                        req.type === 'malattia' && 'bg-amber-100 text-amber-700 border-amber-200 font-semibold',
+                                                                        req.type === 'permesso' && 'bg-purple-100 text-purple-700 border-purple-200 font-semibold',
+                                                                        req.type === 'assenza' && 'bg-red-100 text-red-700 border-red-200 font-semibold',
+                                                                        req.type === 'straordinario' && 'bg-orange-100 text-orange-700 border-orange-200 font-semibold'
+                                                                    )}>
+                                                                        {req.type.charAt(0).toUpperCase() + req.type.slice(1)}
+                                                                    </Badge>
+                                                                </TableCell>
+                                                                <TableCell className="font-medium whitespace-nowrap">{format(startDate, 'dd/MM/yyyy')}</TableCell>
+                                                                <TableCell className="font-medium whitespace-nowrap">{format(endDate, 'dd/MM/yyyy')}</TableCell>
+                                                                <TableCell className="whitespace-nowrap">
+                                                                    {req.hours ? `${req.hours}h` : 'Intera giornata'}
+                                                                </TableCell>
+                                                                <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
+                                                                    {req.reason || '-'}
+                                                                </TableCell>
+                                                                <TableCell className="text-right whitespace-nowrap">
+                                                                    <div className="flex items-center justify-end gap-1">
+                                                                        <Button 
+                                                                            variant="outline" 
+                                                                            size="sm" 
+                                                                            onClick={() => {
+                                                                                setIsPaidForApproval(true);
+                                                                                setRequestToApprove(req);
+                                                                            }} 
+                                                                            className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                                                                        >
+                                                                            <CheckCircle className="h-4 w-4 mr-1" /> Approva
+                                                                        </Button>
+                                                                        <Button 
+                                                                            variant="outline" 
+                                                                            size="sm" 
+                                                                            onClick={() => handleRejectRequest(req.id)} 
+                                                                            className="h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+                                                                        >
+                                                                            <XCircle className="h-4 w-4 mr-1" /> Rifiuta
+                                                                        </Button>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="icon" 
+                                                                            onClick={() => handleDeleteRequest(req.id)} 
+                                                                            className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })
+                                                )}
                                             </TableBody>
                                         </Table>
                                     </div>
@@ -4581,16 +4841,110 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             <AlertDialog open={!!requestToApprove} onOpenChange={(open) => !open && setRequestToApprove(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2"><Bell className="h-5 w-5 text-primary" /> Approva Richiesta</AlertDialogTitle>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600" /> 
+                            Approva Richiesta {requestToApprove?.type ? `(${requestToApprove.type.toUpperCase()})` : ''}
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
                             Stai approvando la richiesta di {requestToApprove?.type} per {operator.firstName} {operator.lastName}.
-                            Vuoi inviare la notifica sul suo telefono o approvare senza notificare?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
+
+                    {/* Scelta se Retribuita o Meno */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-900 my-2">
+                        <div className="space-y-0.5 pr-2">
+                            <Label htmlFor="single-is-paid" className="font-bold text-sm cursor-pointer">
+                                Richiesta Retribuita
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {isPaidForApproval
+                                    ? 'Verrà applicata la tariffa contrattuale (costo a carico azienda).'
+                                    : 'Non retribuita (costo calcolato a 0€).'}
+                            </p>
+                        </div>
+                        <Switch
+                            id="single-is-paid"
+                            checked={isPaidForApproval}
+                            onCheckedChange={setIsPaidForApproval}
+                        />
+                    </div>
+
                     <AlertDialogFooter className="flex-col sm:flex-row gap-2">
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <Button variant="outline" onClick={() => { if (requestToApprove) handleApproveRequest(requestToApprove, false); setRequestToApprove(null); }}>Approva Senza Notificare</Button>
-                        <AlertDialogAction onClick={() => { if (requestToApprove) handleApproveRequest(requestToApprove, true); setRequestToApprove(null); }} className="gap-1.5"><Bell className="h-4 w-4" /> Approva e Invia Notifica</AlertDialogAction>
+                        <Button 
+                            variant="outline" 
+                            onClick={() => { 
+                                if (requestToApprove) handleApproveRequest(requestToApprove, false, isPaidForApproval); 
+                                setRequestToApprove(null); 
+                            }}
+                        >
+                            Approva Senza Notificare
+                        </Button>
+                        <AlertDialogAction 
+                            onClick={() => { 
+                                if (requestToApprove) handleApproveRequest(requestToApprove, true, isPaidForApproval); 
+                                setRequestToApprove(null); 
+                            }} 
+                            className="gap-1.5"
+                        >
+                            <Bell className="h-4 w-4" /> Approva e Invia Notifica
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Dialog Approvazione Massiva Selezionate */}
+            <AlertDialog open={isBatchApprovalOpen} onOpenChange={setIsBatchApprovalOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                            Approva {selectedRequestIds.size} Richieste Selezionate
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Stai per approvare {selectedRequestIds.size} richieste contemporaneamente per {operator.firstName} {operator.lastName}.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    {/* Scelta se Retribuite o Meno per tutte le selezionate */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-900 my-2">
+                        <div className="space-y-0.5 pr-2">
+                            <Label htmlFor="batch-is-paid" className="font-bold text-sm cursor-pointer">
+                                Richieste Retribuite
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {isPaidForApproval
+                                    ? 'Applica la tariffa contrattuale oraria/malattia su tutte le richieste selezionate.'
+                                    : 'Non retribuite (costo calcolato a 0€ per tutte le richieste).'}
+                            </p>
+                        </div>
+                        <Switch
+                            id="batch-is-paid"
+                            checked={isPaidForApproval}
+                            onCheckedChange={setIsPaidForApproval}
+                        />
+                    </div>
+
+                    <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                        <AlertDialogCancel disabled={isBatchApproving}>Annulla</AlertDialogCancel>
+                        <Button
+                            variant="outline"
+                            disabled={isBatchApproving}
+                            onClick={() => handleBatchApprove(false)}
+                        >
+                            Approva Senza Notificare
+                        </Button>
+                        <AlertDialogAction
+                            disabled={isBatchApproving}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleBatchApprove(true);
+                            }}
+                            className="gap-1.5"
+                        >
+                            {isBatchApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+                            Approva e Invia Notifiche
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

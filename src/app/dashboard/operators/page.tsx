@@ -1,11 +1,11 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp, deleteField } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp, deleteField, setDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell, Smartphone, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -91,6 +91,7 @@ type Operator = {
     reminderAdvanceMinutes?: number;
     entryReminderTime?: string;
     exitReminderTime?: string;
+    showInMonitor?: boolean;
 };
 
 export default function ManageOperatorsPage() {
@@ -132,7 +133,7 @@ export default function ManageOperatorsPage() {
     const [newReminderAdvanceMinutes, setNewReminderAdvanceMinutes] = useState<number | string>(10);
     const [newEntryReminderTime, setNewEntryReminderTime] = useState('');
     const [newExitReminderTime, setNewExitReminderTime] = useState('');
-
+    const [newShowInMonitor, setNewShowInMonitor] = useState<boolean>(true);
 
     const [editingOperatorCode, setEditingOperatorCode] = useState("");
     const [editingFirstName, setEditingFirstName] = useState("");
@@ -158,6 +159,46 @@ export default function ManageOperatorsPage() {
     const [editingReminderAdvanceMinutes, setEditingReminderAdvanceMinutes] = useState<number | string>(10);
     const [editingEntryReminderTime, setEditingEntryReminderTime] = useState('');
     const [editingExitReminderTime, setEditingExitReminderTime] = useState('');
+    const [editingShowInMonitor, setEditingShowInMonitor] = useState<boolean>(true);
+
+    // Impostazioni WorkForce Monitor (App Titolare)
+    const [isMonitorSettingsOpen, setIsMonitorSettingsOpen] = useState(false);
+    const [monitorPin, setMonitorPin] = useState('1234');
+    const [isSavingMonitorPin, setIsSavingMonitorPin] = useState(false);
+
+    useEffect(() => {
+        if (!firestore) return;
+        const unsub = onSnapshot(doc(firestore, 'settings', 'monitor'), (snap) => {
+            if (snap.exists() && snap.data()?.bossPin) {
+                setMonitorPin(String(snap.data().bossPin));
+            }
+        });
+        return () => unsub();
+    }, [firestore]);
+
+    const handleSaveMonitorPin = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!firestore) return;
+        const cleanPin = monitorPin.trim();
+        if (!cleanPin) {
+            toast({ title: 'Errore', description: 'Inserisci un PIN valido.', variant: 'destructive' });
+            return;
+        }
+        setIsSavingMonitorPin(true);
+        try {
+            await setDoc(doc(firestore, 'settings', 'monitor'), {
+                bossPin: cleanPin,
+                updatedAt: Timestamp.now()
+            }, { merge: true });
+            toast({ title: 'Successo', description: 'PIN di accesso titolare aggiornato con successo!' });
+            setIsMonitorSettingsOpen(false);
+        } catch (err) {
+            console.error(err);
+            toast({ title: 'Errore', description: 'Impossibile aggiornare il PIN.', variant: 'destructive' });
+        } finally {
+            setIsSavingMonitorPin(false);
+        }
+    };
 
 
     const operatorsQuery = useMemoFirebase(() => {
@@ -361,6 +402,7 @@ export default function ManageOperatorsPage() {
             reminderAdvanceMinutes: typeof reminderAdvanceMinutes === 'number' ? reminderAdvanceMinutes : parseInt(String(reminderAdvanceMinutes)) || 10,
             entryReminderTime: entryReminderTime || '',
             exitReminderTime: exitReminderTime || '',
+            showInMonitor: action === 'add' ? newShowInMonitor : editingShowInMonitor,
         };
 
         if (parsedEmploymentStartDate) {
@@ -384,6 +426,7 @@ export default function ManageOperatorsPage() {
                 setNewFirstName("");
                 setNewLastName("");
                 setNewRequireGps(true);
+                setNewShowInMonitor(true);
                 setNewWorkSchedule({});
                 setNewOvertimeHalfHourTrigger(25);
                 setNewOvertimeHourTrigger(45);
@@ -875,9 +918,15 @@ export default function ManageOperatorsPage() {
                                             newMonthlyContractualHours, setNewMonthlyContractualHours
                                           )}
                                         </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Switch id="new-gps" checked={newRequireGps} onCheckedChange={setNewRequireGps} />
-                                            <Label htmlFor="new-gps">Richiedi Geolocalizzazione (GPS)</Label>
+                                        <div className="flex flex-col sm:flex-row gap-4">
+                                            <div className="flex items-center space-x-2">
+                                                <Switch id="new-gps" checked={newRequireGps} onCheckedChange={setNewRequireGps} />
+                                                <Label htmlFor="new-gps">Richiedi Geolocalizzazione (GPS)</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <Switch id="new-showInMonitor" checked={newShowInMonitor} onCheckedChange={setNewShowInMonitor} />
+                                                <Label htmlFor="new-showInMonitor">Mostra in WorkForce Monitor</Label>
+                                            </div>
                                         </div>
                                         <div>
                                             <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo (Opzionale per Monte Ore)</Label>
@@ -906,6 +955,53 @@ export default function ManageOperatorsPage() {
                                 </form>
                             </DialogContent>
                         </Dialog>
+                        <Dialog open={isMonitorSettingsOpen} onOpenChange={setIsMonitorSettingsOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50">
+                                    <Smartphone className="mr-2 h-4 w-4" /> PIN WorkForce Monitor
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                                <form onSubmit={handleSaveMonitorPin}>
+                                    <DialogHeader>
+                                        <DialogTitle className="flex items-center gap-2">
+                                            <Lock className="h-5 w-5 text-emerald-600" />
+                                            PIN Accesso WorkForce Monitor
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            Imposta o modifica il PIN che il titolare userà per accedere all'app parallela WorkForce Monitor sul telefono.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="py-4 space-y-3">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="monitor-pin">PIN di Accesso Titolare</Label>
+                                            <Input
+                                                id="monitor-pin"
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={monitorPin}
+                                                onChange={(e) => setMonitorPin(e.target.value)}
+                                                placeholder="Es: 1234"
+                                                className="font-mono text-lg font-bold tracking-widest text-center"
+                                                required
+                                            />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Questo PIN serve esclusivamente per l'app WorkForce Monitor. Non viene mostrato nella schermata di login dell'app per sicurezza.
+                                        </p>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button type="button" variant="outline" onClick={() => setIsMonitorSettingsOpen(false)}>
+                                            Annulla
+                                        </Button>
+                                        <Button type="submit" disabled={isSavingMonitorPin} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                                            {isSavingMonitorPin ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                            Salva PIN
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
                      </div>
                 </CardHeader>
                 <CardContent>
@@ -922,6 +1018,7 @@ export default function ManageOperatorsPage() {
                                         <TableHead>Nome</TableHead>
                                         <TableHead>GPS</TableHead>
                                         <TableHead>Programma</TableHead>
+                                        <TableHead className="w-[140px]">Monitor Titolare</TableHead>
                                         <TableHead className="text-right w-[160px]">Azioni</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -942,6 +1039,30 @@ export default function ManageOperatorsPage() {
                                                     {operator.requireGps ?? true ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />}
                                                 </TableCell>
                                                 <TableCell>{formatWorkSchedule(operator)}</TableCell>
+                                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center gap-2">
+                                                        <Switch 
+                                                            checked={operator.showInMonitor !== false}
+                                                            onCheckedChange={async (checked) => {
+                                                                if (!firestore) return;
+                                                                try {
+                                                                    await updateDoc(doc(firestore, 'app-users', operator.id), {
+                                                                        showInMonitor: checked
+                                                                    });
+                                                                    toast({
+                                                                        title: checked ? 'Visibile nel Monitor' : 'Nascosto dal Monitor',
+                                                                        description: `${operator.firstName} ${operator.lastName} ${checked ? 'sarà mostrato' : 'non sarà mostrato'} in WorkForce Monitor.`
+                                                                    });
+                                                                } catch (err) {
+                                                                    toast({ title: 'Errore', description: 'Impossibile aggiornare la visibilità.', variant: 'destructive' });
+                                                                }
+                                                            }}
+                                                        />
+                                                        <span className="text-xs text-muted-foreground hidden sm:inline">
+                                                            {operator.showInMonitor !== false ? 'Visibile' : 'Nascosto'}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                                     <Button variant="ghost" size="icon" onClick={() => { 
                                                         setSelectedOperator(operator); 
@@ -949,6 +1070,7 @@ export default function ManageOperatorsPage() {
                                                         setEditingFirstName(operator.firstName); 
                                                         setEditingLastName(operator.lastName); 
                                                         setEditingRequireGps(operator.requireGps ?? true); 
+                                                        setEditingShowInMonitor(operator.showInMonitor !== false);
                                                         setEditingWorkSchedule(operator.workSchedule || {}); 
                                                         setEditingOvertimeHalfHourTrigger(operator.overtimeHalfHourTrigger ?? 25); 
                                                         setEditingOvertimeHourTrigger(operator.overtimeHourTrigger ?? 45); 
@@ -1041,9 +1163,15 @@ export default function ManageOperatorsPage() {
                                     editingMonthlyContractualHours, setEditingMonthlyContractualHours
                                   )}
                             </div>
-                            <div className="flex items-center space-x-2">
-                                <Switch id="edit-gps" checked={editingRequireGps} onCheckedChange={setEditingRequireGps} />
-                                <Label htmlFor="edit-gps">Richiedi Geolocalizzazione (GPS)</Label>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <div className="flex items-center space-x-2">
+                                    <Switch id="edit-gps" checked={editingRequireGps} onCheckedChange={setEditingRequireGps} />
+                                    <Label htmlFor="edit-gps">Richiedi Geolocalizzazione (GPS)</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Switch id="edit-showInMonitor" checked={editingShowInMonitor} onCheckedChange={setEditingShowInMonitor} />
+                                    <Label htmlFor="edit-showInMonitor">Mostra in WorkForce Monitor</Label>
+                                </div>
                             </div>
                             <div>
                                 <Label className="mb-2 block font-semibold text-lg">Programma Lavorativo (Opzionale per Monte Ore)</Label>
