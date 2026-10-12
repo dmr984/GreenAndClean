@@ -153,7 +153,7 @@ export default function BossMonitorApp() {
 
     try {
       const db = getDb();
-      let dynamicBossPin = '1234';
+      let dynamicBossPin: string | null = null;
       try {
         const monitorSnap = await getDoc(doc(db, 'settings', 'monitor'));
         if (monitorSnap.exists() && monitorSnap.data()?.bossPin) {
@@ -163,30 +163,29 @@ export default function BossMonitorApp() {
         console.warn('Errore lettura settings monitor:', e);
       }
 
-      // 1. Controllo PIN titolare (quello impostato da GreenAndClean o fallback)
-      if (
-        clean === dynamicBossPin ||
-        clean === '1234' ||
-        clean === 'admin' ||
-        clean === 'titolare' ||
-        clean === 'green'
-      ) {
+      // Se il PIN è configurato in GreenAndClean, accetta SOLO quel PIN esatto.
+      // Se non è mai stato configurato un PIN, accetta '1234' come default iniziale.
+      const isPinValid = dynamicBossPin ? (clean === dynamicBossPin) : (clean === '1234');
+
+      if (isPinValid) {
         setIsAuthenticated(true);
         localStorage.setItem('titolare_monitor_auth', 'true');
         setAuthLoading(false);
         return;
       }
 
-      // 2. Controllo database app-users
-      const q = query(collection(db, 'app-users'), where('username', '==', accessCode.trim()));
+      // Controllo app-users solo per utenti con ruolo admin
+      const q = query(collection(db, 'app-users'), where('username', '==', accessCode.trim()), where('role', '==', 'admin'));
       const snap = await getDocs(q);
 
       if (!snap.empty) {
         setIsAuthenticated(true);
         localStorage.setItem('titolare_monitor_auth', 'true');
-      } else {
-        setAuthError('Codice non riconosciuto. Verifica il codice e riprova.');
+        setAuthLoading(false);
+        return;
       }
+
+      setAuthError('Codice non riconosciuto. Verifica il codice e riprova.');
     } catch (err) {
       console.error(err);
       setAuthError('Errore di connessione. Riprova tra poco.');
