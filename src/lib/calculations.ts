@@ -922,18 +922,38 @@ export const processMonthlyData = (
     }
     
     if (operator.scheduleType === 'monthly' && operator.monthlyContractualHours) {
-        const totalWorked = totalOrdinaryHours + totalOvertimeHours;
+        let explicitApprovedOrd = 0;
+        let explicitApprovedOvt = 0;
+        let otherWorked = 0;
+
+        dailyDetails.forEach(d => {
+            if (!isWithinInterval(d.date, monthInterval)) return;
+            const opId = operator.id;
+            const day = format(d.date, 'd');
+            const manualStatus = data.overrides?.[`${opId}-O-${day}`];
+            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
+            if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
+                const clockIn = d.shift.events.find(e => e.type === 'entrata');
+                const isExplicitlyApproved = clockIn?.status === 'confermata' && typeof clockIn.approvedOrdinaryHours === 'number';
+                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata')) {
+                    explicitApprovedOrd += d.shift.ordinaryHours || 0;
+                    explicitApprovedOvt += d.shift.overtimeHours || 0;
+                } else {
+                    otherWorked += (d.shift.ordinaryHours || 0) + (d.shift.overtimeHours || 0);
+                }
+            }
+        });
+
         const target = operator.monthlyContractualHours;
-        if (totalWorked > target) {
-             totalOrdinaryHours = target;
-             totalOvertimeHours = totalWorked - target;
-        } else {
-             totalOrdinaryHours = totalWorked;
-             totalOvertimeHours = 0;
-        }
+        const remainingTarget = Math.max(0, target - explicitApprovedOrd);
+        const otherOrd = Math.min(otherWorked, remainingTarget);
+        const otherOvt = Math.max(0, otherWorked - remainingTarget);
+
+        totalOrdinaryHours = explicitApprovedOrd + otherOrd;
+        totalOvertimeHours = explicitApprovedOvt + otherOvt;
     } else if (operator.scheduleType === 'weekly' && operator.weeklyContractualHours) {
         // Group worked hours by week (Monday - Sunday) within the month
-        const weeklyMap: { [weekKey: string]: number } = {};
+        const weeklyMap: { [weekKey: string]: { explicitOrd: number; explicitOvt: number; otherWorked: number } } = {};
         dailyDetails.forEach(d => {
             if (!isWithinInterval(d.date, monthInterval)) return;
             const opId = operator.id;
@@ -942,7 +962,17 @@ export const processMonthlyData = (
             const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
             if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
                 const weekKey = format(startOfWeek(d.date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-                weeklyMap[weekKey] = (weeklyMap[weekKey] || 0) + (d.shift.ordinaryHours || 0) + (d.shift.overtimeHours || 0);
+                if (!weeklyMap[weekKey]) {
+                    weeklyMap[weekKey] = { explicitOrd: 0, explicitOvt: 0, otherWorked: 0 };
+                }
+                const clockIn = d.shift.events.find(e => e.type === 'entrata');
+                const isExplicitlyApproved = clockIn?.status === 'confermata' && typeof clockIn.approvedOrdinaryHours === 'number';
+                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata')) {
+                    weeklyMap[weekKey].explicitOrd += d.shift.ordinaryHours || 0;
+                    weeklyMap[weekKey].explicitOvt += d.shift.overtimeHours || 0;
+                } else {
+                    weeklyMap[weekKey].otherWorked += (d.shift.ordinaryHours || 0) + (d.shift.overtimeHours || 0);
+                }
             }
         });
 
@@ -950,13 +980,13 @@ export const processMonthlyData = (
         let newTotalOvt = 0;
         const target = operator.weeklyContractualHours;
 
-        Object.values(weeklyMap).forEach(weekTotal => {
-            if (weekTotal > target) {
-                newTotalOrd += target;
-                newTotalOvt += (weekTotal - target);
-            } else {
-                newTotalOrd += weekTotal;
-            }
+        Object.values(weeklyMap).forEach(w => {
+            const remainingTarget = Math.max(0, target - w.explicitOrd);
+            const otherOrd = Math.min(w.otherWorked, remainingTarget);
+            const otherOvt = Math.max(0, w.otherWorked - remainingTarget);
+
+            newTotalOrd += w.explicitOrd + otherOrd;
+            newTotalOvt += w.explicitOvt + otherOvt;
         });
 
         totalOrdinaryHours = newTotalOrd;
