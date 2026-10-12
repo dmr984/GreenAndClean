@@ -1004,7 +1004,7 @@ export default function ManageOperatorsPage() {
                                         <div className="flex items-center gap-2">
                                             <Input
                                                 readOnly
-                                                value={typeof window !== 'undefined' ? `${window.location.origin}/monitor` : 'https://studio--studio-9716245358-f94b8.us-central1.hosted.app/monitor'}
+                                                value="https://workforce-hub--studio-9716245358-f94b8.us-east4.hosted.app"
                                                 className="font-mono text-xs h-9 bg-background select-all"
                                             />
                                             <Button
@@ -1012,7 +1012,7 @@ export default function ManageOperatorsPage() {
                                                 size="sm"
                                                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shrink-0 h-9 gap-1 text-xs"
                                                 onClick={() => {
-                                                    const url = typeof window !== 'undefined' ? `${window.location.origin}/monitor` : 'https://studio--studio-9716245358-f94b8.us-central1.hosted.app/monitor';
+                                                    const url = 'https://workforce-hub--studio-9716245358-f94b8.us-east4.hosted.app';
                                                     navigator.clipboard.writeText(url);
                                                     toast({ title: 'Link Copiato!', description: 'Puoi inviarlo su WhatsApp o aprirlo sul browser del telefono.' });
                                                 }}
@@ -1025,7 +1025,7 @@ export default function ManageOperatorsPage() {
                                                 size="sm"
                                                 className="shrink-0 h-9"
                                                 onClick={() => {
-                                                    const url = typeof window !== 'undefined' ? `${window.location.origin}/monitor` : 'https://studio--studio-9716245358-f94b8.us-central1.hosted.app/monitor';
+                                                    const url = 'https://workforce-hub--studio-9716245358-f94b8.us-east4.hosted.app';
                                                     window.open(url, '_blank');
                                                 }}
                                                 title="Apri nel browser"
