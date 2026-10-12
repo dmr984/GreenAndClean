@@ -31,6 +31,7 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  XCircle,
   ChevronLeft,
   ChevronRight,
   Search,
@@ -78,7 +79,7 @@ interface DayShiftRow {
   entryTime: string | null;
   exitTime: string | null;
   pausesText: string | null;
-  status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato';
+  status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente';
   ordinaryHours: number;
   overtimeHours: number;
   totalHours: number;
@@ -317,7 +318,11 @@ export default function BossMonitorApp() {
       }
 
       // Determine overall status
-      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' = 'non_timbrato';
+      // Determine overall status
+      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente' = 'non_timbrato';
+      const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
+      const isWorkDay = (daySchedule?.totalHours || 0) > 0;
+
       if (entry && exit) {
         if (entry.status === 'confermata' || exit.status === 'confermata') {
           status = 'confermato';
@@ -326,6 +331,9 @@ export default function BossMonitorApp() {
         }
       } else if (entry && !exit) {
         status = 'in_servizio';
+      } else if (!entry && isPastDay && isWorkDay) {
+        // Se a mezzanotte il turno non è stato effettuato, il giorno successivo diventa Assenza automatica
+        status = 'assente';
       }
 
       return {
@@ -355,6 +363,7 @@ export default function BossMonitorApp() {
 
       if (!matchesSearch) return false;
       if (statusFilter === 'all') return true;
+      if (statusFilter === 'non_timbrato') return row.status === 'non_timbrato' || row.status === 'assente';
       return row.status === statusFilter;
     });
   }, [dayRows, searchQuery, statusFilter]);
@@ -932,6 +941,11 @@ export default function BossMonitorApp() {
                       {row.status === 'in_servizio' && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1 animate-pulse">
                           <span className="h-1.5 w-1.5 rounded-full bg-blue-600" /> In turno
+                        </span>
+                      )}
+                      {row.status === 'assente' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
+                          <XCircle className="h-3 w-3 text-red-600" /> Assente
                         </span>
                       )}
                       {row.status === 'non_timbrato' && (
