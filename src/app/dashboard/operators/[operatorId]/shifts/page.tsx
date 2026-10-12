@@ -2028,8 +2028,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     const formatDate = (date: Timestamp | undefined | Date) => {
         if (!date) return 'N/D';
         const d = date instanceof Date ? date : (typeof (date as any).toDate === 'function' ? (date as any).toDate() : new Date((date as any).seconds * 1000));
-        const str = format(d, 'EEE d MMMM yyyy', { locale: it });
-        return str.charAt(0).toUpperCase() + str.slice(1);
+        const formatted = format(d, 'EEEE d MMMM yyyy', { locale: it });
+        return formatted
+            .split(' ')
+            .map((w, idx) => (idx === 0 || idx === 2) ? (w.charAt(0).toUpperCase() + w.slice(1)) : w)
+            .join(' ');
     };
     
     const totalPages = Math.ceil(historicalShifts.length / ITEMS_PER_PAGE);
@@ -3243,7 +3246,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                     return (
                                                         <TableRow key={`req-${reqItem.id}-${index}`}>
                                                             <TableCell className="whitespace-nowrap font-medium">
-                                                                {isMultiDay ? `${format(startDate, 'dd/MM/yyyy')} - ${format(endDate, 'dd/MM/yyyy')}` : format(startDate, 'PPP', { locale: it })}
+                                                                {isMultiDay ? `${format(startDate, 'dd/MM/yyyy')} - ${format(endDate, 'dd/MM/yyyy')}` : formatDate(startDate)}
                                                             </TableCell>
                                                             <TableCell className="text-xs max-w-[450px]">
                                                                 <div className="flex flex-wrap items-center gap-2">
