@@ -1,0 +1,21 @@
+{
+  "name": "WorkForce Hub - Dipendenti",
+  "short_name": "Dipendenti",
+  "description": "App per timbratura e visualizzazione turni operatore",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "https://i.postimg.cc/GhwM2hg1/1764199658760.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://i.postimg.cc/GhwM2hg1/1764199658760.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
