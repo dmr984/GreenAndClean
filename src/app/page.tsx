@@ -322,7 +322,7 @@ export default function BossMonitorApp() {
         overtimeHours = entry.approvedOvertimeHours || 0;
         totalHours = ordinaryHours + overtimeHours;
       } else if (entry && exit) {
-        const calc = calculateHours(events as any, daySchedule);
+        const calc = calculateHours({ date: selectedDate, events: events as any }, daySchedule, false, op as any);
         ordinaryHours = calc.ordinary;
         overtimeHours = calc.overtime;
         totalHours = ordinaryHours + overtimeHours;

@@ -409,19 +409,20 @@ export const calculateShiftDetails = (
 };
 
 export const calculateHours = (
-    shift: { date: Date, events: Timbratura[] }, 
+    shift: { date?: Date, events?: Timbratura[] } | Timbratura[], 
     schedule: DailySchedule | undefined, 
     ignoreContractualStart: boolean = false, 
     operator?: Operator
 ): { ordinary: number, overtime: number, leave: number, worked: number, break: number, calculationStart: Date | null, calculationEnd: Date | null } => {
-    const clockInEvent = shift.events.find(e => e.type === 'entrata');
+    const rawEvents: Timbratura[] = Array.isArray(shift) ? shift : (shift?.events || []);
+    const clockInEvent = rawEvents.find(e => e.type === 'entrata');
     
     // Check if the shift was manually approved with specific hours
     if (clockInEvent?.status === 'confermata' && typeof clockInEvent.approvedOrdinaryHours === 'number') {
         const approvedOrdinary = clockInEvent.approvedOrdinaryHours || 0;
         const approvedOvertime = clockInEvent.approvedOvertimeHours || 0;
         // Still calculate the real worked minutes for display
-        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, operator);
+        const { workedMinutes, breakMinutes, calculationStart, calculationEnd } = calculateShiftDetails(rawEvents, schedule, ignoreContractualStart, operator);
         
         return {
             ordinary: approvedOrdinary,
@@ -434,7 +435,7 @@ export const calculateHours = (
         };
     }
 
-    const { workedMinutes, breakMinutes, calculationStart, calculationEnd, earlyOvertimeHours } = calculateShiftDetails(shift.events, schedule, ignoreContractualStart, operator);
+    const { workedMinutes, breakMinutes, calculationStart, calculationEnd, earlyOvertimeHours } = calculateShiftDetails(rawEvents, schedule, ignoreContractualStart, operator);
     
     const isMonteOre = operator?.scheduleType === 'monthly' || operator?.scheduleType === 'weekly';
     const contractualHours = (isMonteOre ? Infinity : schedule?.totalHours) || 0;
