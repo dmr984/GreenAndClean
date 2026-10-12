@@ -138,7 +138,8 @@ type StraordinarioShift = {
 type CombinedShiftHistoryItem = 
     | (Shift & { itemType: 'regular' })
     | (StraordinarioShift & { itemType: 'overtime' })
-    | { itemType: 'request'; requestData: Request; date: Date; id: string };
+    | { itemType: 'request'; requestData: Request; date: Date; id: string }
+    | { itemType: 'auto_absence'; date: Date; id: string; contractualHours: number };
 
 
 type UnlockRequest = {
@@ -674,38 +675,6 @@ export default function ShiftApprovalPage() {
     }, [orphanedEvents]);
 
 
-    const historicalShifts: CombinedShiftHistoryItem[] = useMemo(() => {
-        const approvedRegularShifts = allShifts
-            .filter(s => s.status === 'confermato' || s.status === 'rifiutato')
-            .map(s => ({ ...s, itemType: 'regular' as const }));
-    
-        const historicalOvertimeShifts = overtimeShifts
-            .filter(s => s.status === 'approvato' || s.status === 'rifiutato')
-            .map(s => ({ ...s, itemType: 'overtime' as const }));
-
-        const historicalRequestsItems = (allRequests || [])
-            .filter(r => r.status === 'approvato')
-            .map(r => ({
-                id: r.id,
-                itemType: 'request' as const,
-                requestData: r,
-                date: r.startDate?.toDate ? r.startDate.toDate() : new Date()
-            }));
-    
-        const combined: CombinedShiftHistoryItem[] = [...approvedRegularShifts, ...historicalOvertimeShifts, ...historicalRequestsItems];
-    
-        combined.sort((a, b) => {
-            const getMillis = (item: CombinedShiftHistoryItem) => {
-                if (item.itemType === 'regular') return item.events[0]?.timestamp?.toMillis() || 0;
-                if (item.itemType === 'overtime') return (item as StraordinarioShift).date?.toMillis?.() || 0;
-                return item.requestData.startDate?.toMillis?.() || 0;
-            };
-            return getMillis(b) - getMillis(a);
-        });
-    
-        return combined;
-    }, [allShifts, overtimeShifts, allRequests]);
-
     const monthlyDataForProcess = useMemo(() => {
         // We need to format the data as expected by processMonthlyData
         return {
@@ -742,6 +711,49 @@ export default function ShiftApprovalPage() {
         const employmentDate = parseEmploymentStartDate((operator as any).employmentStartDate);
         return processMonthlyData(currentMonth, operator, monthlyDataForProcess as any, employmentDate);
     }, [operator, currentMonth, monthlyDataForProcess, isLoading]);
+
+    const historicalShifts: CombinedShiftHistoryItem[] = useMemo(() => {
+        const approvedRegularShifts = allShifts
+            .filter(s => s.status === 'confermato' || s.status === 'rifiutato')
+            .map(s => ({ ...s, itemType: 'regular' as const }));
+    
+        const historicalOvertimeShifts = overtimeShifts
+            .filter(s => s.status === 'approvato' || s.status === 'rifiutato')
+            .map(s => ({ ...s, itemType: 'overtime' as const }));
+
+        const historicalRequestsItems = (allRequests || [])
+            .filter(r => r.status === 'approvato')
+            .map(r => ({
+                id: r.id,
+                itemType: 'request' as const,
+                requestData: r,
+                date: r.startDate?.toDate ? r.startDate.toDate() : new Date()
+            }));
+
+        // Assenze automatiche post-mezzanotte per giornate lavorative del mese in cui non si è timbrato
+        const autoAbsenceItems = (dailyDetails || [])
+            .filter(d => d.status === 'mancata_timbratura' && !allRequests.some(r => r.status === 'approvato' && (r.type === 'assenza' || r.type === 'ferie' || r.type === 'malattia') && isSameDay(r.startDate.toDate(), d.date)))
+            .map(d => ({
+                id: `auto-absence-${format(d.date, 'yyyy-MM-dd')}`,
+                itemType: 'auto_absence' as const,
+                date: d.date,
+                contractualHours: getScheduleForDate(operator, d.date)?.totalHours || 0
+            }));
+    
+        const combined: CombinedShiftHistoryItem[] = [...approvedRegularShifts, ...historicalOvertimeShifts, ...historicalRequestsItems, ...autoAbsenceItems];
+    
+        combined.sort((a, b) => {
+            const getMillis = (item: CombinedShiftHistoryItem) => {
+                if (item.itemType === 'regular') return item.events[0]?.timestamp?.toMillis() || 0;
+                if (item.itemType === 'overtime') return (item as StraordinarioShift).date?.toMillis?.() || 0;
+                if (item.itemType === 'auto_absence') return item.date.getTime();
+                return item.requestData.startDate?.toMillis?.() || 0;
+            };
+            return getMillis(b) - getMillis(a);
+        });
+    
+        return combined;
+    }, [allShifts, overtimeShifts, allRequests, dailyDetails, operator]);
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
@@ -2903,6 +2915,49 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             <TableCell className="text-right whitespace-nowrap">
                                                                 <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(reqItem.id)}>
                                                                     <Trash2 className="h-4 w-4 text-destructive" />
+                                                                </Button>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                }
+
+                                                if (shift.itemType === 'auto_absence') {
+                                                    return (
+                                                        <TableRow key={`auto-abs-${shift.id}-${index}`} className="bg-red-50/40 dark:bg-red-950/20">
+                                                            <TableCell className="whitespace-nowrap font-medium text-red-950 dark:text-red-200">
+                                                                {format(shift.date, 'PPP', { locale: it })}
+                                                            </TableCell>
+                                                            <TableCell className="text-xs max-w-[450px]">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 font-semibold">
+                                                                        Assenza (Mancata timbratura)
+                                                                    </Badge>
+                                                                    <span className="italic text-muted-foreground text-xs">
+                                                                        Nessuna timbratura registrata
+                                                                    </span>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
+                                                                0h
+                                                            </TableCell>
+                                                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                                                                -
+                                                            </TableCell>
+                                                            <TableCell className="whitespace-nowrap">
+                                                                <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-medium">
+                                                                    Automatica dopo mezzanotte
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-right whitespace-nowrap">
+                                                                <Button 
+                                                                    variant="outline" 
+                                                                    size="sm" 
+                                                                    className="text-xs h-7 gap-1 border-slate-300"
+                                                                    onClick={() => {
+                                                                        setAddRequestContext({ date: shift.date, type: 'assenza' });
+                                                                    }}
+                                                                >
+                                                                    <FileText className="h-3.5 w-3.5" /> Giustifica
                                                                 </Button>
                                                             </TableCell>
                                                         </TableRow>
