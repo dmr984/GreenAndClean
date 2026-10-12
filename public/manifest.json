@@ -1,11 +1,11 @@
 {
-  "name": "WorkForce Hub - Dipendenti",
-  "short_name": "Dipendenti",
-  "description": "App per timbratura e visualizzazione turni operatore",
+  "name": "WorkForce Monitor",
+  "short_name": "WF Monitor",
+  "description": "App mobile per monitoraggio presenze e timbrature titolare",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#16a34a",
+  "theme_color": "#059669",
   "icons": [
     {
       "src": "https://i.postimg.cc/GhwM2hg1/1764199658760.png",

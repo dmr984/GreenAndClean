@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'WorkForce Hub - Dipendenti',
-  description: 'App mobile per timbrature e consultazione turni operatore',
+  title: 'WorkForce Monitor',
+  description: 'App mobile per monitoraggio presenze e timbrature titolare',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'WorkForce Hub',
+    title: 'WorkForce Monitor',
   },
 };
 
