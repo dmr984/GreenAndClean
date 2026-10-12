@@ -308,7 +308,7 @@ export default function ShiftApprovalPage() {
     } | null>(null);
     const [isSavingOrphan, setIsSavingOrphan] = useState(false);
     const [requestToApprove, setRequestToApprove] = useState<Request | null>(null);
-    const [isPaidForApproval, setIsPaidForApproval] = useState<boolean>(true);
+    const [isPaidForApproval, setIsPaidForApproval] = useState<boolean>(false);
     const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set());
     const [requestTypeFilter, setRequestTypeFilter] = useState<string>('all');
     const [isBatchApprovalOpen, setIsBatchApprovalOpen] = useState(false);
@@ -2803,7 +2803,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                         {selectedRequestIds.size > 0 && (
                                             <div className="flex items-center gap-2 animate-in fade-in">
                                                 <Button 
-                                                    onClick={() => setIsBatchApprovalOpen(true)}
+                                                    onClick={() => {
+                                                        setIsPaidForApproval(false);
+                                                        setIsBatchApprovalOpen(true);
+                                                    }}
                                                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 shadow-sm"
                                                     size="sm"
                                                 >
@@ -2976,7 +2979,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                             variant="outline" 
                                                                             size="sm" 
                                                                             onClick={() => {
-                                                                                setIsPaidForApproval(true);
+                                                                                setIsPaidForApproval(false);
                                                                                 setRequestToApprove(req);
                                                                             }} 
                                                                             className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
