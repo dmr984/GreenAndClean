@@ -1,11 +1,11 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp, deleteField, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, where, collectionGroup, Query, getDocs, Timestamp, deleteField, setDoc, writeBatch } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { useFirestore, FirestorePermissionError, errorEmitter, useMemoFirebase } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell, Smartphone, Lock } from 'lucide-react';
+import { Users, Loader2, PlusCircle, Pencil, Trash2, Copy, CheckCircle, XCircle, Bell, Smartphone, Lock, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -165,6 +165,7 @@ export default function ManageOperatorsPage() {
     const [isMonitorSettingsOpen, setIsMonitorSettingsOpen] = useState(false);
     const [monitorPin, setMonitorPin] = useState('1234');
     const [isSavingMonitorPin, setIsSavingMonitorPin] = useState(false);
+    const [monitorSearch, setMonitorSearch] = useState('');
 
     useEffect(() => {
         if (!firestore) return;
@@ -190,13 +191,29 @@ export default function ManageOperatorsPage() {
                 bossPin: cleanPin,
                 updatedAt: Timestamp.now()
             }, { merge: true });
-            toast({ title: 'Successo', description: 'PIN di accesso titolare aggiornato con successo!' });
-            setIsMonitorSettingsOpen(false);
+            toast({ title: 'PIN Aggiornato', description: 'PIN di accesso titolare salvato con successo!' });
         } catch (err) {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile aggiornare il PIN.', variant: 'destructive' });
         } finally {
             setIsSavingMonitorPin(false);
+        }
+    };
+
+    const handleToggleAllMonitor = async (show: boolean) => {
+        if (!firestore || operators.length === 0) return;
+        try {
+            const batch = writeBatch(firestore);
+            operators.forEach(op => {
+                batch.update(doc(firestore, 'app-users', op.id), { showInMonitor: show });
+            });
+            await batch.commit();
+            toast({
+                title: show ? 'Tutti Visibili' : 'Tutti Nascosti',
+                description: show ? 'Tutti gli operatori saranno mostrati in WorkForce Monitor.' : 'Tutti gli operatori sono stati nascosti dal Monitor.'
+            });
+        } catch (err) {
+            toast({ title: 'Errore', description: 'Impossibile aggiornare la visibilità degli operatori.', variant: 'destructive' });
         }
     };
 
@@ -958,23 +975,31 @@ export default function ManageOperatorsPage() {
                         <Dialog open={isMonitorSettingsOpen} onOpenChange={setIsMonitorSettingsOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="outline" className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50">
-                                    <Smartphone className="mr-2 h-4 w-4" /> PIN WorkForce Monitor
+                                    <Smartphone className="mr-2 h-4 w-4" /> Monitor Titolare
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                                <form onSubmit={handleSaveMonitorPin}>
-                                    <DialogHeader>
-                                        <DialogTitle className="flex items-center gap-2">
-                                            <Lock className="h-5 w-5 text-emerald-600" />
-                                            PIN Accesso WorkForce Monitor
-                                        </DialogTitle>
-                                        <DialogDescription>
-                                            Imposta o modifica il PIN che il titolare userà per accedere all'app parallela WorkForce Monitor sul telefono.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="py-4 space-y-3">
-                                        <div className="space-y-1">
-                                            <Label htmlFor="monitor-pin">PIN di Accesso Titolare</Label>
+                            <DialogContent className="sm:max-w-xl max-h-[88vh] flex flex-col p-6">
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                                        <Smartphone className="h-5 w-5 text-emerald-600" />
+                                        Impostazioni WorkForce Monitor (App Titolare)
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        Imposta il PIN di accesso del titolare e scegli quali operatori mostrare nell'app per il telefono.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="space-y-5 py-3 overflow-y-auto flex-1 pr-1">
+                                    {/* 1. SEZIONE PIN */}
+                                    <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <Label htmlFor="monitor-pin" className="font-semibold text-sm flex items-center gap-2">
+                                                <Lock className="h-4 w-4 text-emerald-600" />
+                                                PIN di Accesso Titolare
+                                            </Label>
+                                            <span className="text-[11px] text-muted-foreground font-medium">App WorkForce Monitor</span>
+                                        </div>
+                                        <div className="flex gap-2">
                                             <Input
                                                 id="monitor-pin"
                                                 type="text"
@@ -985,21 +1010,132 @@ export default function ManageOperatorsPage() {
                                                 className="font-mono text-lg font-bold tracking-widest text-center"
                                                 required
                                             />
+                                            <Button 
+                                                type="button" 
+                                                onClick={handleSaveMonitorPin}
+                                                disabled={isSavingMonitorPin} 
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shrink-0"
+                                            >
+                                                {isSavingMonitorPin ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                                Salva PIN
+                                            </Button>
                                         </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Questo PIN serve esclusivamente per l'app WorkForce Monitor. Non viene mostrato nella schermata di login dell'app per sicurezza.
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Questo PIN serve esclusivamente per l'app WorkForce Monitor. Non viene mostrato nella schermata di login per motivi di sicurezza.
                                         </p>
                                     </div>
-                                    <DialogFooter>
-                                        <Button type="button" variant="outline" onClick={() => setIsMonitorSettingsOpen(false)}>
-                                            Annulla
-                                        </Button>
-                                        <Button type="submit" disabled={isSavingMonitorPin} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-                                            {isSavingMonitorPin ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                            Salva PIN
-                                        </Button>
-                                    </DialogFooter>
-                                </form>
+
+                                    <Separator />
+
+                                    {/* 2. SEZIONE OPERATORI VISIBILI */}
+                                    <div className="space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div>
+                                                <Label className="font-semibold text-sm flex items-center gap-2">
+                                                    <Users className="h-4 w-4 text-emerald-600" />
+                                                    Operatori da mostrare nel Monitor
+                                                </Label>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Visibili: <strong className="text-emerald-600">{operators.filter(o => o.showInMonitor !== false).length}</strong> su {operators.length}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <Button 
+                                                    type="button" 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    className="h-8 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                                    onClick={() => handleToggleAllMonitor(true)}
+                                                >
+                                                    Mostra Tutti
+                                                </Button>
+                                                <Button 
+                                                    type="button" 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    className="h-8 text-xs font-semibold text-muted-foreground hover:bg-muted"
+                                                    onClick={() => handleToggleAllMonitor(false)}
+                                                >
+                                                    Nascondi Tutti
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Barra ricerca */}
+                                        {operators.length > 4 && (
+                                            <div className="relative">
+                                                <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Cerca per nome o codice..."
+                                                    value={monitorSearch}
+                                                    onChange={(e) => setMonitorSearch(e.target.value)}
+                                                    className="pl-9 h-9 text-xs"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Elenco Operatori */}
+                                        <div className="border rounded-xl divide-y max-h-60 overflow-y-auto bg-card">
+                                            {operators
+                                                .filter(op => {
+                                                    if (!monitorSearch.trim()) return true;
+                                                    const term = monitorSearch.toLowerCase();
+                                                    const full = `${op.firstName || ''} ${op.lastName || ''}`.toLowerCase();
+                                                    const code = (op.username || '').toLowerCase();
+                                                    return full.includes(term) || code.includes(term);
+                                                })
+                                                .map(op => {
+                                                    const isVisible = op.showInMonitor !== false;
+                                                    return (
+                                                        <div key={op.id} className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors">
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center shrink-0">
+                                                                    {op.firstName ? op.firstName.charAt(0) : 'O'}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-semibold truncate leading-tight">
+                                                                        {op.firstName} {op.lastName}
+                                                                    </p>
+                                                                    <p className="text-xs text-muted-foreground truncate">
+                                                                        Codice: <span className="font-mono">{op.username}</span>
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-2.5 shrink-0">
+                                                                <span className={`text-xs font-semibold ${isVisible ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                                                    {isVisible ? 'Mostrato' : 'Nascosto'}
+                                                                </span>
+                                                                <Switch
+                                                                    checked={isVisible}
+                                                                    onCheckedChange={async (checked) => {
+                                                                        if (!firestore) return;
+                                                                        try {
+                                                                            await updateDoc(doc(firestore, 'app-users', op.id), {
+                                                                                showInMonitor: checked
+                                                                            });
+                                                                            toast({
+                                                                                title: checked ? 'Operatore Mostrato' : 'Operatore Nascosto',
+                                                                                description: `${op.firstName} ${op.lastName} ${checked ? 'sarà mostrato' : 'non sarà mostrato'} in WorkForce Monitor.`
+                                                                            });
+                                                                        } catch (err) {
+                                                                            toast({ title: 'Errore', description: 'Impossibile aggiornare la visibilità.', variant: 'destructive' });
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <DialogFooter className="pt-3 border-t">
+                                    <Button type="button" onClick={() => setIsMonitorSettingsOpen(false)} className="w-full sm:w-auto font-semibold">
+                                        Chiudi
+                                    </Button>
+                                </DialogFooter>
                             </DialogContent>
                         </Dialog>
                      </div>
