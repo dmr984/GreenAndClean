@@ -660,8 +660,14 @@ export const processMonthlyData = (
             calculationEnd: hoursResult.calculationEnd || undefined
         });
 
-        detail.shift.ordinaryHours += hoursResult.ordinary;
-        detail.shift.overtimeHours += hoursResult.overtime;
+        const entrataEvent = events.find(e => e.type === 'entrata');
+        if (entrataEvent && (entrataEvent.approvedOrdinaryHours !== undefined || entrataEvent.approvedOvertimeHours !== undefined)) {
+            detail.shift.ordinaryHours += (entrataEvent.approvedOrdinaryHours || 0);
+            detail.shift.overtimeHours += (entrataEvent.approvedOvertimeHours || 0);
+        } else {
+            detail.shift.ordinaryHours += hoursResult.ordinary;
+            detail.shift.overtimeHours += hoursResult.overtime;
+        }
         
         if (events.find(e => e.type === 'entrata')?.makeupOfDay) {
             detail.makeupPerformedFor = format(physicalDate, 'dd MMM', { locale: it });
