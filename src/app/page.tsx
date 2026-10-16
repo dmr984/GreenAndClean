@@ -289,8 +289,51 @@ export default function BossMonitorApp() {
       const entry = events.find((e) => e.type === 'entrata');
       const exit = events.find((e) => e.type === 'uscita');
 
-      const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : null;
-      const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : null;
+      // Schedule check
+      const daySchedule = getScheduleForDate(op as any, selectedDate);
+      let schedText: string | null = null;
+      if (daySchedule?.startTime && daySchedule?.endTime) {
+        schedText = `${daySchedule.startTime} - ${daySchedule.endTime}`;
+      } else if (daySchedule?.totalHours) {
+        schedText = `${daySchedule.totalHours}h previste`;
+      }
+
+      // Check approval status: A shift is confirmed only if entry/exit are 'confermata' and not 'sospesa'
+      const isShiftConfirmed = Boolean(
+        entry && exit &&
+        (entry.status === 'confermata' || exit.status === 'confermata') &&
+        entry.status !== 'sospesa' && exit.status !== 'sospesa'
+      );
+
+      // Determine overall status
+      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente' = 'non_timbrato';
+      const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
+      const isWorkDay = (daySchedule?.totalHours || 0) > 0;
+
+      if (entry && exit) {
+        if (isShiftConfirmed) {
+          status = 'confermato';
+        } else {
+          status = 'in_attesa';
+        }
+      } else if (entry && !exit) {
+        status = 'in_servizio';
+      } else if (!entry && isPastDay && isWorkDay) {
+        // Se a mezzanotte il turno non è stato effettuato, il giorno successivo diventa Assenza automatica
+        status = 'assente';
+      }
+
+      // ONLY display entryTime and exitTime if the shift is confirmed/approved!
+      // Before approval, times remain hidden until the boss verifies and approves.
+      let entryTime: string | null = null;
+      let exitTime: string | null = null;
+
+      if (status === 'confermato') {
+        entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : null;
+        exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : null;
+      } else if (status === 'in_servizio') {
+        entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : null;
+      }
 
       // Pauses calculation
       const sortedEvents = [...events].sort((a, b) => {
@@ -319,31 +362,21 @@ export default function BossMonitorApp() {
         pauseIntervals.push(`${format(currentPauseStart, 'HH:mm')}-...`);
       }
 
-      // Schedule check
-      const daySchedule = getScheduleForDate(op as any, selectedDate);
-      let schedText: string | null = null;
-      if (daySchedule?.startTime && daySchedule?.endTime) {
-        schedText = `${daySchedule.startTime} - ${daySchedule.endTime}`;
-      } else if (daySchedule?.totalHours) {
-        schedText = `${daySchedule.totalHours}h previste`;
-      }
-
-      let refStartTime: string | null = daySchedule?.startTime || null;
-      let refEndTime: string | null = daySchedule?.endTime || null;
-
       let pauseTime = '--';
       let pauseDetail: string | null = null;
 
-      if (pauseMinutes > 0 || pauseIntervals.length > 0) {
-        pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : 'In pausa';
-        pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
-      } else if (daySchedule?.breakMinutes && daySchedule.breakMinutes > 0) {
-        pauseTime = '--';
-        pauseDetail = `prev. ${daySchedule.breakMinutes}m`;
+      if (status === 'confermato') {
+        if (pauseMinutes > 0 || pauseIntervals.length > 0) {
+          pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : 'In pausa';
+          pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
+        } else if (daySchedule?.breakMinutes && daySchedule.breakMinutes > 0) {
+          pauseTime = '--';
+          pauseDetail = `prev. ${daySchedule.breakMinutes}m`;
+        }
       }
 
       let pausesText: string | null = null;
-      if (pauseIntervals.length > 0) {
+      if (status === 'confermato' && pauseIntervals.length > 0) {
         pausesText = `${pauseIntervals.length} ${pauseIntervals.length === 1 ? 'pausa' : 'pause'}`;
       }
 
@@ -352,7 +385,7 @@ export default function BossMonitorApp() {
       let isLateEntry = false;
       let lateEntryText: string | undefined;
 
-      if (daySchedule?.endTime && exit?.timestamp?.toDate) {
+      if (status === 'confermato' && daySchedule?.endTime && exit?.timestamp?.toDate) {
         const [h, m] = daySchedule.endTime.split(':').map(Number);
         const schedExit = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (isBefore(exit.timestamp.toDate(), schedExit)) {
@@ -364,7 +397,7 @@ export default function BossMonitorApp() {
         }
       }
 
-      if (daySchedule?.startTime && entry?.timestamp?.toDate) {
+      if ((status === 'confermato' || status === 'in_servizio') && daySchedule?.startTime && entry?.timestamp?.toDate) {
         const [h, m] = daySchedule.startTime.split(':').map(Number);
         const schedEntry = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (isBefore(schedEntry, entry.timestamp.toDate())) {
@@ -376,44 +409,24 @@ export default function BossMonitorApp() {
         }
       }
 
-      // Calculate or read approved hours
+      // Calculate or read approved hours ONLY IF CONFIRMED
       let ordinaryHours = 0;
       let overtimeHours = 0;
       let totalHours = 0;
+      let refStartTime: string | null = null;
+      let refEndTime: string | null = null;
 
-      if (entry?.approvedOrdinaryHours !== undefined || entry?.approvedOvertimeHours !== undefined) {
-        ordinaryHours = entry.approvedOrdinaryHours || 0;
-        overtimeHours = entry.approvedOvertimeHours || 0;
-        totalHours = ordinaryHours + overtimeHours;
-      } else if (entry && exit) {
-        const calc = calculateHours({ date: selectedDate, events: events as any }, daySchedule, false, op as any);
-        ordinaryHours = calc.ordinary;
-        overtimeHours = calc.overtime;
-        totalHours = ordinaryHours + overtimeHours;
-        if (calc.calculationStart && !refStartTime) {
-          refStartTime = format(calc.calculationStart, 'HH:mm');
+      if (status === 'confermato') {
+        if (entry?.approvedOrdinaryHours !== undefined || entry?.approvedOvertimeHours !== undefined) {
+          ordinaryHours = entry.approvedOrdinaryHours || 0;
+          overtimeHours = entry.approvedOvertimeHours || 0;
+          totalHours = ordinaryHours + overtimeHours;
+        } else if (entry && exit) {
+          const calc = calculateHours({ date: selectedDate, events: events as any }, daySchedule, false, op as any);
+          ordinaryHours = calc.ordinary;
+          overtimeHours = calc.overtime;
+          totalHours = ordinaryHours + overtimeHours;
         }
-        if (calc.calculationEnd && !refEndTime) {
-          refEndTime = format(calc.calculationEnd, 'HH:mm');
-        }
-      }
-
-      // Determine overall status
-      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente' = 'non_timbrato';
-      const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
-      const isWorkDay = (daySchedule?.totalHours || 0) > 0;
-
-      if (entry && exit) {
-        if (entry.status === 'confermata' || exit.status === 'confermata') {
-          status = 'confermato';
-        } else {
-          status = 'in_attesa';
-        }
-      } else if (entry && !exit) {
-        status = 'in_servizio';
-      } else if (!entry && isPastDay && isWorkDay) {
-        // Se a mezzanotte il turno non è stato effettuato, il giorno successivo diventa Assenza automatica
-        status = 'assente';
       }
 
       return {
@@ -764,15 +777,12 @@ export default function BossMonitorApp() {
                 {detailAgendaDays.map((item, idx) => {
                   const entry = item.events.find((e) => e.type === 'entrata');
                   const exit = item.events.find((e) => e.type === 'uscita');
-                  const isApproved = item.events.some((e) => e.status === 'confermata');
-                  const isPending = item.events.some((e) => e.status === 'sospesa');
+                  const isApproved = item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa');
+                  const isPending = item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0);
 
-                  const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
-                  const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
-
-                  const daySchedule = getScheduleForDate(selectedOperator as any, item.date);
-                  const refStart = daySchedule?.startTime;
-                  const refEnd = daySchedule?.endTime;
+                  // Orari: visualizzati SOLO se il turno è stato approvato dal titolare
+                  const entryTime = isApproved && entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
+                  const exitTime = isApproved && exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
 
                   // Pauses
                   const sortedItemEvs = [...item.events].sort((a, b) => {
@@ -793,7 +803,7 @@ export default function BossMonitorApp() {
                       itemPauseStart = null;
                     }
                   }
-                  const itemPauseText = itemPauseMins > 0 ? `${itemPauseMins}m` : (daySchedule?.breakMinutes ? `${daySchedule.breakMinutes}m prev.` : '--');
+                  const itemPauseText = isApproved ? (itemPauseMins > 0 ? `${itemPauseMins}m` : '--') : '--';
 
                   const ordH = entry?.approvedOrdinaryHours;
                   const overH = entry?.approvedOvertimeHours;
@@ -805,7 +815,7 @@ export default function BossMonitorApp() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-sm text-slate-900 dark:text-slate-100 capitalize">
-                          {format(item.date, 'EEEE d MMMM', { locale: it })}
+                          {format(item.date, 'EEEE d MMMM yyyy', { locale: it })}
                         </span>
 
                         {isApproved ? (
@@ -819,32 +829,41 @@ export default function BossMonitorApp() {
                         ) : null}
                       </div>
 
-                      {/* Riga compatta a 4 celle: Entrata (rif) | Pausa | Uscita (rif) | Ore */}
+                      {isPending && (
+                        <div className="text-[11px] font-medium text-amber-800 bg-amber-50/80 dark:bg-amber-950/30 px-2.5 py-1.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40 flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span>Turno in attesa: gli orari effettivi compariranno solo dopo l&apos;approvazione del titolare.</span>
+                        </div>
+                      )}
+
+                      {/* Riga compatta a 4 celle: Entrata | Pausa | Uscita | Ore */}
                       <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
                         <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{refStart ? `(${refStart})` : '-'}</span>
+                          <span className="text-[9px] text-slate-400 block truncate">{isApproved ? 'effettivo' : '-'}</span>
                         </div>
 
                         <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{itemPauseText}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
+                          <span className="text-[9px] text-slate-400 block truncate">{isApproved && itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
                         </div>
 
                         <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `(${refEnd})` : '-'}</span>
+                          <span className="text-[9px] text-slate-400 block truncate">{isApproved ? 'effettivo' : '-'}</span>
                         </div>
 
                         <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
                           <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
-                            {(ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : '--'}
+                            {isApproved ? ((ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : '--') : '--'}
                           </span>
-                          <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">effettive</span>
+                          <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
+                            {isApproved ? 'effettive' : 'in attesa'}
+                          </span>
                         </div>
                       </div>
 
@@ -906,11 +925,11 @@ export default function BossMonitorApp() {
           </button>
 
           <div className="text-center">
-            <p className="text-xs uppercase font-extrabold text-slate-400">
-              {isSameDay(selectedDate, new Date()) ? 'Oggi' : format(selectedDate, 'EEEE', { locale: it })}
+            <p className="text-xs uppercase font-extrabold text-emerald-600 dark:text-emerald-400">
+              {format(selectedDate, 'EEEE', { locale: it })} {isSameDay(selectedDate, new Date()) ? '• Oggi' : ''}
             </p>
-            <p className="text-base font-black text-slate-900 dark:text-slate-100">
-              {format(selectedDate, 'd MMMM yyyy', { locale: it })}
+            <p className="text-base font-black text-slate-900 dark:text-slate-100 capitalize">
+              {format(selectedDate, 'EEEE d MMMM yyyy', { locale: it })}
             </p>
           </div>
 
@@ -1083,7 +1102,7 @@ export default function BossMonitorApp() {
                   </div>
 
                   {/* RIGA DETTAGLIO TIMBRATURA: ENTRATA | PAUSA | USCITA | ORD / STRA | TOTALE */}
-                  {(row.entryTime || row.exitTime) ? (
+                  {row.status === 'confermato' ? (
                     <div className="grid grid-cols-5 gap-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
                       {/* Entrata */}
                       <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
@@ -1091,8 +1110,8 @@ export default function BossMonitorApp() {
                         <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
                           {row.entryTime || '--:--'}
                         </span>
-                        <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
-                          {row.refStartTime ? `(${row.refStartTime})` : '-'}
+                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold block truncate leading-tight mt-0.5">
+                          effettivo
                         </span>
                       </div>
 
@@ -1113,8 +1132,8 @@ export default function BossMonitorApp() {
                         <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
                           {row.exitTime || '--:--'}
                         </span>
-                        <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
-                          {row.refEndTime ? `(${row.refEndTime})` : '-'}
+                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold block truncate leading-tight mt-0.5">
+                          effettivo
                         </span>
                       </div>
 
@@ -1128,7 +1147,7 @@ export default function BossMonitorApp() {
                           </span>
                         </span>
                         <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
-                          ore
+                          approvate
                         </span>
                       </div>
 
@@ -1142,6 +1161,26 @@ export default function BossMonitorApp() {
                           lavorate
                         </span>
                       </div>
+                    </div>
+                  ) : row.status === 'in_attesa' ? (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2.5 py-1.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl text-amber-800 dark:text-amber-300 text-xs font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-amber-600 animate-pulse shrink-0" />
+                        Turno timbrato — In attesa di verifica titolare
+                      </span>
+                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded-md font-bold text-amber-900 dark:text-amber-200 shrink-0">
+                        Orari visibili dopo approvazione
+                      </span>
+                    </div>
+                  ) : row.status === 'in_servizio' ? (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2.5 py-1.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl text-blue-800 dark:text-blue-300 text-xs font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-blue-600 animate-ping shrink-0" />
+                        Operatore attualmente in servizio
+                      </span>
+                      <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200">
+                        Entrata: {row.entryTime || '--:--'}
+                      </span>
                     </div>
                   ) : null}
 
