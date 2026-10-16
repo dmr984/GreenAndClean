@@ -919,6 +919,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             viewedByOperator: false,
             shiftId: stableShiftId 
         };
+        if (event.isRectified) {
+            updateData.isRectified = true;
+        }
+        if (event.originalTime) {
+            updateData.originalTime = event.originalTime;
+        }
         if (event.type === 'entrata') {
             updateData.ignoreContractualStart = ignoreContractualStart;
             if (makeupOfDay) {
@@ -1319,7 +1325,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 status: 'sospesa',
                 makeupOfDay: makeupDayValue,
                 isAuto: false,
-                suggestedTime: null
+                suggestedTime: null,
+                isRectified: true
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -1327,6 +1334,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             }
 
             if (newEventDetails && existingEvent) { 
+                const oldTimeStr = existingEvent.timestamp?.toDate ? format(existingEvent.timestamp.toDate(), 'HH:mm') : null;
+                const newTimeStr = format(newEventDetails.timestamp.toDate(), 'HH:mm');
+                if (oldTimeStr && oldTimeStr !== newTimeStr && !existingEvent.originalTime) {
+                    updatePayload.originalTime = oldTimeStr;
+                }
                 updatePayload.timestamp = newEventDetails.timestamp;
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
                 batch.update(docRef, updatePayload);
