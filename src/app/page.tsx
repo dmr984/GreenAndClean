@@ -52,6 +52,7 @@ import {
   LogOut,
   RefreshCw,
   Sparkles,
+  Banknote,
 } from 'lucide-react';
 import { processMonthlyData, getScheduleForDate, calculateHours } from '@/lib/calculations';
 
@@ -64,6 +65,9 @@ interface Operator {
   workSchedule?: any;
   employmentStartDate?: any;
   showInMonitor?: boolean;
+  hourlyRate?: number;
+  fixedSalary?: number;
+  salaryType?: 'hourly' | 'fixed';
 }
 
 interface TimbraturaEvent {
@@ -75,6 +79,11 @@ interface TimbraturaEvent {
   approvedOrdinaryHours?: number;
   approvedOvertimeHours?: number;
   shiftId?: string;
+  isAuto?: boolean;
+  suggestedTime?: string | null;
+  originalTime?: string | null;
+  rectificationStatus?: 'in_approvazione' | 'approvata' | 'rifiutata' | string | null;
+  isRectified?: boolean;
 }
 
 interface DayShiftRow {
@@ -96,6 +105,12 @@ interface DayShiftRow {
   isLateEntry: boolean;
   lateEntryText?: string;
   requests: any[];
+  isEntryAuto?: boolean;
+  isExitAuto?: boolean;
+  isEntryRectified?: boolean;
+  isExitRectified?: boolean;
+  hasDimenticanza?: boolean;
+  hasRettifica?: boolean;
 }
 
 export default function BossMonitorApp() {
@@ -323,17 +338,40 @@ export default function BossMonitorApp() {
         status = 'assente';
       }
 
-      // ONLY display entryTime and exitTime if the shift is confirmed/approved!
-      // Before approval, times remain hidden until the boss verifies and approves.
+      // ONLY display entryTime and exitTime if events exist
       let entryTime: string | null = null;
       let exitTime: string | null = null;
 
-      if (status === 'confermato') {
-        entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : null;
-        exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : null;
-      } else if (status === 'in_servizio') {
-        entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : null;
+      if (entry?.timestamp?.toDate) {
+        entryTime = format(entry.timestamp.toDate(), 'HH:mm');
       }
+      if (exit?.timestamp?.toDate) {
+        exitTime = format(exit.timestamp.toDate(), 'HH:mm');
+      }
+
+      // Orari di riferimento contrattuali (previsti)
+      const refStartTime: string | null = daySchedule?.startTime || null;
+      const refEndTime: string | null = daySchedule?.endTime || null;
+
+      // Rilevamento dimenticanza e rettifica
+      const isEntryAuto = Boolean(entry?.isAuto);
+      const isExitAuto = Boolean(exit?.isAuto);
+      const isEntryRectified = Boolean(
+        entry?.isRectified ||
+        entry?.originalTime ||
+        entry?.rectificationStatus === 'approvata' ||
+        entry?.rectificationStatus === 'in_approvazione' ||
+        (entry?.suggestedTime && entry?.status === 'sospesa')
+      );
+      const isExitRectified = Boolean(
+        exit?.isRectified ||
+        exit?.originalTime ||
+        exit?.rectificationStatus === 'approvata' ||
+        exit?.rectificationStatus === 'in_approvazione' ||
+        (exit?.suggestedTime && exit?.status === 'sospesa')
+      );
+      const hasDimenticanza = isEntryAuto || isExitAuto;
+      const hasRettifica = isEntryRectified || isExitRectified;
 
       // Pauses calculation
       const sortedEvents = [...events].sort((a, b) => {
@@ -365,18 +403,16 @@ export default function BossMonitorApp() {
       let pauseTime = '--';
       let pauseDetail: string | null = null;
 
-      if (status === 'confermato') {
-        if (pauseMinutes > 0 || pauseIntervals.length > 0) {
-          pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : 'In pausa';
-          pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
-        } else if (daySchedule?.breakMinutes && daySchedule.breakMinutes > 0) {
-          pauseTime = '--';
-          pauseDetail = `prev. ${daySchedule.breakMinutes}m`;
-        }
+      if (pauseMinutes > 0 || pauseIntervals.length > 0) {
+        pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : 'In pausa';
+        pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
+      } else if (daySchedule?.breakMinutes && daySchedule.breakMinutes > 0) {
+        pauseTime = '--';
+        pauseDetail = `prev. ${daySchedule.breakMinutes}m`;
       }
 
       let pausesText: string | null = null;
-      if (status === 'confermato' && pauseIntervals.length > 0) {
+      if (pauseIntervals.length > 0) {
         pausesText = `${pauseIntervals.length} ${pauseIntervals.length === 1 ? 'pausa' : 'pause'}`;
       }
 
@@ -385,7 +421,7 @@ export default function BossMonitorApp() {
       let isLateEntry = false;
       let lateEntryText: string | undefined;
 
-      if (status === 'confermato' && daySchedule?.endTime && exit?.timestamp?.toDate) {
+      if (daySchedule?.endTime && exit?.timestamp?.toDate) {
         const [h, m] = daySchedule.endTime.split(':').map(Number);
         const schedExit = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (isBefore(exit.timestamp.toDate(), schedExit)) {
@@ -397,7 +433,7 @@ export default function BossMonitorApp() {
         }
       }
 
-      if ((status === 'confermato' || status === 'in_servizio') && daySchedule?.startTime && entry?.timestamp?.toDate) {
+      if (daySchedule?.startTime && entry?.timestamp?.toDate) {
         const [h, m] = daySchedule.startTime.split(':').map(Number);
         const schedEntry = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (isBefore(schedEntry, entry.timestamp.toDate())) {
@@ -409,12 +445,10 @@ export default function BossMonitorApp() {
         }
       }
 
-      // Calculate or read approved hours ONLY IF CONFIRMED
+      // Calculate or read approved hours
       let ordinaryHours = 0;
       let overtimeHours = 0;
       let totalHours = 0;
-      let refStartTime: string | null = null;
-      let refEndTime: string | null = null;
 
       if (status === 'confermato') {
         if (entry?.approvedOrdinaryHours !== undefined || entry?.approvedOvertimeHours !== undefined) {
@@ -427,6 +461,11 @@ export default function BossMonitorApp() {
           overtimeHours = calc.overtime;
           totalHours = ordinaryHours + overtimeHours;
         }
+      } else if (status === 'in_attesa' && entry && exit) {
+        const calc = calculateHours({ date: selectedDate, events: events as any }, daySchedule, false, op as any);
+        ordinaryHours = calc.ordinary;
+        overtimeHours = calc.overtime;
+        totalHours = ordinaryHours + overtimeHours;
       }
 
       return {
@@ -448,6 +487,12 @@ export default function BossMonitorApp() {
         isLateEntry,
         lateEntryText,
         requests,
+        isEntryAuto,
+        isExitAuto,
+        isEntryRectified,
+        isExitRectified,
+        hasDimenticanza,
+        hasRettifica,
       };
     });
   }, [operators, dateClockings, dateRequests, selectedDate]);
@@ -707,8 +752,8 @@ export default function BossMonitorApp() {
             </div>
           </div>
 
-          {/* 4 Card Riepilogo Mensile come richiesto */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 5 Card Riepilogo Mensile incluso Importo Dovuto */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {/* ORE ORDINARIE */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-1">
               <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold uppercase tracking-wider">
@@ -760,6 +805,31 @@ export default function BossMonitorApp() {
               </div>
               <p className="text-[11px] text-slate-400">Ferie e permessi goduti</p>
             </div>
+
+            {/* IMPORTO DOVUTO */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md space-y-1 col-span-2 sm:col-span-2 md:col-span-1">
+              <div className="flex items-center justify-between text-emerald-100 text-xs font-bold uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Banknote className="h-4 w-4" />
+                  Importo Dovuto
+                </span>
+                <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-semibold">Mese</span>
+              </div>
+              <div className="text-2xl font-black text-white tracking-tight">
+                {detailMonthlySummary ? (
+                  detailMonthlySummary.totalDueOverride !== undefined ? (
+                    `€ ${detailMonthlySummary.totalDueOverride.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ) : (
+                    `€ ${(detailMonthlySummary.estimatedTotalCost || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  )
+                ) : '€ 0,00'}
+              </div>
+              <p className="text-[11px] text-emerald-100/90 truncate">
+                {selectedOperator?.salaryType === 'fixed'
+                  ? 'Stipendio fisso + extra'
+                  : `Tariffa: € ${selectedOperator?.hourlyRate || 0}/h`}
+              </p>
+            </div>
           </div>
 
           {/* ELENCO DELLE TIMBRATURE DEL MESE (SOLA LETTURA) */}
@@ -780,9 +850,32 @@ export default function BossMonitorApp() {
                   const isApproved = item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa');
                   const isPending = item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0);
 
-                  // Orari: visualizzati SOLO se il turno è stato approvato dal titolare
-                  const entryTime = isApproved && entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
-                  const exitTime = isApproved && exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
+                  const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
+                  const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
+
+                  const daySchedule = getScheduleForDate(selectedOperator as any, item.date);
+                  const refStart = daySchedule?.startTime || null;
+                  const refEnd = daySchedule?.endTime || null;
+
+                  // Rilevamento dimenticanza e rettifica
+                  const isEntryAuto = Boolean(entry?.isAuto);
+                  const isExitAuto = Boolean(exit?.isAuto);
+                  const isEntryRectified = Boolean(
+                    entry?.isRectified ||
+                    entry?.originalTime ||
+                    entry?.rectificationStatus === 'approvata' ||
+                    entry?.rectificationStatus === 'in_approvazione' ||
+                    (entry?.suggestedTime && entry?.status === 'sospesa')
+                  );
+                  const isExitRectified = Boolean(
+                    exit?.isRectified ||
+                    exit?.originalTime ||
+                    exit?.rectificationStatus === 'approvata' ||
+                    exit?.rectificationStatus === 'in_approvazione' ||
+                    (exit?.suggestedTime && exit?.status === 'sospesa')
+                  );
+                  const hasDimenticanza = isEntryAuto || isExitAuto;
+                  const hasRettifica = isEntryRectified || isExitRectified;
 
                   // Pauses
                   const sortedItemEvs = [...item.events].sort((a, b) => {
@@ -803,7 +896,7 @@ export default function BossMonitorApp() {
                       itemPauseStart = null;
                     }
                   }
-                  const itemPauseText = isApproved ? (itemPauseMins > 0 ? `${itemPauseMins}m` : '--') : '--';
+                  const itemPauseText = itemPauseMins > 0 ? `${itemPauseMins}m` : '--';
 
                   const ordH = entry?.approvedOrdinaryHours;
                   const overH = entry?.approvedOvertimeHours;
@@ -818,51 +911,60 @@ export default function BossMonitorApp() {
                           {format(item.date, 'EEEE d MMMM yyyy', { locale: it })}
                         </span>
 
-                        {isApproved ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" /> Approvato
-                          </span>
-                        ) : isPending ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> In attesa
-                          </span>
-                        ) : null}
+                        <div className="flex items-center gap-1.5">
+                          {hasDimenticanza && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
+                              ⚠️ Dimenticanza
+                            </span>
+                          )}
+                          {hasRettifica && !hasDimenticanza && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                              ✏️ Rettificato
+                            </span>
+                          )}
+                          {isApproved ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Approvato
+                            </span>
+                          ) : isPending ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> In attesa
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
 
-                      {isPending && (
-                        <div className="text-[11px] font-medium text-amber-800 bg-amber-50/80 dark:bg-amber-950/30 px-2.5 py-1.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40 flex items-center gap-1.5">
-                          <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                          <span>Turno in attesa: gli orari effettivi compariranno solo dopo l&apos;approvazione del titolare.</span>
-                        </div>
-                      )}
-
-                      {/* Riga compatta a 4 celle: Entrata | Pausa | Uscita | Ore */}
+                      {/* Riga compatta a 4 celle: Entrata (con rif) | Pausa | Uscita (con rif) | Ore */}
                       <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
-                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                        <div className={`py-1.5 px-0.5 rounded-xl ${isEntryAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : isEntryRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{isApproved ? 'effettivo' : '-'}</span>
+                          <span className="text-[9px] text-slate-400 block truncate">{refStart ? `rif. ${refStart}` : '-'}</span>
+                          {isEntryAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
+                          {isEntryRectified && !isEntryAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
                         </div>
 
                         <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{itemPauseText}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{isApproved && itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
+                          <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
                         </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                        <div className={`py-1.5 px-0.5 rounded-xl ${isExitAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : isExitRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{isApproved ? 'effettivo' : '-'}</span>
+                          <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `rif. ${refEnd}` : '-'}</span>
+                          {isExitAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
+                          {isExitRectified && !isExitAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
                         </div>
 
                         <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
                           <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
-                            {isApproved ? ((ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : '--') : '--'}
+                            {(ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : (isApproved ? '0h' : '--')}
                           </span>
                           <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
-                            {isApproved ? 'effettive' : 'in attesa'}
+                            {isApproved ? 'approvate' : 'in attesa'}
                           </span>
                         </div>
                       </div>
@@ -1070,8 +1172,18 @@ export default function BossMonitorApp() {
                       </div>
                     </div>
 
-                    {/* BADGE STATO */}
-                    <div className="shrink-0 flex items-center gap-1.5">
+                    {/* BADGE STATO & ANOMALIE */}
+                    <div className="shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
+                      {row.hasDimenticanza && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
+                          ⚠️ Dimenticanza
+                        </span>
+                      )}
+                      {row.hasRettifica && !row.hasDimenticanza && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                          ✏️ Rettificato
+                        </span>
+                      )}
                       {row.status === 'confermato' && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Approvato
@@ -1102,75 +1214,83 @@ export default function BossMonitorApp() {
                   </div>
 
                   {/* RIGA DETTAGLIO TIMBRATURA: ENTRATA | PAUSA | USCITA | ORD / STRA | TOTALE */}
-                  {row.status === 'confermato' ? (
-                    <div className="grid grid-cols-5 gap-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
-                      {/* Entrata */}
-                      <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
-                        <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Entrata</span>
-                        <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
-                          {row.entryTime || '--:--'}
-                        </span>
-                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold block truncate leading-tight mt-0.5">
-                          effettivo
-                        </span>
-                      </div>
-
-                      {/* Pausa */}
-                      <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
-                        <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Pausa</span>
-                        <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
-                          {row.pauseTime}
-                        </span>
-                        <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
-                          {row.pauseDetail ? `(${row.pauseDetail})` : '-'}
-                        </span>
-                      </div>
-
-                      {/* Uscita */}
-                      <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
-                        <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Uscita</span>
-                        <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
-                          {row.exitTime || '--:--'}
-                        </span>
-                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold block truncate leading-tight mt-0.5">
-                          effettivo
-                        </span>
-                      </div>
-
-                      {/* Ord / Stra */}
-                      <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
-                        <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Ord / Stra</span>
-                        <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 block truncate leading-tight">
-                          {row.ordinaryHours}h /{' '}
-                          <span className={row.overtimeHours > 0 ? 'text-amber-600 font-black' : ''}>
-                            {row.overtimeHours}h
+                  {(row.entryTime || row.exitTime) ? (
+                    <div className="space-y-1.5">
+                      <div className="grid grid-cols-5 gap-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+                        {/* Entrata */}
+                        <div className={`py-1.5 px-0.5 rounded-xl min-w-0 ${row.isEntryAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : row.isEntryRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                          <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Entrata</span>
+                          <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
+                            {row.entryTime || '--:--'}
                           </span>
-                        </span>
-                        <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
-                          approvate
-                        </span>
+                          <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                            {row.refStartTime ? `rif. ${row.refStartTime}` : '-'}
+                          </span>
+                          {row.isEntryAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
+                          {row.isEntryRectified && !row.isEntryAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
+                        </div>
+
+                        {/* Pausa */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
+                          <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Pausa</span>
+                          <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
+                            {row.pauseTime}
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                            {row.pauseDetail ? `(${row.pauseDetail})` : '-'}
+                          </span>
+                        </div>
+
+                        {/* Uscita */}
+                        <div className={`py-1.5 px-0.5 rounded-xl min-w-0 ${row.isExitAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : row.isExitRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                          <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Uscita</span>
+                          <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
+                            {row.exitTime || '--:--'}
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                            {row.refEndTime ? `rif. ${row.refEndTime}` : '-'}
+                          </span>
+                          {row.isExitAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
+                          {row.isExitRectified && !row.isExitAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
+                        </div>
+
+                        {/* Ord / Stra */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
+                          <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Ord / Stra</span>
+                          <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 block truncate leading-tight">
+                            {row.ordinaryHours}h /{' '}
+                            <span className={row.overtimeHours > 0 ? 'text-amber-600 font-black' : ''}>
+                              {row.overtimeHours}h
+                            </span>
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                            {row.status === 'confermato' ? 'approvate' : 'da approv.'}
+                          </span>
+                        </div>
+
+                        {/* Totale */}
+                        <div className="bg-emerald-50/80 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl min-w-0 border border-emerald-100 dark:border-emerald-900/50">
+                          <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase tracking-tight">Totale</span>
+                          <span className="font-black text-[12px] text-emerald-700 dark:text-emerald-300 block truncate leading-tight">
+                            {row.totalHours}h
+                          </span>
+                          <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 font-medium block truncate leading-tight mt-0.5">
+                            {row.status === 'confermato' ? 'lavorate' : 'stimate'}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Totale */}
-                      <div className="bg-emerald-50/80 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl min-w-0 border border-emerald-100 dark:border-emerald-900/50">
-                        <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase tracking-tight">Totale</span>
-                        <span className="font-black text-[12px] text-emerald-700 dark:text-emerald-300 block truncate leading-tight">
-                          {row.totalHours}h
-                        </span>
-                        <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 font-medium block truncate leading-tight mt-0.5">
-                          lavorate
-                        </span>
-                      </div>
-                    </div>
-                  ) : row.status === 'in_attesa' ? (
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2.5 py-1.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl text-amber-800 dark:text-amber-300 text-xs font-semibold">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-amber-600 animate-pulse shrink-0" />
-                        Turno timbrato — In attesa di verifica titolare
-                      </span>
-                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded-md font-bold text-amber-900 dark:text-amber-200 shrink-0">
-                        Orari visibili dopo approvazione
-                      </span>
+                      {row.status === 'in_attesa' && (
+                        <div className="text-[11px] text-amber-700 dark:text-amber-300 font-medium flex items-center justify-between px-1">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-amber-600 animate-pulse" />
+                            Turno timbrato — In attesa di approvazione
+                          </span>
+                          <span className="text-[10px] text-slate-400 italic">
+                            Modificabile dal gestionale
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ) : row.status === 'in_servizio' ? (
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2.5 py-1.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl text-blue-800 dark:text-blue-300 text-xs font-semibold">
