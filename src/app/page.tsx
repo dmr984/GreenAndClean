@@ -302,7 +302,10 @@ export default function BossMonitorApp() {
       const requests = dateRequests[op.id] || [];
 
       const entry = events.find((e) => e.type === 'entrata');
-      const exit = events.find((e) => e.type === 'uscita');
+      // Risolvi l'uscita associata: cerca quella con lo stesso shiftId o l'ultima uscita registrata
+      const exit = (entry?.shiftId
+        ? events.filter((e) => e.type === 'uscita' && e.shiftId === entry.shiftId).pop()
+        : null) || events.filter((e) => e.type === 'uscita').pop();
 
       // Schedule check
       const daySchedule = getScheduleForDate(op as any, selectedDate);
@@ -323,6 +326,7 @@ export default function BossMonitorApp() {
       // Determine overall status
       let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente' = 'non_timbrato';
       const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
+      const isToday = isSameDay(selectedDate, new Date());
       const isWorkDay = (daySchedule?.totalHours || 0) > 0;
 
       if (entry && exit) {
@@ -332,7 +336,13 @@ export default function BossMonitorApp() {
           status = 'in_attesa';
         }
       } else if (entry && !exit) {
-        status = 'in_servizio';
+        if (isToday) {
+          // Solo se è oggi l'operatore può essere attualmente al lavoro!
+          status = 'in_servizio';
+        } else {
+          // Nei giorni passati, se manca l'uscita è un'anomalia/uscita mancante in attesa
+          status = 'in_attesa';
+        }
       } else if (!entry && isPastDay && isWorkDay) {
         // Se a mezzanotte il turno non è stato effettuato, il giorno successivo diventa Assenza automatica
         status = 'assente';
@@ -846,7 +856,10 @@ export default function BossMonitorApp() {
               <div className="space-y-2">
                 {detailAgendaDays.map((item, idx) => {
                   const entry = item.events.find((e) => e.type === 'entrata');
-                  const exit = item.events.find((e) => e.type === 'uscita');
+                  // Risolvi l'uscita associata: cerca quella con lo stesso shiftId o l'ultima uscita registrata
+                  const exit = (entry?.shiftId
+                    ? item.events.filter((e) => e.type === 'uscita' && e.shiftId === entry.shiftId).pop()
+                    : null) || item.events.filter((e) => e.type === 'uscita').pop();
                   const isApproved = item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa');
                   const isPending = item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0);
 
@@ -1191,7 +1204,8 @@ export default function BossMonitorApp() {
                       )}
                       {row.status === 'in_attesa' && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
-                          <Clock className="h-3 w-3" /> In attesa
+                          <Clock className="h-3 w-3" />
+                          {row.entryTime && !row.exitTime ? 'Uscita mancante' : 'In attesa'}
                         </span>
                       )}
                       {row.status === 'in_servizio' && (
@@ -1283,8 +1297,17 @@ export default function BossMonitorApp() {
                       {row.status === 'in_attesa' && (
                         <div className="text-[11px] text-amber-700 dark:text-amber-300 font-medium flex items-center justify-between px-1">
                           <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-amber-600 animate-pulse" />
-                            Turno timbrato — In attesa di approvazione
+                            {!row.exitTime ? (
+                              <>
+                                <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                                Uscita non timbrata — In attesa di rettifica
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="h-3 w-3 text-amber-600 animate-pulse" />
+                                Turno timbrato — In attesa di approvazione
+                              </>
+                            )}
                           </span>
                           <span className="text-[10px] text-slate-400 italic">
                             Modificabile dal gestionale
