@@ -54,7 +54,7 @@ import {
   Sparkles,
   Banknote,
 } from 'lucide-react';
-import { processMonthlyData, getScheduleForDate, calculateHours } from '@/lib/calculations';
+import { processMonthlyData, getScheduleForDate, calculateHours, getReferenceTimes } from '@/lib/calculations';
 
 interface Operator {
   id: string;
@@ -309,13 +309,7 @@ export default function BossMonitorApp() {
 
       // Schedule check
       const daySchedule = getScheduleForDate(op as any, selectedDate);
-      let schedText: string | null = null;
-      if (daySchedule?.startTime && daySchedule?.endTime) {
-        schedText = `${daySchedule.startTime} - ${daySchedule.endTime}`;
-      } else if (daySchedule?.totalHours) {
-        schedText = `${daySchedule.totalHours}h previste`;
-      }
-
+      
       // Check approval status: A shift is confirmed only if entry/exit are 'confermata' and not 'sospesa'
       const isShiftConfirmed = Boolean(
         entry && exit &&
@@ -359,9 +353,17 @@ export default function BossMonitorApp() {
         exitTime = format(exit.timestamp.toDate(), 'HH:mm');
       }
 
-      // Orari di riferimento contrattuali (previsti)
-      const refStartTime: string | null = daySchedule?.startTime || null;
-      const refEndTime: string | null = daySchedule?.endTime || null;
+      // Orari di riferimento contrattuali ed effettivi calcolati
+      const { refStartTime, refEndTime } = getReferenceTimes(op as any, selectedDate, entry, exit);
+
+      let schedText: string | null = null;
+      if (refStartTime && refEndTime) {
+        schedText = `${refStartTime} - ${refEndTime}`;
+      } else if (daySchedule?.startTime && daySchedule?.endTime) {
+        schedText = `${daySchedule.startTime} - ${daySchedule.endTime}`;
+      } else if (daySchedule?.totalHours) {
+        schedText = `${daySchedule.totalHours}h previste`;
+      }
 
       // Rilevamento dimenticanza e rettifica
       const isEntryAuto = Boolean(entry?.isAuto);
@@ -431,26 +433,26 @@ export default function BossMonitorApp() {
       let isLateEntry = false;
       let lateEntryText: string | undefined;
 
-      if (daySchedule?.endTime && exit?.timestamp?.toDate) {
-        const [h, m] = daySchedule.endTime.split(':').map(Number);
+      if (refEndTime && exit?.timestamp?.toDate) {
+        const [h, m] = refEndTime.split(':').map(Number);
         const schedExit = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (isBefore(exit.timestamp.toDate(), schedExit)) {
           const diffMinutes = Math.round((schedExit.getTime() - exit.timestamp.toDate().getTime()) / 60000);
           if (diffMinutes >= 5) {
             isEarlyExit = true;
-            earlyExitText = `Uscito prima di ${diffMinutes} min (previsto ${daySchedule.endTime})`;
+            earlyExitText = `Uscito prima di ${diffMinutes} min (previsto ${refEndTime})`;
           }
         }
       }
 
-      if (daySchedule?.startTime && entry?.timestamp?.toDate) {
-        const [h, m] = daySchedule.startTime.split(':').map(Number);
+      if (refStartTime && entry?.timestamp?.toDate) {
+        const [h, m] = refStartTime.split(':').map(Number);
         const schedEntry = set(selectedDate, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
         if (isBefore(schedEntry, entry.timestamp.toDate())) {
           const diffMinutes = Math.round((entry.timestamp.toDate().getTime() - schedEntry.getTime()) / 60000);
           if (diffMinutes >= 10) {
             isLateEntry = true;
-            lateEntryText = `In ritardo di ${diffMinutes} min (previsto ${daySchedule.startTime})`;
+            lateEntryText = `In ritardo di ${diffMinutes} min (previsto ${refStartTime})`;
           }
         }
       }
@@ -866,9 +868,12 @@ export default function BossMonitorApp() {
                   const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
                   const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
 
-                  const daySchedule = getScheduleForDate(selectedOperator as any, item.date);
-                  const refStart = daySchedule?.startTime || null;
-                  const refEnd = daySchedule?.endTime || null;
+                  const { refStartTime: refStart, refEndTime: refEnd } = getReferenceTimes(
+                    selectedOperator as any,
+                    item.date,
+                    entry,
+                    exit
+                  );
 
                   // Rilevamento dimenticanza e rettifica
                   const isEntryAuto = Boolean(entry?.isAuto);

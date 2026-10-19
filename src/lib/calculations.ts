@@ -270,6 +270,63 @@ export const getScheduleForDate = (operator: Operator | undefined | null, date: 
     return currentDaySchedule;
 };
 
+export const getReferenceTimes = (
+    operator: Operator | undefined | null,
+    date: Date,
+    entry?: any,
+    exit?: any
+): { refStartTime: string | null; refEndTime: string | null } => {
+    const schedule = getScheduleForDate(operator, date);
+
+    let refStartTime: string | null = null;
+    let refEndTime: string | null = null;
+
+    // 1. Orario di entrata di riferimento
+    if (entry && (entry.customReferenceStart || (entry as any).customReferenceStart)) {
+        refStartTime = entry.customReferenceStart;
+    } else if (schedule?.startTime) {
+        refStartTime = schedule.startTime;
+    }
+
+    // 2. Orario di uscita di riferimento (se già presente nello schedule)
+    if (schedule?.endTime) {
+        refEndTime = schedule.endTime;
+    } else if (refStartTime && schedule?.totalHours) {
+        // Calcolo dell'uscita prevista partendo dall'orario di riferimento di entrata + ore previste + pausa
+        const [h, m] = refStartTime.split(':').map(Number);
+        const totalMinutes = h * 60 + m + Math.round(schedule.totalHours * 60) + (schedule.breakMinutes || 0);
+        const endH = Math.floor(totalMinutes / 60) % 24;
+        const endM = totalMinutes % 60;
+        refEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+    }
+
+    // 3. Se l'operatore non ha uno startTime contrattuale fisso (es. orario flessibile/monte ore giorno)
+    //    ma ha ore previste giornaliere e ha timbrato l'entrata
+    if (!refStartTime && schedule?.totalHours && (entry?.timestamp?.toDate || entry?.timestamp instanceof Date)) {
+        const clockInTime = entry.timestamp.toDate ? entry.timestamp.toDate() : entry.timestamp;
+        const minutes = clockInTime.getMinutes();
+        let roundedH = clockInTime.getHours();
+        let roundedM = 0;
+        if (minutes > 0 && minutes <= 15) {
+            roundedM = 0;
+        } else if (minutes > 15 && minutes <= 45) {
+            roundedM = 30;
+        } else if (minutes > 45) {
+            roundedH += 1;
+            roundedM = 0;
+        }
+        refStartTime = `${String(roundedH).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
+
+        const totalMinutes = roundedH * 60 + roundedM + Math.round(schedule.totalHours * 60) + (schedule.breakMinutes || 0);
+        const endH = Math.floor(totalMinutes / 60) % 24;
+        const endM = totalMinutes % 60;
+        refEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+    }
+
+    return { refStartTime, refEndTime };
+};
+
+
 export const calculateShiftDetails = (
     events: Timbratura[], 
     schedule: DailySchedule | undefined, 
