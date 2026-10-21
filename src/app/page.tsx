@@ -351,6 +351,8 @@ export default function BossMonitorApp() {
       }
       if (exit?.timestamp?.toDate) {
         exitTime = format(exit.timestamp.toDate(), 'HH:mm');
+      } else if (entry && !exit && isPastDay) {
+        exitTime = '23:59';
       }
 
       // Orari di riferimento contrattuali ed effettivi calcolati
@@ -367,7 +369,7 @@ export default function BossMonitorApp() {
 
       // Rilevamento dimenticanza e rettifica
       const isEntryAuto = Boolean(entry?.isAuto);
-      const isExitAuto = Boolean(exit?.isAuto);
+      const isExitAuto = Boolean(exit?.isAuto || (entry && !exit && isPastDay));
       const isEntryRectified = Boolean(
         entry?.isRectified ||
         entry?.originalTime ||
