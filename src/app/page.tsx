@@ -932,16 +932,6 @@ export default function BossMonitorApp() {
                         </span>
 
                         <div className="flex items-center gap-1.5">
-                          {hasDimenticanza && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
-                              ⚠️ Dimenticanza
-                            </span>
-                          )}
-                          {hasRettifica && !hasDimenticanza && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                              ✏️ Rettificato
-                            </span>
-                          )}
                           {isApproved ? (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                               <CheckCircle2 className="h-3 w-3" /> Approvato
@@ -956,12 +946,10 @@ export default function BossMonitorApp() {
 
                       {/* Riga compatta a 4 celle: Entrata (con rif) | Pausa | Uscita (con rif) | Ore */}
                       <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
-                        <div className={`py-1.5 px-0.5 rounded-xl ${isEntryAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : isEntryRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
                           <span className="text-[9px] text-slate-400 block truncate">{refStart ? `rif. ${refStart}` : '-'}</span>
-                          {isEntryAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
-                          {isEntryRectified && !isEntryAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
                         </div>
 
                         <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
@@ -970,12 +958,10 @@ export default function BossMonitorApp() {
                           <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
                         </div>
 
-                        <div className={`py-1.5 px-0.5 rounded-xl ${isExitAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : isExitRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
                           <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `rif. ${refEnd}` : '-'}</span>
-                          {isExitAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
-                          {isExitRectified && !isExitAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
                         </div>
 
                         <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
@@ -1013,65 +999,79 @@ export default function BossMonitorApp() {
   // --------------------------------------------------------------------------
   return (
     <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full pb-10">
-      {/* HEADER SUPERIORE */}
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
-            <Users className="h-5 w-5" />
+      {/* HEADER SUPERIORE + SELETTORE DATA SEMPRE FISSI IN ALTO */}
+      <div className="sticky top-0 z-30 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md">
+        <header className="bg-white/95 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
+                WorkForce Monitor
+              </h1>
+              <p className="text-[11px] text-emerald-600 font-bold">Pannello Titolare • Live</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-base font-black text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
-              WorkForce Monitor
-            </h1>
-            <p className="text-[11px] text-emerald-600 font-bold">Pannello Titolare • Live</p>
-          </div>
-        </div>
 
-        <button
-          onClick={handleLogout}
-          title="Esci"
-          className="h-8 w-8 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 hover:text-rose-600 transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
-      </header>
-
-      <main className="p-4 space-y-4">
-        {/* SELETTORE DATA */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <button
-            onClick={() => setSelectedDate((p) => subDays(p, 1))}
-            className="h-9 w-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100"
+            onClick={handleLogout}
+            title="Esci"
+            className="h-8 w-8 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 hover:text-rose-600 transition-colors"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <LogOut className="h-4 w-4" />
           </button>
+        </header>
 
-          <div className="text-center">
-            <p className="text-xs uppercase font-extrabold text-emerald-600 dark:text-emerald-400">
-              {format(selectedDate, 'EEEE', { locale: it })} {isSameDay(selectedDate, new Date()) ? '• Oggi' : ''}
-            </p>
-            <p className="text-base font-black text-slate-900 dark:text-slate-100 capitalize">
-              {format(selectedDate, 'EEEE d MMMM yyyy', { locale: it })}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {!isSameDay(selectedDate, new Date()) && (
-              <button
-                onClick={() => setSelectedDate(new Date())}
-                className="px-2 h-9 text-[11px] font-bold rounded-xl border border-slate-200 hover:bg-slate-100"
-              >
-                Oggi
-              </button>
-            )}
+        {/* SELETTORE DATA FISSO SOTTO L'HEADER */}
+        <div className="px-4 pt-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-3 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
             <button
-              onClick={() => setSelectedDate((p) => addDays(p, 1))}
+              onClick={() => {
+                setSelectedDate((p) => subDays(p, 1));
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               className="h-9 w-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" />
             </button>
+
+            <div className="text-center">
+              <p className="text-xs uppercase font-extrabold text-emerald-600 dark:text-emerald-400">
+                {format(selectedDate, 'EEEE', { locale: it })} {isSameDay(selectedDate, new Date()) ? '• Oggi' : ''}
+              </p>
+              <p className="text-base font-black text-slate-900 dark:text-slate-100 capitalize">
+                {format(selectedDate, 'EEEE d MMMM yyyy', { locale: it })}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {!isSameDay(selectedDate, new Date()) && (
+                <button
+                  onClick={() => {
+                    setSelectedDate(new Date());
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="px-2 h-9 text-[11px] font-bold rounded-xl border border-slate-200 hover:bg-slate-100"
+                >
+                  Oggi
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setSelectedDate((p) => addDays(p, 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="h-9 w-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
+      </div>
+
+      <main className="p-4 space-y-4">
 
         {/* CONTATORI RAPIDI IN ALTO */}
         <div className="grid grid-cols-4 gap-2">
@@ -1192,18 +1192,8 @@ export default function BossMonitorApp() {
                       </div>
                     </div>
 
-                    {/* BADGE STATO & ANOMALIE */}
+                    {/* BADGE STATO */}
                     <div className="shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
-                      {row.hasDimenticanza && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
-                          ⚠️ Dimenticanza
-                        </span>
-                      )}
-                      {row.hasRettifica && !row.hasDimenticanza && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                          ✏️ Rettificato
-                        </span>
-                      )}
                       {row.status === 'confermato' && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Approvato
@@ -1239,7 +1229,7 @@ export default function BossMonitorApp() {
                     <div className="space-y-1.5">
                       <div className="grid grid-cols-5 gap-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
                         {/* Entrata */}
-                        <div className={`py-1.5 px-0.5 rounded-xl min-w-0 ${row.isEntryAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : row.isEntryRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Entrata</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
                             {row.entryTime || '--:--'}
@@ -1247,8 +1237,6 @@ export default function BossMonitorApp() {
                           <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
                             {row.refStartTime ? `rif. ${row.refStartTime}` : '-'}
                           </span>
-                          {row.isEntryAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
-                          {row.isEntryRectified && !row.isEntryAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
                         </div>
 
                         {/* Pausa */}
@@ -1263,7 +1251,7 @@ export default function BossMonitorApp() {
                         </div>
 
                         {/* Uscita */}
-                        <div className={`py-1.5 px-0.5 rounded-xl min-w-0 ${row.isExitAuto ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50' : row.isExitRectified ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
                           <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Uscita</span>
                           <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
                             {row.exitTime || '--:--'}
@@ -1271,8 +1259,6 @@ export default function BossMonitorApp() {
                           <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
                             {row.refEndTime ? `rif. ${row.refEndTime}` : '-'}
                           </span>
-                          {row.isExitAuto && <span className="text-[8px] font-bold text-red-600 block uppercase">⚠️ Dimenticata</span>}
-                          {row.isExitRectified && !row.isExitAuto && <span className="text-[8px] font-bold text-purple-600 block uppercase">✏️ Rettificata</span>}
                         </div>
 
                         {/* Ord / Stra */}
@@ -1334,21 +1320,9 @@ export default function BossMonitorApp() {
                     </div>
                   ) : null}
 
-                  {/* AVVISI DI USCITA ANTICIPATA O RITARDO SE PRESENTI */}
-                  {(row.isEarlyExit || row.isLateEntry || row.requests.length > 0) && (
+                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO) */}
+                  {row.requests.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
-                      {row.isEarlyExit && (
-                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-semibold flex items-center gap-1">
-                          <TrendingDown className="h-3 w-3" />
-                          {row.earlyExitText}
-                        </span>
-                      )}
-                      {row.isLateEntry && (
-                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-semibold flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {row.lateEntryText}
-                        </span>
-                      )}
                       {row.requests.map((req, qIdx) => (
                         <span
                           key={qIdx}
