@@ -278,46 +278,67 @@ export const getReferenceTimes = (
 ): { refStartTime: string | null; refEndTime: string | null } => {
     const schedule = getScheduleForDate(operator, date);
 
+    const hasValidEntry = Boolean(entry?.timestamp?.toDate || entry?.timestamp instanceof Date);
+    const hasValidExit = Boolean(exit && !exit.isAuto && (exit?.timestamp?.toDate || exit?.timestamp instanceof Date));
+
+    // Se esistono sia entrata che uscita effettiva, usa esattamente calculationStart e calculationEnd
+    // di calculateShiftDetails (stesso identico calcolo di GreenAndClean)
+    if (hasValidEntry && hasValidExit) {
+        const normalizedEntry = {
+            ...entry,
+            type: 'entrata' as const,
+            timestamp: entry.timestamp?.toDate ? entry.timestamp : Timestamp.fromDate(entry.timestamp),
+        };
+        const normalizedExit = {
+            ...exit,
+            type: 'uscita' as const,
+            timestamp: exit.timestamp?.toDate ? exit.timestamp : Timestamp.fromDate(exit.timestamp),
+        };
+        const { calculationStart, calculationEnd } = calculateShiftDetails(
+            [normalizedEntry, normalizedExit] as any,
+            schedule,
+            Boolean(entry?.ignoreContractualStart),
+            operator || undefined
+        );
+        return {
+            refStartTime: calculationStart ? format(calculationStart, 'HH:mm') : null,
+            refEndTime: calculationEnd ? format(calculationEnd, 'HH:mm') : null,
+        };
+    }
+
     let refStartTime: string | null = null;
     let refEndTime: string | null = null;
 
-    // 1. Orario di entrata di riferimento
-    if (entry && (entry.customReferenceStart || (entry as any).customReferenceStart)) {
-        refStartTime = entry.customReferenceStart;
-    } else if (schedule?.startTime) {
-        refStartTime = schedule.startTime;
+    if (hasValidEntry) {
+        const normalizedEntry = {
+            ...entry,
+            type: 'entrata' as const,
+            timestamp: entry.timestamp?.toDate ? entry.timestamp : Timestamp.fromDate(entry.timestamp),
+        };
+        const { calculationStart } = calculateShiftDetails(
+            [normalizedEntry, { ...normalizedEntry, type: 'uscita' as const }] as any,
+            schedule,
+            Boolean(entry?.ignoreContractualStart),
+            operator || undefined
+        );
+        if (calculationStart) {
+            refStartTime = format(calculationStart, 'HH:mm');
+        }
     }
 
-    // 2. Orario di uscita di riferimento (se già presente nello schedule)
+    if (!refStartTime) {
+        if (entry && entry.customReferenceStart) {
+            refStartTime = entry.customReferenceStart;
+        } else if (schedule?.startTime) {
+            refStartTime = schedule.startTime;
+        }
+    }
+
     if (schedule?.endTime) {
         refEndTime = schedule.endTime;
     } else if (refStartTime && schedule?.totalHours) {
-        // Calcolo dell'uscita prevista partendo dall'orario di riferimento di entrata + ore previste + pausa
         const [h, m] = refStartTime.split(':').map(Number);
         const totalMinutes = h * 60 + m + Math.round(schedule.totalHours * 60) + (schedule.breakMinutes || 0);
-        const endH = Math.floor(totalMinutes / 60) % 24;
-        const endM = totalMinutes % 60;
-        refEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-    }
-
-    // 3. Se l'operatore non ha uno startTime contrattuale fisso (es. orario flessibile/monte ore giorno)
-    //    ma ha ore previste giornaliere e ha timbrato l'entrata
-    if (!refStartTime && schedule?.totalHours && (entry?.timestamp?.toDate || entry?.timestamp instanceof Date)) {
-        const clockInTime = entry.timestamp.toDate ? entry.timestamp.toDate() : entry.timestamp;
-        const minutes = clockInTime.getMinutes();
-        let roundedH = clockInTime.getHours();
-        let roundedM = 0;
-        if (minutes > 0 && minutes <= 15) {
-            roundedM = 0;
-        } else if (minutes > 15 && minutes <= 45) {
-            roundedM = 30;
-        } else if (minutes > 45) {
-            roundedH += 1;
-            roundedM = 0;
-        }
-        refStartTime = `${String(roundedH).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
-
-        const totalMinutes = roundedH * 60 + roundedM + Math.round(schedule.totalHours * 60) + (schedule.breakMinutes || 0);
         const endH = Math.floor(totalMinutes / 60) % 24;
         const endM = totalMinutes % 60;
         refEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;

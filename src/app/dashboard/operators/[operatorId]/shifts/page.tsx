@@ -1111,8 +1111,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             const newDate = set(eventDate, { hours, minutes, seconds: 0, milliseconds: 0 });
             
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
-            const isShiftInProgress = currentShift.status === 'in_corso';
-            const targetStatus = isShiftInProgress ? 'sospesa' : 'confermata';
+            const targetStatus = currentShift.status === 'confermato' ? 'confermata' : 'sospesa';
 
             const originalTimeStr = event.originalTime || format(eventDate, 'HH:mm');
 
@@ -1127,7 +1126,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 viewedByOperator: false
             });
 
-            toast({ title: 'Successo', description: 'Rettifica applicata con successo!' });
+            toast({ title: 'Rettifica applicata', description: 'Rettifica applicata con successo. Clicca su "Approva Turno" quando sei pronto per approvare il turno.' });
             
             if (detailShift) {
                 const updatedEvents = detailShift.events.map(e => 
@@ -1139,11 +1138,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 if (processed) {
                     const updatedShift = { ...detailShift, ...processed, events: updatedEvents };
                     setDetailShift(updatedShift);
-                    // Check if all rectifications for this shift are now approved/resolved
-                    const hasPendingRects = updatedEvents.some(e => e.status === 'sospesa' && e.suggestedTime && e.id !== event.id);
-                    if (!hasPendingRects) {
-                        handleApprovalProcess(updatedShift);
-                    }
                 }
             }
         } catch (error) {
@@ -1412,7 +1406,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 makeupOfDay: makeupDayValue,
                 isAuto: false,
                 suggestedTime: null,
-                isRectified: true
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -1422,8 +1415,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             if (newEventDetails && existingEvent) { 
                 const oldTimeStr = existingEvent.timestamp?.toDate ? format(existingEvent.timestamp.toDate(), 'HH:mm') : null;
                 const newTimeStr = format(newEventDetails.timestamp.toDate(), 'HH:mm');
-                if (oldTimeStr && oldTimeStr !== newTimeStr && !existingEvent.originalTime) {
-                    updatePayload.originalTime = oldTimeStr;
+                const wasModified = Boolean((oldTimeStr && oldTimeStr !== newTimeStr) || existingEvent.isAuto);
+                if (wasModified) {
+                    updatePayload.isRectified = true;
+                    if (oldTimeStr && !existingEvent.originalTime) {
+                        updatePayload.originalTime = oldTimeStr;
+                    }
+                } else {
+                    updatePayload.isRectified = Boolean(existingEvent.isRectified);
                 }
                 updatePayload.timestamp = newEventDetails.timestamp;
                 const docRef = doc(timbratureCollectionRef, existingEvent.id);
@@ -1437,6 +1436,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                     type: type,
                     timestamp: newEventDetails.timestamp,
                     ...updatePayload,
+                    isRectified: (type === 'entrata' || type === 'uscita'),
                     isOvertime: editingShift.isOvertime,
                     isAuto: false,
                 };
@@ -3200,23 +3200,31 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap">
                                                                 {entryEvent?.status === 'sospesa' && entryEvent.suggestedTime && !entryEvent.originalTime ? '--:--' : (startTime ? format(startTime.toDate(), 'HH:mm') : '--:--')}
-                                                                {(entrySuggested && entryEvent?.status === 'sospesa') && (
+                                                                {(entrySuggested && entryEvent?.status === 'sospesa') ? (
                                                                     entryEvent?.originalTime ? (
-                                                                        <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {entrySuggested}</span>
+                                                                        <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1 w-fit">Rettifica: {entrySuggested}</span>
                                                                     ) : (
-                                                                        <span className="block text-[10px] text-blue-600 font-bold bg-blue-500/10 px-1 py-0.5 rounded mt-1">Dichiarato: {entrySuggested}</span>
+                                                                        <span className="block text-[10px] text-blue-600 font-bold bg-blue-500/10 px-1 py-0.5 rounded mt-1 w-fit">Dichiarato: {entrySuggested}</span>
                                                                     )
-                                                                )}
+                                                                ) : (entryEvent?.isRectified || entryEvent?.rectificationStatus === 'approvata' || entryEvent?.originalTime) ? (
+                                                                    <span className="block text-[10px] text-purple-600 font-bold bg-purple-500/10 px-1 py-0.5 rounded mt-1 w-fit">
+                                                                        Rettificata{entryEvent?.originalTime ? ` (era ${entryEvent.originalTime})` : ''}
+                                                                    </span>
+                                                                ) : null}
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap">
                                                                 {exitEvent?.status === 'sospesa' && exitEvent.suggestedTime && !exitEvent.originalTime ? '--:--' : (endTime ? format(endTime.toDate(), 'HH:mm') : '--:--')}
-                                                                {(suggestedTime && exitEvent?.status === 'sospesa') && (
+                                                                {(suggestedTime && exitEvent?.status === 'sospesa') ? (
                                                                     exitEvent?.originalTime ? (
-                                                                        <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1">Rettifica: {suggestedTime}</span>
+                                                                        <span className="block text-[10px] text-orange-600 font-bold bg-orange-500/10 px-1 py-0.5 rounded mt-1 w-fit">Rettifica: {suggestedTime}</span>
                                                                     ) : (
-                                                                        <span className="block text-[10px] text-blue-600 font-bold bg-blue-500/10 px-1 py-0.5 rounded mt-1">Dichiarato: {suggestedTime}</span>
+                                                                        <span className="block text-[10px] text-blue-600 font-bold bg-blue-500/10 px-1 py-0.5 rounded mt-1 w-fit">Dichiarato: {suggestedTime}</span>
                                                                     )
-                                                                )}
+                                                                ) : (exitEvent?.isRectified || exitEvent?.rectificationStatus === 'approvata' || exitEvent?.originalTime) ? (
+                                                                    <span className="block text-[10px] text-purple-600 font-bold bg-purple-500/10 px-1 py-0.5 rounded mt-1 w-fit">
+                                                                        Rettificata{exitEvent?.originalTime ? ` (era ${exitEvent.originalTime})` : ''}
+                                                                    </span>
+                                                                ) : null}
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap">{formatMinutes(shift.workDuration)}</TableCell>
                                                             <TableCell className="whitespace-nowrap">
@@ -3463,9 +3471,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 return (
                                                                     <span key={idx} className="inline-flex items-baseline gap-1">
                                                                         <span>{typeFormatted}: <strong>{originalTime}</strong> {referenceTime}</span>
-                                                                        {e.originalTime && (
-                                                                            <span className="text-red-600 dark:text-red-400 font-mono font-bold text-xs">
-                                                                                {e.originalTime}
+                                                                        {(e.type === 'entrata' || e.type === 'uscita') && (e.isRectified || e.rectificationStatus === 'approvata' || e.originalTime) && (
+                                                                            <span className="text-purple-600 dark:text-purple-400 font-semibold text-[10px] bg-purple-500/10 px-1 py-0.5 rounded">
+                                                                                Rettificata{e.originalTime ? ` (era ${e.originalTime})` : ''}
                                                                             </span>
                                                                         )}
                                                                         {idx < sortedEvents.length - 1 && <span className="text-muted-foreground ml-1">|</span>}
@@ -3518,9 +3526,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 return (
                                                                     <span key={idx} className="inline-flex items-baseline gap-1">
                                                                         <span>{typeFormatted}: <strong>{originalTime}</strong> {referenceTime}</span>
-                                                                        {e.originalTime && (
-                                                                            <span className="text-red-600 dark:text-red-400 font-mono font-bold text-xs">
-                                                                                {e.originalTime}
+                                                                        {(e.type === 'entrata' || e.type === 'uscita') && (e.isRectified || e.rectificationStatus === 'approvata' || e.originalTime) && (
+                                                                            <span className="text-purple-600 dark:text-purple-400 font-semibold text-[10px] bg-purple-500/10 px-1 py-0.5 rounded">
+                                                                                Rettificata{e.originalTime ? ` (era ${e.originalTime})` : ''}
                                                                             </span>
                                                                         )}
                                                                         {idx < sortedEvents.length - 1 && <span className="text-muted-foreground ml-1">|</span>}
@@ -4111,10 +4119,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                               Richiesta inserimento: {t.suggestedTime}
                                                           </Badge>
                                                       )
-                                                  ) : (t.rectificationStatus === 'approvata' || t.originalTime) && t.originalTime ? (
-                                                       <span className="text-xs font-mono font-bold text-red-600 dark:text-red-400 block mt-0.5">
-                                                           {t.originalTime}
-                                                       </span>
+                                                  ) : (t.type === 'entrata' || t.type === 'uscita') && (t.isRectified || t.rectificationStatus === 'approvata' || t.originalTime) ? (
+                                                       <Badge variant="outline" className="text-[10px] h-auto px-1.5 py-0.5 border-purple-400 text-purple-700 bg-purple-50 dark:bg-purple-950/20 font-semibold block mt-1 w-fit">
+                                                           Rettificata{t.originalTime ? ` (era ${t.originalTime})` : ''}
+                                                       </Badge>
                                                   ) : null}
                                                </div>
                                             </TableCell>

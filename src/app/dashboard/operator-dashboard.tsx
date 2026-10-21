@@ -924,88 +924,103 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     const userId = authUser?.id || operator?.id;
     if (!firestore || !userId || !correctingShift || isProcessing) return;
 
+    const currentEntryTimeStr = correctingShift.entry?.timestamp?.toDate()
+      ? format(correctingShift.entry.timestamp.toDate(), 'HH:mm')
+      : '';
+    const currentExitTimeStr = correctingShift.exit?.timestamp?.toDate()
+      ? format(correctingShift.exit.timestamp.toDate(), 'HH:mm')
+      : '';
+
+    const isEntryChanged = Boolean(suggestedEntryTime && suggestedEntryTime !== currentEntryTimeStr);
+    const isExitChanged = Boolean(suggestedExitTime && suggestedExitTime !== currentExitTimeStr);
+
+    if (!isEntryChanged && !isExitChanged) {
+      toast({
+        title: "Nessuna modifica",
+        description: "Modifica almeno l'orario di entrata o di uscita rispetto a quello già registrato.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const timbraturaRef = collection(firestore, `app-users/${userId}/timbrature`);
       const shiftId = correctingShift.entry?.shiftId || correctingShift.exit?.shiftId || doc(timbraturaRef).id;
 
-      // 1. Handle entry (entrata) event
-      if (correctingShift.entry) {
-        // Update existing entry
-        const docRef = doc(firestore, `app-users/${userId}/timbrature`, correctingShift.entry.id);
-        const originalTimeStr = correctingShift.entry.timestamp?.toDate()
-          ? format(correctingShift.entry.timestamp.toDate(), 'HH:mm')
-          : '';
+      // 1. Handle entry (entrata) event ONLY if actually modified
+      if (isEntryChanged) {
+        if (correctingShift.entry) {
+          const docRef = doc(firestore, `app-users/${userId}/timbrature`, correctingShift.entry.id);
+          const originalTimeStr = correctingShift.entry.originalTime || currentEntryTimeStr;
 
-        await updateDoc(docRef, {
-          status: 'sospesa' as const,
-          suggestedTime: suggestedEntryTime || null,
-          originalTime: originalTimeStr,
-          viewedByOperator: true,
-          rectificationStatus: 'in_approvazione'
-        });
-      } else if (suggestedEntryTime) {
-        // Create new entry
-        const [hours, minutes] = suggestedEntryTime.split(':').map(Number);
-        const eventTime = set(correctingShift.date, { hours, minutes, seconds: 0, milliseconds: 0 });
+          await updateDoc(docRef, {
+            status: 'sospesa' as const,
+            suggestedTime: suggestedEntryTime || null,
+            originalTime: originalTimeStr,
+            viewedByOperator: true,
+            rectificationStatus: 'in_approvazione'
+          });
+        } else if (suggestedEntryTime) {
+          const [hours, minutes] = suggestedEntryTime.split(':').map(Number);
+          const eventTime = set(correctingShift.date, { hours, minutes, seconds: 0, milliseconds: 0 });
 
-        const newEntry: Omit<ClockingEvent, 'id'> = {
-          userId: userId,
-          type: 'entrata',
-          timestamp: Timestamp.fromDate(eventTime),
-          status: 'sospesa' as const,
-          latitude: 0,
-          longitude: 0,
-          viewedByOperator: true,
-          shiftId: shiftId,
-          isAuto: false,
-          suggestedTime: suggestedEntryTime,
-          originalTime: null,
-          rectificationStatus: 'in_approvazione'
-        };
-        await addDoc(timbraturaRef, newEntry);
+          const newEntry: Omit<ClockingEvent, 'id'> = {
+            userId: userId,
+            type: 'entrata',
+            timestamp: Timestamp.fromDate(eventTime),
+            status: 'sospesa' as const,
+            latitude: 0,
+            longitude: 0,
+            viewedByOperator: true,
+            shiftId: shiftId,
+            isAuto: false,
+            suggestedTime: suggestedEntryTime,
+            originalTime: null,
+            rectificationStatus: 'in_approvazione'
+          };
+          await addDoc(timbraturaRef, newEntry);
+        }
       }
 
-      // 2. Handle exit (uscita) event
-      if (correctingShift.exit) {
-        // Update existing exit
-        const docRef = doc(firestore, `app-users/${userId}/timbrature`, correctingShift.exit.id);
-        const originalTimeStr = correctingShift.exit.timestamp?.toDate()
-          ? format(correctingShift.exit.timestamp.toDate(), 'HH:mm')
-          : '';
+      // 2. Handle exit (uscita) event ONLY if actually modified
+      if (isExitChanged) {
+        if (correctingShift.exit) {
+          const docRef = doc(firestore, `app-users/${userId}/timbrature`, correctingShift.exit.id);
+          const originalTimeStr = correctingShift.exit.originalTime || currentExitTimeStr;
 
-        await updateDoc(docRef, {
-          status: 'sospesa' as const,
-          suggestedTime: suggestedExitTime || null,
-          originalTime: originalTimeStr,
-          viewedByOperator: true,
-          rectificationStatus: 'in_approvazione'
-        });
-      } else if (suggestedExitTime) {
-        // Create new exit
-        const [hours, minutes] = suggestedExitTime.split(':').map(Number);
-        const eventTime = set(correctingShift.date, { hours, minutes, seconds: 0, milliseconds: 0 });
+          await updateDoc(docRef, {
+            status: 'sospesa' as const,
+            suggestedTime: suggestedExitTime || null,
+            originalTime: originalTimeStr,
+            viewedByOperator: true,
+            rectificationStatus: 'in_approvazione'
+          });
+        } else if (suggestedExitTime) {
+          const [hours, minutes] = suggestedExitTime.split(':').map(Number);
+          const eventTime = set(correctingShift.date, { hours, minutes, seconds: 0, milliseconds: 0 });
 
-        const newExit: Omit<ClockingEvent, 'id'> = {
-          userId: userId,
-          type: 'uscita',
-          timestamp: Timestamp.fromDate(eventTime),
-          status: 'sospesa' as const,
-          latitude: 0,
-          longitude: 0,
-          viewedByOperator: true,
-          shiftId: shiftId,
-          isAuto: false,
-          suggestedTime: suggestedExitTime,
-          originalTime: null,
-          rectificationStatus: 'in_approvazione'
-        };
-        await addDoc(timbraturaRef, newExit);
+          const newExit: Omit<ClockingEvent, 'id'> = {
+            userId: userId,
+            type: 'uscita',
+            timestamp: Timestamp.fromDate(eventTime),
+            status: 'sospesa' as const,
+            latitude: 0,
+            longitude: 0,
+            viewedByOperator: true,
+            shiftId: shiftId,
+            isAuto: false,
+            suggestedTime: suggestedExitTime,
+            originalTime: null,
+            rectificationStatus: 'in_approvazione'
+          };
+          await addDoc(timbraturaRef, newExit);
+        }
       }
 
       toast({
         title: "Richiesta Inviata",
-        description: "La richiesta di rettifica dell'intero turno è stata inviata all'amministratore.",
+        description: "La richiesta di rettifica è stata inviata all'amministratore.",
       });
       setIsShiftCorrectionOpen(false);
       setCorrectingShift(null);
