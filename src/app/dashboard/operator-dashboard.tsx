@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle, Coffee, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit, setDoc } from 'firebase/firestore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -527,6 +527,56 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   }, [clockings]);
 
   useEffect(() => {
+    if (!firestore || !authUser?.id || isClockingDataLoading || !clockings) return;
+
+    const todayStart = startOfDay(new Date());
+    const validEvents = clockings.filter(
+      (e) => e.timestamp && typeof e.timestamp.toDate === 'function' && e.status !== 'rifiutata'
+    );
+
+    const openPastEntries = validEvents.filter((e) => {
+      if (e.type !== 'entrata') return false;
+      const entryDate = e.timestamp.toDate();
+      if (!isBefore(startOfDay(entryDate), todayStart)) return false;
+
+      const entryDayStr = format(entryDate, 'yyyy-MM-dd');
+      const hasMatchingExit = validEvents.some((u) => {
+        if (u.type !== 'uscita') return false;
+        if (e.shiftId && u.shiftId === e.shiftId) return true;
+        return format(u.timestamp.toDate(), 'yyyy-MM-dd') === entryDayStr;
+      });
+
+      return !hasMatchingExit;
+    });
+
+    if (openPastEntries.length === 0) return;
+
+    openPastEntries.forEach(async (entrata) => {
+      try {
+        const entryDate = entrata.timestamp.toDate();
+        const autoExitDate = set(entryDate, { hours: 23, minutes: 59, seconds: 0, milliseconds: 0 });
+        const shiftIdToUse = entrata.shiftId || entrata.id;
+        const autoDocId = `auto_exit_${shiftIdToUse}`;
+        const autoDocRef = doc(firestore, `app-users/${authUser.id}/timbrature`, autoDocId);
+
+        await setDoc(autoDocRef, {
+          userId: authUser.id,
+          type: 'uscita',
+          timestamp: Timestamp.fromDate(autoExitDate),
+          latitude: 0,
+          longitude: 0,
+          status: 'sospesa',
+          viewedByOperator: false,
+          shiftId: shiftIdToUse,
+          isAuto: true,
+        });
+      } catch (err) {
+        console.error('Error auto-stopping open past shift at 23:59:', err);
+      }
+    });
+  }, [firestore, authUser, isClockingDataLoading, clockings]);
+
+  useEffect(() => {
     const activeData = (todayClockings && todayClockings.length > 0) ? todayClockings : clockings;
     if (activeData && activeData.length > 0) {
       const lastEvent = [...activeData].pop();
@@ -541,7 +591,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         setIsClockedIn(false);
       } else {
         const lastValidEvent = [...activeData].filter(e => e.status !== 'rifiutata').pop();
-        if (lastValidEvent && (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa')) {
+        const isLastEventToday = lastValidEvent?.timestamp?.toDate
+          ? isSameDay(lastValidEvent.timestamp.toDate(), new Date())
+          : false;
+        if (lastValidEvent && isLastEventToday && (lastValidEvent.type === 'entrata' || lastValidEvent.type === 'fine_pausa')) {
           setIsClockedIn(true);
         } else {
           setIsClockedIn(false);

@@ -19,7 +19,7 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format, set, getDay as getDayFns, isSameDay, addDays, subDays, startOfDay, endOfDay, parse, addMonths, subMonths, startOfMonth, endOfMonth, isSunday, eachDayOfInterval, formatISO, getDay } from 'date-fns';
+import { format, set, getDay as getDayFns, isSameDay, isBefore, addDays, subDays, startOfDay, endOfDay, parse, addMonths, subMonths, startOfMonth, endOfMonth, isSunday, eachDayOfInterval, formatISO, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -546,6 +546,46 @@ export default function ShiftApprovalPage() {
                 remainingLegacyEvents.push(legEvent);
             }
 
+            // Auto-stop at 23:59 any past-day shift where the operator forgot to clock out
+            const todayStart = startOfDay(new Date());
+            for (const shiftId in shiftsById) {
+                const evs = shiftsById[shiftId];
+                const entryEv = evs.find(e => e.type === 'entrata');
+                const hasExitEv = evs.some(e => e.type === 'uscita');
+                if (entryEv && !hasExitEv) {
+                    const entryDate = entryEv.timestamp.toDate();
+                    if (isBefore(startOfDay(entryDate), todayStart)) {
+                        const autoExitDate = set(entryDate, { hours: 23, minutes: 59, seconds: 0, milliseconds: 0 });
+                        const autoDocId = `auto_exit_${shiftId}`;
+                        const autoExitPayload: Timbratura = {
+                            id: autoDocId,
+                            userId: operatorId,
+                            type: 'uscita',
+                            timestamp: Timestamp.fromDate(autoExitDate),
+                            latitude: 0,
+                            longitude: 0,
+                            status: 'sospesa',
+                            viewedByOperator: false,
+                            shiftId: shiftId,
+                            isAuto: true,
+                        };
+                        evs.push(autoExitPayload);
+                        const autoDocRef = doc(firestore, `app-users/${operatorId}/timbrature`, autoDocId);
+                        setDoc(autoDocRef, {
+                            userId: operatorId,
+                            type: 'uscita',
+                            timestamp: Timestamp.fromDate(autoExitDate),
+                            latitude: 0,
+                            longitude: 0,
+                            status: 'sospesa',
+                            viewedByOperator: false,
+                            shiftId: shiftId,
+                            isAuto: true,
+                        }).catch(err => console.error('Error auto-stopping shift at 23:59:', err));
+                    }
+                }
+            }
+
             const modernShifts: Shift[] = [];
             for (const shiftId in shiftsById) {
                 const dayEvents = shiftsById[shiftId];
@@ -880,6 +920,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
     const { shift, ordinaryHours, overtimeHours, leaveHours, createLeaveRequest, createOvertimeRecovery, manualBreak, ignoreContractualStart, makeupOfDay } = currentContext;
     const regularShift = shift as Shift;
+
+    const validationError = validateShiftBeforeApproval(regularShift);
+    if (validationError) {
+        toast({ title: 'Impossibile approvare il turno', description: validationError, variant: 'destructive' });
+        return;
+    }
+
     const approvedOrdinary = parseHoursInput(ordinaryHours);
     const approvedOvertime = parseHoursInput(overtimeHours);
     const approvedLeave = (createLeaveRequest && leaveHours) ? parseHoursInput(leaveHours) : 0;
@@ -1074,6 +1121,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 status: targetStatus,
                 rectificationStatus: 'approvata',
                 originalTime: originalTimeStr,
+                isAuto: false,
+                isRectified: true,
+                suggestedTime: null,
                 viewedByOperator: false
             });
 
@@ -1082,7 +1132,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             if (detailShift) {
                 const updatedEvents = detailShift.events.map(e => 
                     e.id === event.id 
-                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: targetStatus as any, rectificationStatus: 'approvata', originalTime: originalTimeStr } as Timbratura
+                        ? { ...e, timestamp: Timestamp.fromDate(newDate), status: targetStatus as any, rectificationStatus: 'approvata', originalTime: originalTimeStr, isAuto: false, isRectified: true, suggestedTime: undefined } as Timbratura
                         : e
                 );
                 const processed = processShift(updatedEvents, new Set());
@@ -1109,7 +1159,29 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             const docRef = doc(firestore, `app-users/${operator.id}/timbrature`, event.id);
             const isShiftInProgress = currentShift.status === 'in_corso';
             
-            if (event.originalTime) {
+            const eventTimeStr = event.timestamp?.toDate ? format(event.timestamp.toDate(), 'HH:mm') : '';
+            if (event.isAuto || eventTimeStr === '23:59') {
+                await updateDoc(docRef, {
+                    status: 'sospesa',
+                    rectificationStatus: 'rifiutata',
+                    suggestedTime: null,
+                    viewedByOperator: false
+                });
+
+                toast({ title: 'Rettifica rifiutata', description: 'Richiesta rifiutata. Imposta l\'orario di uscita effettivo tramite "Modifica" prima di approvare il turno.' });
+
+                if (detailShift) {
+                    const updatedEvents = detailShift.events.map(e =>
+                        e.id === event.id
+                            ? { ...e, status: 'sospesa' as const, rectificationStatus: 'rifiutata', suggestedTime: undefined } as Timbratura
+                            : e
+                    );
+                    const processed = processShift(updatedEvents, new Set());
+                    if (processed) {
+                        setDetailShift({ ...detailShift, ...processed, events: updatedEvents });
+                    }
+                }
+            } else if (event.originalTime) {
                 const targetStatus = isShiftInProgress ? 'sospesa' : 'confermata';
                 await updateDoc(docRef, {
                     status: targetStatus,
@@ -1260,6 +1332,20 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     const handleEditShift = async () => {
         if (!firestore || !editingShift || !editShiftTimes.entrata || !operator) {
             toast({ title: 'Dati mancanti', description: 'L\'orario di entrata è obbligatorio.', variant: 'destructive' });
+            return;
+        }
+
+        const shiftDateForCheck = editingShift.events[0]?.timestamp?.toDate ? editingShift.events[0].timestamp.toDate() : editingShift.date;
+        const isPastShift = isBefore(startOfDay(shiftDateForCheck), startOfDay(new Date()));
+        const hadExit = editingShift.events.some(e => e.type === 'uscita');
+
+        if ((isPastShift || hadExit) && !editShiftTimes.uscita) {
+            toast({ title: 'Orario di uscita mancante', description: 'Devi inserire l\'orario di uscita effettivo per poter salvare il turno.', variant: 'destructive' });
+            return;
+        }
+
+        if (editShiftTimes.uscita === '23:59') {
+            toast({ title: 'Orario di uscita non valido', description: '23:59 è l\'orario di blocco automatico di mezzanotte. Inserisci l\'orario effettivo in cui l\'operatore ha terminato il turno.', variant: 'destructive' });
             return;
         }
     
@@ -1473,8 +1559,49 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     };
     
     
+    const validateShiftBeforeApproval = (shift: Shift): string | null => {
+        const entryEvent = shift.events.find(e => e.type === 'entrata');
+        const exitEvent = shift.events.find(e => e.type === 'uscita');
+
+        if (!entryEvent) {
+            return "Orario di entrata mancante. Inserisci l'orario di entrata tramite 'Modifica' prima di approvare il turno.";
+        }
+
+        if (!exitEvent) {
+            if (isSameDay(entryEvent.timestamp.toDate(), new Date())) {
+                return "Non puoi approvare un turno ancora in corso (manca l'orario di uscita).";
+            }
+            return "Orario di uscita mancante. Devi prima inserire l'orario di uscita tramite 'Modifica' prima di poter approvare il turno.";
+        }
+
+        if (exitEvent.status === 'sospesa' && exitEvent.suggestedTime) {
+            return `L'operatore ha suggerito l'orario di uscita (${exitEvent.suggestedTime}). Clicca su "Applica" accanto alla timbratura oppure correggi l'orario di uscita tramite "Modifica" prima di approvare il turno.`;
+        }
+
+        if (entryEvent.status === 'sospesa' && entryEvent.suggestedTime) {
+            return `L'operatore ha suggerito l'orario di entrata (${entryEvent.suggestedTime}). Clicca su "Applica" accanto alla timbratura oppure correggi l'orario di entrata tramite "Modifica" prima di approvare il turno.`;
+        }
+
+        const exitTimeStr = format(exitEvent.timestamp.toDate(), 'HH:mm');
+        if (exitEvent.isAuto === true || exitTimeStr === '23:59') {
+            return "Il turno si è fermato automaticamente a mezzanotte (23:59) per mancata timbratura di uscita. Devi prima correggere l'orario di uscita (tramite il tasto 'Modifica' o applicando la rettifica dell'operatore) prima di poter approvare il turno.";
+        }
+
+        if (entryEvent.isAuto === true && !entryEvent.isRectified && entryEvent.rectificationStatus !== 'approvata') {
+            return "L'orario di entrata non è ancora stato rettificato. Correggilo tramite 'Modifica' prima di approvare il turno.";
+        }
+
+        return null;
+    };
+
     const handleApprovalProcess = (shift: Shift) => {
         if (!operator || !shift.events[0]) return;
+
+        const validationError = validateShiftBeforeApproval(shift);
+        if (validationError) {
+            toast({ title: 'Impossibile approvare il turno', description: validationError, variant: 'destructive' });
+            return;
+        }
 
         const hasBreak = shift.events.some(e => e.type === 'pausa');
         
@@ -1483,11 +1610,6 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         const dayToUse = dayIndexToName[getDayFns(dayToUseDate)];
         const dailySchedule = operator.workSchedule[dayToUse];
         const mandatoryBreakMinutes = dailySchedule?.breakMinutes || 0;
-
-        if (isSameDay(shift.events[0].timestamp.toDate(), new Date()) && !shift.events.some(e=> e.type === 'uscita')){
-             toast({ title: 'Turno in corso', description: 'Non puoi approvare un turno non ancora terminato.', variant: 'destructive'});
-             return;
-        }
 
         if (!hasBreak && mandatoryBreakMinutes > 0) {
             setShiftForBreak(shift);
@@ -2055,8 +2177,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     
     const handleOvertimeShiftApprovalProcess = (shift: StraordinarioShift) => {
         if (!operator) return;
-        if (isSameDay(shift.date.toDate(), new Date()) && !shift.events.some(e => e.type === 'uscita')) {
-            toast({ title: 'Turno in corso', description: 'Non puoi approvare un turno non ancora terminato.', variant: 'destructive' });
+        const exitEvent = shift.events.find(e => e.type === 'uscita');
+        if (!exitEvent) {
+            toast({ title: 'Orario di uscita mancante', description: 'Non puoi approvare un turno privo di orario di uscita. Inserisci prima l\'uscita tramite "Modifica".', variant: 'destructive' });
+            return;
+        }
+        const exitTimeStr = format(exitEvent.timestamp.toDate(), 'HH:mm');
+        if (exitTimeStr === '23:59') {
+            toast({ title: 'Impossibile approvare il turno', description: 'L\'orario di uscita è impostato a mezzanotte (23:59). Correggi prima l\'orario di uscita tramite "Modifica".', variant: 'destructive' });
             return;
         }
         handleOpenApproveDialog(shift, true);
@@ -3921,6 +4049,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                         );
                     })()}
 
+
+                    {detailShift && (() => {
+                        const validationErr = (detailShift.status !== 'confermato' && detailShift.status !== 'rifiutato')
+                            ? validateShiftBeforeApproval(detailShift)
+                            : null;
+                        if (!validationErr) return null;
+                        return (
+                            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3 my-2 flex items-start gap-2.5">
+                                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                <div className="text-xs sm:text-sm text-red-800 dark:text-red-200">
+                                    <p className="font-bold">Approvazione bloccata: orario da correggere</p>
+                                    <p className="mt-0.5">{validationErr}</p>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     <div className="overflow-x-auto mt-2 max-h-80 overflow-y-auto">
                         <Table>
