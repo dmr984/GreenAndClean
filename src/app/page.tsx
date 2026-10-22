@@ -89,6 +89,24 @@ interface TimbraturaEvent {
   makeupOfDay?: string | null;
 }
 
+export interface SubShiftInfo {
+  shiftId?: string;
+  entryTime: string | null;
+  exitTime: string | null;
+  refStartTime: string | null;
+  refEndTime: string | null;
+  pauseTime: string;
+  pauseDetail: string | null;
+  ordinaryHours: number;
+  overtimeHours: number;
+  totalHours: number;
+  status: 'confermato' | 'in_attesa' | 'in_servizio';
+  isMakeupShift?: boolean;
+  makeupForDayFormatted?: string | null;
+  isRecoveredDay?: boolean;
+  recoveredOnDateFormatted?: string | null;
+}
+
 interface DayShiftRow {
   operator: Operator;
   entryTime: string | null;
@@ -118,6 +136,169 @@ interface DayShiftRow {
   makeupForDayFormatted?: string | null;
   isRecoveredDay?: boolean;
   recoveredOnDateFormatted?: string | null;
+  shifts?: SubShiftInfo[];
+}
+
+function groupEventsIntoShifts(
+  events: TimbraturaEvent[],
+  op: Operator,
+  targetDate: Date,
+  isRecoveredDay: boolean = false
+): SubShiftInfo[] {
+  if (!events || events.length === 0) return [];
+
+  const groupsMap = new Map<string, TimbraturaEvent[]>();
+  const unassigned: TimbraturaEvent[] = [];
+
+  events.forEach((ev) => {
+    if (ev.shiftId) {
+      if (!groupsMap.has(ev.shiftId)) {
+        groupsMap.set(ev.shiftId, []);
+      }
+      groupsMap.get(ev.shiftId)!.push(ev);
+    } else {
+      unassigned.push(ev);
+    }
+  });
+
+  if (unassigned.length > 0) {
+    unassigned.sort((a, b) => {
+      const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0;
+      const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0;
+      return tA - tB;
+    });
+
+    let current: TimbraturaEvent[] = [];
+    unassigned.forEach((ev) => {
+      if (ev.type === 'entrata' && current.length > 0) {
+        groupsMap.set(`unassigned_${current[0].id || Math.random()}`, current);
+        current = [ev];
+      } else {
+        current.push(ev);
+      }
+    });
+    if (current.length > 0) {
+      groupsMap.set(`unassigned_${current[0].id || Math.random()}`, current);
+    }
+  }
+
+  if (groupsMap.size === 0 && events.length > 0) {
+    groupsMap.set('default', events);
+  }
+
+  const sortedGroups = Array.from(groupsMap.values()).sort((gA, gB) => {
+    const minA = Math.min(...gA.map((e) => (e.timestamp?.toDate ? e.timestamp.toDate().getTime() : 0)));
+    const minB = Math.min(...gB.map((e) => (e.timestamp?.toDate ? e.timestamp.toDate().getTime() : 0)));
+    return minA - minB;
+  });
+
+  const shifts: SubShiftInfo[] = [];
+
+  for (const group of sortedGroups) {
+    const entry = group.find((e) => e.type === 'entrata');
+    const exit = group.filter((e) => e.type === 'uscita').pop();
+
+    if (!entry && !exit) continue;
+
+    const isPastDay = isBefore(startOfDay(targetDate), startOfDay(new Date()));
+    const isToday = isSameDay(targetDate, new Date());
+
+    let entryTime: string | null = null;
+    let exitTime: string | null = null;
+    if (entry?.timestamp?.toDate) {
+      entryTime = format(entry.timestamp.toDate(), 'HH:mm');
+    }
+    if (exit?.timestamp?.toDate) {
+      exitTime = format(exit.timestamp.toDate(), 'HH:mm');
+    } else if (entry && !exit && isPastDay) {
+      exitTime = '23:59';
+    }
+
+    const { refStartTime, refEndTime } = getReferenceTimes(op as any, targetDate, entry, exit);
+
+    const sortedEvs = [...group].sort((a, b) => {
+      const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0;
+      const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0;
+      return tA - tB;
+    });
+
+    let pauseMinutes = 0;
+    const pauseIntervals: string[] = [];
+    let currentPauseStart: Date | null = null;
+
+    for (const ev of sortedEvs) {
+      if (ev.type === 'pausa' && ev.timestamp?.toDate) {
+        currentPauseStart = ev.timestamp.toDate();
+      } else if (ev.type === 'fine_pausa' && currentPauseStart && ev.timestamp?.toDate) {
+        const pEnd = ev.timestamp.toDate();
+        const diff = Math.round((pEnd.getTime() - currentPauseStart.getTime()) / 60000);
+        pauseMinutes += diff;
+        pauseIntervals.push(`${format(currentPauseStart, 'HH:mm')}-${format(pEnd, 'HH:mm')}`);
+        currentPauseStart = null;
+      }
+    }
+
+    const pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : (currentPauseStart ? 'In pausa' : '--');
+    const pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
+
+    const isConfirmed = isRecoveredDay || Boolean(
+      entry && exit &&
+      (entry.status === 'confermata' || exit.status === 'confermata') &&
+      entry.status !== 'sospesa' && exit.status !== 'sospesa'
+    );
+
+    let status: 'confermato' | 'in_attesa' | 'in_servizio' = 'in_attesa';
+    if (isRecoveredDay || isConfirmed) {
+      status = 'confermato';
+    } else if (entry && !exit && isToday) {
+      status = 'in_servizio';
+    }
+
+    let ordinaryHours = 0;
+    let overtimeHours = 0;
+    if (entry?.approvedOrdinaryHours !== undefined || entry?.approvedOvertimeHours !== undefined) {
+      ordinaryHours = entry.approvedOrdinaryHours || 0;
+      overtimeHours = entry.approvedOvertimeHours || 0;
+    } else if (entry && exit) {
+      const daySchedule = getScheduleForDate(op as any, targetDate);
+      const calc = calculateHours({ date: targetDate, events: group as any }, daySchedule, false, op as any);
+      ordinaryHours = calc.ordinary;
+      overtimeHours = calc.overtime;
+    }
+
+    const isMakeupShift = !isRecoveredDay && Boolean(entry?.makeupOfDay);
+    let makeupForDayFormatted: string | null = null;
+    if (isMakeupShift && entry?.makeupOfDay) {
+      try {
+        makeupForDayFormatted = format(parse(entry.makeupOfDay, 'yyyy-MM-dd', new Date()), 'd MMMM', { locale: it });
+      } catch (e) {}
+    }
+
+    let recoveredOnDateFormatted: string | null = null;
+    if (isRecoveredDay && entry?.timestamp?.toDate) {
+      recoveredOnDateFormatted = format(entry.timestamp.toDate(), 'd MMMM', { locale: it });
+    }
+
+    shifts.push({
+      shiftId: entry?.shiftId || exit?.shiftId,
+      entryTime,
+      exitTime,
+      refStartTime,
+      refEndTime,
+      pauseTime,
+      pauseDetail,
+      ordinaryHours,
+      overtimeHours,
+      totalHours: ordinaryHours + overtimeHours,
+      status,
+      isMakeupShift,
+      makeupForDayFormatted,
+      isRecoveredDay,
+      recoveredOnDateFormatted,
+    });
+  }
+
+  return shifts;
 }
 
 export default function BossMonitorApp() {
@@ -326,86 +507,67 @@ export default function BossMonitorApp() {
       const isRecoveredDay = events.length === 0 && recoveredEvents.length > 0;
       const effectiveEvents = isRecoveredDay ? recoveredEvents : events;
 
+      const shifts = groupEventsIntoShifts(effectiveEvents, op, selectedDate, isRecoveredDay);
+
       const entry = effectiveEvents.find((e) => e.type === 'entrata');
-      // Risolvi l'uscita associata: cerca quella con lo stesso shiftId o l'ultima uscita registrata
       const exit = (entry?.shiftId
         ? effectiveEvents.filter((e) => e.type === 'uscita' && e.shiftId === entry.shiftId).pop()
         : null) || effectiveEvents.filter((e) => e.type === 'uscita').pop();
 
-      const isMakeupShift = !isRecoveredDay && Boolean(entry?.makeupOfDay);
-      let makeupForDayFormatted: string | null = null;
-      if (isMakeupShift && entry?.makeupOfDay) {
-        try {
-          makeupForDayFormatted = format(parse(entry.makeupOfDay, 'yyyy-MM-dd', new Date()), 'd MMMM', { locale: it });
-        } catch (e) {}
-      }
-
-      let recoveredOnDateFormatted: string | null = null;
-      if (isRecoveredDay && entry?.timestamp?.toDate) {
-        recoveredOnDateFormatted = format(entry.timestamp.toDate(), 'd MMMM', { locale: it });
-      }
-
       // Schedule check
       const daySchedule = getScheduleForDate(op as any, selectedDate);
-      
-      // Check approval status: A shift is confirmed only if entry/exit are 'confermata' and not 'sospesa'
-      const isShiftConfirmed = isRecoveredDay || Boolean(
-        entry && exit &&
-        (entry.status === 'confermata' || exit.status === 'confermata') &&
-        entry.status !== 'sospesa' && exit.status !== 'sospesa'
-      );
-
-      // Determine overall status
-      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente' = 'non_timbrato';
       const isPastDay = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
       const isToday = isSameDay(selectedDate, new Date());
       const isWorkDay = (daySchedule?.totalHours || 0) > 0;
 
+      // Determine overall status
+      let status: 'confermato' | 'in_attesa' | 'in_servizio' | 'non_timbrato' | 'assente' = 'non_timbrato';
+
       if (isRecoveredDay) {
         status = 'confermato';
-      } else if (entry && exit) {
-        if (isShiftConfirmed) {
+      } else if (shifts.length > 0) {
+        if (shifts.some((s) => s.status === 'in_servizio')) {
+          status = 'in_servizio';
+        } else if (shifts.every((s) => s.status === 'confermato')) {
           status = 'confermato';
         } else {
           status = 'in_attesa';
         }
-      } else if (entry && !exit) {
-        if (isToday) {
-          // Solo se è oggi l'operatore può essere attualmente al lavoro!
-          status = 'in_servizio';
-        } else {
-          // Nei giorni passati, se manca l'uscita è un'anomalia/uscita mancante in attesa
-          status = 'in_attesa';
-        }
-      } else if (!entry && isPastDay && isWorkDay) {
-        // Se a mezzanotte il turno non è stato effettuato, il giorno successivo diventa Assenza automatica
+      } else if (isPastDay && isWorkDay) {
         status = 'assente';
       }
 
-      // ONLY display entryTime and exitTime if events exist
-      let entryTime: string | null = null;
-      let exitTime: string | null = null;
+      // Calculate totals across shifts
+      const ordinaryHours = shifts.reduce((acc, s) => acc + s.ordinaryHours, 0);
+      const overtimeHours = shifts.reduce((acc, s) => acc + s.overtimeHours, 0);
+      const totalHours = ordinaryHours + overtimeHours;
 
-      if (entry?.timestamp?.toDate) {
-        entryTime = format(entry.timestamp.toDate(), 'HH:mm');
-      }
-      if (exit?.timestamp?.toDate) {
-        exitTime = format(exit.timestamp.toDate(), 'HH:mm');
-      } else if (entry && !exit && isPastDay) {
-        exitTime = '23:59';
-      }
+      const firstShift = shifts[0];
+      const lastShift = shifts[shifts.length - 1];
 
-      // Orari di riferimento contrattuali ed effettivi calcolati
-      const { refStartTime, refEndTime } = getReferenceTimes(op as any, selectedDate, entry, exit);
+      const entryTime = firstShift?.entryTime || null;
+      const exitTime = lastShift?.exitTime || null;
+      const refStartTime = firstShift?.refStartTime || null;
+      const refEndTime = lastShift?.refEndTime || null;
+      const pauseTime = firstShift?.pauseTime || '--';
+      const pauseDetail = firstShift?.pauseDetail || null;
 
       let schedText: string | null = null;
-      if (refStartTime && refEndTime) {
+      if (shifts.length > 1) {
+        schedText = `${shifts.length} turni effettuati / previsti`;
+      } else if (refStartTime && refEndTime) {
         schedText = `${refStartTime} - ${refEndTime}`;
       } else if (daySchedule?.startTime && daySchedule?.endTime) {
         schedText = `${daySchedule.startTime} - ${daySchedule.endTime}`;
       } else if (daySchedule?.totalHours) {
         schedText = `${daySchedule.totalHours}h previste`;
       }
+
+      const isMakeupShift = shifts.some((s) => s.isMakeupShift);
+      const makeupForDayFormatted = shifts.find((s) => s.isMakeupShift)?.makeupForDayFormatted || null;
+      const recoveredOnDateFormatted = shifts.find((s) => s.isRecoveredDay)?.recoveredOnDateFormatted || (
+        isRecoveredDay && firstShift?.recoveredOnDateFormatted ? firstShift.recoveredOnDateFormatted : null
+      );
 
       // Rilevamento dimenticanza e rettifica
       const isEntryAuto = Boolean(entry?.isAuto);
@@ -426,49 +588,6 @@ export default function BossMonitorApp() {
       );
       const hasDimenticanza = isEntryAuto || isExitAuto;
       const hasRettifica = isEntryRectified || isExitRectified;
-
-      // Pauses calculation
-      const sortedEvents = [...events].sort((a, b) => {
-        const tA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0);
-        const tB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0);
-        return tA - tB;
-      });
-
-      let pauseMinutes = 0;
-      const pauseIntervals: string[] = [];
-      let currentPauseStart: Date | null = null;
-
-      for (const ev of sortedEvents) {
-        if (ev.type === 'pausa' && ev.timestamp?.toDate) {
-          currentPauseStart = ev.timestamp.toDate();
-        } else if (ev.type === 'fine_pausa' && currentPauseStart && ev.timestamp?.toDate) {
-          const pEnd = ev.timestamp.toDate();
-          const diff = Math.round((pEnd.getTime() - currentPauseStart.getTime()) / 60000);
-          pauseMinutes += diff;
-          pauseIntervals.push(`${format(currentPauseStart, 'HH:mm')}-${format(pEnd, 'HH:mm')}`);
-          currentPauseStart = null;
-        }
-      }
-
-      if (currentPauseStart) {
-        pauseIntervals.push(`${format(currentPauseStart, 'HH:mm')}-...`);
-      }
-
-      let pauseTime = '--';
-      let pauseDetail: string | null = null;
-
-      if (pauseMinutes > 0 || pauseIntervals.length > 0) {
-        pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : 'In pausa';
-        pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
-      } else if (daySchedule?.breakMinutes && daySchedule.breakMinutes > 0) {
-        pauseTime = '--';
-        pauseDetail = `prev. ${daySchedule.breakMinutes}m`;
-      }
-
-      let pausesText: string | null = null;
-      if (pauseIntervals.length > 0) {
-        pausesText = `${pauseIntervals.length} ${pauseIntervals.length === 1 ? 'pausa' : 'pause'}`;
-      }
 
       let isEarlyExit = false;
       let earlyExitText: string | undefined;
@@ -499,29 +618,6 @@ export default function BossMonitorApp() {
         }
       }
 
-      // Calculate or read approved hours
-      let ordinaryHours = 0;
-      let overtimeHours = 0;
-      let totalHours = 0;
-
-      if (status === 'confermato') {
-        if (entry?.approvedOrdinaryHours !== undefined || entry?.approvedOvertimeHours !== undefined) {
-          ordinaryHours = entry.approvedOrdinaryHours || 0;
-          overtimeHours = entry.approvedOvertimeHours || 0;
-          totalHours = ordinaryHours + overtimeHours;
-        } else if (entry && exit) {
-          const calc = calculateHours({ date: selectedDate, events: events as any }, daySchedule, false, op as any);
-          ordinaryHours = calc.ordinary;
-          overtimeHours = calc.overtime;
-          totalHours = ordinaryHours + overtimeHours;
-        }
-      } else if (status === 'in_attesa' && entry && exit) {
-        const calc = calculateHours({ date: selectedDate, events: events as any }, daySchedule, false, op as any);
-        ordinaryHours = calc.ordinary;
-        overtimeHours = calc.overtime;
-        totalHours = ordinaryHours + overtimeHours;
-      }
-
       return {
         operator: op,
         entryTime,
@@ -531,7 +627,7 @@ export default function BossMonitorApp() {
         pauseTime,
         pauseDetail,
         schedText,
-        pausesText,
+        pausesText: null,
         status,
         ordinaryHours,
         overtimeHours,
@@ -551,9 +647,10 @@ export default function BossMonitorApp() {
         makeupForDayFormatted,
         isRecoveredDay,
         recoveredOnDateFormatted,
+        shifts,
       };
     });
-  }, [operators, dateClockings, dateRequests, selectedDate]);
+  }, [operators, dateClockings, dateRecoveredClockings, dateRequests, selectedDate]);
 
   // Filtered rows
   const filteredRows = useMemo(() => {
@@ -686,6 +783,7 @@ export default function BossMonitorApp() {
       };
       isMakeupShift?: boolean;
       makeupForDayFormatted?: string | null;
+      shifts?: SubShiftInfo[];
     }
 
     const map = new Map<string, AgendaDayItem>();
@@ -737,6 +835,7 @@ export default function BossMonitorApp() {
                 ordinaryHours: ev.approvedOrdinaryHours,
                 overtimeHours: ev.approvedOvertimeHours,
               };
+              recItem.events = [ev, ...(exitEv ? [exitEv] : [])];
             }
           }
         } catch (e) {}
@@ -758,12 +857,16 @@ export default function BossMonitorApp() {
               recItem.isRecoveredDay = true;
               const revDate = rev.timestamp?.toDate ? rev.timestamp.toDate() : null;
               recItem.recoveredOnDateFormatted = revDate ? format(revDate, 'd MMMM', { locale: it }) : null;
+              const revExit = rev.shiftId
+                ? detailRecoveredEvents.find((e) => e.type === 'uscita' && e.shiftId === rev.shiftId)
+                : detailRecoveredEvents.find((e) => e.type === 'uscita');
               recItem.recoveredShift = {
                 entryTime: revDate ? format(revDate, 'HH:mm') : undefined,
-                exitTime: undefined,
+                exitTime: revExit?.timestamp?.toDate ? format(revExit.timestamp.toDate(), 'HH:mm') : undefined,
                 ordinaryHours: rev.approvedOrdinaryHours,
                 overtimeHours: rev.approvedOvertimeHours,
               };
+              recItem.events = [rev, ...(revExit ? [revExit] : [])];
             }
           }
         } catch (e) {}
@@ -783,9 +886,14 @@ export default function BossMonitorApp() {
     });
 
     const arr = Array.from(map.values());
+    if (selectedOperator) {
+      arr.forEach((item) => {
+        item.shifts = groupEventsIntoShifts(item.events, selectedOperator, item.date, item.isRecoveredDay);
+      });
+    }
     arr.sort((a, b) => b.date.getTime() - a.date.getTime());
     return arr;
-  }, [detailEvents, detailRecoveredEvents, detailRequests, detailMonth]);
+  }, [detailEvents, detailRecoveredEvents, detailRequests, detailMonth, selectedOperator]);
 
   // --------------------------------------------------------------------------
   // LOGIN SCREEN
@@ -1099,37 +1207,108 @@ export default function BossMonitorApp() {
                         </div>
                       </div>
 
-                      {/* Riga compatta a 4 celle: Entrata (con rif) | Pausa | Uscita (con rif) | Ore */}
-                      {(entryTime !== '--:--' || exitTime !== '--:--' || isRecovered) && (
-                        <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
-                          <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
-                            <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
-                            <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
-                            <span className="text-[9px] text-slate-400 block truncate">{refStart ? `rif. ${refStart}` : '-'}</span>
-                          </div>
+                      {/* Se la giornata ha turni multipli */}
+                      {item.shifts && item.shifts.length > 1 ? (
+                        <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                          {item.shifts.map((s, sIdx) => (
+                            <div key={s.shiftId || sIdx} className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 first:border-t-0 first:pt-0">
+                              <div className="flex items-center justify-between text-xs font-bold px-0.5">
+                                <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                  <span className="h-5 w-5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-[10px]">
+                                    {sIdx + 1}
+                                  </span>
+                                  Turno {sIdx + 1} ({s.entryTime} - {s.exitTime})
+                                  {s.isMakeupShift && (
+                                    <span className="text-blue-600 dark:text-blue-400 font-semibold text-[11px]">
+                                      • Recupero del {s.makeupForDayFormatted}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-emerald-700 dark:text-emerald-400 font-black">
+                                  {s.ordinaryHours}h
+                                </span>
+                              </div>
 
-                          <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
-                            <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
-                            <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{itemPauseText}</span>
-                            <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
-                          </div>
+                              <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
+                                <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                                  <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
+                                  <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{s.entryTime || '--:--'}</span>
+                                  <span className="text-[9px] text-slate-400 block truncate">{s.refStartTime ? `rif. ${s.refStartTime}` : '-'}</span>
+                                </div>
 
-                          <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
-                            <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
-                            <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
-                            <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `rif. ${refEnd}` : '-'}</span>
-                          </div>
+                                <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                                  <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
+                                  <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{s.pauseTime}</span>
+                                  <span className="text-[9px] text-slate-400 block truncate">{s.pauseDetail ? `(${s.pauseDetail})` : '-'}</span>
+                                </div>
 
-                          <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
-                            <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
-                            <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
-                              {(ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : (isApproved ? '0h' : '--')}
-                            </span>
-                            <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
-                              {isApproved ? 'approvate' : 'in attesa'}
+                                <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                                  <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
+                                  <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{s.exitTime || '--:--'}</span>
+                                  <span className="text-[9px] text-slate-400 block truncate">{s.refEndTime ? `rif. ${s.refEndTime}` : '-'}</span>
+                                </div>
+
+                                <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
+                                  <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
+                                  <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
+                                    {s.ordinaryHours}h{s.overtimeHours ? ` +${s.overtimeHours}h` : ''}
+                                  </span>
+                                  <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
+                                    {s.status === 'confermato' ? 'approvate' : 'in attesa'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {s.isMakeupShift && (
+                                <div className="p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs font-semibold flex items-center gap-1.5">
+                                  <Clock className="h-4 w-4 text-blue-600 shrink-0" />
+                                  <span>La timbratura delle {s.entryTime} alle {s.exitTime} è recupero del giorno {s.makeupForDayFormatted}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+
+                          {/* Totale complessivo della giornata con turni multipli */}
+                          <div className="flex items-center justify-between px-2.5 py-1.5 bg-emerald-100/50 dark:bg-emerald-950/30 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 border border-emerald-200/60">
+                            <span>Totale giornata ({item.shifts.length} turni)</span>
+                            <span className="text-emerald-700 dark:text-emerald-300 font-black text-sm">
+                              {item.shifts.reduce((sum, s) => sum + s.totalHours, 0)}h
                             </span>
                           </div>
                         </div>
+                      ) : (
+                        /* Riga compatta standard a 4 celle per turno singolo */
+                        (entryTime !== '--:--' || exitTime !== '--:--' || isRecovered) && (
+                          <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
+                              <span className="text-[9px] text-slate-400 block truncate">{refStart ? `rif. ${refStart}` : '-'}</span>
+                            </div>
+
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{itemPauseText}</span>
+                              <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
+                            </div>
+
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
+                              <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `rif. ${refEnd}` : '-'}</span>
+                            </div>
+
+                            <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
+                              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
+                              <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
+                                {(ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : (isApproved ? '0h' : '--')}
+                              </span>
+                              <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
+                                {isApproved ? 'approvate' : 'in attesa'}
+                              </span>
+                            </div>
+                          </div>
+                        )
                       )}
 
                       {/* Notifica Recupero Turno se recuperato */}
@@ -1140,32 +1319,37 @@ export default function BossMonitorApp() {
                         </div>
                       )}
 
-                      {/* Notifica Recupero Turno se turno fisico di recupero */}
-                      {item.isMakeupShift && (
-                        <div className="p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs font-semibold flex items-center gap-1.5">
-                          <Clock className="h-4 w-4 text-blue-600 shrink-0" />
-                          <span>La timbratura delle {entryTime} alle {exitTime} è recupero del giorno {item.makeupForDayFormatted}</span>
-                        </div>
-                      )}
+                      {/* Notifica Recupero Turno se turno fisico di recupero (caso turno singolo) */}
+                      {!item.shifts || item.shifts.length <= 1 ? (
+                        item.isMakeupShift && (
+                          <div className="p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs font-semibold flex items-center gap-1.5">
+                            <Clock className="h-4 w-4 text-blue-600 shrink-0" />
+                            <span>La timbratura delle {entryTime} alle {exitTime} è recupero del giorno {item.makeupForDayFormatted}</span>
+                          </div>
+                        )
+                      ) : null}
 
                       {/* Eventuali richieste */}
-                      {item.requests.map((r, rIdx) => (
-                        <div key={rIdx} className="text-[11px] font-semibold text-slate-500 pt-0.5">
-                          {r.type === 'malattia' && '🤒 Malattia registrata'}
-                          {r.type === 'ferie' && '🏖️ Ferie godute'}
-                          {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
-                          {r.type === 'anticipo' && (
-                            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-between mt-1">
-                              <span className="flex items-center gap-1.5">
-                                <span>💰</span> Anticipo sullo stipendio
-                              </span>
-                              <span className="text-rose-600 font-black">
-                                - € {Number(r.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                      {item.requests.map((r, rIdx) => {
+                        if (r.type === 'assenza' && isRecovered) return null;
+                        return (
+                          <div key={rIdx} className="text-[11px] font-semibold text-slate-500 pt-0.5">
+                            {r.type === 'malattia' && '🤒 Malattia registrata'}
+                            {r.type === 'ferie' && '🏖️ Ferie godute'}
+                            {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
+                            {r.type === 'anticipo' && (
+                              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-between mt-1">
+                                <span className="flex items-center gap-1.5">
+                                  <span>💰</span> Anticipo sullo stipendio
+                                </span>
+                                <span className="text-rose-600 font-black">
+                                  - € {Number(r.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -1412,7 +1596,106 @@ export default function BossMonitorApp() {
                   </div>
 
                   {/* RIGA DETTAGLIO TIMBRATURA: ENTRATA | PAUSA | USCITA | ORD / STRA | TOTALE */}
-                  {(row.entryTime || row.exitTime || row.isRecoveredDay) ? (
+                  {row.shifts && row.shifts.length > 1 ? (
+                    <div className="space-y-2.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+                      {row.shifts.map((s, sIdx) => (
+                        <div key={s.shiftId || sIdx} className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 first:border-t-0 first:pt-0">
+                          <div className="flex items-center justify-between text-xs font-bold px-0.5">
+                            <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                              <span className="h-5 w-5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-[10px]">
+                                {sIdx + 1}
+                              </span>
+                              Turno {sIdx + 1} ({s.entryTime || '--:--'} - {s.exitTime || '--:--'})
+                              {s.isMakeupShift && (
+                                <span className="text-blue-600 dark:text-blue-400 font-semibold text-[11px]">
+                                  • Recupero del {s.makeupForDayFormatted}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-emerald-700 dark:text-emerald-400 font-black">
+                              {s.ordinaryHours}h{s.overtimeHours ? ` +${s.overtimeHours}h` : ''}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-5 gap-1 text-center">
+                            {/* Entrata */}
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Entrata</span>
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
+                                {s.entryTime || '--:--'}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                                {s.refStartTime ? `rif. ${s.refStartTime}` : '-'}
+                              </span>
+                            </div>
+
+                            {/* Pausa */}
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Pausa</span>
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
+                                {s.pauseTime}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                                {s.pauseDetail ? `(${s.pauseDetail})` : '-'}
+                              </span>
+                            </div>
+
+                            {/* Uscita */}
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Uscita</span>
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block truncate leading-tight">
+                                {s.exitTime || '--:--'}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                                {s.refEndTime ? `rif. ${s.refEndTime}` : '-'}
+                              </span>
+                            </div>
+
+                            {/* Ord / Stra */}
+                            <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl min-w-0">
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase tracking-tight">Ord / Stra</span>
+                              <span className="font-bold text-[11px] text-slate-700 dark:text-slate-300 block truncate leading-tight">
+                                {s.ordinaryHours}h /{' '}
+                                <span className={s.overtimeHours > 0 ? 'text-amber-600 font-black' : ''}>
+                                  {s.overtimeHours}h
+                                </span>
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-medium block truncate leading-tight mt-0.5">
+                                {s.status === 'confermato' ? 'approvate' : 'da approv.'}
+                              </span>
+                            </div>
+
+                            {/* Totale */}
+                            <div className="bg-emerald-50/80 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl min-w-0 border border-emerald-100 dark:border-emerald-900/50">
+                              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase tracking-tight">Totale</span>
+                              <span className="font-black text-[12px] text-emerald-700 dark:text-emerald-300 block truncate leading-tight">
+                                {s.totalHours}h
+                              </span>
+                              <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 font-medium block truncate leading-tight mt-0.5">
+                                {s.status === 'confermato' ? 'lavorate' : 'stimate'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Notifica recupero turno se questo specifico turno è di recupero */}
+                          {s.isMakeupShift && (
+                            <div className="p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs font-semibold flex items-center gap-1.5">
+                              <Clock className="h-4 w-4 text-blue-600 shrink-0" />
+                              <span>La timbratura delle {s.entryTime || '--:--'} alle {s.exitTime || '--:--'} è recupero del giorno {s.makeupForDayFormatted}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Totale complessivo della giornata per turni multipli */}
+                      <div className="flex items-center justify-between px-2.5 py-1.5 bg-emerald-100/50 dark:bg-emerald-950/30 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 border border-emerald-200/60">
+                        <span>Totale complessivo giornata ({row.shifts.length} turni)</span>
+                        <span className="text-emerald-700 dark:text-emerald-300 font-black text-sm">
+                          {row.totalHours}h
+                        </span>
+                      </div>
+                    </div>
+                  ) : (row.entryTime || row.exitTime || row.isRecoveredDay) ? (
                     <div className="space-y-1.5">
                       <div className="grid grid-cols-5 gap-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
                         {/* Entrata */}
