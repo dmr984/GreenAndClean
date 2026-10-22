@@ -136,6 +136,7 @@ export type DailyDetail = {
     note?: DailyNote;
     makeupPerformedFor?: string;
     makeupActivityFor?: string[];
+    makeupPerformedHours?: number;
 };
 
 
@@ -727,9 +728,11 @@ export const processMonthlyData = (
 
         if (!detail.shift) {
             detail.shift = {
-                events: [], allShifts: [], contractualHours: 0,
+                events: [], allShifts: [], contractualHours: dailySchedule?.totalHours || 0,
                 ordinaryHours: 0, overtimeHours: 0, permissionHours: 0, recuperoHours: 0,
             };
+        } else if (dailySchedule?.totalHours && !detail.shift.contractualHours) {
+            detail.shift.contractualHours = dailySchedule.totalHours;
         }
         
         detail.shift.events.push(...events);
@@ -755,9 +758,14 @@ export const processMonthlyData = (
             const physicalDayDetail = detailsMap.get(physicalDateISO);
             if (physicalDayDetail) {
                 physicalDayDetail.makeupActivityFor = physicalDayDetail.makeupActivityFor || [];
-                if (!physicalDayDetail.makeupActivityFor.includes(format(date, 'dd MMM', { locale: it }))) {
-                    physicalDayDetail.makeupActivityFor.push(format(date, 'dd MMM', { locale: it }));
+                const makeupLabel = format(date, 'dd MMM', { locale: it });
+                if (!physicalDayDetail.makeupActivityFor.includes(makeupLabel)) {
+                    physicalDayDetail.makeupActivityFor.push(makeupLabel);
                 }
+                const makeupShiftHours = (entrataEvent?.approvedOrdinaryHours !== undefined)
+                    ? (entrataEvent.approvedOrdinaryHours || 0)
+                    : hoursResult.ordinary;
+                physicalDayDetail.makeupPerformedHours = (physicalDayDetail.makeupPerformedHours || 0) + makeupShiftHours;
             }
         }
     });

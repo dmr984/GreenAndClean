@@ -953,16 +953,13 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
     // Se è un turno di recupero di una giornata precedente, cancella qualsiasi richiesta di assenza registrata per quel giorno
     if (makeupOfDay) {
-        const makeupDateObj = parse(makeupOfDay, 'yyyy-MM-dd', new Date());
-        const startOfMakeup = startOfDay(makeupDateObj);
-        const endOfMakeup = dateFnsEndOfDay(makeupDateObj);
         const assenzaQ = query(requestsRef, where('type', '==', 'assenza'));
         const assenzaSnap = await getDocs(assenzaQ);
         assenzaSnap.forEach(docSnap => {
             const rData = docSnap.data();
             if (rData.startDate?.toDate) {
-                const rStart = rData.startDate.toDate();
-                if (rStart >= startOfMakeup && rStart <= endOfMakeup) {
+                const rStartStr = format(rData.startDate.toDate(), 'yyyy-MM-dd');
+                if (rStartStr === makeupOfDay) {
                     batch.delete(docSnap.ref);
                 }
             }
@@ -3422,6 +3419,21 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                     const startDate = reqItem.startDate?.toDate ? reqItem.startDate.toDate() : shift.date;
                                                     const endDate = reqItem.endDate?.toDate ? reqItem.endDate.toDate() : startDate;
                                                     const isMultiDay = !isSameDay(startDate, endDate);
+                                                    const startDateStr = format(startDate, 'yyyy-MM-dd');
+
+                                                    // Controlla se questa giornata è stata recuperata da un turno svolto in altra data
+                                                    const recoveryShiftForDate = allShifts.find(s => {
+                                                        const entry = s.events.find(e => e.type === 'entrata');
+                                                        return entry?.makeupOfDay === startDateStr;
+                                                    });
+                                                    const isDateRecovered = Boolean(recoveryShiftForDate);
+                                                    let recoveryDateFormatted = '';
+                                                    if (isDateRecovered && recoveryShiftForDate) {
+                                                        const rDate = recoveryShiftForDate.events[0]?.timestamp?.toDate 
+                                                            ? recoveryShiftForDate.events[0].timestamp.toDate() 
+                                                            : recoveryShiftForDate.date;
+                                                        recoveryDateFormatted = format(rDate, 'd MMMM', { locale: it });
+                                                    }
 
                                                     return (
                                                         <TableRow key={`req-${reqItem.id}-${index}`}>
@@ -3430,19 +3442,30 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             </TableCell>
                                                             <TableCell className="text-xs max-w-[450px]">
                                                                 <div className="flex flex-wrap items-center gap-2">
-                                                                    <Badge variant="outline" className={cn(
-                                                                        reqItem.type === 'ferie' && 'bg-blue-100 text-blue-700 border-blue-200 font-semibold',
-                                                                        reqItem.type === 'malattia' && 'bg-amber-100 text-amber-700 border-amber-200 font-semibold',
-                                                                        reqItem.type === 'permesso' && 'bg-purple-100 text-purple-700 border-purple-200 font-semibold',
-                                                                        reqItem.type === 'assenza' && 'bg-red-100 text-red-700 border-red-200 font-semibold',
-                                                                        reqItem.type === 'straordinario' && 'bg-orange-100 text-orange-700 border-orange-200 font-semibold',
-                                                                        reqItem.type === 'anticipo' && 'bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold'
-                                                                    )}>
-                                                                        {reqItem.type === 'recupero_straordinari' ? 'Recupero Straordinari' : 
-                                                                         reqItem.type === 'anticipo' ? 'Anticipo Stipendio' : 
-                                                                         (reqItem.type.charAt(0).toUpperCase() + reqItem.type.slice(1))}
-                                                                    </Badge>
-                                                                    {reqItem.type === 'anticipo' ? (
+                                                                    {reqItem.type === 'assenza' && isDateRecovered ? (
+                                                                        <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold flex items-center gap-1">
+                                                                            <CheckCircle2 className="h-3 w-3" /> Turno Recuperato
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <Badge variant="outline" className={cn(
+                                                                            reqItem.type === 'ferie' && 'bg-blue-100 text-blue-700 border-blue-200 font-semibold',
+                                                                            reqItem.type === 'malattia' && 'bg-amber-100 text-amber-700 border-amber-200 font-semibold',
+                                                                            reqItem.type === 'permesso' && 'bg-purple-100 text-purple-700 border-purple-200 font-semibold',
+                                                                            reqItem.type === 'assenza' && 'bg-red-100 text-red-700 border-red-200 font-semibold',
+                                                                            reqItem.type === 'straordinario' && 'bg-orange-100 text-orange-700 border-orange-200 font-semibold',
+                                                                            reqItem.type === 'anticipo' && 'bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold'
+                                                                        )}>
+                                                                            {reqItem.type === 'recupero_straordinari' ? 'Recupero Straordinari' : 
+                                                                             reqItem.type === 'anticipo' ? 'Anticipo Stipendio' : 
+                                                                             (reqItem.type.charAt(0).toUpperCase() + reqItem.type.slice(1))}
+                                                                        </Badge>
+                                                                    )}
+
+                                                                    {reqItem.type === 'assenza' && isDateRecovered ? (
+                                                                        <span className="font-semibold text-emerald-700 text-xs">
+                                                                            Recuperato il giorno {recoveryDateFormatted || 'successivo'}
+                                                                        </span>
+                                                                    ) : reqItem.type === 'anticipo' ? (
                                                                         <span className="font-semibold text-emerald-700 text-xs">
                                                                             Il giorno {format(startDate, 'd MMMM', { locale: it })} è stato dato l'anticipo di € {(reqItem.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                         </span>
@@ -3454,6 +3477,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             <TableCell className="whitespace-nowrap font-semibold">
                                                                 {reqItem.type === 'anticipo' ? (
                                                                     <span className="text-rose-600">- € {(reqItem.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                                ) : reqItem.type === 'assenza' && isDateRecovered ? (
+                                                                    <span className="text-emerald-700">{reqItem.hours || 4}h (Recuperate)</span>
                                                                 ) : reqItem.hours ? (
                                                                     `${reqItem.hours}h`
                                                                 ) : '1 giorno'}
@@ -3461,13 +3486,19 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             <TableCell className="whitespace-nowrap text-xs">
                                                                 {reqItem.type === 'anticipo' ? (
                                                                     <span className="text-emerald-700 font-bold">Scalato</span>
+                                                                ) : reqItem.type === 'assenza' && isDateRecovered ? (
+                                                                    <span className="text-emerald-700 font-bold">{reqItem.hours || 4}h</span>
                                                                 ) : reqItem.hours ? (
                                                                     `${reqItem.hours}h`
                                                                 ) : (reqItem.type === 'ferie' || reqItem.type === 'malattia' ? '1 gg' : '-')}
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap">
-                                                                <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
-                                                                    Approvato
+                                                                <Badge variant="secondary" className={cn(
+                                                                    reqItem.type === 'assenza' && isDateRecovered
+                                                                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                                        : 'bg-green-100 text-green-700 border-green-200'
+                                                                )}>
+                                                                    {reqItem.type === 'assenza' && isDateRecovered ? 'Recuperato' : 'Approvato'}
                                                                 </Badge>
                                                             </TableCell>
                                                             <TableCell className="text-right whitespace-nowrap">
@@ -3495,6 +3526,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                     const sortedEvents = [...regularShift.events].sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
                                                     
                                                     const clockInEvent = sortedEvents.find(e => e.type === 'entrata');
+                                                    const isMakeupShift = Boolean(clockInEvent?.makeupOfDay);
+                                                    let makeupForDayFormatted = '';
+                                                    if (isMakeupShift && clockInEvent?.makeupOfDay) {
+                                                        try {
+                                                            makeupForDayFormatted = format(parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()), 'd MMMM', { locale: it });
+                                                        } catch (e) {
+                                                            makeupForDayFormatted = clockInEvent.makeupOfDay;
+                                                        }
+                                                    }
                                                     const dayToUseDate = clockInEvent?.makeupOfDay ? parse(clockInEvent.makeupOfDay, 'yyyy-MM-dd', new Date()) : regularShift.date;
                                                     const schedule = getScheduleForDate(operator, dayToUseDate);
                                                     
@@ -3527,11 +3567,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                     </span>
                                                                 );
                                                             })}
+                                                            {isMakeupShift && (
+                                                                <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-300 font-bold text-[10px] ml-1.5 flex items-center gap-1">
+                                                                    <Clock className="h-3 w-3" /> Recupero del {makeupForDayFormatted}
+                                                                </Badge>
+                                                            )}
                                                         </div>
                                                     );
                                                     
                                                     const parts = [];
-                                                    if (ordinary > 0) parts.push(`${ordinary}h ordinarie`);
+                                                    if (ordinary > 0) {
+                                                        if (isMakeupShift) {
+                                                            parts.push(`${ordinary}h ordinarie (Recupero del ${makeupForDayFormatted})`);
+                                                        } else {
+                                                            parts.push(`${ordinary}h ordinarie`);
+                                                        }
+                                                    }
                                                     
                                                     const associatedLeaveRequest = approvedRequests.find(r => r.associatedShiftId === regularShift.id && r.type === 'permesso');
                                                     if (associatedLeaveRequest?.hours) {
@@ -3817,17 +3868,19 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 </div>
                                                                 
                                                                 {performedOnDate && (
-                                                                    <p className="text-sm font-semibold text-primary">
-                                                                        Recupero eseguito il {performedOnDate}
-                                                                    </p>
+                                                                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 font-semibold flex items-center gap-2">
+                                                                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                                                        <span>Recupero eseguito il {performedOnDate}</span>
+                                                                    </div>
                                                                 )}
                                                                 {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
-                                                                    <div>
-                                                                        <p className="text-sm font-semibold text-purple-600">
-                                                                            Recupero per: {detail.makeupActivityFor.join(', ')}
-                                                                        </p>
-                                                                        <p className="text-xs text-muted-foreground italic">
-                                                                            (Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)
+                                                                    <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-xs text-purple-900 dark:text-purple-200 font-semibold space-y-1">
+                                                                        <div className="flex items-center gap-1.5 font-bold text-purple-700 dark:text-purple-300">
+                                                                            <Clock className="h-4 w-4" />
+                                                                            <span>Turno di recupero svolto oggi: {detail.makeupPerformedHours ? `${detail.makeupPerformedHours}h` : '4h'} per il {detail.makeupActivityFor.join(', ')}</span>
+                                                                        </div>
+                                                                        <p className="text-[11px] text-purple-700/80 font-normal">
+                                                                            Le ore di questo recupero sono accreditate alla presenza del {detail.makeupActivityFor.join(', ')} per azzerarne l'assenza.
                                                                         </p>
                                                                     </div>
                                                                 )}
@@ -3865,27 +3918,39 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 {detail.shift && detail.shift.allShifts ? (
                                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm pt-1">
                                                                         <InfoBox label="Ore Previste" value={`${detail.shift.contractualHours}h`} />
-                                                                        <InfoBox label="Ore Ordinarie" value={`${detail.shift.ordinaryHours}h`} />
+                                                                        <InfoBox 
+                                                                            label="Ore Ordinarie" 
+                                                                            value={`${detail.shift.ordinaryHours}h`} 
+                                                                            subtext={detail.makeupActivityFor?.length ? "(turno normale)" : undefined} 
+                                                                        />
                                                                         <InfoBox label="Straordinario" value={`${detail.shift.overtimeHours}h`} /> 
-                                                                        {(() => {
-                                                                            const dayReqs = (approvedRequests || []).filter(r => 
-                                                                                r.status === 'approvato' && 
-                                                                                (r.type === 'permesso' || r.type === 'recupero_straordinari') && 
-                                                                                isSameDay(r.startDate.toDate(), detail.date)
-                                                                            );
-                                                                            const dayPermessoHours = dayReqs.reduce((max, r) => Math.max(max, r.hours || 0), 0);
-                                                                            const shiftPerm = detail.shift?.permissionHours || 0;
-                                                                            const finalPermesso = dayPermessoHours > 0 ? dayPermessoHours : shiftPerm;
-                                                                            const isDeducted = dayReqs.some(r => r.type === 'recupero_straordinari' || r.deductFromOvertime === true);
+                                                                        {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 ? (
+                                                                            <InfoBox 
+                                                                                label="Ore Recupero" 
+                                                                                value={`${detail.makeupPerformedHours || 4}h`} 
+                                                                                subtext={`(per ${detail.makeupActivityFor.join(', ')})`} 
+                                                                            />
+                                                                        ) : (
+                                                                            (() => {
+                                                                                const dayReqs = (approvedRequests || []).filter(r => 
+                                                                                    r.status === 'approvato' && 
+                                                                                    (r.type === 'permesso' || r.type === 'recupero_straordinari') && 
+                                                                                    isSameDay(r.startDate.toDate(), detail.date)
+                                                                                );
+                                                                                const dayPermessoHours = dayReqs.reduce((max, r) => Math.max(max, r.hours || 0), 0);
+                                                                                const shiftPerm = detail.shift?.permissionHours || 0;
+                                                                                const finalPermesso = dayPermessoHours > 0 ? dayPermessoHours : shiftPerm;
+                                                                                const isDeducted = dayReqs.some(r => r.type === 'recupero_straordinari' || r.deductFromOvertime === true);
 
-                                                                            return (
-                                                                                <InfoBox 
-                                                                                    label="Permesso" 
-                                                                                    value={`${finalPermesso}h`} 
-                                                                                    subtext={isDeducted && finalPermesso > 0 ? "(scalato dagli straordinari)" : undefined} 
-                                                                                />
-                                                                            );
-                                                                        })()}
+                                                                                return (
+                                                                                    <InfoBox 
+                                                                                        label="Permesso" 
+                                                                                        value={`${finalPermesso}h`} 
+                                                                                        subtext={isDeducted && finalPermesso > 0 ? "(scalato dagli straordinari)" : undefined} 
+                                                                                    />
+                                                                                );
+                                                                            })()
+                                                                        )}
                                                                     </div>
                                                                 ) : (
                                                                     !detail.note && detail.status !== 'riposo' && detail.status !== 'ferie' && (

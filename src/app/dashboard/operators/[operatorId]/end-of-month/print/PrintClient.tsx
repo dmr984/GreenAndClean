@@ -414,7 +414,7 @@ export default function PrintClient() {
                                     {detail.makeupActivityFor && detail.makeupActivityFor.length > 0 && (
                                         <div className="my-1">
                                             <p className="text-purple-600 text-sm pl-1 leading-tight font-semibold">Recupero per: {detail.makeupActivityFor.join(', ')}</p>
-                                            <p className="text-gray-600 text-xs pl-1 leading-tight italic">(Le ore di questo turno sono attribuite al giorno di recupero e non vengono conteggiate per questa data.)</p>
+                                            <p className="text-gray-600 text-xs pl-1 leading-tight italic">(Le ore di questo recupero sono accreditate alla presenza del giorno recuperato per azzerarne l'assenza.)</p>
                                         </div>
                                     )}
 
