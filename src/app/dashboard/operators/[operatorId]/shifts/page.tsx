@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Banknote, Plane, UserCheck, Stethoscope, AlertTriangle, Euro, Bell, BellRing } from 'lucide-react';
+import { Loader2, User, CheckCircle, CheckCircle2, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Banknote, Plane, UserCheck, Stethoscope, AlertTriangle, Euro, Bell, BellRing } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
