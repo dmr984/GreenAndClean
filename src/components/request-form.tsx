@@ -45,9 +45,10 @@ type Operator = {
 
 // 1. Define Zod schema
 const requestSchema = z.object({
-  requestType: z.enum(['ferie', 'permesso', 'malattia', 'assenza'], { required_error: 'Devi selezionare un tipo.' }),
+  requestType: z.enum(['ferie', 'permesso', 'malattia', 'assenza', 'anticipo'], { required_error: 'Devi selezionare un tipo.' }),
   selectedDates: z.array(z.date()).nonempty({ message: 'Devi selezionare almeno un giorno.' }),
   hours: z.string().optional(),
+  amount: z.string().optional(),
   deductFromOvertime: z.boolean().optional(),
   reason: z.string().optional(),
 });
@@ -140,6 +141,15 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     }, {
         message: "Il numero di ore è obbligatorio e deve essere maggiore di 0.",
         path: ['hours'],
+    }).refine(data => {
+        if (data.requestType === 'anticipo') {
+            const amount = data.amount ? parseFloat(data.amount) : 0;
+            return amount > 0;
+        }
+        return true;
+    }, {
+        message: "L'importo dell'anticipo deve essere maggiore di 0 €.",
+        path: ['amount'],
     });
 
     const { control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<RequestFormValues>({
@@ -148,6 +158,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             requestType: undefined,
             selectedDates: [],
             hours: '',
+            amount: '',
             deductFromOvertime: false,
             reason: '',
         }
@@ -157,6 +168,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
     const selectedDatesValue = watch('selectedDates');
     
     const isDayDisabled = (day: Date): boolean => {
+        if (selectedType === 'anticipo') return false;
         if (role === 'operator' && day < startOfDay(new Date())) return true;
         if (bookedDays.some(bookedDay => isSameDay(day, bookedDay))) return true;
 
@@ -180,10 +192,10 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             const newRequestData: any = {
                 userId: userId,
                 type: data.requestType,
-                status: (role === 'admin' && data.requestType === 'assenza') ? 'approvato' : ('in_attesa' as const),
+                status: (role === 'admin' && (data.requestType === 'assenza' || data.requestType === 'anticipo')) ? 'approvato' : ('in_attesa' as const),
                 startDate: Timestamp.fromDate(startOfDay(date)),
                 endDate: Timestamp.fromDate(startOfDay(date)),
-                reason: data.reason || "",
+                reason: data.reason || (data.requestType === 'anticipo' ? 'Anticipo stipendio erogato' : ""),
                 createdAt: serverTimestamp(),
                 viewedByOperator: role === 'admin' ? false : true,
             };
@@ -191,6 +203,10 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             if (data.requestType === 'permesso') {
                 newRequestData.hours = Number(data.hours);
                 newRequestData.deductFromOvertime = !!data.deductFromOvertime;
+            }
+            if (data.requestType === 'anticipo') {
+                newRequestData.amount = parseFloat(data.amount || '0');
+                newRequestData.dailyCosts = { [format(date, 'yyyy-MM-dd')]: parseFloat(data.amount || '0') };
             }
             batch.set(newDocRef, newRequestData);
         });
@@ -238,6 +254,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                     )}
                                     {role === 'admin' && <SelectItem value="malattia">Malattia</SelectItem>}
                                     {role === 'admin' && <SelectItem value="assenza">Assenza</SelectItem>}
+                                    {role === 'admin' && <SelectItem value="anticipo">Anticipo Stipendio</SelectItem>}
                                 </SelectContent>
                             </Select>
                             {errors.requestType && <p className="text-xs text-destructive mt-1">{errors.requestType.message}</p>}
@@ -346,6 +363,26 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* Amount for Anticipo */}
+            {(selectedType === 'anticipo') && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="amount" className={cn("text-right", errors.amount && 'text-destructive')}>Importo (€)</Label>
+                    <Controller
+                        name="amount"
+                        control={control}
+                        render={({ field }) => (
+                            <div className='col-span-3 flex flex-col'>
+                                <Input id="amount" type="number" {...field} value={field.value || ''} placeholder='Es: 100' min="1" step="any" />
+                                {errors.amount && <p className="text-xs text-destructive mt-1">{errors.amount.message}</p>}
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Questo importo verrà scalato automaticamente dal costo stimato/stipendio del mese.
+                                </p>
+                            </div>
+                        )}
+                    />
+                </div>
             )}
 
             {/* Reason */}

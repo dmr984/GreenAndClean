@@ -72,7 +72,7 @@ type Timbratura = {
     isOvertime?: boolean;
     isAuto?: boolean;
     ignoreContractualStart?: boolean;
-    makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
+    makeupOfDay?: string | null; // ISO date string 'YYYY-MM-DD'
     shiftId?: string;
     approvedOrdinaryHours?: number; // Manually approved hours
     approvedOvertimeHours?: number;  // Manually approved hours
@@ -80,11 +80,12 @@ type Timbratura = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza' | 'anticipo';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    amount?: number;
     deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
@@ -157,6 +158,7 @@ export type MonthlySummary = {
     recuperoStraordinariHours?: number;
     isPermessoDeductedFromOvertime?: boolean;
     totalDueOverride?: number;
+    anticipiAmount?: number;
 };
 
 export const roundOrdinaryHours = (minutes: number): number => {
@@ -791,7 +793,7 @@ export const processMonthlyData = (
         }
 
         const assenzaRequest = data.requests.find(r => r.type === 'assenza' && r.status === 'approvato' && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
-        if (assenzaRequest) {
+        if (assenzaRequest && !detail.shift) {
             detail.status = 'mancata_timbratura';
             detail.request = assenzaRequest;
             detail.shift = null;
@@ -1154,6 +1156,17 @@ export const processMonthlyData = (
     } else {
         monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
     }
+
+    // Calcolo e detrazione anticipi sullo stipendio del mese
+    const anticipiRequests = data.requests.filter(r => 
+        r.status === 'approvato' && 
+        r.type === 'anticipo' && 
+        r.startDate?.toDate && 
+        isWithinInterval(r.startDate.toDate(), monthInterval)
+    );
+    const anticipiAmount = anticipiRequests.reduce((sum, r) => sum + (Number((r as any).amount) || 0), 0);
+    monthlySummary.anticipiAmount = anticipiAmount;
+    monthlySummary.estimatedTotalCost = Math.max(0, monthlySummary.estimatedTotalCost - anticipiAmount);
 
     return {
         monthlySummary,

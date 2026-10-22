@@ -28,11 +28,12 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 type Request = {
     id: string;
     userId: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'assenza';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'assenza' | 'anticipo';
     status: 'in_attesa' | 'approvato' | 'rifiutato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    amount?: number;
     deductFromOvertime?: boolean;
     reason?: string;
     createdAt: Timestamp;
@@ -207,7 +208,7 @@ export default function RequestsPage() {
                                         </TableCell>
                                         <TableCell>{req.startDate.toDate().toLocaleDateString('it-IT')}</TableCell>
                                         <TableCell>{req.endDate.toDate().toLocaleDateString('it-IT')}</TableCell>
-                                        <TableCell>{req.hours ? `${req.hours}` : '-'}</TableCell>
+                                        <TableCell>{req.hours ? `${req.hours}` : (req.type === 'anticipo' ? `€ ${(req.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-')}</TableCell>
                                         <TableCell className="text-right">
                                             <Badge variant={
                                                 req.status === 'approvato' ? 'secondary' 

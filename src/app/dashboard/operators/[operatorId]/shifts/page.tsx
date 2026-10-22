@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { doc, getDoc, collection, query, where, Timestamp, onSnapshot, orderBy, updateDoc, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
-import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Plane, UserCheck, Stethoscope, AlertTriangle, Euro, Bell, BellRing } from 'lucide-react';
+import { Loader2, User, CheckCircle, XCircle, MapPin, Trash2, Eye, Pencil, AlertCircle, Circle, Clock, Briefcase, Plus, PlusCircle, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Unlock, Coffee, MinusCircle, Info, FileText, Wand2, Download, Printer, RefreshCw, Archive, Share2, Wallet, Banknote, Plane, UserCheck, Stethoscope, AlertTriangle, Euro, Bell, BellRing } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -167,11 +167,12 @@ type ApprovalContext = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza' | 'anticipo';
     status: 'in_attesa' | 'approvato' | 'rifiutato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
+    amount?: number;
     deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
@@ -949,6 +950,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     existingRequestsSnap.forEach(doc => {
         batch.delete(doc.ref);
     });
+
+    // Se è un turno di recupero di una giornata precedente, cancella qualsiasi richiesta di assenza registrata per quel giorno
+    if (makeupOfDay) {
+        const makeupDateObj = parse(makeupOfDay, 'yyyy-MM-dd', new Date());
+        const startOfMakeup = startOfDay(makeupDateObj);
+        const endOfMakeup = dateFnsEndOfDay(makeupDateObj);
+        const assenzaQ = query(requestsRef, where('type', '==', 'assenza'));
+        const assenzaSnap = await getDocs(assenzaQ);
+        assenzaSnap.forEach(docSnap => {
+            const rData = docSnap.data();
+            if (rData.startDate?.toDate) {
+                const rStart = rData.startDate.toDate();
+                if (rStart >= startOfMakeup && rStart <= endOfMakeup) {
+                    batch.delete(docSnap.ref);
+                }
+            }
+        });
+    }
     
     const clockInEvent = regularShift.events.find(e => e.type === 'entrata');
     if (clockInEvent) {
@@ -1057,7 +1076,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             const tplTitle = notifSettings.templateShiftApprovedTitle || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedTitle || 'Turno Approvato ✅';
             const tplBody = notifSettings.templateShiftApprovedBody || DEFAULT_NOTIFICATION_SETTINGS.templateShiftApprovedBody || "Ciao {operatore}. Il tuo turno del {data} è stato approvato dall'amministratore. Totale: {ordinarie} e {straordinarie}.";
 
-            const defaultTitle = applyTemplate(tplTitle, {
+            let defaultTitle = applyTemplate(tplTitle, {
                 operatore: `${operator.firstName} ${operator.lastName}`.trim(),
                 data: shiftDateFormatted,
                 ordinarie: ordinarieText,
@@ -1066,7 +1085,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 ore: totaleText,
             });
 
-            const defaultBody = applyTemplate(tplBody, {
+            let defaultBody = applyTemplate(tplBody, {
                 operatore: `${operator.firstName} ${operator.lastName}`.trim(),
                 data: shiftDateFormatted,
                 ordinarie: ordinarieText,
@@ -1074,6 +1093,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 totale: totaleText,
                 ore: totaleText,
             });
+
+            // Se è un turno di recupero, invia il messaggio specifico che il turno è stato recuperato e non risulta l'assenza!
+            if (makeupOfDay) {
+                const makeupDateObj = parse(makeupOfDay, 'yyyy-MM-dd', new Date());
+                const makeupDateFormatted = format(makeupDateObj, 'dd MMMM', { locale: it });
+                defaultTitle = 'Turno di Recupero Approvato ✅';
+                defaultBody = `Ciao ${operator.firstName} ${operator.lastName}. Il tuo turno di recupero del ${makeupDateFormatted} (svolto il ${shiftDateFormatted}) è stato approvato dall'amministratore. Non risulta alcuna assenza. Totale: ${ordinarieText}${straordinarieText ? ` e ${straordinarieText}` : ''}.`;
+            }
 
             sendNotificationToOperator(firestore, operator.id, {
                 type: 'shift_approved',
@@ -1961,6 +1988,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         } else if (type === 'malattia') {
             const cost = 8 * (operator?.sickLeaveRate || operator?.hourlyRate || 0);
             newRequestData.dailyCosts = { [format(date, 'yyyy-MM-dd')]: cost };
+        } else if (type === 'anticipo') {
+            const amountVal = parseFloat((addRequestContext as any).amount || hours || '0');
+            newRequestData.amount = amountVal;
+            newRequestData.dailyCosts = { [format(date, 'yyyy-MM-dd')]: amountVal };
+            newRequestData.reason = reason || 'Anticipo stipendio erogato';
         }
 
         try {
@@ -3403,20 +3435,35 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                         reqItem.type === 'malattia' && 'bg-amber-100 text-amber-700 border-amber-200 font-semibold',
                                                                         reqItem.type === 'permesso' && 'bg-purple-100 text-purple-700 border-purple-200 font-semibold',
                                                                         reqItem.type === 'assenza' && 'bg-red-100 text-red-700 border-red-200 font-semibold',
-                                                                        reqItem.type === 'straordinario' && 'bg-orange-100 text-orange-700 border-orange-200 font-semibold'
+                                                                        reqItem.type === 'straordinario' && 'bg-orange-100 text-orange-700 border-orange-200 font-semibold',
+                                                                        reqItem.type === 'anticipo' && 'bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold'
                                                                     )}>
-                                                                        {reqItem.type === 'recupero_straordinari' ? 'Recupero Straordinari' : (reqItem.type.charAt(0).toUpperCase() + reqItem.type.slice(1))}
+                                                                        {reqItem.type === 'recupero_straordinari' ? 'Recupero Straordinari' : 
+                                                                         reqItem.type === 'anticipo' ? 'Anticipo Stipendio' : 
+                                                                         (reqItem.type.charAt(0).toUpperCase() + reqItem.type.slice(1))}
                                                                     </Badge>
-                                                                    {reqItem.reason && (
+                                                                    {reqItem.type === 'anticipo' ? (
+                                                                        <span className="font-semibold text-emerald-700 text-xs">
+                                                                            Il giorno {format(startDate, 'd MMMM', { locale: it })} è stato dato l'anticipo di € {(reqItem.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </span>
+                                                                    ) : reqItem.reason ? (
                                                                         <span className="italic text-muted-foreground text-xs truncate max-w-[200px]">"{reqItem.reason}"</span>
-                                                                    )}
+                                                                    ) : null}
                                                                 </div>
                                                             </TableCell>
-                                                            <TableCell className="whitespace-nowrap">
-                                                                {reqItem.hours ? `${reqItem.hours}h` : '1 giorno'}
+                                                            <TableCell className="whitespace-nowrap font-semibold">
+                                                                {reqItem.type === 'anticipo' ? (
+                                                                    <span className="text-rose-600">- € {(reqItem.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                                ) : reqItem.hours ? (
+                                                                    `${reqItem.hours}h`
+                                                                ) : '1 giorno'}
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap text-xs">
-                                                                {reqItem.hours ? `${reqItem.hours}h` : (reqItem.type === 'ferie' || reqItem.type === 'malattia' ? '1 gg' : '-')}
+                                                                {reqItem.type === 'anticipo' ? (
+                                                                    <span className="text-emerald-700 font-bold">Scalato</span>
+                                                                ) : reqItem.hours ? (
+                                                                    `${reqItem.hours}h`
+                                                                ) : (reqItem.type === 'ferie' || reqItem.type === 'malattia' ? '1 gg' : '-')}
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap">
                                                                 <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
@@ -3617,16 +3664,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                             const permessoCost = monthlySummary.permessoCost || 0;
                             const malattiaCost = monthlySummary.malattiaCost || 0;
                             
+                            const anticipiRequests = (approvedRequests || []).filter(r => 
+                                r.type === 'anticipo' && 
+                                r.startDate?.toDate && 
+                                isWithinInterval(r.startDate.toDate(), { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) })
+                            );
+                            const anticipiAmount = anticipiRequests.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
                             let totalDue: number;
                             if (operator.salaryType === 'fixed') {
                                 totalDue = (operator.fixedSalary || 0) + overtimeCost + malattiaCost + ferieCost + permessoCost;
                             } else {
                                 totalDue = ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost;
                             }
+                            totalDue = Math.max(0, totalDue - anticipiAmount);
 
                             return (
                                 <div className="space-y-6">
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                                    <div className={cn("grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5", anticipiAmount > 0 ? "lg:grid-cols-8" : "lg:grid-cols-7")}>
                                         <SummaryCard 
                                             title="Ore Ordinarie" 
                                             value={`${monthlySummary.ordinaryWorkedDays ?? 0} GG`} 
@@ -3682,12 +3737,23 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                             icon={AlertTriangle}
                                             className="bg-red-500/5 border-red-500/20"
                                         />
+                                        {anticipiAmount > 0 && (
+                                            <SummaryCard 
+                                                title="Anticipi Scalati" 
+                                                value={`${anticipiRequests.length} ${anticipiRequests.length === 1 ? 'Erogato' : 'Erogati'}`} 
+                                                cost={`- ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}
+                                                costClassName="text-base font-bold text-rose-600 dark:text-rose-400"
+                                                subtext={anticipiRequests.map(a => `Giorno ${format(a.startDate.toDate(), 'd')}: € ${(Number(a.amount) || 0).toFixed(0)}`).join(', ')}
+                                                icon={Banknote} 
+                                                className="bg-rose-500/10 border-rose-500/30"
+                                            />
+                                        )}
                                         <SummaryCard 
                                             title="Costo Stimato" 
                                             value="Totale Mese" 
                                             cost={totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
                                             costClassName="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400"
-                                            subtext="Ord., stra., ferie, perm. e mal."
+                                            subtext={anticipiAmount > 0 ? `Al netto di € ${anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} di anticipo` : "Ord., stra., ferie, perm. e mal."}
                                             icon={Euro}
                                             className="bg-emerald-500/10 border-emerald-500/30"
                                         />
@@ -3765,6 +3831,26 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                         </p>
                                                                     </div>
                                                                 )}
+
+                                                                {(() => {
+                                                                    const dayAnticipi = (approvedRequests || []).filter(r => 
+                                                                        r.status === 'approvato' && 
+                                                                        r.type === 'anticipo' && 
+                                                                        r.startDate?.toDate && 
+                                                                        isSameDay(r.startDate.toDate(), detail.date)
+                                                                    );
+                                                                    if (dayAnticipi.length === 0) return null;
+                                                                    return (
+                                                                        <div className="space-y-1.5 pt-1">
+                                                                            {dayAnticipi.map((ant, antIdx) => (
+                                                                                <div key={antIdx} className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
+                                                                                    <Banknote className="h-4 w-4 text-emerald-600 shrink-0" />
+                                                                                    <span>Anticipo stipendio erogato: <strong>€ {(ant.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{ant.reason ? ` (${ant.reason})` : ''}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
+                                                                })()}
 
                                                                 <div className="border-b"></div>
                                                                 
