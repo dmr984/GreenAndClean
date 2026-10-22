@@ -26,6 +26,8 @@ import {
   isSameDay,
   isBefore,
   set,
+  isSameMonth,
+  parse,
 } from 'date-fns';
 import { it } from 'date-fns/locale';
 import {
@@ -84,6 +86,7 @@ interface TimbraturaEvent {
   originalTime?: string | null;
   rectificationStatus?: 'in_approvazione' | 'approvata' | 'rifiutata' | string | null;
   isRectified?: boolean;
+  makeupOfDay?: string | null;
 }
 
 interface DayShiftRow {
@@ -111,6 +114,10 @@ interface DayShiftRow {
   isExitRectified?: boolean;
   hasDimenticanza?: boolean;
   hasRettifica?: boolean;
+  isMakeupShift?: boolean;
+  makeupForDayFormatted?: string | null;
+  isRecoveredDay?: boolean;
+  recoveredOnDateFormatted?: string | null;
 }
 
 export default function BossMonitorApp() {
@@ -133,6 +140,7 @@ export default function BossMonitorApp() {
 
   // Clockings by operator for the selected date
   const [dateClockings, setDateClockings] = useState<Record<string, TimbraturaEvent[]>>({});
+  const [dateRecoveredClockings, setDateRecoveredClockings] = useState<Record<string, TimbraturaEvent[]>>({});
   const [dateRequests, setDateRequests] = useState<Record<string, any[]>>({});
   const [isLoadingClockings, setIsLoadingClockings] = useState(false);
 
@@ -140,6 +148,7 @@ export default function BossMonitorApp() {
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
   const [detailMonth, setDetailMonth] = useState<Date>(new Date());
   const [detailEvents, setDetailEvents] = useState<TimbraturaEvent[]>([]);
+  const [detailRecoveredEvents, setDetailRecoveredEvents] = useState<TimbraturaEvent[]>([]);
   const [detailRequests, setDetailRequests] = useState<any[]>([]);
   const [detailOvertimeShifts, setDetailOvertimeShifts] = useState<any[]>([]);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -269,6 +278,18 @@ export default function BossMonitorApp() {
       });
       unsubs.push(uT);
 
+      // Listener per eventuale recupero effettuato in un altro giorno per la data selezionata
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const mQuery = query(
+        collection(db, `app-users/${op.id}/timbrature`),
+        where('makeupOfDay', '==', dateStr)
+      );
+      const uM = onSnapshot(mQuery, (snap) => {
+        const evs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimbraturaEvent));
+        setDateRecoveredClockings((prev) => ({ ...prev, [op.id]: evs }));
+      });
+      unsubs.push(uM);
+
       // Richieste attive nel giorno
       const rQuery = query(
         collection(db, `app-users/${op.id}/requests`),
@@ -299,19 +320,36 @@ export default function BossMonitorApp() {
   const dayRows: DayShiftRow[] = useMemo(() => {
     return operators.map((op) => {
       const events = dateClockings[op.id] || [];
+      const recoveredEvents = dateRecoveredClockings[op.id] || [];
       const requests = dateRequests[op.id] || [];
 
-      const entry = events.find((e) => e.type === 'entrata');
+      const isRecoveredDay = events.length === 0 && recoveredEvents.length > 0;
+      const effectiveEvents = isRecoveredDay ? recoveredEvents : events;
+
+      const entry = effectiveEvents.find((e) => e.type === 'entrata');
       // Risolvi l'uscita associata: cerca quella con lo stesso shiftId o l'ultima uscita registrata
       const exit = (entry?.shiftId
-        ? events.filter((e) => e.type === 'uscita' && e.shiftId === entry.shiftId).pop()
-        : null) || events.filter((e) => e.type === 'uscita').pop();
+        ? effectiveEvents.filter((e) => e.type === 'uscita' && e.shiftId === entry.shiftId).pop()
+        : null) || effectiveEvents.filter((e) => e.type === 'uscita').pop();
+
+      const isMakeupShift = !isRecoveredDay && Boolean(entry?.makeupOfDay);
+      let makeupForDayFormatted: string | null = null;
+      if (isMakeupShift && entry?.makeupOfDay) {
+        try {
+          makeupForDayFormatted = format(parse(entry.makeupOfDay, 'yyyy-MM-dd', new Date()), 'd MMMM', { locale: it });
+        } catch (e) {}
+      }
+
+      let recoveredOnDateFormatted: string | null = null;
+      if (isRecoveredDay && entry?.timestamp?.toDate) {
+        recoveredOnDateFormatted = format(entry.timestamp.toDate(), 'd MMMM', { locale: it });
+      }
 
       // Schedule check
       const daySchedule = getScheduleForDate(op as any, selectedDate);
       
       // Check approval status: A shift is confirmed only if entry/exit are 'confermata' and not 'sospesa'
-      const isShiftConfirmed = Boolean(
+      const isShiftConfirmed = isRecoveredDay || Boolean(
         entry && exit &&
         (entry.status === 'confermata' || exit.status === 'confermata') &&
         entry.status !== 'sospesa' && exit.status !== 'sospesa'
@@ -323,7 +361,9 @@ export default function BossMonitorApp() {
       const isToday = isSameDay(selectedDate, new Date());
       const isWorkDay = (daySchedule?.totalHours || 0) > 0;
 
-      if (entry && exit) {
+      if (isRecoveredDay) {
+        status = 'confermato';
+      } else if (entry && exit) {
         if (isShiftConfirmed) {
           status = 'confermato';
         } else {
@@ -507,6 +547,10 @@ export default function BossMonitorApp() {
         isExitRectified,
         hasDimenticanza,
         hasRettifica,
+        isMakeupShift,
+        makeupForDayFormatted,
+        isRecoveredDay,
+        recoveredOnDateFormatted,
       };
     });
   }, [operators, dateClockings, dateRequests, selectedDate]);
@@ -550,6 +594,8 @@ export default function BossMonitorApp() {
 
     const mStart = startOfMonth(detailMonth);
     const mEnd = endOfMonth(detailMonth);
+    const mStartStr = format(mStart, 'yyyy-MM-dd');
+    const mEndStr = format(mEnd, 'yyyy-MM-dd');
 
     // Timbrature del mese per questo operatore
     const tQuery = query(
@@ -562,6 +608,19 @@ export default function BossMonitorApp() {
     const unsubT = onSnapshot(tQuery, (snap) => {
       const evs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimbraturaEvent));
       setDetailEvents(evs);
+    });
+
+    // Timbrature di recupero relative a questo mese (dove makeupOfDay cade nel mese)
+    const mQuery = query(
+      collection(db, `app-users/${selectedOperator.id}/timbrature`),
+      where('makeupOfDay', '>=', mStartStr),
+      where('makeupOfDay', '<=', mEndStr)
+    );
+    const unsubM = onSnapshot(mQuery, (snap) => {
+      const revs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimbraturaEvent));
+      setDetailRecoveredEvents(revs);
+    }, (err) => {
+      console.warn('Recovered timbrature query note:', err);
     });
 
     // Richieste approvate
@@ -589,6 +648,7 @@ export default function BossMonitorApp() {
 
     return () => {
       unsubT();
+      unsubM();
       unsubR();
       unsubS();
     };
@@ -599,7 +659,7 @@ export default function BossMonitorApp() {
     if (!selectedOperator || !detailMonth) return null;
     try {
       return processMonthlyData(detailMonth, selectedOperator as any, {
-        timbrature: detailEvents,
+        timbrature: detailEvents as any,
         requests: detailRequests,
         straordinari: detailOvertimeShifts,
         dailyNotes: [],
@@ -612,23 +672,112 @@ export default function BossMonitorApp() {
 
   // Group Detail Events by Day for Agenda
   const detailAgendaDays = useMemo(() => {
-    const map = new Map<string, { date: Date; events: TimbraturaEvent[]; requests: any[] }>();
+    interface AgendaDayItem {
+      date: Date;
+      events: TimbraturaEvent[];
+      requests: any[];
+      isRecoveredDay?: boolean;
+      recoveredOnDateFormatted?: string | null;
+      recoveredShift?: {
+        entryTime?: string;
+        exitTime?: string;
+        ordinaryHours?: number;
+        overtimeHours?: number;
+      };
+      isMakeupShift?: boolean;
+      makeupForDayFormatted?: string | null;
+    }
 
+    const map = new Map<string, AgendaDayItem>();
+
+    // 1. Timbrature regolari del mese
     detailEvents.forEach((ev) => {
       if (!ev.timestamp?.toDate) return;
       const d = ev.timestamp.toDate();
       const key = format(d, 'yyyy-MM-dd');
-      if (!map.has(key)) map.set(key, { date: d, events: [], requests: [] });
+      if (!map.has(key)) {
+        map.set(key, { date: d, events: [], requests: [] });
+      }
       map.get(key)!.events.push(ev);
     });
 
+    // 2. Riconosci turni di recupero in detailEvents
+    detailEvents.forEach((ev) => {
+      if (ev.type === 'entrata' && ev.makeupOfDay) {
+        const d = ev.timestamp?.toDate ? ev.timestamp.toDate() : null;
+        const key = d ? format(d, 'yyyy-MM-dd') : null;
+        if (key && map.has(key)) {
+          const item = map.get(key)!;
+          item.isMakeupShift = true;
+          try {
+            item.makeupForDayFormatted = format(parse(ev.makeupOfDay, 'yyyy-MM-dd', new Date()), 'd MMMM', { locale: it });
+          } catch (e) {
+            item.makeupForDayFormatted = ev.makeupOfDay;
+          }
+        }
+
+        // Se il giorno recuperato appartiene a questo mese, mostralo recuperato
+        try {
+          const targetDate = parse(ev.makeupOfDay, 'yyyy-MM-dd', new Date());
+          if (isSameMonth(targetDate, detailMonth)) {
+            const targetKey = ev.makeupOfDay;
+            if (!map.has(targetKey)) {
+              map.set(targetKey, { date: targetDate, events: [], requests: [] });
+            }
+            const recItem = map.get(targetKey)!;
+            if (recItem.events.length === 0) {
+              recItem.isRecoveredDay = true;
+              recItem.recoveredOnDateFormatted = d ? format(d, 'd MMMM', { locale: it }) : null;
+              const exitEv = ev.shiftId
+                ? detailEvents.find((e) => e.type === 'uscita' && e.shiftId === ev.shiftId)
+                : detailEvents.find((e) => e.type === 'uscita');
+              recItem.recoveredShift = {
+                entryTime: d ? format(d, 'HH:mm') : undefined,
+                exitTime: exitEv?.timestamp?.toDate ? format(exitEv.timestamp.toDate(), 'HH:mm') : undefined,
+                ordinaryHours: ev.approvedOrdinaryHours,
+                overtimeHours: ev.approvedOvertimeHours,
+              };
+            }
+          }
+        } catch (e) {}
+      }
+    });
+
+    // 3. Timbrature recuperate da altri mesi per giorni di questo mese
+    detailRecoveredEvents.forEach((rev) => {
+      if (rev.type === 'entrata' && rev.makeupOfDay) {
+        try {
+          const targetDate = parse(rev.makeupOfDay, 'yyyy-MM-dd', new Date());
+          if (isSameMonth(targetDate, detailMonth)) {
+            const targetKey = rev.makeupOfDay;
+            if (!map.has(targetKey)) {
+              map.set(targetKey, { date: targetDate, events: [], requests: [] });
+            }
+            const recItem = map.get(targetKey)!;
+            if (recItem.events.length === 0) {
+              recItem.isRecoveredDay = true;
+              const revDate = rev.timestamp?.toDate ? rev.timestamp.toDate() : null;
+              recItem.recoveredOnDateFormatted = revDate ? format(revDate, 'd MMMM', { locale: it }) : null;
+              recItem.recoveredShift = {
+                entryTime: revDate ? format(revDate, 'HH:mm') : undefined,
+                exitTime: undefined,
+                ordinaryHours: rev.approvedOrdinaryHours,
+                overtimeHours: rev.approvedOvertimeHours,
+              };
+            }
+          }
+        } catch (e) {}
+      }
+    });
+
+    // 4. Richieste del mese
     detailRequests.forEach((req) => {
       if (!req.startDate?.toDate) return;
       const d = req.startDate.toDate();
       const key = format(d, 'yyyy-MM-dd');
       if (map.has(key)) {
         map.get(key)!.requests.push(req);
-      } else {
+      } else if (isSameMonth(d, detailMonth)) {
         map.set(key, { date: d, events: [], requests: [req] });
       }
     });
@@ -636,7 +785,7 @@ export default function BossMonitorApp() {
     const arr = Array.from(map.values());
     arr.sort((a, b) => b.date.getTime() - a.date.getTime());
     return arr;
-  }, [detailEvents, detailRequests]);
+  }, [detailEvents, detailRecoveredEvents, detailRequests, detailMonth]);
 
   // --------------------------------------------------------------------------
   // LOGIN SCREEN
@@ -820,6 +969,20 @@ export default function BossMonitorApp() {
               <p className="text-[11px] text-slate-400">Ferie e permessi goduti</p>
             </div>
 
+            {/* ANTICIPI SCALATI (se presenti) */}
+            {detailMonthlySummary?.anticipiAmount && detailMonthlySummary.anticipiAmount > 0 ? (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800 shadow-sm space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-600 text-xs font-bold uppercase tracking-wider">
+                  <Banknote className="h-4 w-4" />
+                  Anticipi Scalati
+                </div>
+                <div className="text-2xl font-black text-rose-600">
+                  - € {detailMonthlySummary.anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <p className="text-[11px] text-amber-700/80">Scalati dall'importo dovuto</p>
+              </div>
+            ) : null}
+
             {/* IMPORTO DOVUTO */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md space-y-1 col-span-2 sm:col-span-2 md:col-span-1">
               <div className="flex items-center justify-between text-emerald-100 text-xs font-bold uppercase tracking-wider">
@@ -839,7 +1002,9 @@ export default function BossMonitorApp() {
                 ) : '€ 0,00'}
               </div>
               <p className="text-[11px] text-emerald-100/90 truncate">
-                {selectedOperator?.salaryType === 'fixed'
+                {detailMonthlySummary?.anticipiAmount && detailMonthlySummary.anticipiAmount > 0
+                  ? `(Al netto di € ${detailMonthlySummary.anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)`
+                  : selectedOperator?.salaryType === 'fixed'
                   ? 'Stipendio fisso + extra'
                   : `Tariffa: € ${selectedOperator?.hourlyRate || 0}/h`}
               </p>
@@ -864,11 +1029,17 @@ export default function BossMonitorApp() {
                   const exit = (entry?.shiftId
                     ? item.events.filter((e) => e.type === 'uscita' && e.shiftId === entry.shiftId).pop()
                     : null) || item.events.filter((e) => e.type === 'uscita').pop();
-                  const isApproved = item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa');
-                  const isPending = item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0);
+                  
+                  const isRecovered = Boolean(item.isRecoveredDay);
+                  const isApproved = isRecovered || (item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa'));
+                  const isPending = !isRecovered && (item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0));
 
-                  const entryTime = entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--';
-                  const exitTime = exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--';
+                  const entryTime = isRecovered
+                    ? (item.recoveredShift?.entryTime || '--:--')
+                    : (entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--');
+                  const exitTime = isRecovered
+                    ? (item.recoveredShift?.exitTime || '--:--')
+                    : (exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--');
 
                   const { refStartTime: refStart, refEndTime: refEnd } = getReferenceTimes(
                     selectedOperator as any,
@@ -876,26 +1047,6 @@ export default function BossMonitorApp() {
                     entry,
                     exit
                   );
-
-                  // Rilevamento dimenticanza e rettifica
-                  const isEntryAuto = Boolean(entry?.isAuto);
-                  const isExitAuto = Boolean(exit?.isAuto);
-                  const isEntryRectified = Boolean(
-                    entry?.isRectified ||
-                    entry?.originalTime ||
-                    entry?.rectificationStatus === 'approvata' ||
-                    entry?.rectificationStatus === 'in_approvazione' ||
-                    (entry?.suggestedTime && entry?.status === 'sospesa')
-                  );
-                  const isExitRectified = Boolean(
-                    exit?.isRectified ||
-                    exit?.originalTime ||
-                    exit?.rectificationStatus === 'approvata' ||
-                    exit?.rectificationStatus === 'in_approvazione' ||
-                    (exit?.suggestedTime && exit?.status === 'sospesa')
-                  );
-                  const hasDimenticanza = isEntryAuto || isExitAuto;
-                  const hasRettifica = isEntryRectified || isExitRectified;
 
                   // Pauses
                   const sortedItemEvs = [...item.events].sort((a, b) => {
@@ -918,8 +1069,8 @@ export default function BossMonitorApp() {
                   }
                   const itemPauseText = itemPauseMins > 0 ? `${itemPauseMins}m` : '--';
 
-                  const ordH = entry?.approvedOrdinaryHours;
-                  const overH = entry?.approvedOvertimeHours;
+                  const ordH = isRecovered ? item.recoveredShift?.ordinaryHours : entry?.approvedOrdinaryHours;
+                  const overH = isRecovered ? item.recoveredShift?.overtimeHours : entry?.approvedOvertimeHours;
 
                   return (
                     <div
@@ -932,7 +1083,11 @@ export default function BossMonitorApp() {
                         </span>
 
                         <div className="flex items-center gap-1.5">
-                          {isApproved ? (
+                          {isRecovered ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Recuperato
+                            </span>
+                          ) : isApproved ? (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                               <CheckCircle2 className="h-3 w-3" /> Approvato
                             </span>
@@ -945,35 +1100,53 @@ export default function BossMonitorApp() {
                       </div>
 
                       {/* Riga compatta a 4 celle: Entrata (con rif) | Pausa | Uscita (con rif) | Ore */}
-                      <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
-                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
-                          <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
-                          <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{refStart ? `rif. ${refStart}` : '-'}</span>
-                        </div>
+                      {(entryTime !== '--:--' || exitTime !== '--:--' || isRecovered) && (
+                        <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
+                          <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                            <span className="text-[9px] text-slate-400 block font-semibold uppercase">Entrata</span>
+                            <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{entryTime}</span>
+                            <span className="text-[9px] text-slate-400 block truncate">{refStart ? `rif. ${refStart}` : '-'}</span>
+                          </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
-                          <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
-                          <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{itemPauseText}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
-                        </div>
+                          <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                            <span className="text-[9px] text-slate-400 block font-semibold uppercase">Pausa</span>
+                            <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{itemPauseText}</span>
+                            <span className="text-[9px] text-slate-400 block truncate">{itemPauseIntervals.length > 0 ? `(${itemPauseIntervals[0]})` : '-'}</span>
+                          </div>
 
-                        <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
-                          <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
-                          <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
-                          <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `rif. ${refEnd}` : '-'}</span>
-                        </div>
+                          <div className="bg-slate-50 dark:bg-slate-800/50 py-1.5 px-0.5 rounded-xl">
+                            <span className="text-[9px] text-slate-400 block font-semibold uppercase">Uscita</span>
+                            <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 block">{exitTime}</span>
+                            <span className="text-[9px] text-slate-400 block truncate">{refEnd ? `rif. ${refEnd}` : '-'}</span>
+                          </div>
 
-                        <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
-                          <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
-                          <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
-                            {(ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : (isApproved ? '0h' : '--')}
-                          </span>
-                          <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
-                            {isApproved ? 'approvate' : 'in attesa'}
-                          </span>
+                          <div className="bg-emerald-50/70 dark:bg-emerald-950/40 py-1.5 px-0.5 rounded-xl">
+                            <span className="text-[9px] text-emerald-700 dark:text-emerald-400 block font-semibold uppercase">Ore</span>
+                            <span className="font-bold text-[11px] text-emerald-700 dark:text-emerald-300 block">
+                              {(ordH !== undefined || overH !== undefined) ? `${ordH || 0}h${overH ? ` +${overH}h` : ''}` : (isApproved ? '0h' : '--')}
+                            </span>
+                            <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block">
+                              {isApproved ? 'approvate' : 'in attesa'}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Notifica Recupero Turno se recuperato */}
+                      {isRecovered && (
+                        <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>Il {item.recoveredOnDateFormatted} è stato recuperato questo turno ({entryTime} - {exitTime})</span>
+                        </div>
+                      )}
+
+                      {/* Notifica Recupero Turno se turno fisico di recupero */}
+                      {item.isMakeupShift && (
+                        <div className="p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs font-semibold flex items-center gap-1.5">
+                          <Clock className="h-4 w-4 text-blue-600 shrink-0" />
+                          <span>La timbratura delle {entryTime} alle {exitTime} è recupero del giorno {item.makeupForDayFormatted}</span>
+                        </div>
+                      )}
 
                       {/* Eventuali richieste */}
                       {item.requests.map((r, rIdx) => (
@@ -981,6 +1154,16 @@ export default function BossMonitorApp() {
                           {r.type === 'malattia' && '🤒 Malattia registrata'}
                           {r.type === 'ferie' && '🏖️ Ferie godute'}
                           {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
+                          {r.type === 'anticipo' && (
+                            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-between mt-1">
+                              <span className="flex items-center gap-1.5">
+                                <span>💰</span> Anticipo sullo stipendio
+                              </span>
+                              <span className="text-rose-600 font-black">
+                                - € {Number(r.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1194,11 +1377,15 @@ export default function BossMonitorApp() {
 
                     {/* BADGE STATO */}
                     <div className="shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
-                      {row.status === 'confermato' && (
+                      {row.isRecoveredDay ? (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Recuperato
+                        </span>
+                      ) : row.status === 'confermato' ? (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Approvato
                         </span>
-                      )}
+                      ) : null}
                       {row.status === 'in_attesa' && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                           <Clock className="h-3 w-3" />
@@ -1210,12 +1397,12 @@ export default function BossMonitorApp() {
                           <span className="h-1.5 w-1.5 rounded-full bg-blue-600" /> In turno
                         </span>
                       )}
-                      {row.status === 'assente' && (
+                      {!row.isRecoveredDay && row.status === 'assente' && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
                           <XCircle className="h-3 w-3 text-red-600" /> Assente
                         </span>
                       )}
-                      {row.status === 'non_timbrato' && (
+                      {!row.isRecoveredDay && row.status === 'non_timbrato' && (
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
                           Non timbrato
                         </span>
@@ -1225,7 +1412,7 @@ export default function BossMonitorApp() {
                   </div>
 
                   {/* RIGA DETTAGLIO TIMBRATURA: ENTRATA | PAUSA | USCITA | ORD / STRA | TOTALE */}
-                  {(row.entryTime || row.exitTime) ? (
+                  {(row.entryTime || row.exitTime || row.isRecoveredDay) ? (
                     <div className="space-y-1.5">
                       <div className="grid grid-cols-5 gap-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
                         {/* Entrata */}
@@ -1287,6 +1474,22 @@ export default function BossMonitorApp() {
                         </div>
                       </div>
 
+                      {/* Notifica Recupero Turno se giorno recuperato */}
+                      {row.isRecoveredDay && (
+                        <div className="p-2 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>Il {row.recoveredOnDateFormatted} è stato recuperato questo turno ({row.entryTime || '--:--'} - {row.exitTime || '--:--'})</span>
+                        </div>
+                      )}
+
+                      {/* Notifica Recupero Turno se turno fisico di recupero */}
+                      {row.isMakeupShift && (
+                        <div className="p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs font-semibold flex items-center gap-1.5">
+                          <Clock className="h-4 w-4 text-blue-600 shrink-0" />
+                          <span>La timbratura delle {row.entryTime || '--:--'} alle {row.exitTime || '--:--'} è recupero del giorno {row.makeupForDayFormatted}</span>
+                        </div>
+                      )}
+
                       {row.status === 'in_attesa' && (
                         <div className="text-[11px] text-amber-700 dark:text-amber-300 font-medium flex items-center justify-between px-1">
                           <span className="flex items-center gap-1">
@@ -1320,17 +1523,22 @@ export default function BossMonitorApp() {
                     </div>
                   ) : null}
 
-                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO) */}
+                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO, ANTICIPO) */}
                   {row.requests.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
                       {row.requests.map((req, qIdx) => (
                         <span
                           key={qIdx}
-                          className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-semibold"
+                          className={`px-2 py-0.5 rounded-md font-semibold ${
+                            req.type === 'anticipo'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}
                         >
                           {req.type === 'malattia' && '🤒 Malattia'}
                           {req.type === 'ferie' && '🏖️ Ferie'}
                           {req.type === 'permesso' && '⏱️ Permesso'}
+                          {req.type === 'anticipo' && `💰 Anticipo di € ${Number(req.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}`}
                         </span>
                       ))}
                     </div>
