@@ -214,6 +214,28 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
 
         try {
             await batch.commit();
+
+            // Se l'amministratore ha erogato un anticipo, invia subito la notifica all'operatore
+            if (role === 'admin' && data.requestType === 'anticipo' && firestore) {
+                for (const date of data.selectedDates) {
+                    try {
+                        const dateFormatted = format(date, 'd MMMM yyyy', { locale: it });
+                        const amountFormatted = parseFloat(data.amount || '0').toLocaleString('it-IT', { minimumFractionDigits: 2 });
+                        const reasonText = data.reason ? ` per "${data.reason}"` : '';
+                        await addDoc(collection(firestore, `app-users/${userId}/user-notifications`), {
+                            type: 'request_approved',
+                            title: 'Anticipo Stipendio Erogato 💰',
+                            body: `In data ${dateFormatted} ti è stato erogato un anticipo di € ${amountFormatted}${reasonText}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`,
+                            url: '/dashboard',
+                            read: false,
+                            createdAt: serverTimestamp(),
+                        });
+                    } catch (e) {
+                        console.warn('Errore salvataggio notifica anticipo:', e);
+                    }
+                }
+            }
+
             toast({ title: "Successo", description: "Le tue richieste sono state inviate." });
             onFinished();
         } catch (error: any) {

@@ -87,6 +87,13 @@ export const calculateTotalDue = (
     if (finalVisibility.permessoCost !== false) total += permessoCost;
     if (finalVisibility.malattiaCost !== false) total += malattiaCost;
     
+    const anticipiAmount = overrides?.anticipiAmount !== undefined 
+        ? Number(overrides.anticipiAmount) 
+        : (summary.anticipiAmount || 0);
+    if (anticipiAmount > 0) {
+        total = Math.max(0, total - anticipiAmount);
+    }
+    
     return total;
 };
 
@@ -204,6 +211,16 @@ export const generateDetailedOperatorPdf = async (
         if (finalMalattiaCost > 0) {
             costBody.push([
                 `COSTO MALATTIA: ${finalMalattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
+                { content: '', styles: { halign: 'right' } }
+            ]);
+        }
+
+        const anticipiAmount = overrides.anticipiAmount !== undefined 
+            ? Number(overrides.anticipiAmount) 
+            : (summary.anticipiAmount || 0);
+        if (anticipiAmount > 0) {
+            costBody.push([
+                `ANTICIPO STIPENDIO: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`,
                 { content: '', styles: { halign: 'right' } }
             ]);
         }

@@ -58,6 +58,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
+    anticipiAmount?: boolean;
     compactMode: boolean;
 };
 
@@ -244,6 +245,14 @@ export default function MonthlyReportPrintClient() {
         if (finalVisibility.permessoCost !== false) total += permessoCost;
         if (finalVisibility.malattiaCost !== false) total += malattiaCost;
         
+        // Detrazione anticipi sullo stipendio
+        const anticipiAmount = override?.anticipiAmount !== undefined 
+            ? Number(override.anticipiAmount) 
+            : (summary.anticipiAmount || 0);
+        if (anticipiAmount > 0) {
+            total = Math.max(0, total - anticipiAmount);
+        }
+        
         return total;
     }, [manualOverrides]);
     
@@ -328,6 +337,10 @@ export default function MonthlyReportPrintClient() {
                     : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
 
 
+                const anticipiAmount = override.anticipiAmount !== undefined 
+                    ? Number(override.anticipiAmount) 
+                    : (summary?.anticipiAmount || 0);
+
                 const allItems = [
                     opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysDisplay}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
@@ -336,7 +349,8 @@ export default function MonthlyReportPrintClient() {
                     opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${malattiaDays}`: null,
                     opVisibility.permessoHours !== false ? `ORE PERMESSI: ${permessoHours}` : null,
                     opVisibility.ferieDays !== false ? `FERIE: ${ferieDays}` : null,
-                    opVisibility.absenceDays !== false ? `ASSENZE: ${absenceDays}` : null
+                    opVisibility.absenceDays !== false ? `ASSENZE: ${absenceDays}` : null,
+                    anticipiAmount > 0 && opVisibility.anticipiAmount !== false ? `ANTICIPO STIPENDIO: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null
                 ].filter(Boolean) as string[];
 
                 const bodyData: [string, string][] = [];
@@ -484,13 +498,24 @@ export default function MonthlyReportPrintClient() {
                             const finalPermessoHours = override.permessoHours !== undefined ? override.permessoHours : (summary?.permessoHours || 0);
                             const finalMalattiaDays = override.malattiaDays !== undefined ? override.malattiaDays : (summary?.malattiaDays || 0);
 
+                            const anticipiAmount = override.anticipiAmount !== undefined 
+                                ? Number(override.anticipiAmount) 
+                                : (summary?.anticipiAmount || 0);
+
                             if (globalCompact || opVisibility.compactMode) {
                                 return (
                                     <div key={op.id} className="text-base text-black print:break-inside-avoid pb-4 border-b border-dashed border-gray-300">
                                         <div className="flex justify-between items-baseline gap-2">
                                             <p className="font-bold text-xl text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
-                                            <p className="font-bold text-xl text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                            <div className="text-right">
+                                                <p className="font-bold text-xl text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                                {anticipiAmount > 0 && (
+                                                    <span className="text-xs text-gray-600 font-semibold block">
+                                                        (al netto di € {anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 )
@@ -508,7 +533,8 @@ export default function MonthlyReportPrintClient() {
                                 opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
                                 opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
                                 opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
-                                opVisibility.absenceDays !== false ? `ASSENZE: ${finalAbsenceDays}` : null
+                                opVisibility.absenceDays !== false ? `ASSENZE: ${finalAbsenceDays}` : null,
+                                anticipiAmount > 0 && opVisibility.anticipiAmount !== false ? `ANTICIPO STIPENDIO: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null
                             ].filter(Boolean) as string[];
 
                             const bodyData: [string, string][] = [];
@@ -542,6 +568,11 @@ export default function MonthlyReportPrintClient() {
                                     
                                      <div className="text-right font-bold text-3xl mt-6 pt-4 text-black border-t-2 border-gray-300">
                                         <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                        {anticipiAmount > 0 && (
+                                            <span className="text-sm text-gray-600 font-normal block mt-1">
+                                                (Scalato anticipo di {anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div className='mt-10 mb-10 italic text-gray-800 text-lg leading-relaxed'>

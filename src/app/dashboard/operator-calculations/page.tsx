@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
-import { Loader2, Printer, Download, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck, RefreshCw } from 'lucide-react';
+import { Loader2, Printer, Download, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck, RefreshCw, Banknote } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfMonth, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
@@ -303,6 +303,11 @@ const OperatorCalculationsPage = () => {
         if (visibilitySettings.ferieCost) total += ferieCost;
         if (visibilitySettings.permessoCost) total += permessoCost;
         if (visibilitySettings.malattiaCost) total += malattiaCost;
+        
+        const anticipiAmount = (summaryData.anticipiAmount || 0);
+        if (anticipiAmount > 0) {
+            total = Math.max(0, total - anticipiAmount);
+        }
         
         return total;
     }
@@ -603,23 +608,30 @@ const OperatorCalculationsPage = () => {
                                                 </AccordionTrigger>
                                             </div>
                                             <div className="flex items-center justify-between w-full sm:w-auto mt-4 sm:mt-0 ml-8 sm:ml-0 gap-4">
-                                                <div className='font-bold text-lg flex items-center gap-2'>
-                                                    <Euro className="h-5 w-5 text-muted-foreground" />
-                                                    <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
-                                                        {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </span>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="icon" 
-                                                        className="h-7 w-7 ml-1" 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
-                                                            setTotalContent(String(totalDue));
-                                                        }}
-                                                    >
-                                                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    </Button>
+                                                <div className="flex flex-col items-end">
+                                                    <div className='font-bold text-lg flex items-center gap-2'>
+                                                        <Euro className="h-5 w-5 text-muted-foreground" />
+                                                        <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
+                                                            {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </span>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="h-7 w-7 ml-1" 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
+                                                                setTotalContent(String(totalDue));
+                                                            }}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        </Button>
+                                                    </div>
+                                                    {(summaryData.anticipiAmount || 0) > 0 && (
+                                                        <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold block text-right">
+                                                            (al netto di € {Number(summaryData.anticipiAmount).toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     {!globalCompactMode && (
@@ -662,6 +674,16 @@ const OperatorCalculationsPage = () => {
                                                     <InfoCard opId={op.id} title="Totale Malattia" value={`${malattiaCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="malattiaCost" />
                                                     
                                                     <InfoCard opId={op.id} title="Assenze (g)" value={summaryData.absenceDays} icon={AlertTriangle} visibilityKey="absenceDays" />
+                                                    
+                                                    {(summaryData.anticipiAmount || 0) > 0 && (
+                                                        <InfoCard 
+                                                            opId={op.id} 
+                                                            title="Anticipo Stipendio" 
+                                                            value={`- ${Number(summaryData.anticipiAmount).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                                            icon={Banknote} 
+                                                            visibilityKey="anticipiAmount" 
+                                                        />
+                                                    )}
                                                 </div>
                                             )}
                                         </AccordionContent>

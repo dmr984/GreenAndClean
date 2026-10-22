@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle, Coffee, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, Play, Square, History, Loader2, Eye, Pencil, PauseCircle, BedDouble, Stethoscope, AlertCircle, Circle, Send, Briefcase, PlusCircle, Info, MapPin, Settings, Calendar as CalendarIcon, AlertTriangle, Coffee, ChevronLeft, ChevronRight, Banknote } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useMemoFirebase, useCollection, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, Timestamp, getDocs, doc, onSnapshot, writeBatch, updateDoc, limit, setDoc } from 'firebase/firestore';
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
 import { useUser } from '@/hooks/use-user';
-import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format, addMonths, subMonths, startOfMonth, endOfMonth, isAfter, isBefore } from 'date-fns';
+import { isSameDay, startOfDay, endOfDay, getDay, isWithinInterval, subDays, set, format, addMonths, subMonths, startOfMonth, endOfMonth, isAfter, isBefore, isSameMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogFooter } from '@/components/ui/responsive-dialog';
 import { isPublicHoliday } from '@/lib/holidays';
@@ -136,8 +136,17 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
   const [suggestedExitTime, setSuggestedExitTime] = useState("");
 
   const [summaryMonth, setSummaryMonth] = useState<Date>(new Date());
+  const [operatorRequests, setOperatorRequests] = useState<any[]>([]);
   const [monthlySummaryData, setMonthlySummaryData] = useState<{ timbrature: any[], requests: any[], straordinari: any[], dailyNotes: any[] }>({ timbrature: [], requests: [], straordinari: [], dailyNotes: [] });
   const [isLoadingMonthlySummary, setIsLoadingMonthlySummary] = useState(false);
+
+  const monthAnticipi = useMemo(() => {
+    return (operatorRequests || []).filter(r => {
+      if (r.type !== 'anticipo' || r.status !== 'approvato') return false;
+      const d = r.startDate?.toDate ? r.startDate.toDate() : null;
+      return d && isSameMonth(d, summaryMonth);
+    });
+  }, [operatorRequests, summaryMonth]);
 
   const fetchMonthlySummary = useCallback(async () => {
     if (!firestore || !authUser?.id || !summaryMonth) return;
@@ -317,22 +326,25 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       let onLeaveToday = false;
       let leaveType: LeaveStatus['type'] = null;
       let unlockRequestExists = false;
+      const reqList: any[] = [];
 
       snapshot.forEach(doc => {
-        const request = doc.data();
-        const startDate = request.startDate?.toDate ? request.startDate.toDate() : null;
-        const endDate = request.endDate?.toDate ? request.endDate.toDate() : null;
+        const request = { id: doc.id, ...doc.data() };
+        reqList.push(request);
+        const startDate = (request as any).startDate?.toDate ? (request as any).startDate.toDate() : null;
+        const endDate = (request as any).endDate?.toDate ? (request as any).endDate.toDate() : null;
 
         if (startDate && endDate && isWithinInterval(today, { start: startOfDay(startDate), end: endOfDay(endDate) })) {
           if (request.type === 'ferie' || request.type === 'malattia') {
             onLeaveToday = true;
-            leaveType = request.type;
+            leaveType = request.type as any;
           }
           if (request.type === 'sblocco_timbratura' && request.status === 'in_attesa') {
             unlockRequestExists = true;
           }
         }
       });
+      setOperatorRequests(reqList);
       setLeaveStatus({ onLeave: onLeaveToday, type: leaveType });
       setUnlockRequestSent(unlockRequestExists);
     }, (error) => {
@@ -341,6 +353,13 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
 
     return () => unsubscribe();
   }, [firestore, operator]);
+
+  // Keep monthly summary in sync when operator requests change
+  useEffect(() => {
+    if (operatorRequests.length > 0) {
+      fetchMonthlySummary();
+    }
+  }, [operatorRequests, fetchMonthlySummary]);
 
 
   const { data: clockings, isLoading: isLoadingClockings } = useCollection<ClockingEvent>(clockingsQuery);
@@ -1574,6 +1593,46 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         <h2 className="text-3xl font-bold tracking-tight">Pannello di Controllo</h2>
       </div>
 
+      {/* Banner Notifica Anticipi sullo Stipendio */}
+      {monthAnticipi.length > 0 && (
+        <div className="space-y-3">
+          {monthAnticipi.map((ant) => {
+            const antDate = ant.startDate?.toDate ? ant.startDate.toDate() : new Date();
+            const formattedDate = format(antDate, 'dd/MM/yyyy');
+            const dayName = format(antDate, 'eeee dd MMMM', { locale: it });
+            const amountStr = Number(ant.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return (
+              <div
+                key={ant.id}
+                className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-orange-500/20 border-2 border-amber-500/50 p-4 shadow-md"
+              >
+                <div className="flex items-start gap-3.5">
+                  <div className="p-2.5 rounded-xl bg-amber-500 text-white shadow-sm shrink-0 mt-0.5">
+                    <Banknote className="h-6 w-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                        <AlertCircle className="h-4 w-4" /> Notifica Anticipo sullo Stipendio
+                      </span>
+                      <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-2.5 py-0.5 shadow-xs">
+                        In data {formattedDate}
+                      </Badge>
+                    </div>
+                    <p className="text-sm font-semibold text-foreground mt-1.5 leading-snug">
+                      In data <span className="font-bold underline decoration-amber-500">{dayName}</span> ti è stato erogato un anticipo di <span className="text-base font-black text-rose-600 dark:text-rose-400">€ {amountStr}</span>{ant.reason ? ` con causale: "${ant.reason}"` : ''}.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Questo importo è stato registrato ed è scalato dal calcolo del tuo stipendio mensile.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {renderMainContent()}
 
       {/* Integrated Monthly Summary Section */}
@@ -1635,6 +1694,19 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               <span className="text-[10px] text-muted-foreground font-bold uppercase block">Malattia</span>
               <span className="text-xl font-bold text-rose-600 dark:text-rose-400">{computedMonthlySummary?.malattiaDays || 0} gg</span>
             </div>
+            {computedMonthlySummary?.anticipiAmount && computedMonthlySummary.anticipiAmount > 0 ? (
+              <div className="p-3 rounded-xl bg-amber-500/15 border-2 border-amber-500/40 shadow-2xs">
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase block flex items-center gap-1">
+                  <Banknote className="h-3.5 w-3.5" /> Anticipi Ricevuti
+                </span>
+                <span className="text-xl font-bold text-rose-600 dark:text-rose-400">
+                  - € {computedMonthlySummary.anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-[9px] text-muted-foreground block mt-0.5 font-medium">
+                  Scalati dal totale dovuto
+                </span>
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -1832,6 +1904,32 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       </div>
                     );
                   })()}
+
+                  {/* Anticipi erogati in questa giornata */}
+                  {(() => {
+                    const dayAnticipi = monthAnticipi.filter(a => {
+                      const d = a.startDate?.toDate ? a.startDate.toDate() : null;
+                      return d && isSameDay(d, shift.date);
+                    });
+                    if (dayAnticipi.length === 0) return null;
+                    return (
+                      <div className="mt-3 pt-2.5 border-t border-amber-500/30 space-y-1.5">
+                        {dayAnticipi.map((ant, aIdx) => (
+                          <div key={aIdx} className="flex items-center justify-between p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-xs">
+                            <div className="flex items-center gap-2">
+                              <Banknote className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                              <span className="font-bold text-amber-900 dark:text-amber-200">
+                                Anticipo Ricevuto{ant.reason ? `: "${ant.reason}"` : ''}
+                              </span>
+                            </div>
+                            <span className="font-black text-rose-600 dark:text-rose-400">
+                              - € {Number(ant.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </Card>
             ))
@@ -1840,6 +1938,43 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
               Nessun turno registrato questo mese.
             </p>
           )}
+
+          {/* Anticipi erogati in giorni senza timbrature */}
+          {monthAnticipi.filter(ant => {
+            const antDate = ant.startDate?.toDate ? ant.startDate.toDate() : null;
+            if (!antDate) return false;
+            return !groupedShifts.some(shift => isSameDay(shift.date, antDate));
+          }).map((ant, aIdx) => {
+            const antDate = ant.startDate.toDate();
+            return (
+              <Card key={`standalone-ant-${aIdx}`} className="overflow-hidden border-2 border-amber-500/30 shadow-sm bg-amber-500/5">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] text-amber-800 dark:text-amber-300 uppercase font-extrabold tracking-widest">
+                      {format(antDate, 'eeee dd MMMM', { locale: it })}
+                    </p>
+                    <Badge className="bg-amber-600 text-white font-bold text-[9px] px-2 py-0">
+                      Anticipo Erogato
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Banknote className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <div>
+                        <p className="text-sm font-bold text-foreground">
+                          Anticipo sullo Stipendio{ant.reason ? `: "${ant.reason}"` : ''}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">Importo scalato dal conteggio del mese</p>
+                      </div>
+                    </div>
+                    <span className="text-base font-black text-rose-600 dark:text-rose-400">
+                      - € {Number(ant.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
 

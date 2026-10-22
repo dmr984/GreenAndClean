@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFirestore, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { collection, query, where, Timestamp, getDocs, onSnapshot, doc, setDoc, getDoc, writeBatch, orderBy, limit } from 'firebase/firestore';
-import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck, Download, RefreshCw } from 'lucide-react';
+import { Loader2, Printer, Euro, Trash2, Pencil, Plus, ChevronLeft, ChevronRight, AlertTriangle, Briefcase, Plane, Stethoscope, UserCheck, Download, RefreshCw, Banknote } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfMonth, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
@@ -69,6 +69,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
+    anticipiAmount?: boolean;
     compactMode: boolean;
 };
 
@@ -355,6 +356,14 @@ const MonthlyReportPage = () => {
         if (visibilitySettings.permessoCost) total += permessoCost;
         if (visibilitySettings.malattiaCost) total += malattiaCost;
         
+        // Detrazione anticipi sullo stipendio
+        const anticipiAmount = override.anticipiAmount !== undefined 
+            ? Number(override.anticipiAmount) 
+            : (summary.anticipiAmount || 0);
+        if (anticipiAmount > 0) {
+            total = Math.max(0, total - anticipiAmount);
+        }
+        
         return total;
     }
     
@@ -534,6 +543,7 @@ const MonthlyReportPage = () => {
             case 'permessoCost': return 'Rettifica Totale Permessi (€)';
             case 'ferieCost': return 'Rettifica Totale Ferie (€)';
             case 'absenceDays': return 'Rettifica Assenze (giorni)';
+            case 'anticipiAmount': return 'Rettifica Anticipo Stipendio (€)';
             default: return 'Rettifica Valore';
         }
     }
@@ -762,7 +772,16 @@ const MonthlyReportPage = () => {
                                                                     <Pencil className="h-3 w-3" />
                                                                 </Button>
                                                             </div>
-                                                            {!isCompact && <span className="text-[10px] text-muted-foreground uppercase font-semibold">Totale Dovuto</span>}
+                                                            {!isCompact && (
+                                                                <div className="text-right">
+                                                                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Totale Dovuto</span>
+                                                                    {((override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0)) > 0) && (
+                                                                        <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold block">
+                                                                            (al netto di € {(override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0)).toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -786,6 +805,18 @@ const MonthlyReportPage = () => {
                                                     <InfoCard opId={op.id} title="Ferie (g)" value={finalFerieDays} icon={Plane} visibilityKey="ferieDays" editKey="ferieDays" currentRawValue={finalFerieDays} />
                                                     <InfoCard opId={op.id} title="Totale Ferie" value={`${ferieCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} icon={Euro} visibilityKey="ferieCost" editKey="ferieCost" currentRawValue={ferieCost} />
                                                     <InfoCard opId={op.id} title="Assenze (g)" value={finalAbsenceDays} icon={AlertTriangle} visibilityKey="absenceDays" editKey="absenceDays" currentRawValue={finalAbsenceDays} />
+                                                    
+                                                    {((summary?.anticipiAmount || 0) > 0 || (override?.anticipiAmount !== undefined)) && (
+                                                        <InfoCard 
+                                                            opId={op.id} 
+                                                            title="Anticipo Stipendio" 
+                                                            value={`- ${((override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0))).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                                            icon={Banknote} 
+                                                            visibilityKey="anticipiAmount" 
+                                                            editKey="anticipiAmount" 
+                                                            currentRawValue={override?.anticipiAmount !== undefined ? override.anticipiAmount : (summary?.anticipiAmount || 0)} 
+                                                        />
+                                                    )}
                                                 </CardContent>
                                             )}
                                         </Card>

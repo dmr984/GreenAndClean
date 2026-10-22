@@ -216,15 +216,16 @@ export default function PrintClient() {
     const ferieCost = monthlySummary.ferieCost || 0;
     const permessoCost = monthlySummary.permessoCost || 0;
     const malattiaCost = monthlySummary.malattiaCost || 0;
+    const anticipiAmount = monthlySummary.anticipiAmount || 0;
     let totalDue: number;
     let ordinaryCost: number;
 
     if (operator?.salaryType === 'fixed') {
         ordinaryCost = operator.fixedSalary || 0;
-        totalDue = ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost;
+        totalDue = Math.max(0, ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost - anticipiAmount);
     } else {
         ordinaryCost = finalOrdinaryHours * (operator?.hourlyRate || 0);
-        totalDue = ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost;
+        totalDue = Math.max(0, ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost - anticipiAmount);
     }
 
     const handleDownload = async () => {
@@ -388,6 +389,11 @@ export default function PrintClient() {
                                 {malattiaCost > 0 && (
                                      <tr>
                                         <td className="py-1 font-semibold" colSpan={2}>COSTO MALATTIA: <span className="font-normal">{malattiaCost.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
+                                    </tr>
+                                )}
+                                {anticipiAmount > 0 && (
+                                     <tr>
+                                        <td className="py-1 font-semibold text-rose-600" colSpan={2}>ANTICIPO STIPENDIO: <span className="font-normal">- {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></td>
                                     </tr>
                                 )}
                            </tbody>

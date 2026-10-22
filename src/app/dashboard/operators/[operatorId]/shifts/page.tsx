@@ -1994,6 +1994,18 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
         try {
             await addDoc(collection(firestore, `app-users/${operatorId}/requests`), newRequestData);
+            if (type === 'anticipo') {
+                const amountFormatted = Number(newRequestData.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 });
+                const fullDateStr = format(date, 'd MMMM yyyy', { locale: it });
+                sendNotificationToOperator(firestore, operatorId, {
+                    type: 'request_approved',
+                    title: 'Anticipo sullo Stipendio Erogato 💰',
+                    body: `In data ${fullDateStr} ti è stato anticipato un importo di € ${amountFormatted}${newRequestData.reason ? ' (' + newRequestData.reason + ')' : ''}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`,
+                    customTitle: 'Anticipo sullo Stipendio Erogato 💰',
+                    customBody: `In data ${fullDateStr} ti è stato anticipato un importo di € ${amountFormatted}${newRequestData.reason ? ' (' + newRequestData.reason + ')' : ''}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`,
+                    url: '/dashboard'
+                });
+            }
             toast({ title: 'Successo', description: 'Richiesta aggiunta e approvata.'});
         } catch (error) {
             console.error("Error adding request:", error);
@@ -2695,15 +2707,25 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
             const typeLabel = request.type.charAt(0).toUpperCase() + request.type.slice(1);
             const dateStr = format(start, 'dd MMMM', { locale: it });
-            if (shouldNotify) {
+            if (shouldNotify || request.type === 'anticipo') {
+                const isAnticipo = request.type === 'anticipo';
+                const amountFormatted = Number(request.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 });
+                const fullDateStr = format(start, 'd MMMM yyyy', { locale: it });
+
                 sendNotificationToOperator(firestore, operator.id, {
                     type: 'request_approved',
-                    title: `Richiesta ${typeLabel} Approvata ✅`,
-                    body: `La tua richiesta di ${request.type} del ${dateStr} (${isPaid ? 'retribuita' : 'non retribuita'}) è stata approvata dall'amministratore.`,
+                    title: isAnticipo ? 'Anticipo sullo Stipendio Erogato 💰' : `Richiesta ${typeLabel} Approvata ✅`,
+                    body: isAnticipo
+                        ? `In data ${fullDateStr} ti è stato anticipato un importo di € ${amountFormatted}${request.reason ? ' (' + request.reason + ')' : ''}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`
+                        : `La tua richiesta di ${request.type} del ${dateStr} (${isPaid ? 'retribuita' : 'non retribuita'}) è stata approvata dall'amministratore.`,
+                    customTitle: isAnticipo ? 'Anticipo sullo Stipendio Erogato 💰' : undefined,
+                    customBody: isAnticipo
+                        ? `In data ${fullDateStr} ti è stato anticipato un importo di € ${amountFormatted}${request.reason ? ' (' + request.reason + ')' : ''}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`
+                        : undefined,
                     variables: {
                         data: dateStr,
                         operatore: `${operator.firstName} ${operator.lastName}`.trim(),
-                        tipo: request.type,
+                        tipo: isAnticipo ? 'anticipo stipendio' : request.type,
                     },
                     url: '/dashboard'
                 });
@@ -2771,6 +2793,21 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             }
 
             await batch.commit();
+
+            // Invia notifica dedicata agli anticipi se presenti nel gruppo approvato
+            for (const antReq of reqsToApprove.filter(r => r.type === 'anticipo')) {
+                const antStart = antReq.startDate?.toDate ? antReq.startDate.toDate() : new Date();
+                const amountFormatted = Number(antReq.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 });
+                const fullDateStr = format(antStart, 'd MMMM yyyy', { locale: it });
+                sendNotificationToOperator(firestore, operator.id, {
+                    type: 'request_approved',
+                    title: 'Anticipo sullo Stipendio Erogato 💰',
+                    body: `In data ${fullDateStr} ti è stato anticipato un importo di € ${amountFormatted}${antReq.reason ? ' (' + antReq.reason + ')' : ''}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`,
+                    customTitle: 'Anticipo sullo Stipendio Erogato 💰',
+                    customBody: `In data ${fullDateStr} ti è stato anticipato un importo di € ${amountFormatted}${antReq.reason ? ' (' + antReq.reason + ')' : ''}. Questo importo è stato scalato dal riepilogo del tuo stipendio.`,
+                    url: '/dashboard'
+                });
+            }
 
             if (shouldNotify) {
                 sendNotificationToOperator(firestore, operator.id, {
