@@ -343,7 +343,7 @@ export default function MonthlyReportPrintClient() {
                     y += 5.5;
                 });
 
-                // Linea separatrice subito sopra i totali (nessun vuoto enorme)
+                // Linea separatrice subito sopra i totali (spazio compatto ed equilibrato)
                 doc.setDrawColor(180, 180, 180);
                 doc.setLineWidth(0.3);
                 doc.line(margin, y, pageWidth - margin, y);
@@ -393,12 +393,12 @@ export default function MonthlyReportPrintClient() {
                 if (pageIdx > 0) doc.addPage();
                 const pair = operatorPages[pageIdx];
 
-                // Operatore 1 in alto a Y = 16mm
-                renderPdfSlot(pair[0], 16);
+                // Operatore 1 in alto a Y = 12mm
+                renderPdfSlot(pair[0], 12);
 
-                // Operatore 2 in basso a Y = 156mm (se presente), senza alcuna linea o forbici
+                // Operatore 2 a Y = 160.5mm (esattamente 12mm sotto la metà foglio A4 di 148.5mm)
                 if (pair[1]) {
-                    renderPdfSlot(pair[1], 156);
+                    renderPdfSlot(pair[1], 160.5);
                 }
             }
 
@@ -532,7 +532,7 @@ export default function MonthlyReportPrintClient() {
                     </tbody>
                 </table>
 
-                {/* 3. Totale & Detrazione Anticipi (attaccato subito sotto la tabella, senza buchi vuoti) */}
+                {/* 3. Totale & Detrazione Anticipi (subito sotto la tabella, senza buchi enormi) */}
                 <div className="pt-2.5 mt-2.5 border-t-2 border-gray-400">
                     {anticipiAmount > 0 ? (
                         <div className="flex justify-between items-end gap-2">
@@ -574,11 +574,11 @@ export default function MonthlyReportPrintClient() {
 
     return (
         <div className="bg-background text-foreground min-h-screen">
-            {/* Stili di stampa: nessuna pagina vuota, margini controllati, 2 operatori a foglio */}
+            {/* Stili di stampa: zero margini pagina predefiniti, 2 slot A5 perfetti per foglio A4 (148.5mm ciascuno) */}
             <style jsx global>{`
                 @page {
                     size: A4 portrait;
-                    margin: 10mm 15mm;
+                    margin: 0;
                 }
                 @media print {
                     html, body {
@@ -600,26 +600,38 @@ export default function MonthlyReportPrintClient() {
                     #print-content {
                         padding: 0 !important;
                         margin: 0 !important;
-                        width: 100% !important;
+                        width: 210mm !important;
                         display: block !important;
                     }
                     .print-page {
-                        width: 100% !important;
-                        height: auto !important;
-                        min-height: 0 !important;
-                        max-height: none !important;
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        max-height: 297mm !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
                         page-break-after: always !important;
                         break-after: page !important;
                         box-sizing: border-box !important;
-                        padding: 0 !important;
+                        display: flex !important;
+                        flex-direction: column !important;
                         margin: 0 !important;
-                        display: block !important;
+                        padding: 0 !important;
+                        overflow: hidden !important;
                     }
                     .print-page:last-child {
                         page-break-after: auto !important;
                         break-after: auto !important;
+                    }
+                    .half-page-slot {
+                        width: 210mm !important;
+                        height: 148.5mm !important;
+                        max-height: 148.5mm !important;
+                        box-sizing: border-box !important;
+                        padding: 10mm 15mm 6mm 15mm !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: flex-start !important;
+                        overflow: hidden !important;
                     }
                     .operator-card {
                         page-break-inside: avoid !important;
@@ -686,17 +698,18 @@ export default function MonthlyReportPrintClient() {
                             return (
                                 <div 
                                     key={pageIndex} 
-                                    className="print-page w-full max-w-4xl bg-white shadow-lg print:shadow-none p-6 sm:p-10 print:p-0 mb-8 print:mb-0" 
-                                    style={{ width: '210mm', boxSizing: 'border-box' }}
+                                    className="print-page w-full max-w-4xl bg-white shadow-lg print:shadow-none mb-8 print:mb-0 flex flex-col" 
+                                    style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
                                 >
-                                    {/* Slot 1: Operatore Superiore */}
-                                    {renderOperatorCard(op1)}
+                                    {/* Metà superiore (A5 superiore: altezza esatta 148.5mm, parte subito da sopra) */}
+                                    <div className="half-page-slot p-6 sm:p-8 print:p-0 flex flex-col justify-start" style={{ minHeight: '148.5mm', height: '148.5mm', boxSizing: 'border-box' }}>
+                                        {renderOperatorCard(op1)}
+                                    </div>
 
-                                    {/* Spaziatura pulita tra i due operatori (nessuna linea, nessuna forbice) */}
-                                    {op2 && <div className="py-8 print:py-10" />}
-
-                                    {/* Slot 2: Operatore Inferiore (se presente) */}
-                                    {op2 && renderOperatorCard(op2)}
+                                    {/* Metà inferiore (A5 inferiore: altezza esatta 148.5mm, parte esattamente poco sotto la metà foglio) */}
+                                    <div className="half-page-slot p-6 sm:p-8 print:p-0 flex flex-col justify-start" style={{ minHeight: '148.5mm', height: '148.5mm', boxSizing: 'border-box' }}>
+                                        {op2 && renderOperatorCard(op2)}
+                                    </div>
                                 </div>
                             );
                         })}
