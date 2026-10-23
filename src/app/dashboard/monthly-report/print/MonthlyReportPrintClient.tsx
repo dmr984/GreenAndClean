@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs, onSnapshot, getDoc, doc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams } from 'next/navigation';
@@ -129,7 +129,6 @@ export default function MonthlyReportPrintClient() {
         }
     }, [searchParams, allOperators]);
 
-
     useEffect(() => {
         const fetchDataForMonth = async (date: Date) => {
             if (!firestore || filteredOperators.length === 0) {
@@ -168,7 +167,6 @@ export default function MonthlyReportPrintClient() {
                         where('date', '>=', queryStart),
                         where('date', '<=', queryEnd)
                     );
-
 
                     const [timbratureSnap, requestsSnap, straordinariSnap] = await Promise.all([
                         getDocs(timbratureQuery),
@@ -254,23 +252,27 @@ export default function MonthlyReportPrintClient() {
             
         return Math.max(0, lordo - anticipiAmount);
     }, [manualOverrides, calculateLordoDue]);
-    
+
+    // Raggruppamento a coppie di due operatori per foglio A4
+    const operatorPages = useMemo(() => {
+        const pages: Operator[][] = [];
+        for (let i = 0; i < filteredOperators.length; i += 2) {
+            pages.push(filteredOperators.slice(i, i + 2));
+        }
+        return pages;
+    }, [filteredOperators]);
+
     const generatePdf = useCallback(async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
         try {
             const { default: jsPDF } = await import('jspdf');
-
             if (!currentMonth || !document) return null;
 
             const doc = new jsPDF('p', 'mm', 'a4');
-            const pageHeight = doc.internal.pageSize.height;
-            const pageWidth = doc.internal.pageSize.width;
+            const pageWidth = 210;
             const margin = 15;
-            let y = 20;
 
-            let itemsOnCurrentPage = 0;
-
-            filteredOperators.forEach((op) => {
+            const renderPdfSlot = (op: Operator, startY: number) => {
                 const summary = summaries.get(op.id);
                 if (!summary) return;
                 const override = manualOverrides[op.id] || {};
@@ -282,68 +284,30 @@ export default function MonthlyReportPrintClient() {
                     ? Number(override.anticipiAmount) 
                     : (summary?.anticipiAmount || 0);
 
-                if (globalCompact || opVisibility.compactMode) {
-                    if (y > pageHeight - 15) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                    doc.setFontSize(14);
-                    doc.setFont('helvetica', 'bold');
-                    doc.setTextColor(0, 0, 0);
-                    doc.text(`${op.firstName} ${op.lastName}`.toUpperCase(), margin, y);
-                    
-                    doc.setFont('helvetica', 'normal');
-                    const nameWidth = doc.getTextWidth(`${op.firstName} ${op.lastName} `);
-                    const totalText = `NETTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
-                    
-                    doc.setTextColor(150);
-                    doc.text("....................................................................................................", margin + nameWidth, y);
-                    doc.setTextColor(0, 0, 0);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text(totalText, pageWidth - margin, y, { align: 'right' });
-                    if (anticipiAmount > 0) {
-                        y += 5;
-                        doc.setFontSize(9);
-                        doc.setFont('helvetica', 'normal');
-                        doc.setTextColor(100);
-                        doc.text(`(Lordo: ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} - Anticipo: ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})`, pageWidth - margin, y, { align: 'right' });
-                        y += 7;
-                    } else {
-                        y += 12;
-                    }
-                    return;
-                }
-
-                if (itemsOnCurrentPage === 2) {
-                    doc.addPage();
-                    y = 20;
-                    itemsOnCurrentPage = 0;
-                }
-
                 const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
+                let y = startY;
 
-                doc.setFontSize(18);
+                // Intestazione
+                doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${op.firstName} ${op.lastName}`, margin, y);
-                doc.setFontSize(12);
+                doc.setFontSize(10);
                 doc.setFont('helvetica', 'bold');
-                doc.setTextColor(100);
+                doc.setTextColor(90, 90, 90);
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
-                y += 10;
-                
+                y += 7;
+
+                // Calcolo voci
                 const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
                     : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
-
                 const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-                
                 const absenceDays = override.absenceDays !== undefined ? override.absenceDays : (summary?.absenceDays || 0);
                 const overtimeHours = override.overtimeHours !== undefined ? override.overtimeHours : (summary?.overtimeHours || 0);
                 const ferieDays = override.ferieDays !== undefined ? override.ferieDays : (summary?.ferieDays || 0);
                 const permessoHours = override.permessoHours !== undefined ? override.permessoHours : (summary?.permessoHours || 0);
                 const malattiaDays = override.malattiaDays !== undefined ? override.malattiaDays : (summary?.malattiaDays || 0);
-
                 const ordinaryWorkedDaysDisplay = override.ordinaryWorkedDays !== undefined 
                     ? override.ordinaryWorkedDays 
                     : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
@@ -363,59 +327,85 @@ export default function MonthlyReportPrintClient() {
                 for (let i = 0; i < allItems.length; i += 2) {
                     bodyData.push([allItems[i], allItems[i + 1] || '']);
                 }
-                
-                doc.setFontSize(12);
+
+                doc.setFontSize(9.5);
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(0,0,0);
+                doc.setTextColor(20, 20, 20);
 
                 bodyData.forEach(row => {
-                    y += 8;
                     doc.text(row[0], margin, y);
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
+                    y += 5.5;
                 });
-                
+
+                // Linea separatrice
+                doc.setDrawColor(210, 210, 210);
+                doc.setLineWidth(0.3);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 5;
+
+                // Sezione Totali e Anticipo
                 if (anticipiAmount > 0) {
-                    y += 7;
-                    doc.setFontSize(11);
-                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(9);
                     doc.setTextColor(60, 60, 60);
-                    doc.text(`Totale Competenze: ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
-                    y += 6;
-                    doc.setFont('helvetica', 'bold');
+                    doc.text(`Totale Competenze: ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, margin, y);
                     doc.setTextColor(190, 24, 24);
-                    doc.text(`Anticipo Erogato: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`Anticipo Erogato: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, margin, y + 4.5);
+                    
+                    doc.setFontSize(13);
+                    doc.setFont('helvetica', 'bold');
                     doc.setTextColor(0, 0, 0);
-                    y += 7;
-                    doc.setFontSize(15);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text(`NETTO A SALDO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
-                    y += 12;
+                    doc.text(`NETTO A SALDO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3.5, { align: 'right' });
+                    y += 9.5;
                 } else {
-                    y += 8;
-                    doc.setFontSize(15);
+                    doc.setFontSize(13);
                     doc.setFont('helvetica', 'bold');
-                    doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 4, { align: 'right' });
-                    y += 14;
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3, { align: 'right' });
+                    y += 8;
                 }
 
-                doc.setFontSize(10);
+                // Dicitura quietanza
+                doc.setFontSize(8);
                 doc.setFont('helvetica', 'italic');
-                doc.setTextColor(30, 30, 30);
+                doc.setTextColor(40, 40, 40);
                 const declarationText = anticipiAmount > 0
                     ? `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma netta di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, calcolata a fronte di competenze totali maturate per ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} e detratto l'anticipo sullo stipendio di ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} già percepito. Rilascio pertanto integrale quietanza liberatoria.`
                     : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 5) + 8;
+                y += (splitDeclaration.length * 3.8) + 5;
 
-                doc.setFontSize(11);
+                // Firma
+                doc.setFontSize(9.5);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
                 doc.text('FIRMA PER RICEVUTA E QUIETANZA: __________________________________________', margin, y);
-                y += 18; 
-                itemsOnCurrentPage++;
-            });
+            };
 
+            for (let pageIdx = 0; pageIdx < operatorPages.length; pageIdx++) {
+                if (pageIdx > 0) doc.addPage();
+                const pair = operatorPages[pageIdx];
+
+                // Operatore 1 in alto a Y = 14mm
+                renderPdfSlot(pair[0], 14);
+
+                // Linea di taglio esattamente a metà (Y = 148.5mm)
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineDashPattern([2, 2], 0);
+                doc.line(margin, 148.5, pageWidth - margin, 148.5);
+                doc.setLineDashPattern([], 0);
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'italic');
+                doc.setTextColor(130, 130, 130);
+                doc.text("✂ - - - - - - - - - - - - - - - - Linea di Taglio Metà Foglio A4 (Taglierino) - - - - - - - - - - - - - - - - ✂", pageWidth / 2, 148.5 - 1.5, { align: 'center' });
+
+                // Operatore 2 in basso a Y = 155mm (se presente)
+                if (pair[1]) {
+                    renderPdfSlot(pair[1], 155);
+                }
+            }
 
             const blob = doc.output('blob');
             let fileName = `Report_Mensile_${format(currentMonth, 'yyyy-MM')}.pdf`;
@@ -432,7 +422,7 @@ export default function MonthlyReportPrintClient() {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, calculateLordoDue, manualOverrides, toast, visibility, globalCompact]);
+    }, [currentMonth, filteredOperators, operatorPages, summaries, calculateTotalDue, calculateLordoDue, manualOverrides, toast, visibility]);
 
     const handlePrint = () => {
         window.print();
@@ -472,7 +462,6 @@ export default function MonthlyReportPrintClient() {
         }
     };
 
-
     if (isLoading || !currentMonth) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -480,10 +469,178 @@ export default function MonthlyReportPrintClient() {
             </div>
         );
     }
-    
+
+    const renderOperatorCard = (op: Operator) => {
+        const summary = summaries.get(op.id);
+        if (!summary) return null;
+
+        const override = manualOverrides[op.id] || {};
+        const opVisibility = visibility[op.id] || {};
+        const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
+        const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
+        
+        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
+            ? (op.fixedSalary || 0) 
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+
+        const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        
+        const finalAbsenceDays = override.absenceDays !== undefined ? override.absenceDays : (summary?.absenceDays || 0);
+        const finalOvertimeHours = override.overtimeHours !== undefined ? override.overtimeHours : (summary?.overtimeHours || 0);
+        const finalFerieDays = override.ferieDays !== undefined ? override.ferieDays : (summary?.ferieDays || 0);
+        const finalPermessoHours = override.permessoHours !== undefined ? override.permessoHours : (summary?.permessoHours || 0);
+        const finalMalattiaDays = override.malattiaDays !== undefined ? override.malattiaDays : (summary?.malattiaDays || 0);
+
+        const anticipiAmount = override.anticipiAmount !== undefined 
+            ? Number(override.anticipiAmount) 
+            : (summary?.anticipiAmount || 0);
+
+        const ordinaryWorkedDaysDisplay = override.ordinaryWorkedDays !== undefined 
+            ? override.ordinaryWorkedDays 
+            : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
+
+        const allItems = [
+            opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysDisplay}` : null,
+            opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+            opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${finalOvertimeHours}` : null,
+            opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
+            opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
+            opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
+            opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
+            opVisibility.absenceDays !== false ? `ASSENZE: ${finalAbsenceDays}` : null,
+        ].filter(Boolean) as string[];
+
+        const bodyData: [string, string][] = [];
+        for (let i = 0; i < allItems.length; i += 2) {
+            bodyData.push([allItems[i], allItems[i + 1] || '']);
+        }
+
+        const periodText = format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase();
+
+        return (
+            <div key={op.id} className="operator-card text-black flex flex-col justify-between" style={{ height: '138mm', maxHeight: '138mm', boxSizing: 'border-box' }}>
+                {/* 1. Intestazione & Tabella Voci */}
+                <div>
+                    <div className="flex justify-between items-baseline border-b-2 border-black pb-1 mb-2">
+                        <p className="font-bold text-lg sm:text-xl text-black uppercase tracking-wide">{op.firstName} {op.lastName}</p>
+                        <p className="text-xs sm:text-sm font-bold text-gray-700">MESE: {periodText}</p>
+                    </div>
+                    
+                    <table className="w-full text-xs sm:text-sm my-1">
+                        <tbody>
+                            {bodyData.map((row, i) => (
+                                <tr key={i} className="border-b border-gray-100">
+                                    <td className="py-0.5 sm:py-1 text-gray-800 font-medium">{row[0]}</td>
+                                    <td className="py-0.5 sm:py-1 text-right font-semibold text-gray-900">{row[1]}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* 2. Totali & Detrazione Anticipi */}
+                <div>
+                    <div className="pt-2 border-t-2 border-gray-400">
+                        {anticipiAmount > 0 ? (
+                            <div className="flex justify-between items-end gap-2">
+                                <div className="text-left text-xs text-gray-700">
+                                    <div>Totale Competenze: <span className="font-semibold text-black">{lordoDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></div>
+                                    <div className="text-red-600 font-bold">Anticipo già percepito: - {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</div>
+                                </div>
+                                <div className="text-right font-black text-xl sm:text-2xl text-black">
+                                    <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-right font-black text-xl sm:text-2xl text-black">
+                                <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 3. Dicitura Quietanza */}
+                    <div className="mt-2 mb-2 italic text-gray-800 text-[11px] sm:text-xs leading-snug bg-gray-50/80 print:bg-transparent p-2 rounded border border-gray-200 print:border-gray-300">
+                        {anticipiAmount > 0 ? (
+                            <p>
+                                Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
+                            </p>
+                        ) : (
+                            <p>
+                                Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
+                            </p>
+                        )}
+                    </div>
+
+                    {/* 4. Riga Firma */}
+                    <div className="pt-1">
+                        <p className="text-xs sm:text-sm text-black font-bold">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________</p>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="bg-background text-foreground min-h-screen">
-             <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
+            {/* Stili per la stampa esatta A4 (2 operatori per foglio divisi a metà) */}
+            <style jsx global>{`
+                @page {
+                    size: A4 portrait;
+                    margin: 6mm 10mm;
+                }
+                @media print {
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: white !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                    .print-page {
+                        width: 100% !important;
+                        height: 285mm !important;
+                        max-height: 285mm !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        page-break-after: always !important;
+                        break-after: page !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
+                        box-sizing: border-box !important;
+                        overflow: hidden !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                    }
+                    .print-page:last-child {
+                        page-break-after: auto !important;
+                        break-after: auto !important;
+                    }
+                    .operator-card {
+                        height: 138mm !important;
+                        max-height: 138mm !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
+                        box-sizing: border-box !important;
+                        overflow: hidden !important;
+                        padding: 3mm 0 !important;
+                    }
+                    .cut-divider {
+                        height: 6mm !important;
+                        max-height: 6mm !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        box-sizing: border-box !important;
+                    }
+                }
+            `}</style>
+
+            <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
                  <div className="flex-1"></div>
                  <div className="flex flex-1 items-center justify-center gap-2">
                      <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Printer className="h-4 w-4" />}</Button>
@@ -495,44 +652,26 @@ export default function MonthlyReportPrintClient() {
                 </div>
             </header>
 
-            <main className="flex justify-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
-                <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
-                    
-                    {globalCompact && currentMonth && (
-                        <div className="mb-10 text-center border-b-2 border-black pb-4">
-                            <h1 className="text-3xl font-bold uppercase">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h1>
-                        </div>
-                    )}
+            <main className="flex flex-col items-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
+                {globalCompact ? (
+                    <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
+                        {currentMonth && (
+                            <div className="mb-8 text-center border-b-2 border-black pb-4">
+                                <h1 className="text-3xl font-bold uppercase">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h1>
+                            </div>
+                        )}
+                        <div className="space-y-4">
+                            {filteredOperators.map((op) => {
+                                const summary = summaries.get(op.id);
+                                if (!summary) return null;
+                                const override = manualOverrides[op.id] || {};
+                                const opVisibility = visibility[op.id] || {};
+                                const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
+                                const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
+                                const anticipiAmount = override.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0);
 
-                    <div className="space-y-4">
-                         {filteredOperators.map((op, index) => {
-                            const summary = summaries.get(op.id);
-                            if (!summary) return null;
-
-                            const override = manualOverrides[op.id] || {};
-                            const opVisibility = visibility[op.id] || {};
-                            const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
-                            const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
-                            
-                            const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
-                                ? (op.fixedSalary || 0) 
-                                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
-
-                            const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-                            
-                            const finalAbsenceDays = override.absenceDays !== undefined ? override.absenceDays : (summary?.absenceDays || 0);
-                            const finalOvertimeHours = override.overtimeHours !== undefined ? override.overtimeHours : (summary?.overtimeHours || 0);
-                            const finalFerieDays = override.ferieDays !== undefined ? override.ferieDays : (summary?.ferieDays || 0);
-                            const finalPermessoHours = override.permessoHours !== undefined ? override.permessoHours : (summary?.permessoHours || 0);
-                            const finalMalattiaDays = override.malattiaDays !== undefined ? override.malattiaDays : (summary?.malattiaDays || 0);
-
-                            const anticipiAmount = override.anticipiAmount !== undefined 
-                                ? Number(override.anticipiAmount) 
-                                : (summary?.anticipiAmount || 0);
-
-                            if (globalCompact || opVisibility.compactMode) {
                                 return (
-                                    <div key={op.id} className="text-base text-black print:break-inside-avoid pb-4 border-b border-dashed border-gray-300">
+                                    <div key={op.id} className="text-base text-black pb-3 border-b border-dashed border-gray-300">
                                         <div className="flex justify-between items-baseline gap-2">
                                             <p className="font-bold text-xl text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
@@ -546,96 +685,43 @@ export default function MonthlyReportPrintClient() {
                                             </div>
                                         </div>
                                     </div>
-                                )
-                            }
-
-                            const ordinaryWorkedDaysDisplay = override.ordinaryWorkedDays !== undefined 
-                                ? override.ordinaryWorkedDays 
-                                : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
-
-                            const allItems = [
-                                opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysDisplay}` : null,
-                                opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.overtimeHours !== false ? `ORE STRAORDINARIE: ${finalOvertimeHours}` : null,
-                                opVisibility.overtimeCost !== false ? `TOTALE STRAORDINARI: ${overtimeCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
-                                opVisibility.malattiaDays !== false ? `GIORNI DI MALATTIA: ${finalMalattiaDays}`: null,
-                                opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
-                                opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
-                                opVisibility.absenceDays !== false ? `ASSENZE: ${finalAbsenceDays}` : null,
-                            ].filter(Boolean) as string[];
-
-                            const bodyData: [string, string][] = [];
-                            for (let i = 0; i < allItems.length; i += 2) {
-                                bodyData.push([allItems[i], allItems[i + 1] || '']);
-                            }
-
-                            const needsPageBreak = (index + 1) % 2 === 0 && (index + 1) < filteredOperators.length;
-                            const periodText = format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase();
+                                );
+                            })}
+                        </div>
+                    </div>
+                ) : (
+                    <div id="print-content" className="w-full flex flex-col items-center">
+                        {operatorPages.map((pagePair, pageIndex) => {
+                            const op1 = pagePair[0];
+                            const op2 = pagePair[1];
 
                             return (
-                                <div key={op.id} className={cn(
-                                    "text-black print:break-inside-avoid pb-16 pt-6", 
-                                    needsPageBreak && "print:break-after-page"
-                                )}>
-                                    <div className='flex justify-between items-start mb-6'>
-                                        <p className="font-bold text-2xl text-black uppercase">{op.firstName} {op.lastName}</p>
-                                        <p className='text-base text-gray-600 font-bold'>MESE: {periodText}</p>
-                                    </div>
-                                    
-                                    <table className="w-full text-lg mt-2 mb-6">
-                                        <tbody>
-                                            {bodyData.map((row, i) => (
-                                                <tr key={i}>
-                                                    <td className="py-2 border-b border-gray-100">{row[0]}</td>
-                                                    <td className="py-2 text-right border-b border-gray-100">{row[1]}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    
-                                    <div className="mt-6 pt-4 border-t-2 border-gray-400">
-                                        {anticipiAmount > 0 ? (
-                                            <div className="flex flex-col items-end gap-1.5">
-                                                <div className="text-gray-700 text-lg font-medium">
-                                                    Totale Competenze Maturate: <span className="font-semibold text-black">{lordoDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
-                                                </div>
-                                                <div className="text-red-600 font-bold text-lg bg-red-50 print:bg-transparent px-3 py-0.5 rounded border border-red-200 print:border-none">
-                                                    Anticipo Erogato: - {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
-                                                </div>
-                                                <div className="text-right font-black text-3xl text-black mt-2 pt-2 border-t border-gray-300 w-full sm:w-auto">
-                                                    <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-right font-bold text-3xl text-black">
-                                                <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
-                                            </div>
-                                        )}
+                                <div 
+                                    key={pageIndex} 
+                                    className="print-page w-full max-w-4xl bg-white shadow-lg print:shadow-none p-6 sm:p-8 print:p-0 mb-8 print:mb-0 flex flex-col justify-between" 
+                                    style={{ width: '210mm', minHeight: '285mm', boxSizing: 'border-box' }}
+                                >
+                                    {/* Slot 1: Operatore Superiore */}
+                                    {renderOperatorCard(op1)}
+
+                                    {/* Linea di taglio centrale per il taglierino (esattamente a metà foglio A4) */}
+                                    <div className="cut-divider my-2 print:my-0 flex items-center justify-between text-gray-400 text-[10px] print:text-gray-500 py-1" style={{ height: '6mm' }}>
+                                        <span className="text-xs font-mono">✂</span>
+                                        <div className="flex-1 border-b border-dashed border-gray-400 mx-2"></div>
+                                        <span className="uppercase tracking-widest font-semibold text-[9px] text-gray-500">Linea di Taglio Metà Foglio A4 (Taglierino)</span>
+                                        <div className="flex-1 border-b border-dashed border-gray-400 mx-2"></div>
+                                        <span className="text-xs font-mono">✂</span>
                                     </div>
 
-                                    <div className='mt-8 mb-8 italic text-gray-800 text-base leading-relaxed bg-gray-50/60 print:bg-transparent p-4 rounded border border-gray-200 print:border-gray-300'>
-                                        {anticipiAmount > 0 ? (
-                                            <p>
-                                                Io sottoscritto/a, <span className='font-bold not-italic'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className='font-bold not-italic'>{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className='font-bold not-italic'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className='font-bold not-italic'>{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className='font-bold not-italic'>{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena e definitiva quietanza liberatoria.
-                                            </p>
-                                        ) : (
-                                            <p>
-                                                Io sottoscritto/a, <span className='font-bold not-italic'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className='font-bold not-italic'>{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className='font-bold not-italic'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    <div className='pt-4'>
-                                        <p className="text-lg text-black font-bold">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________________</p>
-                                    </div>
-                                    
+                                    {/* Slot 2: Operatore Inferiore (se presente) */}
+                                    {op2 ? renderOperatorCard(op2) : <div className="operator-card" style={{ height: '138mm' }} />}
                                 </div>
-                            )
+                            );
                         })}
                     </div>
-                </div>
+                )}
             </main>
-             <Toaster />
+            <Toaster />
         </div>
     );
 }
