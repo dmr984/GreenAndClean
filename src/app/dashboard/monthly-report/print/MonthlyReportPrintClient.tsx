@@ -11,7 +11,6 @@ import { it } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { processMonthlyData, MonthlySummary } from '@/lib/calculations';
 import { Toaster } from '@/components/ui/toaster';
-import { cn } from '@/lib/utils';
 
 type Operator = {
     id: string;
@@ -253,7 +252,7 @@ export default function MonthlyReportPrintClient() {
         return Math.max(0, lordo - anticipiAmount);
     }, [manualOverrides, calculateLordoDue]);
 
-    // Raggruppamento a coppie di due operatori per foglio A4
+    // Raggruppamento rigoroso a coppie di 2 operatori per foglio A4
     const operatorPages = useMemo(() => {
         const pages: Operator[][] = [];
         for (let i = 0; i < filteredOperators.length; i += 2) {
@@ -296,7 +295,13 @@ export default function MonthlyReportPrintClient() {
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(90, 90, 90);
                 doc.text(`MESE: ${periodText}`, pageWidth - margin, y, { align: 'right' });
-                y += 7;
+                y += 6;
+
+                // Linea sotto intestazione
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(0.4);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 6;
 
                 // Calcolo voci
                 const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
@@ -338,8 +343,8 @@ export default function MonthlyReportPrintClient() {
                     y += 5.5;
                 });
 
-                // Linea separatrice
-                doc.setDrawColor(210, 210, 210);
+                // Linea separatrice subito sopra i totali (nessun vuoto enorme)
+                doc.setDrawColor(180, 180, 180);
                 doc.setLineWidth(0.3);
                 doc.line(margin, y, pageWidth - margin, y);
                 y += 5;
@@ -367,7 +372,7 @@ export default function MonthlyReportPrintClient() {
                 }
 
                 // Dicitura quietanza
-                doc.setFontSize(8);
+                doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(40, 40, 40);
                 const declarationText = anticipiAmount > 0
@@ -375,7 +380,7 @@ export default function MonthlyReportPrintClient() {
                     : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 3.8) + 5;
+                y += (splitDeclaration.length * 3.8) + 6;
 
                 // Firma
                 doc.setFontSize(9.5);
@@ -388,22 +393,12 @@ export default function MonthlyReportPrintClient() {
                 if (pageIdx > 0) doc.addPage();
                 const pair = operatorPages[pageIdx];
 
-                // Operatore 1 in alto a Y = 14mm
-                renderPdfSlot(pair[0], 14);
+                // Operatore 1 in alto a Y = 16mm
+                renderPdfSlot(pair[0], 16);
 
-                // Linea di taglio esattamente a metà (Y = 148.5mm)
-                doc.setDrawColor(180, 180, 180);
-                doc.setLineDashPattern([2, 2], 0);
-                doc.line(margin, 148.5, pageWidth - margin, 148.5);
-                doc.setLineDashPattern([], 0);
-                doc.setFontSize(7.5);
-                doc.setFont('helvetica', 'italic');
-                doc.setTextColor(130, 130, 130);
-                doc.text("✂ - - - - - - - - - - - - - - - - Linea di Taglio Metà Foglio A4 (Taglierino) - - - - - - - - - - - - - - - - ✂", pageWidth / 2, 148.5 - 1.5, { align: 'center' });
-
-                // Operatore 2 in basso a Y = 155mm (se presente)
+                // Operatore 2 in basso a Y = 156mm (se presente), senza alcuna linea o forbici
                 if (pair[1]) {
-                    renderPdfSlot(pair[1], 155);
+                    renderPdfSlot(pair[1], 156);
                 }
             }
 
@@ -518,63 +513,60 @@ export default function MonthlyReportPrintClient() {
         const periodText = format(currentMonth, 'MMMM yyyy', {locale: it}).toUpperCase();
 
         return (
-            <div key={op.id} className="operator-card text-black flex flex-col justify-between" style={{ height: '138mm', maxHeight: '138mm', boxSizing: 'border-box' }}>
-                {/* 1. Intestazione & Tabella Voci */}
-                <div>
-                    <div className="flex justify-between items-baseline border-b-2 border-black pb-1 mb-2">
-                        <p className="font-bold text-lg sm:text-xl text-black uppercase tracking-wide">{op.firstName} {op.lastName}</p>
-                        <p className="text-xs sm:text-sm font-bold text-gray-700">MESE: {periodText}</p>
-                    </div>
-                    
-                    <table className="w-full text-xs sm:text-sm my-1">
-                        <tbody>
-                            {bodyData.map((row, i) => (
-                                <tr key={i} className="border-b border-gray-100">
-                                    <td className="py-0.5 sm:py-1 text-gray-800 font-medium">{row[0]}</td>
-                                    <td className="py-0.5 sm:py-1 text-right font-semibold text-gray-900">{row[1]}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            <div key={op.id} className="operator-card text-black flex flex-col justify-start">
+                {/* 1. Intestazione */}
+                <div className="flex justify-between items-baseline border-b-2 border-black pb-1 mb-2">
+                    <p className="font-bold text-lg sm:text-xl text-black uppercase tracking-wide">{op.firstName} {op.lastName}</p>
+                    <p className="text-xs sm:text-sm font-bold text-gray-700">MESE: {periodText}</p>
+                </div>
+                
+                {/* 2. Tabella Voci con spaziatura naturale */}
+                <table className="w-full text-xs sm:text-sm my-1">
+                    <tbody>
+                        {bodyData.map((row, i) => (
+                            <tr key={i} className="border-b border-gray-100">
+                                <td className="py-1 text-gray-800 font-medium">{row[0]}</td>
+                                <td className="py-1 text-right font-semibold text-gray-900">{row[1]}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+
+                {/* 3. Totale & Detrazione Anticipi (attaccato subito sotto la tabella, senza buchi vuoti) */}
+                <div className="pt-2.5 mt-2.5 border-t-2 border-gray-400">
+                    {anticipiAmount > 0 ? (
+                        <div className="flex justify-between items-end gap-2">
+                            <div className="text-left text-xs sm:text-sm text-gray-700">
+                                <div>Totale Competenze: <span className="font-semibold text-black">{lordoDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></div>
+                                <div className="text-red-600 font-bold">Anticipo già percepito: - {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</div>
+                            </div>
+                            <div className="text-right font-black text-xl sm:text-2xl text-black">
+                                <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-right font-black text-xl sm:text-2xl text-black">
+                            <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                        </div>
+                    )}
                 </div>
 
-                {/* 2. Totali & Detrazione Anticipi */}
-                <div>
-                    <div className="pt-2 border-t-2 border-gray-400">
-                        {anticipiAmount > 0 ? (
-                            <div className="flex justify-between items-end gap-2">
-                                <div className="text-left text-xs text-gray-700">
-                                    <div>Totale Competenze: <span className="font-semibold text-black">{lordoDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></div>
-                                    <div className="text-red-600 font-bold">Anticipo già percepito: - {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</div>
-                                </div>
-                                <div className="text-right font-black text-xl sm:text-2xl text-black">
-                                    <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-right font-black text-xl sm:text-2xl text-black">
-                                <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
-                            </div>
-                        )}
-                    </div>
+                {/* 4. Dicitura Quietanza */}
+                <div className="mt-2.5 mb-2.5 italic text-gray-800 text-[11px] sm:text-xs leading-snug bg-gray-50/80 print:bg-transparent p-2.5 rounded border border-gray-200 print:border-gray-300">
+                    {anticipiAmount > 0 ? (
+                        <p>
+                            Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
+                        </p>
+                    ) : (
+                        <p>
+                            Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
+                        </p>
+                    )}
+                </div>
 
-                    {/* 3. Dicitura Quietanza */}
-                    <div className="mt-2 mb-2 italic text-gray-800 text-[11px] sm:text-xs leading-snug bg-gray-50/80 print:bg-transparent p-2 rounded border border-gray-200 print:border-gray-300">
-                        {anticipiAmount > 0 ? (
-                            <p>
-                                Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
-                            </p>
-                        ) : (
-                            <p>
-                                Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
-                            </p>
-                        )}
-                    </div>
-
-                    {/* 4. Riga Firma */}
-                    <div className="pt-1">
-                        <p className="text-xs sm:text-sm text-black font-bold">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________</p>
-                    </div>
+                {/* 5. Riga Firma */}
+                <div className="pt-1">
+                    <p className="text-xs sm:text-sm text-black font-bold">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________</p>
                 </div>
             </div>
         );
@@ -582,11 +574,11 @@ export default function MonthlyReportPrintClient() {
 
     return (
         <div className="bg-background text-foreground min-h-screen">
-            {/* Stili per la stampa esatta A4 (2 operatori per foglio divisi a metà) */}
+            {/* Stili di stampa: nessuna pagina vuota, margini controllati, 2 operatori a foglio */}
             <style jsx global>{`
                 @page {
                     size: A4 portrait;
-                    margin: 6mm 10mm;
+                    margin: 10mm 15mm;
                 }
                 @media print {
                     html, body {
@@ -599,43 +591,39 @@ export default function MonthlyReportPrintClient() {
                     .no-print {
                         display: none !important;
                     }
+                    main {
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        background: white !important;
+                        display: block !important;
+                    }
+                    #print-content {
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        width: 100% !important;
+                        display: block !important;
+                    }
                     .print-page {
                         width: 100% !important;
-                        height: 285mm !important;
-                        max-height: 285mm !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        max-height: none !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
                         page-break-after: always !important;
                         break-after: page !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: space-between !important;
                         box-sizing: border-box !important;
-                        overflow: hidden !important;
                         padding: 0 !important;
                         margin: 0 !important;
+                        display: block !important;
                     }
                     .print-page:last-child {
                         page-break-after: auto !important;
                         break-after: auto !important;
                     }
                     .operator-card {
-                        height: 138mm !important;
-                        max-height: 138mm !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: space-between !important;
-                        box-sizing: border-box !important;
-                        overflow: hidden !important;
-                        padding: 3mm 0 !important;
-                    }
-                    .cut-divider {
-                        height: 6mm !important;
-                        max-height: 6mm !important;
-                        display: flex !important;
-                        align-items: center !important;
-                        justify-content: center !important;
-                        box-sizing: border-box !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
                     }
                 }
             `}</style>
@@ -698,23 +686,17 @@ export default function MonthlyReportPrintClient() {
                             return (
                                 <div 
                                     key={pageIndex} 
-                                    className="print-page w-full max-w-4xl bg-white shadow-lg print:shadow-none p-6 sm:p-8 print:p-0 mb-8 print:mb-0 flex flex-col justify-between" 
-                                    style={{ width: '210mm', minHeight: '285mm', boxSizing: 'border-box' }}
+                                    className="print-page w-full max-w-4xl bg-white shadow-lg print:shadow-none p-6 sm:p-10 print:p-0 mb-8 print:mb-0" 
+                                    style={{ width: '210mm', boxSizing: 'border-box' }}
                                 >
                                     {/* Slot 1: Operatore Superiore */}
                                     {renderOperatorCard(op1)}
 
-                                    {/* Linea di taglio centrale per il taglierino (esattamente a metà foglio A4) */}
-                                    <div className="cut-divider my-2 print:my-0 flex items-center justify-between text-gray-400 text-[10px] print:text-gray-500 py-1" style={{ height: '6mm' }}>
-                                        <span className="text-xs font-mono">✂</span>
-                                        <div className="flex-1 border-b border-dashed border-gray-400 mx-2"></div>
-                                        <span className="uppercase tracking-widest font-semibold text-[9px] text-gray-500">Linea di Taglio Metà Foglio A4 (Taglierino)</span>
-                                        <div className="flex-1 border-b border-dashed border-gray-400 mx-2"></div>
-                                        <span className="text-xs font-mono">✂</span>
-                                    </div>
+                                    {/* Spaziatura pulita tra i due operatori (nessuna linea, nessuna forbice) */}
+                                    {op2 && <div className="py-8 print:py-10" />}
 
                                     {/* Slot 2: Operatore Inferiore (se presente) */}
-                                    {op2 ? renderOperatorCard(op2) : <div className="operator-card" style={{ height: '138mm' }} />}
+                                    {op2 && renderOperatorCard(op2)}
                                 </div>
                             );
                         })}
