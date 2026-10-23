@@ -362,16 +362,17 @@ export default function MonthlyReportPrintClient() {
                     doc.setFont('helvetica', 'bold');
                     doc.setTextColor(0, 0, 0);
                     doc.text(`NETTO A SALDO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3.5, { align: 'right' });
-                    y += 9.5;
+                    y += 12;
                 } else {
                     doc.setFontSize(13);
                     doc.setFont('helvetica', 'bold');
                     doc.setTextColor(0, 0, 0);
                     doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3, { align: 'right' });
-                    y += 8;
+                    y += 11;
                 }
 
-                // Dicitura quietanza
+                // Dicitura quietanza ben staccata dal totale
+                y += 5;
                 doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(40, 40, 40);
@@ -380,9 +381,9 @@ export default function MonthlyReportPrintClient() {
                     : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 3.8) + 6;
+                y += (splitDeclaration.length * 4) + 8;
 
-                // Firma
+                // Firma ben staccata dalla dicitura
                 doc.setFontSize(9.5);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
@@ -525,15 +526,15 @@ export default function MonthlyReportPrintClient() {
                     <tbody>
                         {bodyData.map((row, i) => (
                             <tr key={i} className="border-b border-gray-100">
-                                <td className="py-1 text-gray-800 font-medium">{row[0]}</td>
-                                <td className="py-1 text-right font-semibold text-gray-900">{row[1]}</td>
+                                <td className="py-1.5 text-gray-800 font-medium">{row[0]}</td>
+                                <td className="py-1.5 text-right font-semibold text-gray-900">{row[1]}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
 
-                {/* 3. Totale & Detrazione Anticipi (subito sotto la tabella, senza buchi enormi) */}
-                <div className="pt-2.5 mt-2.5 border-t-2 border-gray-400">
+                {/* 3. Totale & Detrazione Anticipi */}
+                <div className="pt-3 mt-3 border-t-2 border-black">
                     {anticipiAmount > 0 ? (
                         <div className="flex justify-between items-end gap-2">
                             <div className="text-left text-xs sm:text-sm text-gray-700">
@@ -551,8 +552,8 @@ export default function MonthlyReportPrintClient() {
                     )}
                 </div>
 
-                {/* 4. Dicitura Quietanza */}
-                <div className="mt-2.5 mb-2.5 italic text-gray-800 text-[11px] sm:text-xs leading-snug bg-gray-50/80 print:bg-transparent p-2.5 rounded border border-gray-200 print:border-gray-300">
+                {/* 4. Dicitura Quietanza ben distanziata dal totale */}
+                <div className="mt-6 mb-5 italic text-gray-800 text-xs sm:text-[13px] leading-relaxed bg-gray-50/80 print:bg-transparent p-3 rounded border border-gray-200 print:border-gray-300">
                     {anticipiAmount > 0 ? (
                         <p>
                             Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
@@ -564,9 +565,9 @@ export default function MonthlyReportPrintClient() {
                     )}
                 </div>
 
-                {/* 5. Riga Firma */}
-                <div className="pt-1">
-                    <p className="text-xs sm:text-sm text-black font-bold">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________</p>
+                {/* 5. Riga Firma ben staccata dalla dicitura */}
+                <div className="mt-6 pt-2">
+                    <p className="text-xs sm:text-sm text-black font-bold tracking-wide">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________</p>
                 </div>
             </div>
         );
