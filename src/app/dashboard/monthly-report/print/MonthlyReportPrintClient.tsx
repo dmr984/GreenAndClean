@@ -211,32 +211,24 @@ export default function MonthlyReportPrintClient() {
         }
     }, [currentMonth, filteredOperators, firestore, toast]);
 
-    const calculateTotalDue = useCallback((opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
-        const override = manualOverrides[opId];
-        if (override?.totalDueOverride !== undefined) {
-            return override.totalDueOverride;
-        }
-        
+    const calculateLordoDue = useCallback((opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
+        const override = manualOverrides[opId] || {};
         if (!summary) return 0;
         
         const finalVisibility = visibilitySettings || {};
 
-        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
-            ? (op.fixedSalary || 0) 
-            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+        const ordinaryCost = override.ordinaryCost !== undefined && override.ordinaryCost !== '' 
+            ? Number(override.ordinaryCost) 
+            : (op.salaryType === 'fixed' 
+                ? (op.fixedSalary || 0) 
+                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
         
-        const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
-        const ferieCost = override.ferieCost !== undefined ? Number(override.ferieCost) : (summary.ferieCost || 0);
-        const permessoCost = override.permessoCost !== undefined ? Number(override.permessoCost) : (summary.permessoCost || 0);
-        const malattiaCost = override.malattiaCost !== undefined ? Number(override.malattiaCost) : (summary.malattiaCost || 0);
-        
-        const absenceDays = override.absenceDays !== undefined ? override.absenceDays : (summary?.absenceDays || 0);
-        const overtimeHours = override.overtimeHours !== undefined ? override.overtimeHours : (summary?.overtimeHours || 0);
-        const ferieDays = override.ferieDays !== undefined ? override.ferieDays : (summary?.ferieDays || 0);
-        const permessoHours = override.permessoHours !== undefined ? override.permessoHours : (summary?.permessoHours || 0);
-        const malattiaDays = override.malattiaDays !== undefined ? override.malattiaDays : (summary?.malattiaDays || 0);
-        const ordinaryWorkedDays = override.ordinaryWorkedDays !== undefined ? override.ordinaryWorkedDays : (summary?.ordinaryWorkedDays || 0);
-        const ordinaryHours = summary?.ordinaryHours || 0;
+        const overtimeCost = override.overtimeCost !== undefined && override.overtimeCost !== '' 
+            ? Number(override.overtimeCost) 
+            : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
+        const ferieCost = override.ferieCost !== undefined && override.ferieCost !== '' ? Number(override.ferieCost) : (summary.ferieCost || 0);
+        const permessoCost = override.permessoCost !== undefined && override.permessoCost !== '' ? Number(override.permessoCost) : (summary.permessoCost || 0);
+        const malattiaCost = override.malattiaCost !== undefined && override.malattiaCost !== '' ? Number(override.malattiaCost) : (summary.malattiaCost || 0);
 
         let total = 0;
         if (finalVisibility.ordinaryCost !== false) total += ordinaryCost;
@@ -245,16 +237,23 @@ export default function MonthlyReportPrintClient() {
         if (finalVisibility.permessoCost !== false) total += permessoCost;
         if (finalVisibility.malattiaCost !== false) total += malattiaCost;
         
-        // Detrazione anticipi sullo stipendio
-        const anticipiAmount = override?.anticipiAmount !== undefined 
-            ? Number(override.anticipiAmount) 
-            : (summary.anticipiAmount || 0);
-        if (anticipiAmount > 0) {
-            total = Math.max(0, total - anticipiAmount);
-        }
-        
         return total;
     }, [manualOverrides]);
+
+    const calculateTotalDue = useCallback((opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
+        const override = manualOverrides[opId] || {};
+        if (override.totalDueOverride !== undefined && override.totalDueOverride !== '') {
+            return Number(override.totalDueOverride);
+        }
+        
+        const lordo = calculateLordoDue(opId, op, summary, visibilitySettings);
+        
+        const anticipiAmount = override.anticipiAmount !== undefined && override.anticipiAmount !== ''
+            ? Number(override.anticipiAmount) 
+            : (summary?.anticipiAmount || 0);
+            
+        return Math.max(0, lordo - anticipiAmount);
+    }, [manualOverrides, calculateLordoDue]);
     
     const generatePdf = useCallback(async (): Promise<{ blob: Blob; fileName: string } | null> => {
         setIsGenerating(true);
@@ -277,7 +276,11 @@ export default function MonthlyReportPrintClient() {
                 const override = manualOverrides[op.id] || {};
                 const opVisibility = visibility[op.id] || {};
                 
+                const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
                 const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
+                const anticipiAmount = override.anticipiAmount !== undefined 
+                    ? Number(override.anticipiAmount) 
+                    : (summary?.anticipiAmount || 0);
 
                 if (globalCompact || opVisibility.compactMode) {
                     if (y > pageHeight - 15) {
@@ -291,14 +294,23 @@ export default function MonthlyReportPrintClient() {
                     
                     doc.setFont('helvetica', 'normal');
                     const nameWidth = doc.getTextWidth(`${op.firstName} ${op.lastName} `);
-                    const totalText = `TOTALE: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
+                    const totalText = `NETTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
                     
                     doc.setTextColor(150);
                     doc.text("....................................................................................................", margin + nameWidth, y);
                     doc.setTextColor(0, 0, 0);
                     doc.setFont('helvetica', 'bold');
                     doc.text(totalText, pageWidth - margin, y, { align: 'right' });
-                    y += 12;
+                    if (anticipiAmount > 0) {
+                        y += 5;
+                        doc.setFontSize(9);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setTextColor(100);
+                        doc.text(`(Lordo: ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} - Anticipo: ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})`, pageWidth - margin, y, { align: 'right' });
+                        y += 7;
+                    } else {
+                        y += 12;
+                    }
                     return;
                 }
 
@@ -336,11 +348,6 @@ export default function MonthlyReportPrintClient() {
                     ? override.ordinaryWorkedDays 
                     : (summary ? (opVisibility.showWorkedHours ? `${summary.ordinaryWorkedDays || 0} (${summary.ordinaryHours || 0}h)` : (summary.ordinaryWorkedDays || 0)) : 0);
 
-
-                const anticipiAmount = override.anticipiAmount !== undefined 
-                    ? Number(override.anticipiAmount) 
-                    : (summary?.anticipiAmount || 0);
-
                 const allItems = [
                     opVisibility.ordinaryWorkedDays !== false ? `GIORNI ORDINARI LAVORATI: ${ordinaryWorkedDaysDisplay}` : null,
                     opVisibility.ordinaryCost !== false ? `${op.salaryType === 'fixed' ? 'FISSO MENSILE' : 'TOTALE ORDINARIE'}: ${ordinaryCost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null,
@@ -350,7 +357,6 @@ export default function MonthlyReportPrintClient() {
                     opVisibility.permessoHours !== false ? `ORE PERMESSI: ${permessoHours}` : null,
                     opVisibility.ferieDays !== false ? `FERIE: ${ferieDays}` : null,
                     opVisibility.absenceDays !== false ? `ASSENZE: ${absenceDays}` : null,
-                    anticipiAmount > 0 && opVisibility.anticipiAmount !== false ? `ANTICIPO STIPENDIO: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null
                 ].filter(Boolean) as string[];
 
                 const bodyData: [string, string][] = [];
@@ -368,24 +374,45 @@ export default function MonthlyReportPrintClient() {
                     doc.text(row[1], pageWidth - margin, y, { align: 'right' });
                 });
                 
-                y += 8;
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 5, { align: 'right' });
-                y += 15;
+                if (anticipiAmount > 0) {
+                    y += 7;
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(60, 60, 60);
+                    doc.text(`Totale Competenze: ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
+                    y += 6;
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(190, 24, 24);
+                    doc.text(`Anticipo Erogato: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
+                    doc.setTextColor(0, 0, 0);
+                    y += 7;
+                    doc.setFontSize(15);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`NETTO A SALDO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y, { align: 'right' });
+                    y += 12;
+                } else {
+                    y += 8;
+                    doc.setFontSize(15);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 4, { align: 'right' });
+                    y += 14;
+                }
 
-                doc.setFontSize(11);
+                doc.setFontSize(10);
                 doc.setFont('helvetica', 'italic');
-                doc.setTextColor(0, 0, 0);
-                const declarationText = `Io sottoscritto, ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare gli importi indicati.`;
+                doc.setTextColor(30, 30, 30);
+                const declarationText = anticipiAmount > 0
+                    ? `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma netta di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, calcolata a fronte di competenze totali maturate per ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} e detratto l'anticipo sullo stipendio di ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} già percepito. Rilascio pertanto integrale quietanza liberatoria.`
+                    : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 6) + 8;
+                y += (splitDeclaration.length * 5) + 8;
 
-                doc.setFontSize(12);
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'bold');
-                doc.text('FIRMA: __________________________________________', margin, y);
-                y += 20; 
+                doc.setTextColor(0, 0, 0);
+                doc.text('FIRMA PER RICEVUTA E QUIETANZA: __________________________________________', margin, y);
+                y += 18; 
                 itemsOnCurrentPage++;
             });
 
@@ -405,7 +432,7 @@ export default function MonthlyReportPrintClient() {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, manualOverrides, toast, visibility, globalCompact]);
+    }, [currentMonth, filteredOperators, summaries, calculateTotalDue, calculateLordoDue, manualOverrides, toast, visibility, globalCompact]);
 
     const handlePrint = () => {
         window.print();
@@ -484,6 +511,7 @@ export default function MonthlyReportPrintClient() {
 
                             const override = manualOverrides[op.id] || {};
                             const opVisibility = visibility[op.id] || {};
+                            const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
                             const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
                             
                             const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
@@ -509,10 +537,10 @@ export default function MonthlyReportPrintClient() {
                                             <p className="font-bold text-xl text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
                                             <div className="text-right">
-                                                <p className="font-bold text-xl text-black whitespace-nowrap">TOTALE: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
+                                                <p className="font-bold text-xl text-black whitespace-nowrap">NETTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
                                                 {anticipiAmount > 0 && (
-                                                    <span className="text-xs text-gray-600 font-semibold block">
-                                                        (al netto di € {anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                    <span className="text-xs text-gray-700 font-semibold block">
+                                                        (Lordo: {lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} - Anticipo: {anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})
                                                     </span>
                                                 )}
                                             </div>
@@ -534,7 +562,6 @@ export default function MonthlyReportPrintClient() {
                                 opVisibility.permessoHours !== false ? `ORE PERMESSI: ${finalPermessoHours}` : null,
                                 opVisibility.ferieDays !== false ? `FERIE: ${finalFerieDays}` : null,
                                 opVisibility.absenceDays !== false ? `ASSENZE: ${finalAbsenceDays}` : null,
-                                anticipiAmount > 0 && opVisibility.anticipiAmount !== false ? `ANTICIPO STIPENDIO: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}` : null
                             ].filter(Boolean) as string[];
 
                             const bodyData: [string, string][] = [];
@@ -547,7 +574,7 @@ export default function MonthlyReportPrintClient() {
 
                             return (
                                 <div key={op.id} className={cn(
-                                    "text-black print:break-inside-avoid pb-20 pt-6", 
+                                    "text-black print:break-inside-avoid pb-16 pt-6", 
                                     needsPageBreak && "print:break-after-page"
                                 )}>
                                     <div className='flex justify-between items-start mb-6'>
@@ -566,23 +593,40 @@ export default function MonthlyReportPrintClient() {
                                         </tbody>
                                     </table>
                                     
-                                     <div className="text-right font-bold text-3xl mt-6 pt-4 text-black border-t-2 border-gray-300">
-                                        <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
-                                        {anticipiAmount > 0 && (
-                                            <span className="text-sm text-gray-600 font-normal block mt-1">
-                                                (Scalato anticipo di {anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})
-                                            </span>
+                                    <div className="mt-6 pt-4 border-t-2 border-gray-400">
+                                        {anticipiAmount > 0 ? (
+                                            <div className="flex flex-col items-end gap-1.5">
+                                                <div className="text-gray-700 text-lg font-medium">
+                                                    Totale Competenze Maturate: <span className="font-semibold text-black">{lordoDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                                </div>
+                                                <div className="text-red-600 font-bold text-lg bg-red-50 print:bg-transparent px-3 py-0.5 rounded border border-red-200 print:border-none">
+                                                    Anticipo Erogato: - {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                                </div>
+                                                <div className="text-right font-black text-3xl text-black mt-2 pt-2 border-t border-gray-300 w-full sm:w-auto">
+                                                    <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-right font-bold text-3xl text-black">
+                                                <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                            </div>
                                         )}
                                     </div>
 
-                                    <div className='mt-10 mb-10 italic text-gray-800 text-lg leading-relaxed'>
-                                        <p>
-                                            Io sottoscritto, <span className='font-bold'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la busta paga relativa al periodo <span className='font-bold'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare gli importi indicati.
-                                        </p>
+                                    <div className='mt-8 mb-8 italic text-gray-800 text-base leading-relaxed bg-gray-50/60 print:bg-transparent p-4 rounded border border-gray-200 print:border-gray-300'>
+                                        {anticipiAmount > 0 ? (
+                                            <p>
+                                                Io sottoscritto/a, <span className='font-bold not-italic'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className='font-bold not-italic'>{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className='font-bold not-italic'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className='font-bold not-italic'>{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className='font-bold not-italic'>{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena e definitiva quietanza liberatoria.
+                                            </p>
+                                        ) : (
+                                            <p>
+                                                Io sottoscritto/a, <span className='font-bold not-italic'>{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className='font-bold not-italic'>{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className='font-bold not-italic'>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
+                                            </p>
+                                        )}
                                     </div>
 
-                                    <div className='pt-6'>
-                                        <p className="text-lg text-black font-bold">FIRMA: __________________________________________________</p>
+                                    <div className='pt-4'>
+                                        <p className="text-lg text-black font-bold">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________________</p>
                                     </div>
                                     
                                 </div>

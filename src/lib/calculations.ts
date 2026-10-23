@@ -1166,13 +1166,39 @@ export const processMonthlyData = (
     }
 
     // Calcolo e detrazione anticipi sullo stipendio del mese
-    const anticipiRequests = data.requests.filter(r => 
-        r.status === 'approvato' && 
-        r.type === 'anticipo' && 
-        r.startDate?.toDate && 
-        isWithinInterval(r.startDate.toDate(), monthInterval)
-    );
-    const anticipiAmount = anticipiRequests.reduce((sum, r) => sum + (Number((r as any).amount) || 0), 0);
+    const anticipiRequests = data.requests.filter(r => {
+        if (r.status !== 'approvato' || r.type !== 'anticipo') return false;
+        let reqDate: Date | null = null;
+        if (r.startDate?.toDate && typeof r.startDate.toDate === 'function') {
+            reqDate = r.startDate.toDate();
+        } else if (r.startDate instanceof Date) {
+            reqDate = r.startDate;
+        } else if (r.startDate && typeof (r.startDate as any).seconds === 'number') {
+            reqDate = new Date((r.startDate as any).seconds * 1000);
+        } else if (typeof r.startDate === 'string') {
+            const d = new Date(r.startDate);
+            if (!isNaN(d.getTime())) reqDate = d;
+        } else if (r.dailyCosts && typeof r.dailyCosts === 'object') {
+            const keys = Object.keys(r.dailyCosts);
+            if (keys.length > 0) {
+                const d = parse(keys[0], 'yyyy-MM-dd', new Date());
+                if (!isNaN(d.getTime())) reqDate = d;
+            }
+        }
+        return reqDate ? isWithinInterval(reqDate, monthInterval) : false;
+    });
+
+    const anticipiAmount = anticipiRequests.reduce((sum, r) => {
+        const amt = Number((r as any).amount);
+        if (!isNaN(amt) && amt > 0) return sum + amt;
+        if (r.dailyCosts && typeof r.dailyCosts === 'object') {
+            const costValues = Object.values(r.dailyCosts) as number[];
+            const costSum = costValues.reduce((s, c) => s + (Number(c) || 0), 0);
+            if (costSum > 0) return sum + costSum;
+        }
+        return sum;
+    }, 0);
+
     monthlySummary.anticipiAmount = anticipiAmount;
     monthlySummary.estimatedTotalCost = Math.max(0, monthlySummary.estimatedTotalCost - anticipiAmount);
 
