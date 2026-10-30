@@ -241,10 +241,16 @@ function groupEventsIntoShifts(
     const pauseTime = pauseMinutes > 0 ? `${pauseMinutes}m` : (currentPauseStart ? 'In pausa' : '--');
     const pauseDetail = pauseIntervals.length > 0 ? pauseIntervals[0] : null;
 
+    // Se il turno contiene eventi rifiutati, è un turno rifiutato: non deve apparire
+    if (group.some((e) => e.status === 'rifiutata')) {
+      continue;
+    }
+
     const isConfirmed = isRecoveredDay || Boolean(
       entry && exit &&
       (entry.status === 'confermata' || exit.status === 'confermata') &&
-      entry.status !== 'sospesa' && exit.status !== 'sospesa'
+      entry.status !== 'sospesa' && exit.status !== 'sospesa' &&
+      entry.status !== 'rifiutata' && exit.status !== 'rifiutata'
     );
 
     let status: 'confermato' | 'in_attesa' | 'in_servizio' = 'in_attesa';
@@ -252,6 +258,11 @@ function groupEventsIntoShifts(
       status = 'confermato';
     } else if (entry && !exit && isToday) {
       status = 'in_servizio';
+    }
+
+    // Devono apparire soltanto i turni approvati/confermati (o in servizio oggi se attivo)
+    if (status !== 'confermato' && status !== 'in_servizio') {
+      continue;
     }
 
     let ordinaryHours = 0;
@@ -788,8 +799,8 @@ export default function BossMonitorApp() {
 
     const map = new Map<string, AgendaDayItem>();
 
-    // 1. Timbrature regolari del mese
-    detailEvents.forEach((ev) => {
+    // 1. Timbrature regolari del mese (escludi eventi rifiutati)
+    detailEvents.filter(ev => ev.status !== 'rifiutata').forEach((ev) => {
       if (!ev.timestamp?.toDate) return;
       const d = ev.timestamp.toDate();
       const key = format(d, 'yyyy-MM-dd');
@@ -800,7 +811,7 @@ export default function BossMonitorApp() {
     });
 
     // 2. Riconosci turni di recupero in detailEvents
-    detailEvents.forEach((ev) => {
+    detailEvents.filter(ev => ev.status !== 'rifiutata').forEach((ev) => {
       if (ev.type === 'entrata' && ev.makeupOfDay) {
         const d = ev.timestamp?.toDate ? ev.timestamp.toDate() : null;
         const key = d ? format(d, 'yyyy-MM-dd') : null;
@@ -827,8 +838,8 @@ export default function BossMonitorApp() {
               recItem.isRecoveredDay = true;
               recItem.recoveredOnDateFormatted = d ? format(d, 'd MMMM', { locale: it }) : null;
               const exitEv = ev.shiftId
-                ? detailEvents.find((e) => e.type === 'uscita' && e.shiftId === ev.shiftId)
-                : detailEvents.find((e) => e.type === 'uscita');
+                ? detailEvents.find((e) => e.type === 'uscita' && e.shiftId === ev.shiftId && e.status !== 'rifiutata')
+                : detailEvents.find((e) => e.type === 'uscita' && e.status !== 'rifiutata');
               recItem.recoveredShift = {
                 entryTime: d ? format(d, 'HH:mm') : undefined,
                 exitTime: exitEv?.timestamp?.toDate ? format(exitEv.timestamp.toDate(), 'HH:mm') : undefined,
@@ -843,7 +854,7 @@ export default function BossMonitorApp() {
     });
 
     // 3. Timbrature recuperate da altri mesi per giorni di questo mese
-    detailRecoveredEvents.forEach((rev) => {
+    detailRecoveredEvents.filter(rev => rev.status !== 'rifiutata').forEach((rev) => {
       if (rev.type === 'entrata' && rev.makeupOfDay) {
         try {
           const targetDate = parse(rev.makeupOfDay, 'yyyy-MM-dd', new Date());
@@ -858,8 +869,8 @@ export default function BossMonitorApp() {
               const revDate = rev.timestamp?.toDate ? rev.timestamp.toDate() : null;
               recItem.recoveredOnDateFormatted = revDate ? format(revDate, 'd MMMM', { locale: it }) : null;
               const revExit = rev.shiftId
-                ? detailRecoveredEvents.find((e) => e.type === 'uscita' && e.shiftId === rev.shiftId)
-                : detailRecoveredEvents.find((e) => e.type === 'uscita');
+                ? detailRecoveredEvents.find((e) => e.type === 'uscita' && e.shiftId === rev.shiftId && e.status !== 'rifiutata')
+                : detailRecoveredEvents.find((e) => e.type === 'uscita' && e.status !== 'rifiutata');
               recItem.recoveredShift = {
                 entryTime: revDate ? format(revDate, 'HH:mm') : undefined,
                 exitTime: revExit?.timestamp?.toDate ? format(revExit.timestamp.toDate(), 'HH:mm') : undefined,
@@ -889,10 +900,28 @@ export default function BossMonitorApp() {
     if (selectedOperator) {
       arr.forEach((item) => {
         item.shifts = groupEventsIntoShifts(item.events, selectedOperator, item.date, item.isRecoveredDay);
+        // Tieni solo gli eventi appartenenti ai turni approvati
+        if (item.shifts && item.shifts.length > 0) {
+          const approvedShiftIds = new Set(item.shifts.map(s => s.shiftId).filter(Boolean));
+          if (approvedShiftIds.size > 0) {
+            item.events = item.events.filter(e => !e.shiftId || approvedShiftIds.has(e.shiftId));
+          }
+        } else if (!item.isRecoveredDay) {
+          // Nessun turno approvato
+          item.events = [];
+        }
       });
     }
-    arr.sort((a, b) => b.date.getTime() - a.date.getTime());
-    return arr;
+
+    // Mostra solo i giorni con turni approvati, richieste o turni recuperati
+    const filteredArr = arr.filter(item => {
+      const hasShifts = item.shifts && item.shifts.length > 0;
+      const hasRequests = item.requests && item.requests.length > 0;
+      return hasShifts || hasRequests || item.isRecoveredDay;
+    });
+
+    filteredArr.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return filteredArr;
   }, [detailEvents, detailRecoveredEvents, detailRequests, detailMonth, selectedOperator]);
 
   // --------------------------------------------------------------------------
@@ -1123,17 +1152,13 @@ export default function BossMonitorApp() {
                     : null) || item.events.filter((e) => e.type === 'uscita').pop();
                   
                   const isRecovered = Boolean(item.isRecoveredDay);
-                  const isApproved = isRecovered || (item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa'));
-                  const isPending = !isRecovered && (item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0));
+                  const hasApprovedRequest = item.requests.some((r) => r.status === 'approvato');
+                  const isApproved = isRecovered || hasApprovedRequest || (item.shifts && item.shifts.length > 0 && item.shifts.every(s => s.status === 'confermato')) || (item.events.some((e) => e.status === 'confermata') && !item.events.some((e) => e.status === 'sospesa'));
+                  const isPending = !isRecovered && !hasApprovedRequest && (item.events.some((e) => e.status === 'sospesa') || (!isApproved && item.events.length > 0));
 
-                  const entryTime = isRecovered
-                    ? (item.recoveredShift?.entryTime || '--:--')
-                    : (entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--');
-                  const exitTime = isRecovered
-                    ? (item.recoveredShift?.exitTime || '--:--')
-                    : (exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--');
+                  const singleShift = item.shifts && item.shifts.length === 1 ? item.shifts[0] : null;
 
-                  const { refStartTime: refStart, refEndTime: refEnd } = getReferenceTimes(
+                  const { refStartTime: refStartComputed, refEndTime: refEndComputed } = getReferenceTimes(
                     selectedOperator as any,
                     item.date,
                     entry,
@@ -1159,10 +1184,35 @@ export default function BossMonitorApp() {
                       itemPauseStart = null;
                     }
                   }
-                  const itemPauseText = itemPauseMins > 0 ? `${itemPauseMins}m` : '--';
+                  const itemPauseTextComputed = itemPauseMins > 0 ? `${itemPauseMins}m` : '--';
 
-                  const ordH = isRecovered ? item.recoveredShift?.ordinaryHours : entry?.approvedOrdinaryHours;
-                  const overH = isRecovered ? item.recoveredShift?.overtimeHours : entry?.approvedOvertimeHours;
+                  const entryTime = isRecovered
+                    ? (item.recoveredShift?.entryTime || '--:--')
+                    : singleShift
+                    ? (singleShift.entryTime || '--:--')
+                    : (entry?.timestamp?.toDate ? format(entry.timestamp.toDate(), 'HH:mm') : '--:--');
+
+                  const exitTime = isRecovered
+                    ? (item.recoveredShift?.exitTime || '--:--')
+                    : singleShift
+                    ? (singleShift.exitTime || '--:--')
+                    : (exit?.timestamp?.toDate ? format(exit.timestamp.toDate(), 'HH:mm') : '--:--');
+
+                  const refStart = singleShift ? singleShift.refStartTime : refStartComputed;
+                  const refEnd = singleShift ? singleShift.refEndTime : refEndComputed;
+                  const itemPauseText = singleShift ? singleShift.pauseTime : itemPauseTextComputed;
+
+                  const ordH = isRecovered
+                    ? item.recoveredShift?.ordinaryHours
+                    : singleShift
+                    ? singleShift.ordinaryHours
+                    : entry?.approvedOrdinaryHours;
+
+                  const overH = isRecovered
+                    ? item.recoveredShift?.overtimeHours
+                    : singleShift
+                    ? singleShift.overtimeHours
+                    : entry?.approvedOvertimeHours;
 
                   return (
                     <div
@@ -1322,6 +1372,16 @@ export default function BossMonitorApp() {
                             {r.type === 'malattia' && '🤒 Malattia registrata'}
                             {r.type === 'ferie' && '🏖️ Ferie godute'}
                             {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
+                            {r.type === 'assenza' && (
+                              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs font-bold flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <span>🚫</span> Assenza
+                                </span>
+                                <span className="text-rose-600 dark:text-rose-400 font-semibold text-[11px]">
+                                  {r.reason || 'Assenza confermata'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1781,17 +1841,22 @@ export default function BossMonitorApp() {
                     </div>
                   ) : null}
 
-                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO) */}
+                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO, ASSENZA) */}
                   {row.requests.filter(req => req.type !== 'anticipo').length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
                       {row.requests.filter(req => req.type !== 'anticipo').map((req, qIdx) => (
                         <span
                           key={qIdx}
-                          className="px-2 py-0.5 rounded-md font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                          className={`px-2 py-0.5 rounded-md font-semibold ${
+                            req.type === 'assenza'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}
                         >
                           {req.type === 'malattia' && '🤒 Malattia'}
                           {req.type === 'ferie' && '🏖️ Ferie'}
                           {req.type === 'permesso' && '⏱️ Permesso'}
+                          {req.type === 'assenza' && '🚫 Assenza'}
                         </span>
                       ))}
                     </div>
