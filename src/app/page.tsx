@@ -1779,7 +1779,7 @@ export default function BossMonitorApp() {
                             {!row.exitTime ? (
                               <>
                                 <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                                Uscita non timbrata — In attesa di rettifica
+                                Uscita non timbrata — In attesa di approvazione
                               </>
                             ) : (
                               <>
