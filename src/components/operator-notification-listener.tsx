@@ -220,6 +220,23 @@ export function OperatorNotificationListener({ userId }: OperatorNotificationLis
           const body = data.body || 'Hai una nuova notifica da Serveco';
           const targetUrl = data.url || '/dashboard';
 
+          // Le notifiche di anticipo sullo stipendio sono private e non devono comparire all'operatore
+          if (
+            data.type === 'anticipo' ||
+            title.toLowerCase().includes('anticipo') ||
+            body.toLowerCase().includes('anticipo')
+          ) {
+            try {
+              await updateDoc(change.doc.ref, {
+                read: true,
+                deliveredAt: serverTimestamp(),
+              });
+            } catch (err) {
+              // Ignore
+            }
+            return;
+          }
+
           // Suono acustico e vibrazione
           playNotificationChime();
           if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
