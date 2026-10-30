@@ -1077,20 +1077,6 @@ export default function BossMonitorApp() {
               <p className="text-[11px] text-slate-400">Ferie e permessi goduti</p>
             </div>
 
-            {/* ANTICIPI SCALATI (se presenti) */}
-            {detailMonthlySummary?.anticipiAmount && detailMonthlySummary.anticipiAmount > 0 ? (
-              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800 shadow-sm space-y-1">
-                <div className="flex items-center gap-1.5 text-amber-600 text-xs font-bold uppercase tracking-wider">
-                  <Banknote className="h-4 w-4" />
-                  Anticipi Scalati
-                </div>
-                <div className="text-2xl font-black text-rose-600">
-                  - € {detailMonthlySummary.anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-                <p className="text-[11px] text-amber-700/80">Scalati dall'importo dovuto</p>
-              </div>
-            ) : null}
-
             {/* IMPORTO DOVUTO */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md space-y-1 col-span-2 sm:col-span-2 md:col-span-1">
               <div className="flex items-center justify-between text-emerald-100 text-xs font-bold uppercase tracking-wider">
@@ -1110,9 +1096,7 @@ export default function BossMonitorApp() {
                 ) : '€ 0,00'}
               </div>
               <p className="text-[11px] text-emerald-100/90 truncate">
-                {detailMonthlySummary?.anticipiAmount && detailMonthlySummary.anticipiAmount > 0
-                  ? `(Al netto di € ${detailMonthlySummary.anticipiAmount.toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)`
-                  : selectedOperator?.salaryType === 'fixed'
+                {selectedOperator?.salaryType === 'fixed'
                   ? 'Stipendio fisso + extra'
                   : `Tariffa: € ${selectedOperator?.hourlyRate || 0}/h`}
               </p>
@@ -1332,21 +1316,12 @@ export default function BossMonitorApp() {
                       {/* Eventuali richieste */}
                       {item.requests.map((r, rIdx) => {
                         if (r.type === 'assenza' && isRecovered) return null;
+                        if (r.type === 'anticipo') return null;
                         return (
                           <div key={rIdx} className="text-[11px] font-semibold text-slate-500 pt-0.5">
                             {r.type === 'malattia' && '🤒 Malattia registrata'}
                             {r.type === 'ferie' && '🏖️ Ferie godute'}
                             {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
-                            {r.type === 'anticipo' && (
-                              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-between mt-1">
-                                <span className="flex items-center gap-1.5">
-                                  <span>💰</span> Anticipo sullo stipendio
-                                </span>
-                                <span className="text-rose-600 font-black">
-                                  - € {Number(r.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
-                                </span>
-                              </div>
-                            )}
                           </div>
                         );
                       })}
@@ -1806,22 +1781,17 @@ export default function BossMonitorApp() {
                     </div>
                   ) : null}
 
-                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO, ANTICIPO) */}
-                  {row.requests.length > 0 && (
+                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO) */}
+                  {row.requests.filter(req => req.type !== 'anticipo').length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
-                      {row.requests.map((req, qIdx) => (
+                      {row.requests.filter(req => req.type !== 'anticipo').map((req, qIdx) => (
                         <span
                           key={qIdx}
-                          className={`px-2 py-0.5 rounded-md font-semibold ${
-                            req.type === 'anticipo'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
-                              : 'bg-blue-50 text-blue-700 border border-blue-200'
-                          }`}
+                          className="px-2 py-0.5 rounded-md font-semibold bg-blue-50 text-blue-700 border border-blue-200"
                         >
                           {req.type === 'malattia' && '🤒 Malattia'}
                           {req.type === 'ferie' && '🏖️ Ferie'}
                           {req.type === 'permesso' && '⏱️ Permesso'}
-                          {req.type === 'anticipo' && `💰 Anticipo di € ${Number(req.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}`}
                         </span>
                       ))}
                     </div>
