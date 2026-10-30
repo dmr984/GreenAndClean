@@ -800,7 +800,7 @@ export default function ShiftApprovalPage() {
             .map(s => ({ ...s, itemType: 'overtime' as const }));
 
         const historicalRequestsItems = (allRequests || [])
-            .filter(r => r.status === 'approvato' && r.type !== 'assenza')
+            .filter(r => r.status === 'approvato')
             .map(r => ({
                 id: r.id,
                 itemType: 'request' as const,
@@ -3988,7 +3988,8 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 ) : (
                                                                     !detail.note && detail.status !== 'riposo' && detail.status !== 'ferie' && (
                                                                        <p className="text-muted-foreground font-semibold text-sm">
-                                                                            { detail.status === 'mancata_timbratura' ? '' :
+                                                                            { detail.request?.type === 'assenza' ? 'Assenza Approvata' :
+                                                                              detail.status === 'mancata_timbratura' ? '' :
                                                                               detail.status === 'malattia' ? 'Giorno di Malattia' :
                                                                               detail.status === 'festa' ? 'Giorno Festivo' :
                                                                               detail.status === 'in_corso' ? 'Turno in corso...' : ''
