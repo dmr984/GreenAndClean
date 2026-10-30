@@ -1736,18 +1736,8 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         "text-[9px] px-1.5 py-0",
                         shift.status === 'sospesa' && "bg-yellow-500 hover:bg-yellow-600 text-white"
                       )}>
-                        {shift.status}
+                        {shift.status === 'confermata' ? 'Confermato' : shift.status === 'sospesa' ? 'In attesa' : shift.status}
                       </Badge>
-                      {shift.status === 'sospesa' && isShiftRectifiable(idx) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-5 px-2 py-0 text-[10px] border-amber-600 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-500 dark:text-amber-500 dark:hover:bg-amber-950/20 font-bold uppercase"
-                          onClick={() => handleHistoryShiftCorrection(shift)}
-                        >
-                          Rettifica
-                        </Button>
-                      )}
                     </div>
                   </div>
 
@@ -1758,32 +1748,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         <div className="flex items-baseline gap-1.5 flex-wrap">
                           <span className="text-base font-mono font-bold">
                             {shift.entry
-                              ? (shift.entry.status === 'sospesa' && shift.entry.suggestedTime && !shift.entry.originalTime
-                                ? '--:--'
-                                : (shift.entry.status === 'sospesa' && shift.entry.originalTime
-                                  ? shift.entry.originalTime
-                                  : format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm')
-                                )
-                              )
+                              ? format(shift.entry.timestamp?.toDate() || new Date(), 'HH:mm')
                               : '--:--'}
                           </span>
-                          {shift.entry?.suggestedTime && shift.entry.status === 'sospesa' && (
-                            <span className="text-[10px] font-mono text-amber-600 font-bold">
-                              ({shift.entry.suggestedTime})
-                            </span>
-                          )}
                         </div>
-                        {shift.entry?.originalTime && (shift.entry.rectificationStatus === 'approvata' || shift.entry.status === 'confermata') && (
-                          <span className="text-xs font-mono font-bold text-red-600 dark:text-red-400 block mt-0.5">
-                            {shift.entry.originalTime}
-                          </span>
-                        )}
-                        {(shift.entry?.rectificationStatus === 'in_approvazione' || (!shift.entry?.rectificationStatus && shift.entry?.suggestedTime && shift.entry?.status === 'sospesa')) && (
-                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
-                        )}
-                        {shift.entry?.rectificationStatus === 'rifiutata' && (
-                          <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
-                        )}
                       </div>
                       <div className="h-8 w-px bg-border/50" />
                       <div className="flex flex-col">
@@ -1791,48 +1759,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                         <div className="flex items-baseline gap-1.5 flex-wrap">
                           <span className="text-base font-mono font-bold">
                             {shift.exit
-                              ? (shift.exit.status === 'sospesa' && shift.exit.suggestedTime && !shift.exit.originalTime
-                                ? '--:--'
-                                : (shift.exit.status === 'sospesa' && shift.exit.originalTime
-                                  ? shift.exit.originalTime
-                                  : format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm')
-                                )
-                              )
+                              ? format(shift.exit.timestamp?.toDate() || new Date(), 'HH:mm')
                               : '--:--'}
                           </span>
-                          {shift.exit?.suggestedTime && shift.exit.status === 'sospesa' && (
-                            <span className="text-[10px] font-mono text-amber-600 font-bold">
-                              ({shift.exit.suggestedTime})
-                            </span>
-                          )}
                         </div>
-                        {shift.exit?.originalTime && (shift.exit.rectificationStatus === 'approvata' || shift.exit.status === 'confermata') && (
-                          <span className="text-xs font-mono font-bold text-red-600 dark:text-red-400 block mt-0.5">
-                            {shift.exit.originalTime}
-                          </span>
-                        )}
-                        {(shift.exit?.rectificationStatus === 'in_approvazione' || (!shift.exit?.rectificationStatus && shift.exit?.suggestedTime && shift.exit?.status === 'sospesa')) && (
-                          <span className="text-[9px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta in approvazione</span>
-                        )}
-                        {shift.exit?.rectificationStatus === 'rifiutata' && (
-                          <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-bold mt-1 w-fit">Richiesta non approvata</span>
-                        )}
                       </div>
                     </div>
-
-                    {shift.status === 'sospesa' && (shift.entry?.isAuto === false || shift.exit?.isAuto === false) && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={async () => {
-                          if (shift.entry?.isAuto === false) await handleCancelRequest(shift.entry);
-                          if (shift.exit?.isAuto === false) await handleCancelRequest(shift.exit);
-                        }}
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                    )}
                   </div>
 
                   {/* Pauses row — shown only when at least one pause exists */}
@@ -2159,58 +2091,58 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
       <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
         <ResponsiveDialogContent>
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>Guida alla Gestione del Turno</ResponsiveDialogTitle>
+            <ResponsiveDialogTitle>Guida alla Gestione del Turno e Timbrature</ResponsiveDialogTitle>
             <ResponsiveDialogDescription>
-              Come utilizzare il sistema di timbratura e come vengono elaborati i turni.
+              Informazioni complete su come funzionano le timbrature, le rettifiche, i recuperi e gli anticipi.
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
           <div className="py-4 pr-4 space-y-4 text-sm overflow-y-auto max-h-[60vh]">
             <div>
-              <h4 className="font-semibold mb-1">Inizio e Fine Turno</h4>
-              <p className="text-muted-foreground">
-                Usa il pulsante verde "Inizia Turno" per registrare la tua entrata per la giornata corrente. Al termine, premi "Termina Turno". L'uso di questa funzione implica il consenso alla raccolta dei dati di geolocalizzazione (GPS) al solo scopo di verificare la posizione al momento della timbratura. È possibile effettuare più turni distinti nella stessa giornata (es. mattina e pomeriggio) che verranno calcolati separatamente.
+              <h4 className="font-semibold mb-1 text-primary">Inizio e Fine Turno</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Usa il pulsante verde <strong>"Inizia Turno"</strong> per registrare la tua entrata e <strong>"Termina Turno"</strong> quando hai concluso. L'app rileva le coordinate GPS unicamente all'istante della timbratura per certificarne la posizione. Se la tua giornata prevede più fasce (es. mattina e pomeriggio), puoi effettuare timbrature distinte che verranno conteggiate separatamente.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Turno di Recupero o Straordinario</h4>
-              <p className="text-muted-foreground">
-                Se devi recuperare un giorno o fare straordinari in un giorno non lavorativo, usa il pulsante "Inizia Recupero" e seleziona dal calendario il giorno che stai compensando, oppure timbra normalmente con "Inizia Turno" per registrare ore extra.
+              <h4 className="font-semibold mb-1 text-primary">Timbratura Mancata o Uscita Non Timbrata</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Se dimentichi di timbrare l'uscita o riscontri un'anomalia, non preoccuparti: l'amministratore verificherà l'orario effettivo di fine lavoro e provvederà a regolarizzarlo direttamente dal pannello di gestione. Sul tuo profilo non visualizzerai annotazioni provvisorie, ma direttamente l'orario definitivo confermato.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Rettifiche e Turno in Corso</h4>
-              <p className="text-muted-foreground">
-                Se richiedi una rettifica (correzione d'orario) per un turno ancora in corso (es. correzione dell'orario di entrata prima di aver effettuato l'uscita), l'approvazione della rettifica da parte dell'amministratore aggiornerà l'orario senza confermare prematuramente il turno. Il turno rimarrà attivo ("In Corso") fino a quando non effettuerai l'uscita.
+              <h4 className="font-semibold mb-1 text-primary">Come Funzionano le Rettifiche e le Modifiche</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Tutte le correzioni di orario vengono effettuate dall'amministratore dal gestionale. Durante le fasi di modifica tecnica o rettifica interna <strong>non riceverai notifiche di disturbo</strong>: la notifica push ti verrà inviata sul dispositivo solo al momento dell'approvazione formale del turno. Nel tuo riepilogo personale compariranno sempre e solo gli orari confermati e validati.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Gestione delle Pause</h4>
-              <p className="text-muted-foreground">
-                Non devi timbrare l'inizio o la fine della pausa. La durata della pausa viene gestita dall'amministratore in fase di approvazione del turno, anche in base al tipo di contratto. Qualsiasi variazione sarà concordata con l'amministrazione e potrà essere soggetta a correzioni.
+              <h4 className="font-semibold mb-1 text-primary">Turni di Recupero e Anticipo ("Inizia Recupero")</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Se lavori per recuperare un giorno di assenza pregresso o per anticipare una giornata futura (anche di domenica o in un giorno non contrattuale), usa il pulsante <strong>"Inizia Recupero"</strong> e seleziona dal calendario il giorno che stai compensando. Le ore lavorate verranno collegate direttamente a quella data, annullando eventuali assenze e garantendo il calcolo economico esatto.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Dettaglio delle Timbrature nei Riepiloghi</h4>
-              <p className="text-muted-foreground">
-                Tutti i riepiloghi mensili, le anteprime di stampa e i report PDF scaricabili mostrano ora il dettaglio completo e analitico di ciascuna timbratura (orari precisi di entrata, uscita e pause) con eventuali orari di riferimento calcolati dall'amministrazione.
+              <h4 className="font-semibold mb-1 text-primary">Anticipi sullo Stipendio</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Se hai concordato e ricevuto un acconto sullo stipendio mensile, l'importo viene registrato dall'amministrazione e mostrato chiaramente nel riepilogo in alto con la voce in rosso <strong>"- € ... Anticipi Ricevuti"</strong>. La cifra viene scalata in automatico dal totale dovuto netto di fine mese e riportata sulla ricevuta di quietanza da firmare.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Come vengono calcolate le ore</h4>
-              <p className="text-muted-foreground">
-                Il sistema arrotonda gli orari di entrata e uscita per calcolare le ore ordinarie, che scattano ogni mezz'ora.
+              <h4 className="font-semibold mb-1 text-primary">Gestione delle Pause</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Non occorre timbrare l'inizio e la fine della pausa: la durata della pausa viene conteggiata e gestita dall'amministratore in conformità al contratto e agli accordi di lavoro durante l'approvazione del turno.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Stato delle Timbrature</h4>
-              <p className="text-muted-foreground">
-                Ogni timbratura viene inviata per l'approvazione. Nel riepilogo giornaliero, puoi vedere lo stato: <Badge variant="default" className="bg-yellow-500 text-white">sospesa</Badge>, <Badge variant="secondary">confermata</Badge>, o <Badge variant="destructive">rifiutata</Badge>. Se ci sono timbrature rifiutate su una giornata, le ore dei turni regolarmente confermati nella stessa giornata verranno comunque conteggiate e pagate correttamente.
+              <h4 className="font-semibold mb-1 text-primary">Stato dei Turni e Notifiche</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                I turni appena timbrati sono indicati come <Badge variant="default" className="bg-yellow-500 text-white text-[10px]">In attesa</Badge>. Non appena l'amministratore li approva, lo stato diventa <Badge variant="secondary" className="text-[10px]">Confermato</Badge> e ricevi una notifica push sul telefono. In caso di successiva rettifica amministrativa su un turno già approvato, il sistema si aggiorna in silenzio senza inviare notifiche duplicate.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">Timbratura Bloccata</h4>
-              <p className="text-muted-foreground">
-                Se sei in ferie o malattia, il sistema di timbratura sarà bloccato. Puoi inviare una <span className="font-bold">Richiesta di Sblocco</span> all'amministratore se hai bisogno di timbrare.
+              <h4 className="font-semibold mb-1 text-primary">Blocco Timbratura per Ferie o Malattia</h4>
+              <p className="text-muted-foreground leading-relaxed">
+                Nei giorni in cui hai ferie o malattia approvate, la timbratura ordinaria viene bloccata per evitare errori accidentali. Se per esigenze aziendali devi comunque lavorare, puoi inviare una <strong>Richiesta di Sblocco</strong> istantanea tramite l'apposita schermata.
               </p>
             </div>
           </div>

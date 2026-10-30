@@ -111,7 +111,7 @@ const DailySummaryPage = () => {
             case 'festa': return <div className="flex items-center gap-2 text-purple-600"><Briefcase className="h-4 w-4"/>Festivo</div>;
             case 'ferie': return <div className="flex items-center gap-2 text-blue-600"><Plane className="h-4 w-4"/>In Ferie</div>;
             case 'malattia': return <div className="flex items-center gap-2 text-orange-600"><Stethoscope className="h-4 w-4"/>In Malattia</div>;
-            case 'mancata_timbratura': return <div className="flex items-center gap-2 text-red-600"><User className="h-4 w-4"/>Assente</div>;
+            case 'mancata_timbratura': return <span className="text-muted-foreground font-medium">-</span>;
             default: return <span className="text-muted-foreground">N/D</span>;
         }
     };

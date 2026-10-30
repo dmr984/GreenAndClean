@@ -100,6 +100,8 @@ type Timbratura = {
     suggestedTime?: string;
     originalTime?: string | null;
     rectificationStatus?: 'in_approvazione' | 'approvata' | 'rifiutata' | null;
+    wasApprovedOnce?: boolean;
+    isRectified?: boolean;
 };
 
 type Shift = {
@@ -113,6 +115,8 @@ type Shift = {
     isOvertime: boolean;
     ignoreContractualStart?: boolean;
     makeupOfDay?: string; // ISO date string 'YYYY-MM-DD'
+    wasApprovedOnce?: boolean;
+    isReapproval?: boolean;
 };
 
 type StraordinarioEvent = {
@@ -124,6 +128,7 @@ type StraordinarioEvent = {
     originalTime?: string | null;
     suggestedTime?: string | null;
     rectificationStatus?: string | null;
+    isRectified?: boolean;
 };
 
 type StraordinarioShift = {
@@ -133,6 +138,8 @@ type StraordinarioShift = {
     date: Timestamp;
     approvedHours?: number;
     isAuto?: boolean;
+    wasApprovedOnce?: boolean;
+    isReapproval?: boolean;
 };
 
 type CombinedShiftHistoryItem = 
@@ -163,6 +170,7 @@ type ApprovalContext = {
     sendNotification?: boolean;
     customNotificationTitle?: string;
     customNotificationBody?: string;
+    isPreviouslyApproved?: boolean;
 } | null;
 
 type Request = {
@@ -384,9 +392,12 @@ export default function ShiftApprovalPage() {
         const isComplete = events.some(e => e.type === 'uscita');
         const hasPending = events.some(e => e.status === 'sospesa');
         const allConfirmed = events.every(e => e.status === 'confermata');
+        const hasRejected = events.some(e => e.status === 'rifiutata');
     
         let status: Shift['status'];
-        if (!isComplete) {
+        if (hasRejected) {
+            status = 'rifiutato';
+        } else if (!isComplete) {
             status = 'in_corso';
         } else if (allConfirmed) {
             status = 'confermato';
@@ -686,7 +697,11 @@ export default function ShiftApprovalPage() {
     }, [firestore, operatorId, toast, operator]);
 
     const { pendingShifts } = useMemo(() => {
-        const pending = allShifts.filter(s => s.status === 'in_sospeso' || s.status === 'in_corso');
+        const pending = allShifts.filter(s => 
+            (s.status === 'in_sospeso' || s.status === 'in_corso') && 
+            s.status !== 'rifiutato' && 
+            !s.events.some(e => e.status === 'rifiutata')
+        );
         return { pendingShifts: pending };
     }, [allShifts]);
 
@@ -737,12 +752,14 @@ export default function ShiftApprovalPage() {
 
 
     const monthlyDataForProcess = useMemo(() => {
-        // We need to format the data as expected by processMonthlyData
+        // Only include confirmed shifts and approved overtime shifts
         return {
-            timbrature: allShifts.flatMap(s => s.events),
+            timbrature: allShifts
+                .filter(s => s.status === 'confermato' && !s.events.some(e => e.status === 'rifiutata'))
+                .flatMap(s => s.events),
             requests: (allRequests || []).filter(r => r.status === 'approvato') as Request[],
             dailyNotes: dailyNotes,
-            straordinari: overtimeShifts
+            straordinari: overtimeShifts.filter(s => s.status === 'approvato')
         };
     }, [allShifts, allRequests, dailyNotes, overtimeShifts]);
 
@@ -775,15 +792,15 @@ export default function ShiftApprovalPage() {
 
     const historicalShifts: CombinedShiftHistoryItem[] = useMemo(() => {
         const approvedRegularShifts = allShifts
-            .filter(s => s.status === 'confermato' || s.status === 'rifiutato')
+            .filter(s => s.status === 'confermato' && !s.events.some(e => e.status === 'rifiutata'))
             .map(s => ({ ...s, itemType: 'regular' as const }));
     
         const historicalOvertimeShifts = overtimeShifts
-            .filter(s => s.status === 'approvato' || s.status === 'rifiutato')
+            .filter(s => s.status === 'approvato')
             .map(s => ({ ...s, itemType: 'overtime' as const }));
 
         const historicalRequestsItems = (allRequests || [])
-            .filter(r => r.status === 'approvato')
+            .filter(r => r.status === 'approvato' && r.type !== 'assenza')
             .map(r => ({
                 id: r.id,
                 itemType: 'request' as const,
@@ -806,25 +823,8 @@ export default function ShiftApprovalPage() {
     }, [allShifts, overtimeShifts, allRequests]);
 
     const pendingAbsences = useMemo(() => {
-        if (!operator || !dailyDetails) return [];
-        return (dailyDetails || []).filter(d => {
-            if (d.status !== 'mancata_timbratura') return false;
-            // Se esiste già una richiesta per questa data (in_attesa, approvata o rifiutata), non è in sospeso
-            const hasReq = (allRequests || []).some(r => {
-                if (!r.startDate?.toDate) return false;
-                return isSameDay(r.startDate.toDate(), d.date);
-            });
-            if (hasReq) return false;
-            // Se esiste un turno per questa data, non è assenza
-            const hasShift = allShifts.some(s => isSameDay(s.date, d.date));
-            if (hasShift) return false;
-            return true;
-        }).map(d => ({
-            id: `pending-absence-${format(d.date, 'yyyy-MM-dd')}`,
-            date: d.date,
-            contractualHours: getScheduleForDate(operator, d.date)?.totalHours || 0,
-        })).sort((a, b) => b.date.getTime() - a.date.getTime());
-    }, [dailyDetails, allRequests, allShifts, operator]);
+        return [];
+    }, []);
 
     if (isLoading || !operator) return <div className="flex justify-center items-center h-96"><Loader2 className="h-8 w-8 animate-spin"/></div>;
     
@@ -979,6 +979,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         const docRef = doc(timbratureRef, event.id);
         const updateData: any = {
             status: 'confermata',
+            wasApprovedOnce: true,
             viewedByOperator: false,
             shiftId: stableShiftId 
         };
@@ -1255,15 +1256,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         const timbratureCollectionRef = collection(firestore, `app-users/${operator.id}/timbrature`);
 
         shiftToReject.events.forEach(event => {
-             if (event.status === 'sospesa') {
-                const docRef = doc(timbratureCollectionRef, event.id);
-                batch.update(docRef, { status: 'rifiutata', viewedByOperator: false });
-            }
+            const docRef = doc(timbratureCollectionRef, event.id);
+            batch.update(docRef, { status: 'rifiutata', viewedByOperator: false });
         });
          
         await batch.commit().then(() => {
             toast({ title: 'Successo', description: 'Turno rifiutato.' });
             setIsDetailOpen(false);
+            setAllShifts(prev => prev.filter(s => s.id !== shiftToReject.id));
         }).catch(err => {
             console.error(err);
             toast({ title: 'Errore', description: 'Impossibile rifiutare il turno.', variant: 'destructive' });
@@ -1301,7 +1301,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     };
 
     const handleOpenEditDialog = (shift: Shift) => {
-        setEditingShift(shift);
+        const wasApproved = Boolean(
+            shift.status === 'confermato' || 
+            shift.wasApprovedOnce || 
+            shift.isReapproval || 
+            shift.events.some(e => e.status === 'confermata' || e.wasApprovedOnce)
+        );
+        const shiftWithMeta = { ...shift, wasApprovedOnce: wasApproved, isReapproval: wasApproved };
+        setEditingShift(shiftWithMeta);
         const times = { entrata: '', uscita: '', pausa: '', fine_pausa: '' };
         shift.events.forEach(e => {
             if (times[e.type] === '') { 
@@ -1415,6 +1422,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         let newEventsForState: Timbratura[] = [...editingShift.events];
     
         const makeupDayValue = editMakeupDay || null;
+        const wasPreviouslyApproved = Boolean(
+            editingShift.wasApprovedOnce ||
+            editingShift.isReapproval ||
+            editingShift.status === 'confermato' ||
+            editingShift.events.some(e => e.status === 'confermata' || e.wasApprovedOnce)
+        );
 
         for (const type of ['entrata', 'uscita', 'pausa', 'fine_pausa'] as const) {
             const existingEventsOfType = editingShift.events.filter(e => e.type === type);
@@ -1430,6 +1443,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 makeupOfDay: makeupDayValue,
                 isAuto: false,
                 suggestedTime: null,
+                wasApprovedOnce: wasPreviouslyApproved ? true : Boolean((existingEvent as any)?.wasApprovedOnce),
             };
             if(type === 'entrata') {
                 updatePayload.ignoreContractualStart = editIgnoreContractual;
@@ -1489,7 +1503,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             if (detailShift) {
                 const newProcessedShift = processShift(newEventsForState, new Set());
                 if (newProcessedShift) {
-                  setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState, status: 'in_sospeso' }) : null);
+                  setDetailShift(prev => prev ? ({ ...prev, ...newProcessedShift, events: newEventsForState, status: 'in_sospeso', wasApprovedOnce: wasPreviouslyApproved, isReapproval: wasPreviouslyApproved }) : null);
                 } else {
                   setIsDetailOpen(false);
                 }
@@ -1763,6 +1777,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             leave = hoursResult.leave;
         }
     
+        const isPreviouslyApproved = Boolean(
+            (shift as any).isReapproval ||
+            (shift as any).wasApprovedOnce ||
+            shift.status === 'confermato' ||
+            (isOvertimeShift && (shift as StraordinarioShift).status === 'approvato') ||
+            (!isOvertimeShift && (shift as Shift).events?.some(e => e.status === 'confermata' || (e as any).wasApprovedOnce))
+        );
+
         setApprovalContext({
             shift: shift,
             ordinaryHours: String(ordinary),
@@ -1774,6 +1796,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             isOvertimeShift: isOvertimeShift,
             ignoreContractualStart: ignoreContractualStart,
             makeupOfDay: makeupOfDay,
+            isPreviouslyApproved: isPreviouslyApproved,
         });
         setIsApproveDialogOpen(true);
     };
@@ -2255,34 +2278,37 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             });
         } else { // approve
             const approvedOvertime = approvalContext ? parseHoursInput(approvalContext.overtimeHours) : 0;
-            const updateData: {status: 'approvato' | 'rifiutato', approvedHours?: number} = {
+            const updateData: {status: 'approvato' | 'rifiutato', approvedHours?: number, wasApprovedOnce?: boolean} = {
                 status: 'approvato',
                 approvedHours: approvedOvertime,
+                wasApprovedOnce: true,
             };
 
             await updateDoc(shiftRef, updateData);
             toast({ title: 'Successo', description: 'Turno straordinario approvato.' });
 
-            const customTitleToSend = approvalContext?.customNotificationTitle;
-            const customBodyToSend = approvalContext?.customNotificationBody;
-            const straordinarieText = formatHoursLabel(approvedOvertime, 'straordinarie');
+            if (shouldNotify) {
+                const customTitleToSend = approvalContext?.customNotificationTitle;
+                const customBodyToSend = approvalContext?.customNotificationBody;
+                const straordinarieText = formatHoursLabel(approvedOvertime, 'straordinarie');
 
-            sendNotificationToOperator(firestore, operator.id, {
-                type: 'shift_approved',
-                title: customTitleToSend || 'Straordinario Approvato ✅',
-                body: customBodyToSend || `Il tuo turno straordinario del ${shiftDateFormatted} (${straordinarieText || `${approvedOvertime}h`}) è stato approvato.`,
-                customTitle: customTitleToSend,
-                customBody: customBodyToSend,
-                variables: {
-                    data: shiftDateFormatted,
-                    operatore: `${operator.firstName} ${operator.lastName}`.trim(),
-                    ore: String(approvedOvertime),
-                    straordinarie: straordinarieText,
-                    totale: straordinarieText,
-                    tipo: 'straordinario',
-                },
-                url: '/dashboard'
-            });
+                sendNotificationToOperator(firestore, operator.id, {
+                    type: 'shift_approved',
+                    title: customTitleToSend || 'Straordinario Approvato ✅',
+                    body: customBodyToSend || `Il tuo turno straordinario del ${shiftDateFormatted} (${straordinarieText || `${approvedOvertime}h`}) è stato approvato.`,
+                    customTitle: customTitleToSend,
+                    customBody: customBodyToSend,
+                    variables: {
+                        data: shiftDateFormatted,
+                        operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                        ore: String(approvedOvertime),
+                        straordinarie: straordinarieText,
+                        totale: straordinarieText,
+                        tipo: 'straordinario',
+                    },
+                    url: '/dashboard'
+                });
+            }
         }
         
         setApprovalContext(null);
@@ -2353,11 +2379,18 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
         
         newEvents.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis());
         
+        const wasPreviouslyApproved = Boolean(
+            (editingOvertimeShift as any).wasApprovedOnce ||
+            (editingOvertimeShift as any).isReapproval ||
+            editingOvertimeShift.status === 'approvato'
+        );
+        
         const docRef = doc(firestore, `app-users/${operator.id}/straordinari`, editingOvertimeShift.id);
-        const updatePayload: { events: StraordinarioEvent[], status: StraordinarioShift['status'], isAuto?: boolean } = { 
+        const updatePayload: { events: StraordinarioEvent[], status: StraordinarioShift['status'], isAuto?: boolean, wasApprovedOnce?: boolean } = { 
             events: newEvents,
             status: 'in_attesa_di_approvazione', // Always require re-approval after edit
-            isAuto: false
+            isAuto: false,
+            wasApprovedOnce: wasPreviouslyApproved,
         };
         
         await updateDoc(docRef, updatePayload).then(() => {
@@ -2365,7 +2398,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             setIsEditOvertimeOpen(false);
             setEditingOvertimeShift(null);
             
-            setDetailOvertimeShift(prev => prev ? ({ ...prev, events: newEvents, status: updatePayload.status }) : null);
+            setDetailOvertimeShift(prev => prev ? ({ ...prev, events: newEvents, status: updatePayload.status, wasApprovedOnce: wasPreviouslyApproved, isReapproval: wasPreviouslyApproved } as any) : null);
 
         }).catch(err => {
             toast({ title: 'Errore', description: 'Impossibile aggiornare il turno.', variant: 'destructive' });
@@ -3872,7 +3905,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3", isSundayDay && "border-red-500/30 bg-red-500/5")}>
                                                                     <div className="flex justify-between items-start">
                                                                         <h4 className={cn("font-bold text-base capitalize flex items-center gap-3", isSundayDay && "text-red-600")}>
-                                                                            {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                                                            {format(detail.date, 'eeee dd MMMM yyyy', { locale: it })}
                                                                         </h4>
                                                                     </div>
                                                                     <div className="border-b my-2"></div>
@@ -3885,7 +3918,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             <div key={detail.date.toISOString()} className={cn("border rounded-lg p-3.5 space-y-2", isSundayDay && "border-red-500/30 bg-red-500/5")}>
                                                                 <div className="flex justify-between items-start">
                                                                     <h4 className={cn("font-bold text-base capitalize flex items-center gap-2", isSundayDay && "text-red-600")}>
-                                                                        {format(detail.date, 'eeee dd MMMM', { locale: it })}
+                                                                        {format(detail.date, 'eeee dd MMMM yyyy', { locale: it })}
                                                                     </h4>
                                                                     <div className="flex items-center gap-1">
                                                                         {!detail.shift && !detail.request && (
@@ -3992,7 +4025,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 ) : (
                                                                     !detail.note && detail.status !== 'riposo' && detail.status !== 'ferie' && (
                                                                        <p className="text-muted-foreground font-semibold text-sm">
-                                                                            { detail.status === 'mancata_timbratura' ? 'Assenza' :
+                                                                            { detail.status === 'mancata_timbratura' ? '' :
                                                                               detail.status === 'malattia' ? 'Giorno di Malattia' :
                                                                               detail.status === 'festa' ? 'Giorno Festivo' :
                                                                               detail.status === 'in_corso' ? 'Turno in corso...' : ''
@@ -4872,7 +4905,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                         Ripristina da Modello
                                                     </Button>
                                                 )}
-                                                <Badge variant="outline" className="text-xs bg-background py-0.5 px-2">Inviata con "Approva e Invia Notifica"</Badge>
+                                                {approvalContext.isPreviouslyApproved ? (
+                                                    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300">Turno già approvato (opzione principale: senza notifica)</Badge>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-xs bg-background py-0.5 px-2">Inviata con "Approva e Invia Notifica"</Badge>
+                                                )}
                                             </div>
                                         </div>
 
@@ -4911,12 +4948,45 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                     )}
                      <AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-2.5 pt-3">
                         <AlertDialogCancel className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-5">Annulla</AlertDialogCancel>
-                        <Button type="button" variant="outline" onClick={() => handleApprovalClick(approvalContext, false)} disabled={isProcessingApprove} className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-5">
-                            Approva Senza Notificare
-                        </Button>
-                        <AlertDialogAction onClick={() => handleApprovalClick(approvalContext, true)} disabled={isProcessingApprove} className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-6 gap-2 bg-primary text-primary-foreground font-bold shadow-sm">
-                            <Bell className="h-5 w-5" /> Approva e Invia Notifica
-                        </AlertDialogAction>
+                        {approvalContext?.isPreviouslyApproved ? (
+                            <>
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={() => handleApprovalClick(approvalContext, true)} 
+                                    disabled={isProcessingApprove} 
+                                    className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-5 gap-2"
+                                >
+                                    <Bell className="h-4 w-4" /> Approva e Invia Notifica
+                                </Button>
+                                <AlertDialogAction 
+                                    onClick={() => handleApprovalClick(approvalContext, false)} 
+                                    disabled={isProcessingApprove} 
+                                    className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-6 bg-primary text-primary-foreground font-bold shadow-sm"
+                                >
+                                    Approva Senza Notificare
+                                </AlertDialogAction>
+                            </>
+                        ) : (
+                            <>
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={() => handleApprovalClick(approvalContext, false)} 
+                                    disabled={isProcessingApprove} 
+                                    className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-5"
+                                >
+                                    Approva Senza Notificare
+                                </Button>
+                                <AlertDialogAction 
+                                    onClick={() => handleApprovalClick(approvalContext, true)} 
+                                    disabled={isProcessingApprove} 
+                                    className="w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base px-6 gap-2 bg-primary text-primary-foreground font-bold shadow-sm"
+                                >
+                                    <Bell className="h-5 w-5" /> Approva e Invia Notifica
+                                </AlertDialogAction>
+                            </>
+                        )}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -5062,9 +5132,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                     </ResponsiveDialogHeader>
                     <div className="py-4 space-y-4 text-sm">
                         <div>
-                            <h4 className="font-semibold mb-1">Approvazione Turni</h4>
-                            <p className="text-muted-foreground">
-                                I turni in stato "sospeso" richiedono la tua attenzione. Puoi approvarli o rifiutarli. L'approvazione converte le timbrature in ore lavorate e, se necessario, ti permette di creare richieste di permesso o straordinario.
+                            <h4 className="font-semibold mb-1 text-primary">Approvazione Turni e Notifiche</h4>
+                            <p className="text-muted-foreground leading-relaxed">
+                                I turni in stato "in sospeso" richiedono la tua verifica. Alla <strong>prima approvazione</strong> del turno, l'opzione predefinita evidenziata è <em>"Approva e Invia Notifica"</em> per informare tempestivamente l'operatore. Se invece riapri un turno già approvato (cliccando sull'occhio) e ne modifichi gli orari, il sistema propone automaticamente come prima opzione <em>"Approva Senza Notificare"</em> per non inviare notifiche ridondanti.
+                            </p>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-1 text-primary">Rettifiche e Modifiche Silenziose</h4>
+                            <p className="text-muted-foreground leading-relaxed">
+                                Quando correggi orari, applichi una rettifica o aggiungi timbrature mancanti, non parte alcuna notifica automatica. L'operatore visualizza direttamente nel proprio profilo solo gli orari definitivi e confermati approvati dall'amministratore.
                             </p>
                         </div>
                          <div>

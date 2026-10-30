@@ -456,7 +456,7 @@ export default function PrintClient() {
                                     ) : (
                                        !detail.note && (
                                             <p className="text-black text-sm pl-1 leading-tight">
-                                                {detail.status === 'mancata_timbratura' && 'Assente'}
+                                                {detail.status === 'mancata_timbratura' && ''}
                                                 {detail.status === 'ferie' && 'Giorno di Ferie'}
                                                 {detail.status === 'malattia' && 'Giorno di Malattia'}
                                                 {detail.status === 'festa' && 'Giorno Festivo'}

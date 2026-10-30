@@ -453,32 +453,34 @@ export function OperatorNotificationListener({ userId }: OperatorNotificationLis
               <BellRing className="h-5 w-5 text-amber-500" />
               {permission === 'denied' ? 'Notifiche Bloccate sul Telefono' : 'Attiva Notifiche Turno'}
             </DialogTitle>
-            <DialogDescription className="text-left pt-2 space-y-3">
-              {permission === 'denied' ? (
-                <>
-                  <p className="text-foreground text-sm font-medium">
-                    Le notifiche sono attualmente disattivate o rifiutate su questo browser.
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    L'amministratore ha impostato promemoria per i tuoi turni (orari di entrata/uscita) e conferme dei turni.
-                  </p>
-                  <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-foreground space-y-1.5">
-                    <p className="font-semibold text-amber-700 dark:text-amber-400">Come riabilitarle facilmente:</p>
-                    <p>1. Tocca l'icona del <strong>lucchetto 🔒</strong> o delle <strong>impostazioni sito</strong> in alto nella barra del browser.</p>
-                    <p>2. Imposta l'opzione <strong>Notifiche</strong> su <strong>Consenti</strong>.</p>
-                    <p>3. Ricarica la pagina.</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-foreground text-sm">
-                    Ricevi i promemoria quando devi timbrare l'entrata e l'uscita, e gli avvisi quando i tuoi turni vengono approvati.
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Premi il tasto qui sotto per consentire le notifiche sul tuo dispositivo.
-                  </p>
-                </>
-              )}
+            <DialogDescription asChild>
+              <div className="text-left pt-2 space-y-3 text-sm text-muted-foreground">
+                {permission === 'denied' ? (
+                  <>
+                    <div className="text-foreground text-sm font-medium">
+                      Le notifiche sono attualmente disattivate o rifiutate su questo browser.
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      L'amministratore ha impostato promemoria per i tuoi turni (orari di entrata/uscita) e conferme dei turni.
+                    </div>
+                    <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-foreground space-y-1.5">
+                      <div className="font-semibold text-amber-700 dark:text-amber-400">Come riabilitarle facilmente:</div>
+                      <div>1. Tocca l'icona del <strong>lucchetto 🔒</strong> o delle <strong>impostazioni sito</strong> in alto nella barra del browser.</div>
+                      <div>2. Imposta l'opzione <strong>Notifiche</strong> su <strong>Consenti</strong>.</div>
+                      <div>3. Ricarica la pagina.</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-foreground text-sm">
+                      Ricevi i promemoria quando devi timbrare l'entrata e l'uscita, e gli avvisi quando i tuoi turni vengono approvati.
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Premi il tasto qui sotto per consentire le notifiche sul tuo dispositivo.
+                    </div>
+                  </>
+                )}
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">

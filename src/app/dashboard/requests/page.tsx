@@ -256,28 +256,34 @@ export default function RequestsPage() {
          <ResponsiveDialog open={isHelpOpen} onOpenChange={setIsHelpOpen}>
             <ResponsiveDialogContent>
                 <ResponsiveDialogHeader>
-                    <ResponsiveDialogTitle>Guida alla Gestione Richieste</ResponsiveDialogTitle>
+                    <ResponsiveDialogTitle>Guida alla Gestione Richieste, Assenze e Anticipi</ResponsiveDialogTitle>
                     <ResponsiveDialogDescription>
-                        Come creare e gestire le tue richieste di ferie e permessi.
+                        Come inviare, monitorare e gestire ferie, permessi, malattie e anticipi sullo stipendio.
                     </ResponsiveDialogDescription>
                 </ResponsiveDialogHeader>
-                <div className="py-4 space-y-4 text-sm">
+                <div className="py-4 space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-2">
                     <div>
-                        <h4 className="font-semibold mb-1">Creare una Nuova Richiesta</h4>
-                        <p className="text-muted-foreground">
-                            Clicca sul pulsante <span className="font-bold text-primary-foreground">Nuova Richiesta</span> per aprire il modulo. Seleziona il tipo di richiesta (Ferie o Permesso), le date e, se necessario, il numero di ore.
+                        <h4 className="font-semibold mb-1 text-primary">Creare una Nuova Richiesta</h4>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Clicca sul pulsante <strong>"Nuova Richiesta"</strong> per aprire il modulo. Seleziona il tipo desiderato: <strong>Ferie</strong> (giornata intera o periodo), <strong>Permesso</strong> (indicando le ore richieste), <strong>Malattia</strong> o <strong>Anticipo sullo stipendio</strong>. Inserisci le date e le motivazioni necessarie.
                         </p>
                     </div>
                     <div>
-                        <h4 className="font-semibold mb-1">Stato della Richiesta</h4>
-                        <p className="text-muted-foreground">
-                            Dopo l'invio, la tua richiesta sarà <Badge variant="default" className="bg-yellow-500 text-white">in attesa</Badge>. Un amministratore la esaminerà. Lo stato diventerà <Badge variant="secondary">approvato</Badge> o <Badge variant="destructive">rifiutato</Badge>. Vedrai un pallino rosso <Circle fill="red" className="h-2 w-2 text-red-500 inline-block" /> accanto alle richieste il cui stato è cambiato e che non hai ancora visualizzato.
+                        <h4 className="font-semibold mb-1 text-primary">Stato della Richiesta e Notifiche</h4>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Dopo l'invio, la richiesta entra nello stato <Badge variant="default" className="bg-yellow-500 text-white text-[10px]">in attesa</Badge>. L'amministrazione esaminerà i dettagli. Una volta approvata o rifiutata, riceverai una <strong>notifica push immediata</strong> sul tuo telefono e lo stato si aggiornerà in <Badge variant="secondary" className="text-[10px]">approvato</Badge> o <Badge variant="destructive" className="text-[10px]">rifiutato</Badge>.
                         </p>
                     </div>
                     <div>
-                        <h4 className="font-semibold mb-1">Annullare una Richiesta</h4>
-                        <p className="text-muted-foreground">
-                            Puoi annullare una richiesta solo se è ancora in stato "in attesa". Per farlo, clicca sull'icona del cestino <Trash2 className="h-4 w-4 inline-block text-destructive" />.
+                        <h4 className="font-semibold mb-1 text-primary">Anticipi sullo Stipendio</h4>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Se richiedi o ricevi un anticipo retributivo, l'importo approvato viene registrato direttamente nella tua scheda mensile e scalato in automatico dal netto finale a saldo del mese. Potrai visualizzare la voce di detrazione sia nella dashboard che nella busta/quietanza di fine mese.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-1 text-primary">Annullare una Richiesta</h4>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Puoi annullare in autonomia qualsiasi richiesta purché sia ancora in stato "in attesa", cliccando sull'icona del cestino <Trash2 className="h-4 w-4 inline-block text-destructive" />. Se una richiesta è già stata approvata e necessita di annullamento o modifica, rivolgiti direttamente all'amministratore.
                         </p>
                     </div>
                 </div>

@@ -341,7 +341,7 @@ export const generateDetailedOperatorPdf = async (
                 doc.setTextColor(0, 0, 0);
                 let statusText = '';
                 switch (detail.status) {
-                    case 'mancata_timbratura': statusText = 'Assente'; break;
+                    case 'mancata_timbratura': statusText = ''; break;
                     case 'ferie': statusText = 'Giorno di Ferie'; break;
                     case 'malattia': statusText = 'Giorno di Malattia'; break;
                     case 'festa': statusText = 'Giorno Festivo'; break;
