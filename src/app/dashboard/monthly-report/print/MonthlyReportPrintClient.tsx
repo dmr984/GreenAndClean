@@ -371,8 +371,8 @@ export default function MonthlyReportPrintClient() {
                     y += 11;
                 }
 
-                // Dicitura quietanza ben staccata dal totale
-                y += 5;
+                // Dicitura quietanza ben staccata dal totale (spazi equilibrati)
+                y += 10;
                 doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(40, 40, 40);
@@ -381,7 +381,7 @@ export default function MonthlyReportPrintClient() {
                     : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
-                y += (splitDeclaration.length * 4) + 8;
+                y += (splitDeclaration.length * 4) + 16;
 
                 // Firma ben staccata dalla dicitura
                 doc.setFontSize(9.5);
@@ -553,7 +553,7 @@ export default function MonthlyReportPrintClient() {
                 </div>
 
                 {/* 4. Dicitura Quietanza ben distanziata dal totale */}
-                <div className="mt-6 mb-5 italic text-gray-800 text-xs sm:text-[13px] leading-relaxed bg-gray-50/80 print:bg-transparent p-3 rounded border border-gray-200 print:border-gray-300">
+                <div className="mt-10 sm:mt-12 italic text-gray-800 text-xs sm:text-[13px] leading-relaxed bg-gray-50/80 print:bg-transparent p-3.5 rounded border border-gray-200 print:border-gray-300">
                     {anticipiAmount > 0 ? (
                         <p>
                             Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
@@ -565,8 +565,8 @@ export default function MonthlyReportPrintClient() {
                     )}
                 </div>
 
-                {/* 5. Riga Firma ben staccata dalla dicitura */}
-                <div className="mt-6 pt-2">
+                {/* 5. Riga Firma ben staccata dalla dicitura per occupare armoniosamente lo spazio */}
+                <div className="mt-10 sm:mt-12 pt-2">
                     <p className="text-xs sm:text-sm text-black font-bold tracking-wide">FIRMA PER RICEVUTA E QUIETANZA: __________________________________________</p>
                 </div>
             </div>
