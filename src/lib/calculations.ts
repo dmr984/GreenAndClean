@@ -800,24 +800,38 @@ export const processMonthlyData = (
             detail.shift = null;
         }
 
-        const assenzaRequest = data.requests.find(r => r.type === 'assenza' && r.status === 'approvato' && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
+        const assenzaRequest = data.requests.find(r => r.type === 'assenza' && r.status === 'approvato' && !r.deductFromOvertime && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
         if (assenzaRequest && !detail.shift) {
             detail.status = 'mancata_timbratura';
             detail.request = assenzaRequest;
             detail.shift = null;
         }
 
-        const dayReqs = data.requests.filter(r => r.status === 'approvato' && (r.type === 'permesso' || r.type === 'recupero_straordinari') && isSameDay(r.startDate.toDate(), detail.date));
+        const dayReqs = data.requests.filter(r => r.status === 'approvato' && (r.type === 'permesso' || r.type === 'recupero_straordinari' || (r.type === 'assenza' && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
         const effectivePermissionHours = dayReqs.filter(r => r.type === 'permesso' && !r.deductFromOvertime).reduce((max, r) => Math.max(max, r.hours || 0), 0);
-        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && (r.type === 'recupero_straordinari' || (r.type === 'permesso' && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
+        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && (r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
         const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
 
-        if (detail.shift) {
-            detail.shift.permissionHours = effectivePermissionHours;
-            detail.shift.recuperoHours = deductHours;
-            if (deductHours > 0) {
+        if (deductHours > 0) {
+            if (!detail.shift) {
+                detail.status = 'recupero_effettuato';
+                detail.shift = {
+                    events: [],
+                    allShifts: [],
+                    contractualHours: dailySchedule?.totalHours || deductHours,
+                    ordinaryHours: deductHours,
+                    overtimeHours: 0,
+                    permissionHours: effectivePermissionHours,
+                    recuperoHours: deductHours,
+                };
+            } else {
+                detail.shift.permissionHours = effectivePermissionHours;
+                detail.shift.recuperoHours = deductHours;
                 detail.shift.ordinaryHours += deductHours;
             }
+        } else if (detail.shift) {
+            detail.shift.permissionHours = effectivePermissionHours;
+            detail.shift.recuperoHours = 0;
         }
 
         const dailyNote = data.dailyNotes?.find(n => n.date === format(detail.date, 'yyyy-MM-dd'));
@@ -825,9 +839,9 @@ export const processMonthlyData = (
             detail.note = { ...dailyNote };
         }
 
-        const isConfirmedShift = detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata');
+        const isConfirmedShift = detail.shift && (detail.shift.events.length === 0 || detail.shift.events.every(e => e.status === 'confermata'));
         if (deductHours > 0 && isConfirmedShift) {
-            const noteText = `${deductHours} ${deductHours === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari precedenti`;
+            const noteText = `${deductHours} ${deductHours === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari`;
             if (!detail.note) {
                 detail.note = {
                     date: format(detail.date, 'yyyy-MM-dd'),
@@ -985,7 +999,7 @@ export const processMonthlyData = (
         const reqDate = r.startDate?.toDate ? r.startDate.toDate() : null;
         if (!reqDate || !isWithinInterval(reqDate, monthInterval)) return;
 
-        const isRecupero = r.type === 'recupero_straordinari' || (r.type === 'permesso' && r.deductFromOvertime === true);
+        const isRecupero = r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true);
         if (!isRecupero) return;
 
         const dayISO = startOfDay(reqDate).toISOString();
@@ -994,10 +1008,13 @@ export const processMonthlyData = (
         const opId = operator.id;
         const day = format(reqDate, 'd');
         const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-        const isApprovedShift = dayDetail?.shift && dayDetail.shift.events.length > 0 && 
-            (dayDetail.shift.events.every(e => e.status === 'confermata') || manualStatus === 'P');
+        const isApprovedShift = (dayDetail?.shift && dayDetail.shift.events.length > 0 && 
+            (dayDetail.shift.events.every(e => e.status === 'confermata') || manualStatus === 'P')) ||
+            dayDetail?.status === 'recupero_effettuato' ||
+            r.type === 'recupero_straordinari' ||
+            r.deductFromOvertime === true;
 
-        // Overtime deduction ONLY applies if there is a confirmed/approved shift on that day
+        // Overtime deduction applies
         if (isApprovedShift) {
             const current = recuperoRequestsByDay.get(dayISO) || 0;
             recuperoRequestsByDay.set(dayISO, Math.max(current, r.hours || 0));

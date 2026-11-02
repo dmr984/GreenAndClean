@@ -124,6 +124,26 @@ export default function FoglioPresenzePage() {
 
     const visibleOperators = operators.filter(op => selectedOperatorIds.includes(op.id));
 
+    const handlePrint = () => {
+        const monthNum = format(currentMonth, 'MM');
+        const year = format(currentMonth, 'yyyy');
+        const monthName = format(currentMonth, 'MMMM yyyy', { locale: it });
+        const capMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+        
+        // Costruisce il titolo esatto richiesto per il salvataggio PDF:
+        // es: "10/10/2026 Foglio Presenze Ottobre 2026", "01/01/2026 Foglio Presenze Gennaio 2026", "02 Foglio Presenze Febbraio 2026"
+        const printTitle = monthNum === '02'
+            ? `02 Foglio Presenze ${capMonth}`
+            : `${monthNum}/${monthNum}/${year} Foglio Presenze ${capMonth}`;
+
+        const prevTitle = document.title;
+        document.title = printTitle;
+        window.print();
+        setTimeout(() => {
+            document.title = prevTitle;
+        }, 4000);
+    };
+
     return (
         <div className="flex flex-col gap-4">
             <Card className="no-print">
@@ -144,7 +164,7 @@ export default function FoglioPresenzePage() {
                                     }
                                 }
                             }} className="text-destructive border-destructive hover:bg-destructive/10"><RotateCcw className="mr-1 h-3 w-3" /> Reset</Button>
-                            <Button variant="default" size="sm" onClick={() => window.print()} className="bg-[#4a6da7] hover:bg-[#3a5d97]"><Printer className="mr-1 h-3 w-3" /> Stampa</Button>
+                            <Button variant="default" size="sm" onClick={handlePrint} className="bg-[#4a6da7] hover:bg-[#3a5d97]"><Printer className="mr-1 h-3 w-3" /> Stampa</Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -182,15 +202,15 @@ export default function FoglioPresenzePage() {
                                 {[...Array(31)].map((_, i) => <th key={i} className={`border border-black w-[22px] p-0 font-bold ${i === 30 ? 'border-r-[2px]' : ''}`}>{i + 1}</th>)}
                                 <th className="border-0 border-black w-[38px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-ord-lav'] || 'Lavorate'} onChange={e => handleOverride('h-ord-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">Lavorate</span>
+                                    <span className="only-print text-[7px]">{overrides['h-ord-lav'] || 'Lavorate'}</span>
                                 </th>
                                 <th className="border-0 border-black w-[38px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-ord-fes'] || 'Festive'} onChange={e => handleOverride('h-ord-fes', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">Festive</span>
+                                    <span className="only-print text-[7px]">{overrides['h-ord-fes'] || 'Festive'}</span>
                                 </th>
                                 <th className="border-r-[2px] border-black w-[38px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
                                     <input type="text" value={overrides['h-ord-fer'] || 'Per ferie'} onChange={e => handleOverride('h-ord-fer', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">Per ferie</span>
+                                    <span className="only-print text-[7px]">{overrides['h-ord-fer'] || 'Per ferie'}</span>
                                 </th>
                                 <th className="border-0 border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <div className="flex items-center justify-center h-full px-0.5 text-[7px]">al <input type="text" value={overrides['h-str-1'] || '___'} onChange={e => handleOverride('h-str-1', e.target.value)} className="w-6 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
@@ -202,7 +222,7 @@ export default function FoglioPresenzePage() {
                                 </th>
                                 <th className="border-0 border-black w-[36px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-mal-car'] || 'Carenza'} onChange={e => handleOverride('h-mal-car', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">Carenza</span>
+                                    <span className="only-print text-[7px]">{overrides['h-mal-car'] || 'Carenza'}</span>
                                 </th>
                                 <th className="border-0 border-black w-[37px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <div className="flex items-center justify-center h-full px-0.5 text-[7px]">al <input type="text" value={overrides['h-mal-1'] || '___'} onChange={e => handleOverride('h-mal-1', e.target.value)} className="w-6 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
@@ -214,11 +234,11 @@ export default function FoglioPresenzePage() {
                                 </th>
                                 <th className="border-0 border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-gior-lav'] || 'Lavorati'} onChange={e => handleOverride('h-gior-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">Lavorati</span>
+                                    <span className="only-print text-[7px]">{overrides['h-gior-lav'] || 'Lavorati'}</span>
                                 </th>
                                 <th className="border-r-[2px] border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
                                     <input type="text" value={overrides['h-gior-ret'] || 'Retribuiti'} onChange={e => handleOverride('h-gior-ret', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">Retribuiti</span>
+                                    <span className="only-print text-[7px]">{overrides['h-gior-ret'] || 'Retribuiti'}</span>
                                 </th>
                             </tr>
                         </thead>
@@ -379,24 +399,40 @@ export default function FoglioPresenzePage() {
                 }
                 @media print {
                     @page { 
-                        size: A4 landscape; 
-                        size: landscape; 
-                        margin: 5mm !important; 
+                        size: A4 landscape !important; 
+                        margin: 4mm !important; 
                     }
-                    body { 
+                    html, body { 
                         background: white !important; 
+                        height: auto !important;
+                        min-height: 0 !important;
+                        overflow: visible !important;
                         -webkit-print-color-adjust: exact !important; 
                         print-color-adjust: exact !important;
                     }
-                    .no-print { display: none !important; }
-                    .only-print { display: inline !important; }
+                    header, nav, aside, .no-print { 
+                        display: none !important; 
+                    }
+                    main, .attendance-sheet-container {
+                        overflow: visible !important;
+                        display: block !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        max-width: 100% !important;
+                        min-height: 0 !important;
+                        height: auto !important;
+                    }
                     .attendance-sheet { 
                         width: 100% !important;
                         min-width: 0 !important;
+                        max-width: 100% !important;
                         margin: 0 !important;
                         padding: 0 !important;
-                        transform: scale(0.98); 
-                        transform-origin: top center;
+                        overflow: visible !important;
+                        transform: none !important;
+                        zoom: 0.77 !important;
                         background: white !important;
                         border: none !important;
                         box-shadow: none !important;
@@ -404,9 +440,21 @@ export default function FoglioPresenzePage() {
                     .attendance-sheet table {
                         width: 100% !important;
                         border-collapse: collapse !important;
+                        page-break-inside: auto;
+                    }
+                    tr {
+                        page-break-inside: avoid;
+                    }
+                    thead {
+                        display: table-header-group;
+                    }
+                    .only-print { 
+                        display: inline-block !important; 
+                    }
+                    input, textarea { 
+                        display: none !important; 
                     }
                     table { border-width: 1.5px !important; }
-                    input { border: none !important; }
                 }
             `}</style>
         </div>

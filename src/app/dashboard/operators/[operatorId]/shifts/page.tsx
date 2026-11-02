@@ -328,6 +328,20 @@ export default function ShiftApprovalPage() {
     const [isSendingReminder, setIsSendingReminder] = useState(false);
     const [isProcessingApprove, setIsProcessingApprove] = useState(false);
 
+    // State per visualizzazione/modifica assenza ed eventuale recupero da straordinari
+    const [selectedRequestForEdit, setSelectedRequestForEdit] = useState<{
+        id?: string;
+        request?: Request;
+        date: Date;
+        type: 'assenza' | 'recupero_straordinari' | 'ferie' | 'permesso' | 'malattia';
+        status: 'approvato' | 'rifiutato' | 'in_attesa';
+        hours: number;
+        reason: string;
+        deductFromOvertime: boolean;
+    } | null>(null);
+    const [isAbsenceDialogOpen, setIsAbsenceDialogOpen] = useState(false);
+    const [isSavingAbsence, setIsSavingAbsence] = useState(false);
+
 
     // Monthly Data States (from end-of-month)
     const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -889,6 +903,101 @@ export default function ShiftApprovalPage() {
         } catch (err) {
             console.error('Errore rifiuto assenza:', err);
             toast({ title: 'Errore', description: 'Impossibile registrare il rifiuto.', variant: 'destructive' });
+        }
+    };
+
+    const handleOpenRequestEditDialog = (reqItem: Request) => {
+        const date = reqItem.startDate?.toDate ? reqItem.startDate.toDate() : new Date();
+        const schedule = getScheduleForDate(operator, date);
+        const defaultHours = reqItem.hours !== undefined ? reqItem.hours : (schedule?.totalHours || 0);
+
+        setSelectedRequestForEdit({
+            id: reqItem.id,
+            request: reqItem,
+            date,
+            type: reqItem.type as any,
+            status: reqItem.status,
+            hours: defaultHours,
+            reason: reqItem.reason || '',
+            deductFromOvertime: reqItem.deductFromOvertime === true || reqItem.type === 'recupero_straordinari'
+        });
+        setIsAbsenceDialogOpen(true);
+    };
+
+    const handleOpenPendingAbsenceDialog = (absence: { date: Date; contractualHours?: number }) => {
+        const schedule = getScheduleForDate(operator, absence.date);
+        const defaultHours = absence.contractualHours !== undefined ? absence.contractualHours : (schedule?.totalHours || 0);
+
+        setSelectedRequestForEdit({
+            date: absence.date,
+            type: 'assenza',
+            status: 'approvato',
+            hours: defaultHours,
+            reason: 'Mancata timbratura',
+            deductFromOvertime: false
+        });
+        setIsAbsenceDialogOpen(true);
+    };
+
+    const handleSaveAbsenceEdit = async () => {
+        if (!selectedRequestForEdit || !firestore || !operatorId || !operator) return;
+        setIsSavingAbsence(true);
+        try {
+            const isRecupero = selectedRequestForEdit.type === 'recupero_straordinari' || selectedRequestForEdit.deductFromOvertime;
+            const hoursVal = Number(selectedRequestForEdit.hours) || 0;
+            const dateStr = format(selectedRequestForEdit.date, 'yyyy-MM-dd');
+
+            if (selectedRequestForEdit.id) {
+                const reqRef = doc(firestore, `app-users/${operatorId}/requests`, selectedRequestForEdit.id);
+                await updateDoc(reqRef, {
+                    type: selectedRequestForEdit.type,
+                    status: selectedRequestForEdit.status,
+                    hours: hoursVal,
+                    reason: selectedRequestForEdit.reason || (isRecupero ? 'Recuperato dagli straordinari' : ''),
+                    deductFromOvertime: isRecupero,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                const reqRef = collection(firestore, `app-users/${operatorId}/requests`);
+                await addDoc(reqRef, {
+                    type: selectedRequestForEdit.type,
+                    status: selectedRequestForEdit.status,
+                    startDate: Timestamp.fromDate(startOfDay(selectedRequestForEdit.date)),
+                    endDate: Timestamp.fromDate(endOfDay(selectedRequestForEdit.date)),
+                    hours: hoursVal,
+                    reason: selectedRequestForEdit.reason || (isRecupero ? 'Recuperato dagli straordinari' : 'Mancata timbratura approvata come assenza'),
+                    deductFromOvertime: isRecupero,
+                    createdAt: serverTimestamp(),
+                    viewedByOperator: true
+                });
+            }
+
+            if (isRecupero && hoursVal > 0) {
+                const noteRef = doc(firestore, `app-users/${operatorId}/dailyNotes`, dateStr);
+                const noteText = `${hoursVal} ${hoursVal === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari`;
+                await setDoc(noteRef, {
+                    date: dateStr,
+                    note: noteText,
+                    publicNote: noteText,
+                    showOnMonthlyReport: true,
+                    showOnEOMReport: true,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+
+            toast({
+                title: isRecupero ? 'Recupero Straordinari Salvato' : 'Modifica Salvata',
+                description: isRecupero 
+                    ? `L'assenza del ${format(selectedRequestForEdit.date, 'dd/MM/yyyy')} è stata recuperata dagli straordinari (${hoursVal}h ordinarie).`
+                    : `La richiesta per il ${format(selectedRequestForEdit.date, 'dd/MM/yyyy')} è stata aggiornata.`
+            });
+            setIsAbsenceDialogOpen(false);
+            setSelectedRequestForEdit(null);
+        } catch (error) {
+            console.error('Errore salvataggio modifica assenza:', error);
+            toast({ title: 'Errore', description: 'Impossibile salvare la modifica.', variant: 'destructive' });
+        } finally {
+            setIsSavingAbsence(false);
         }
     };
 
@@ -3332,6 +3441,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                         <TableCell className="text-right whitespace-nowrap">
                                                             <div className="flex items-center justify-end gap-1.5">
                                                                 <Button 
+                                                                    variant="ghost" 
+                                                                    size="icon" 
+                                                                    onClick={() => handleOpenPendingAbsenceDialog({ date: absence.date, contractualHours: 0 })}
+                                                                    title="Dettaglio e modifica assenza"
+                                                                >
+                                                                    <Eye className="h-5 w-5" />
+                                                                </Button>
+                                                                <Button 
                                                                     variant="outline" 
                                                                     size="sm" 
                                                                     onClick={() => handleApproveAbsence(absence.date)}
@@ -3535,6 +3652,9 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 </Badge>
                                                             </TableCell>
                                                             <TableCell className="text-right whitespace-nowrap">
+                                                                <Button variant="ghost" size="icon" onClick={() => handleOpenRequestEditDialog(reqItem)} title="Visualizza e modifica assenza / richiesta">
+                                                                    <Eye className="h-5 w-5" />
+                                                                </Button>
                                                                 <Button variant="ghost" size="icon" onClick={() => handleDeleteRequest(reqItem.id)}>
                                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                                 </Button>
@@ -3890,9 +4010,14 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                             </Button>
                                                                         )}
                                                                         {detail.request && (
-                                                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRequestToDelete(detail.request)}>
-                                                                                <Trash2 className="h-4 w-4 text-destructive" />
-                                                                            </Button>
+                                                                            <>
+                                                                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenRequestEditDialog(detail.request!)} title="Visualizza e modifica assenza / richiesta">
+                                                                                    <Eye className="h-4 w-4" />
+                                                                                </Button>
+                                                                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRequestToDelete(detail.request)}>
+                                                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                                                </Button>
+                                                                            </>
                                                                         )}
                                                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditNoteClick(detail)}>
                                                                             <FileText className={cn('h-4 w-4', detail.note ? 'text-green-500' : 'text-muted-foreground')} />
@@ -4012,6 +4137,213 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                     </div>
                 </TabsContent>
             </Tabs>
+
+            {/* Dialog per Visualizzazione e Modifica Assenza / Recupero da Straordinari */}
+            <ResponsiveDialog open={isAbsenceDialogOpen} onOpenChange={setIsAbsenceDialogOpen}>
+                <ResponsiveDialogContent className="sm:max-w-lg">
+                    <ResponsiveDialogHeader>
+                        <ResponsiveDialogTitle className="flex items-center gap-2 text-lg font-bold">
+                            <Eye className="h-5 w-5 text-blue-600" />
+                            <span>Gestione Assenza / Giustificativo</span>
+                        </ResponsiveDialogTitle>
+                        {selectedRequestForEdit && (
+                            <ResponsiveDialogDescription className="text-xs">
+                                <strong>{format(selectedRequestForEdit.date, 'EEEE d MMMM yyyy', { locale: it })}</strong> — Operatore: {operator.firstName} {operator.lastName}
+                            </ResponsiveDialogDescription>
+                        )}
+                    </ResponsiveDialogHeader>
+
+                    {selectedRequestForEdit && (
+                        <div className="space-y-4 py-2">
+                            {/* Riepilogo e Azione Rapida Recupero dagli Straordinari */}
+                            {selectedRequestForEdit.type !== 'recupero_straordinari' ? (
+                                <div className="p-3.5 rounded-xl border border-purple-200 bg-purple-50 dark:bg-purple-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-1.5 font-bold text-sm text-purple-900 dark:text-purple-200">
+                                            <Clock className="h-4 w-4 text-purple-700 dark:text-purple-300 shrink-0" />
+                                            <span>Recupera da straordinari?</span>
+                                        </div>
+                                        <p className="text-xs text-purple-700 dark:text-purple-300">
+                                            Se l'operatore ha svolto ore di straordinario, puoi coprire l'assenza scalando le ore dagli straordinari e conteggiandole come ordinarie.
+                                        </p>
+                                    </div>
+                                    <Button 
+                                        type="button"
+                                        size="sm" 
+                                        onClick={() => {
+                                            setSelectedRequestForEdit(prev => prev ? ({
+                                                ...prev,
+                                                type: 'recupero_straordinari',
+                                                deductFromOvertime: true,
+                                                hours: prev.hours || 1,
+                                                reason: prev.reason || 'Recuperato dagli straordinari'
+                                            }) : null);
+                                        }}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold shrink-0 shadow-sm"
+                                    >
+                                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Recupera dagli straordinari
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-1.5 font-bold text-sm text-emerald-900 dark:text-emerald-200">
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-700 dark:text-emerald-300 shrink-0" />
+                                            <span>Recupero da straordinari attivo</span>
+                                        </div>
+                                        <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                            {selectedRequestForEdit.hours || 1}h ordinarie verranno accreditate a questa data e scalate dal monte ore straordinari.
+                                        </p>
+                                    </div>
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={() => {
+                                            setSelectedRequestForEdit(prev => prev ? ({
+                                                ...prev,
+                                                type: 'assenza',
+                                                deductFromOvertime: false,
+                                                reason: 'Mancata timbratura approvata come assenza'
+                                            }) : null);
+                                        }}
+                                        className="border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-semibold shrink-0 text-xs"
+                                    >
+                                        Torna ad assenza normale
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Campi di Modifica */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold">Tipologia</Label>
+                                    <Select 
+                                        value={selectedRequestForEdit.type} 
+                                        onValueChange={(val: any) => setSelectedRequestForEdit(prev => prev ? ({
+                                            ...prev,
+                                            type: val,
+                                            deductFromOvertime: val === 'recupero_straordinari'
+                                        }) : null)}
+                                    >
+                                        <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="assenza">🚫 Assenza (Non lavorato)</SelectItem>
+                                            <SelectItem value="recupero_straordinari">🔄 Recupero dagli Straordinari</SelectItem>
+                                            <SelectItem value="ferie">🏖️ Ferie</SelectItem>
+                                            <SelectItem value="malattia">🤒 Malattia</SelectItem>
+                                            <SelectItem value="permesso">⏱️ Permesso</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-semibold">Ore</Label>
+                                        <div className="flex items-center gap-1">
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: 1 }) : null)} 
+                                                className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
+                                            >
+                                                1h
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: 2 }) : null)} 
+                                                className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
+                                            >
+                                                2h
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    const sch = getScheduleForDate(operator, selectedRequestForEdit.date);
+                                                    setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: sch?.totalHours || 4 }) : null);
+                                                }} 
+                                                className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
+                                            >
+                                                Totale ({getScheduleForDate(operator, selectedRequestForEdit.date)?.totalHours || 0}h)
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <Input 
+                                        type="number" 
+                                        step="0.5" 
+                                        min="0" 
+                                        max="24"
+                                        className="h-9 text-xs font-bold"
+                                        value={selectedRequestForEdit.hours} 
+                                        onChange={(e) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: parseFloat(e.target.value) || 0 }) : null)} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">Stato di Approvazione</Label>
+                                <Select 
+                                    value={selectedRequestForEdit.status} 
+                                    onValueChange={(val: any) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, status: val }) : null)}
+                                >
+                                    <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="approvato">✅ Approvato</SelectItem>
+                                        <SelectItem value="rifiutato">❌ Non Approvato / Rifiutato</SelectItem>
+                                        <SelectItem value="in_attesa">⏳ In attesa</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">Note / Motivazione</Label>
+                                <Textarea 
+                                    value={selectedRequestForEdit.reason} 
+                                    onChange={(e) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, reason: e.target.value }) : null)}
+                                    placeholder="Es. Recupero ore da straordinari svolti..."
+                                    rows={2}
+                                    className="text-xs resize-none"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <ResponsiveDialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-2 pt-2 border-t">
+                        <div>
+                            {selectedRequestForEdit?.id && (
+                                <Button 
+                                    type="button" 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => {
+                                        if (selectedRequestForEdit?.id) {
+                                            handleDeleteRequest(selectedRequestForEdit.id);
+                                            setIsAbsenceDialogOpen(false);
+                                        }
+                                    }}
+                                    className="text-destructive hover:bg-destructive/10 text-xs"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Elimina
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <Button type="button" variant="outline" size="sm" onClick={() => setIsAbsenceDialogOpen(false)}>
+                                Annulla
+                            </Button>
+                            <Button 
+                                type="button" 
+                                size="sm" 
+                                onClick={handleSaveAbsenceEdit} 
+                                disabled={isSavingAbsence}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                            >
+                                {isSavingAbsence ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />}
+                                Salva Modifiche
+                            </Button>
+                        </div>
+                    </ResponsiveDialogFooter>
+                </ResponsiveDialogContent>
+            </ResponsiveDialog>
 
             <ResponsiveDialog open={isAddRequestOpen} onOpenChange={setIsAddRequestOpen}>
                 <ResponsiveDialogContent className="sm:max-w-xl">

@@ -483,7 +483,37 @@ const DailySummaryContent = ({ operatorId, operator, initialDate, onMonthChange 
                                 </div>
                                </>
                             )
-                        })() : (
+                        })() : selectedDay.request ? (
+                            <div className="p-4 rounded-xl border bg-muted/30 space-y-3 my-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 font-bold text-base">
+                                        {selectedDay.request.type === 'recupero_straordinari' ? '🔄 Recupero Straordinari' : 
+                                         selectedDay.request.type === 'assenza' ? '🚫 Assenza' : 
+                                         selectedDay.request.type === 'ferie' ? '🏖️ Ferie' : 
+                                         selectedDay.request.type === 'malattia' ? '🤒 Malattia' : 
+                                         selectedDay.request.type === 'permesso' ? '⏱️ Permesso' : selectedDay.request.type}
+                                    </div>
+                                    <Badge variant="outline" className={cn(
+                                        selectedDay.request.status === 'approvato' && 'bg-green-100 text-green-800 border-green-300 font-bold',
+                                        selectedDay.request.status === 'rifiutato' && 'bg-rose-100 text-rose-800 border-rose-300 font-bold',
+                                        selectedDay.request.status === 'in_attesa' && 'bg-yellow-100 text-yellow-800 border-yellow-300 font-bold'
+                                    )}>
+                                        {selectedDay.request.status === 'approvato' ? 'Approvato' : selectedDay.request.status}
+                                    </Badge>
+                                </div>
+                                {selectedDay.request.reason && (
+                                    <p className="text-sm italic text-muted-foreground">"{selectedDay.request.reason}"</p>
+                                )}
+                                <div className="flex items-center gap-4 text-xs font-semibold pt-1 text-slate-600 dark:text-slate-300">
+                                    {selectedDay.request.hours !== undefined && (
+                                        <span>Ore: <strong>{selectedDay.request.hours}h</strong></span>
+                                    )}
+                                    {selectedDay.request.deductFromOvertime && (
+                                        <span className="text-purple-600 font-bold">Scalato dagli straordinari</span>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
                             <div className="py-8 text-center text-muted-foreground">Nessun turno registrato per questo giorno.</div>
                         )}
                         <ResponsiveDialogFooter className="pt-4">
