@@ -27,6 +27,33 @@ export const parseEmploymentStartDate = (val: any): Date | undefined => {
     return undefined;
 };
 
+// Helper to safely convert any date/timestamp representation to Date
+export const toSafeDate = (val: any): Date | undefined => {
+    if (!val) return undefined;
+    if (typeof val.toDate === 'function') {
+        try { 
+            const d = val.toDate();
+            return isNaN(d.getTime()) ? undefined : d;
+        } catch (e) { 
+            return undefined; 
+        }
+    }
+    if (val instanceof Date) return isNaN(val.getTime()) ? undefined : val;
+    if (typeof val === 'string') {
+        const d = new Date(val.includes('T') ? val : val + 'T00:00:00');
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    if (typeof val === 'number') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    if (val.seconds !== undefined) {
+        const d = new Date(val.seconds * 1000);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    return undefined;
+};
+
 // Type Definitions
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -793,23 +820,49 @@ export const processMonthlyData = (
     });
 
     detailsMap.forEach(detail => {
-        const leaveRequest = data.requests.find(r => (r.type === 'ferie' || r.type === 'malattia') && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
+        const detailSchedule = getScheduleForDate(operator, detail.date);
+
+        const leaveRequest = data.requests.find(r => {
+            if (r.type !== 'ferie' && r.type !== 'malattia') return false;
+            const s = toSafeDate(r.startDate);
+            const e = toSafeDate(r.endDate) || s;
+            if (!s || !e) return false;
+            return isWithinInterval(detail.date, { start: startOfDay(s), end: dateFnsEndOfDay(e) });
+        });
         if (leaveRequest) {
             detail.status = leaveRequest.type as 'ferie' | 'malattia';
             detail.request = leaveRequest;
             detail.shift = null;
         }
 
-        const assenzaRequest = data.requests.find(r => r.type === 'assenza' && r.status === 'approvato' && !r.deductFromOvertime && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
+        const assenzaRequest = data.requests.find(r => {
+            if (r.type !== 'assenza' || r.status !== 'approvato' || r.deductFromOvertime) return false;
+            const s = toSafeDate(r.startDate);
+            const e = toSafeDate(r.endDate) || s;
+            if (!s || !e) return false;
+            return isWithinInterval(detail.date, { start: startOfDay(s), end: dateFnsEndOfDay(e) });
+        });
         if (assenzaRequest && !detail.shift) {
             detail.status = 'mancata_timbratura';
             detail.request = assenzaRequest;
             detail.shift = null;
         }
 
-        const dayReqs = data.requests.filter(r => r.status === 'approvato' && (r.type === 'permesso' || r.type === 'recupero_straordinari' || (r.type === 'assenza' && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
+        const dayReqs = data.requests.filter(r => {
+            if (r.status !== 'approvato') return false;
+            const isMatch = r.type === 'permesso' || r.type === 'recupero_straordinari' || (r.type === 'assenza' && r.deductFromOvertime === true);
+            if (!isMatch) return false;
+            const s = toSafeDate(r.startDate);
+            return s ? isSameDay(s, detail.date) : false;
+        });
         const effectivePermissionHours = dayReqs.filter(r => r.type === 'permesso' && !r.deductFromOvertime).reduce((max, r) => Math.max(max, r.hours || 0), 0);
-        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && (r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
+        const deductPermissi = data.requests.filter(r => {
+            if (r.status !== 'approvato') return false;
+            const isDeduct = r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true);
+            if (!isDeduct) return false;
+            const s = toSafeDate(r.startDate);
+            return s ? isSameDay(s, detail.date) : false;
+        });
         const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
 
         if (deductHours > 0) {
@@ -818,7 +871,7 @@ export const processMonthlyData = (
                 detail.shift = {
                     events: [],
                     allShifts: [],
-                    contractualHours: dailySchedule?.totalHours || deductHours,
+                    contractualHours: detailSchedule?.totalHours || deductHours,
                     ordinaryHours: deductHours,
                     overtimeHours: 0,
                     permissionHours: effectivePermissionHours,
@@ -988,7 +1041,11 @@ export const processMonthlyData = (
     });
 
     const totalPermessoHours = data.requests
-        .filter(r => r.status === 'approvato' && r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .filter(r => {
+            if (r.status !== 'approvato' || r.type !== 'permesso') return false;
+            const s = toSafeDate(r.startDate);
+            return s ? isWithinInterval(s, monthInterval) : false;
+        })
         .reduce((sum, r) => sum + (r.hours || 0), 0);
     
     let totalRecuperoStraordinariHours = 0;
@@ -996,7 +1053,7 @@ export const processMonthlyData = (
 
     data.requests.forEach(r => {
         if (r.status !== 'approvato') return;
-        const reqDate = r.startDate?.toDate ? r.startDate.toDate() : null;
+        const reqDate = toSafeDate(r.startDate);
         if (!reqDate || !isWithinInterval(reqDate, monthInterval)) return;
 
         const isRecupero = r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true);

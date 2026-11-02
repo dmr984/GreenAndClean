@@ -503,8 +503,12 @@ export default function ShiftApprovalPage() {
             requestSnapshot.forEach(doc => {
                 const req = doc.data();
                 if ((req.type === 'ferie' || req.type === 'malattia') && req.status === 'approvato') {
-                    for(let d = req.startDate.toDate(); d <= req.endDate.toDate(); d.setDate(d.getDate() + 1)) {
-                        leaveDays.add(format(d, 'yyyy-MM-dd'));
+                    const start = req.startDate?.toDate ? req.startDate.toDate() : (req.startDate instanceof Date ? req.startDate : null);
+                    const end = req.endDate?.toDate ? req.endDate.toDate() : (req.endDate instanceof Date ? req.endDate : start);
+                    if (start && end) {
+                        for(let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                            leaveDays.add(format(d, 'yyyy-MM-dd'));
+                        }
                     }
                 }
             });
@@ -3868,11 +3872,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                             const permessoCost = monthlySummary.permessoCost || 0;
                             const malattiaCost = monthlySummary.malattiaCost || 0;
                             
-                            const anticipiRequests = (approvedRequests || []).filter(r => 
-                                r.type === 'anticipo' && 
-                                r.startDate?.toDate && 
-                                isWithinInterval(r.startDate.toDate(), { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) })
-                            );
+                            const anticipiRequests = (approvedRequests || []).filter(r => {
+                                if (r.type !== 'anticipo') return false;
+                                const s = r.startDate?.toDate ? r.startDate.toDate() : (r.startDate instanceof Date ? r.startDate : null);
+                                return s ? isWithinInterval(s, { start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) }) : false;
+                            });
                             const anticipiAmount = anticipiRequests.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
                             let totalDue: number;
@@ -3947,7 +3951,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                 value={`${anticipiRequests.length} ${anticipiRequests.length === 1 ? 'Erogato' : 'Erogati'}`} 
                                                 cost={`- ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`}
                                                 costClassName="text-base font-bold text-rose-600 dark:text-rose-400"
-                                                subtext={anticipiRequests.map(a => `Giorno ${format(a.startDate.toDate(), 'd')}: € ${(Number(a.amount) || 0).toFixed(0)}`).join(', ')}
+                                                subtext={anticipiRequests.map(a => {
+                                                    const s = a.startDate?.toDate ? a.startDate.toDate() : (a.startDate instanceof Date ? a.startDate : null);
+                                                    return s ? `Giorno ${format(s, 'd')}: € ${(Number(a.amount) || 0).toFixed(0)}` : `€ ${(Number(a.amount) || 0).toFixed(0)}`;
+                                                }).join(', ')}
                                                 icon={Banknote} 
                                                 className="bg-rose-500/10 border-rose-500/30"
                                             />
@@ -3979,8 +3986,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                     {dailyDetails.map(detail => {
                                                         const isSundayDay = getDay(detail.date) === 0;
                                                         
-                                                        const performedOnDate = detail.shift && detail.shift.events.length > 0 && !isSameDay(detail.shift.events[0].timestamp.toDate(), detail.date)
-                                                             ? format(detail.shift.events[0].timestamp.toDate(), 'PPP', { locale: it }) 
+                                                        const firstEv = detail.shift?.events?.[0];
+                                                        const firstEvDate = firstEv?.timestamp?.toDate ? firstEv.timestamp.toDate() : (firstEv?.timestamp instanceof Date ? firstEv.timestamp : null);
+                                                        const performedOnDate = firstEvDate && !isSameDay(firstEvDate, detail.date)
+                                                             ? format(firstEvDate, 'PPP', { locale: it }) 
                                                              : null;
                                                              
                                                         if (detail.status === 'recupero_effettuato') {
@@ -3990,9 +3999,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                         <h4 className={cn("font-bold text-base capitalize flex items-center gap-3", isSundayDay && "text-red-600")}>
                                                                             {format(detail.date, 'eeee dd MMMM yyyy', { locale: it })}
                                                                         </h4>
+                                                                        {detail.request && (
+                                                                            <div className="flex items-center gap-1">
+                                                                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenRequestEditDialog(detail.request!)} title="Visualizza e modifica recupero / assenza">
+                                                                                    <Eye className="h-4 w-4" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                     <div className="border-b my-2"></div>
-                                                                    <p className="text-muted-foreground italic text-sm">Effettuato turno di recupero (vedi {detail.makeupPerformedFor})</p>
+                                                                    <p className="text-muted-foreground italic text-sm">
+                                                                        {detail.makeupPerformedFor 
+                                                                            ? `Effettuato turno di recupero (vedi ${detail.makeupPerformedFor})`
+                                                                            : detail.shift?.recuperoHours 
+                                                                            ? `Recuperate ${detail.shift.recuperoHours}h ordinarie dagli straordinari`
+                                                                            : 'Turno recuperato'}
+                                                                    </p>
                                                                 </div>
                                                             );
                                                         }
@@ -4044,12 +4066,11 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                 )}
 
                                                                 {(() => {
-                                                                    const dayAnticipi = (approvedRequests || []).filter(r => 
-                                                                        r.status === 'approvato' && 
-                                                                        r.type === 'anticipo' && 
-                                                                        r.startDate?.toDate && 
-                                                                        isSameDay(r.startDate.toDate(), detail.date)
-                                                                    );
+                                                                    const dayAnticipi = (approvedRequests || []).filter(r => {
+                                                                        if (r.status !== 'approvato' || r.type !== 'anticipo') return false;
+                                                                        const s = r.startDate?.toDate ? r.startDate.toDate() : (r.startDate instanceof Date ? r.startDate : null);
+                                                                        return s ? isSameDay(s, detail.date) : false;
+                                                                    });
                                                                     if (dayAnticipi.length === 0) return null;
                                                                     return (
                                                                         <div className="space-y-1.5 pt-1">
@@ -4090,11 +4111,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                             />
                                                                         ) : (
                                                                             (() => {
-                                                                                const dayReqs = (approvedRequests || []).filter(r => 
-                                                                                    r.status === 'approvato' && 
-                                                                                    (r.type === 'permesso' || r.type === 'recupero_straordinari') && 
-                                                                                    isSameDay(r.startDate.toDate(), detail.date)
-                                                                                );
+                                                                                const dayReqs = (approvedRequests || []).filter(r => {
+                                                                                    if (r.status !== 'approvato') return false;
+                                                                                    if (r.type !== 'permesso' && r.type !== 'recupero_straordinari') return false;
+                                                                                    const s = r.startDate?.toDate ? r.startDate.toDate() : (r.startDate instanceof Date ? r.startDate : null);
+                                                                                    return s ? isSameDay(s, detail.date) : false;
+                                                                                });
                                                                                 const dayPermessoHours = dayReqs.reduce((max, r) => Math.max(max, r.hours || 0), 0);
                                                                                 const shiftPerm = detail.shift?.permissionHours || 0;
                                                                                 const finalPermesso = dayPermessoHours > 0 ? dayPermessoHours : shiftPerm;
