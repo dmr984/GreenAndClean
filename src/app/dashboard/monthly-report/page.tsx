@@ -108,16 +108,24 @@ const MonthlyReportPage = () => {
         }
         return false;
     });
+    const [showAnticipiInCompact, setShowAnticipiInCompact] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('monthlyReport_showAnticipiInCompact');
+            if (saved !== null) return JSON.parse(saved);
+        }
+        return true;
+    });
 
     // Save state to sessionStorage
     useEffect(() => {
         if (typeof window !== 'undefined') {
             sessionStorage.setItem('monthlyReport_currentMonth', currentMonth.toISOString());
             sessionStorage.setItem('monthlyReport_globalCompactMode', JSON.stringify(globalCompactMode));
+            sessionStorage.setItem('monthlyReport_showAnticipiInCompact', JSON.stringify(showAnticipiInCompact));
             sessionStorage.setItem('monthlyReport_visibility', JSON.stringify(visibility));
             sessionStorage.setItem('monthlyReport_selectedOperatorIds', JSON.stringify(Array.from(selectedOperatorIds)));
         }
-    }, [currentMonth, globalCompactMode, visibility, selectedOperatorIds]);
+    }, [currentMonth, globalCompactMode, showAnticipiInCompact, visibility, selectedOperatorIds]);
 
     const [manualOverrides, setManualOverrides] = useState<Record<string, ManualTotals>>({});
     const [editingTotal, setEditingTotal] = useState<{ operatorId: string, type: string, currentValue: any } | null>(null);
@@ -183,8 +191,12 @@ const MonthlyReportPage = () => {
                             ferieCost: true,
                             permessoCost: true,
                             malattiaCost: true,
+                            anticipiAmount: true,
                             compactMode: false,
                         };
+                        hasChanges = true;
+                    } else if (newVis[op.id].anticipiAmount === undefined) {
+                        newVis[op.id].anticipiAmount = true;
                         hasChanges = true;
                     }
                 });
@@ -292,6 +304,7 @@ const MonthlyReportPage = () => {
             month: monthString,
             operators: operatorIdsString,
             globalCompact: String(globalCompactMode),
+            showAnticipiCompact: String(showAnticipiInCompact),
             autoPrint: 'true',
             _cb: String(Date.now())
         });
@@ -318,6 +331,7 @@ const MonthlyReportPage = () => {
             month: monthString,
             operators: operatorIdsString,
             globalCompact: String(globalCompactMode),
+            showAnticipiCompact: String(showAnticipiInCompact),
             autoDownload: 'true',
             _cb: String(Date.now())
         });
@@ -520,7 +534,7 @@ const MonthlyReportPage = () => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
                 ordinaryWorkedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
-                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, compactMode: false,
+                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, anticipiAmount: true, compactMode: false,
             };
             return {
                 ...prev,
@@ -687,6 +701,21 @@ const MonthlyReportPage = () => {
                                     />
                                     <Label htmlFor="global-compact" className="font-semibold cursor-pointer text-primary">Vista Sintetica Globale</Label>
                                 </div>
+                                {globalCompactMode && (
+                                    <>
+                                        <Separator orientation="vertical" className="hidden sm:block h-6" />
+                                        <div className="flex items-center space-x-2">
+                                            <Switch 
+                                                id="show-anticipi-compact" 
+                                                checked={showAnticipiInCompact} 
+                                                onCheckedChange={setShowAnticipiInCompact} 
+                                            />
+                                            <Label htmlFor="show-anticipi-compact" className="font-semibold cursor-pointer text-xs sm:text-sm">
+                                                Mostra Anticipi in Stampa
+                                            </Label>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                             
                             <div className="space-y-4">

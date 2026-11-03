@@ -5,6 +5,8 @@ import { useFirestore } from '@/firebase';
 import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { Loader2, Printer, Download, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useSearchParams } from 'next/navigation';
 import { format, startOfMonth, isValid, endOfMonth as dfnsEndOfMonth, subMonths, addMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -75,6 +77,7 @@ export default function MonthlyReportPrintClient() {
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
     const [globalCompact, setGlobalCompact] = useState(false);
+    const [showAnticipiCompact, setShowAnticipiCompact] = useState<boolean>(true);
 
     useEffect(() => {
         const month = searchParams.get('month'); // YYYY-MM
@@ -90,6 +93,8 @@ export default function MonthlyReportPrintClient() {
 
         const isGlobalCompact = searchParams.get('globalCompact') === 'true';
         setGlobalCompact(isGlobalCompact);
+        const showParam = searchParams.get('showAnticipiCompact');
+        setShowAnticipiCompact(showParam !== null ? showParam === 'true' : true);
 
         const visibilitySettings: Record<string, Partial<VisibilitySettings>> = {};
         for (const [key, value] of searchParams.entries()) {
@@ -604,6 +609,12 @@ export default function MonthlyReportPrintClient() {
                         width: 210mm !important;
                         display: block !important;
                     }
+                    #print-content h1 {
+                        color: #000000 !important;
+                        font-weight: 900 !important;
+                        -webkit-text-fill-color: #000000 !important;
+                        opacity: 1 !important;
+                    }
                     .print-page {
                         width: 210mm !important;
                         height: 297mm !important;
@@ -641,14 +652,27 @@ export default function MonthlyReportPrintClient() {
                 }
             `}</style>
 
-            <header className="sticky top-0 z-10 flex h-16 items-center justify-center border-b bg-background px-4 no-print">
-                 <div className="flex-1"></div>
-                 <div className="flex flex-1 items-center justify-center gap-2">
+            <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background px-4 no-print">
+                 <div className="flex-1 flex items-center">
+                     {globalCompact && (
+                         <div className="flex items-center gap-2 bg-muted/30 px-3 py-1.5 rounded-lg border">
+                             <Switch
+                                 id="toggle-anticipi-print"
+                                 checked={showAnticipiCompact}
+                                 onCheckedChange={setShowAnticipiCompact}
+                             />
+                             <Label htmlFor="toggle-anticipi-print" className="text-xs font-semibold cursor-pointer select-none">
+                                 Mostra anticipi
+                             </Label>
+                         </div>
+                     )}
+                 </div>
+                 <div className="flex items-center justify-center gap-2">
                      <Button variant="default" size="icon" onClick={handlePrint} disabled={isGenerating}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Printer className="h-4 w-4" />}</Button>
                      <Button variant="default" size="icon" onClick={handleShare} disabled={isGenerating || !navigator.share}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Share2 className="h-4 w-4" />}</Button>
                      <Button variant="default" size="icon" onClick={handleDownload} disabled={isGenerating}>{isGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4" />}</Button>
                 </div>
-                 <div className="flex flex-1 items-center justify-end">
+                 <div className="flex-1 flex items-center justify-end">
                      <Button variant="ghost" size="icon" onClick={() => window.close()}><X className="h-5 w-5" /></Button>
                 </div>
             </header>
@@ -658,7 +682,9 @@ export default function MonthlyReportPrintClient() {
                     <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
                         {currentMonth && (
                             <div className="mb-8 text-center border-b-2 border-black pb-4">
-                                <h1 className="text-3xl font-bold uppercase">{format(currentMonth, 'MMMM yyyy', { locale: it })}</h1>
+                                <h1 className="text-3xl font-black uppercase text-black tracking-wide" style={{ color: '#000000', fontWeight: 900 }}>
+                                    {format(currentMonth, 'MMMM yyyy', { locale: it })}
+                                </h1>
                             </div>
                         )}
                         <div className="space-y-4">
@@ -677,10 +703,12 @@ export default function MonthlyReportPrintClient() {
                                             <p className="font-bold text-xl text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
                                             <div className="text-right">
-                                                <p className="font-bold text-xl text-black whitespace-nowrap">NETTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</p>
-                                                {anticipiAmount > 0 && (
-                                                    <span className="text-xs text-gray-700 font-semibold block">
-                                                        (Lordo: {lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} - Anticipo: {anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})
+                                                <p className="font-bold text-xl text-black whitespace-nowrap">
+                                                    NETTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                                </p>
+                                                {showAnticipiCompact && anticipiAmount > 0 && (
+                                                    <span className="text-xs text-gray-800 font-semibold block mt-0.5">
+                                                        - anticipo di {anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
                                                     </span>
                                                 )}
                                             </div>

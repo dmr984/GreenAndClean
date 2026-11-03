@@ -187,60 +187,60 @@ export default function FoglioPresenzePage() {
                     <table className="w-full border-collapse border-[2.5px] border-black text-black leading-tight">
                         <thead>
                             <tr className="bg-[#4a6da7] text-white text-[9px] h-8">
-                                <th rowSpan={2} className="border border-black w-[50px] p-0 font-bold leading-none align-top bg-[#4a6da7]">
-                                    <div className="h-[28px] border-b border-black flex items-center justify-center">N. d'ord.</div>
-                                    <div className="h-[24px] flex items-center justify-center bg-[#4a6da7]">Matr.</div>
+                                <th rowSpan={2} className="border border-black w-[28px] p-0 font-bold leading-none align-top bg-[#4a6da7]">
+                                    <div className="h-[28px] border-b border-black flex items-center justify-center text-[7.5px] text-center px-0.5">N. ord.</div>
+                                    <div className="h-[24px] flex items-center justify-center bg-[#4a6da7] text-[7.5px]">Matr.</div>
                                 </th>
-                                <th rowSpan={2} className="border-r-[2px] border-black w-[170px] p-0 px-2 text-center font-bold uppercase text-[10px] align-middle bg-[#4a6da7]">Cognome e Nome Qualifica</th>
-                                <th rowSpan={2} className="border-r-[2px] border-black w-[25px] p-0 bg-[#4a6da7]"></th>
+                                <th rowSpan={2} className="border-r-[2px] border-black w-[125px] p-0 px-1 text-center font-bold uppercase text-[9px] align-middle bg-[#4a6da7] leading-tight">Cognome e Nome Qualifica</th>
+                                <th rowSpan={2} className="border-r-[2px] border-black w-[16px] p-0 bg-[#4a6da7]"></th>
                                 <th colSpan={31} className="border-r-[2px] border-black p-0 font-bold uppercase tracking-wider text-[11px] align-middle bg-[#4a6da7] h-4">Prestazioni per ciascuna giornata</th>
-                                <th colSpan={3} className="border-r-[2px] border-black w-[115px] p-0 font-bold uppercase text-[8px] bg-[#4a6da7] h-4">Ore Ordinarie</th>
-                                <th colSpan={2} className="border-r-[2px] border-black w-[90px] p-0 font-bold uppercase text-[8px] bg-[#4a6da7] h-4">Ore Str.</th>
-                                <th colSpan={3} className="border-r-[2px] border-black w-[110px] p-0 font-bold uppercase text-[8px] bg-[#4a6da7] h-4">Malatt.Infort.</th>
-                                <th colSpan={2} className="border-r-[2px] border-black w-[90px] p-0 font-bold uppercase text-[8px] bg-[#4a6da7] h-4">Giorni</th>
-                                <th rowSpan={2} className="border border-black w-[65px] p-0 font-bold uppercase text-[7px] leading-tight bg-[#4a6da7]">Retribuzione oraria €</th>
+                                <th colSpan={3} className="border-r-[2px] border-black w-[75px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Ore Ordinarie</th>
+                                <th colSpan={2} className="border-r-[2px] border-black w-[46px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Ore Str.</th>
+                                <th colSpan={3} className="border-r-[2px] border-black w-[69px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Malatt.Infort.</th>
+                                <th colSpan={2} className="border-r-[2px] border-black w-[48px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Giorni</th>
+                                <th rowSpan={2} className="border border-black w-[38px] p-0 font-bold uppercase text-[6.5px] leading-tight bg-[#4a6da7]">Retribuz. oraria €</th>
                             </tr>
                             <tr className="bg-[#4a6da7] text-white text-[8px] h-6">
-                                {[...Array(31)].map((_, i) => <th key={i} className={`border border-black w-[22px] p-0 font-bold ${i === 30 ? 'border-r-[2px]' : ''}`}>{i + 1}</th>)}
-                                <th className="border-0 border-black w-[38px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <input type="text" value={overrides['h-ord-lav'] || 'Lavorate'} onChange={e => handleOverride('h-ord-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">{overrides['h-ord-lav'] || 'Lavorate'}</span>
+                                {[...Array(31)].map((_, i) => <th key={i} className={`border border-black w-[30px] p-0 font-bold text-[8px] ${i === 30 ? 'border-r-[2px]' : ''}`}>{i + 1}</th>)}
+                                <th className="border-0 border-black w-[25px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <input type="text" value={overrides['h-ord-lav'] || 'Lavorate'} onChange={e => handleOverride('h-ord-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
+                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-ord-lav'] || 'Lavorate'}</span>
                                 </th>
-                                <th className="border-0 border-black w-[38px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <input type="text" value={overrides['h-ord-fes'] || 'Festive'} onChange={e => handleOverride('h-ord-fes', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">{overrides['h-ord-fes'] || 'Festive'}</span>
+                                <th className="border-0 border-black w-[25px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <input type="text" value={overrides['h-ord-fes'] || 'Festive'} onChange={e => handleOverride('h-ord-fes', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
+                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-ord-fes'] || 'Festive'}</span>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[38px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
-                                    <input type="text" value={overrides['h-ord-fer'] || 'Per ferie'} onChange={e => handleOverride('h-ord-fer', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">{overrides['h-ord-fer'] || 'Per ferie'}</span>
+                                <th className="border-r-[2px] border-black w-[25px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                    <input type="text" value={overrides['h-ord-fer'] || 'Per ferie'} onChange={e => handleOverride('h-ord-fer', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
+                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-ord-fer'] || 'Per ferie'}</span>
                                 </th>
-                                <th className="border-0 border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[7px]">al <input type="text" value={overrides['h-str-1'] || '___'} onChange={e => handleOverride('h-str-1', e.target.value)} className="w-6 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[7px]">al {overrides['h-str-1'] || '___'} %</span>
+                                <th className="border-0 border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-str-1'] || '___'} onChange={e => handleOverride('h-str-1', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
+                                    <span className="only-print text-[6.5px]">al {overrides['h-str-1'] || '___'} %</span>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[7px]">al <input type="text" value={overrides['h-str-2'] || '___'} onChange={e => handleOverride('h-str-2', e.target.value)} className="w-6 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[7px]">al {overrides['h-str-2'] || '___'} %</span>
+                                <th className="border-r-[2px] border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-str-2'] || '___'} onChange={e => handleOverride('h-str-2', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
+                                    <span className="only-print text-[6.5px]">al {overrides['h-str-2'] || '___'} %</span>
                                 </th>
-                                <th className="border-0 border-black w-[36px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <input type="text" value={overrides['h-mal-car'] || 'Carenza'} onChange={e => handleOverride('h-mal-car', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">{overrides['h-mal-car'] || 'Carenza'}</span>
+                                <th className="border-0 border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <input type="text" value={overrides['h-mal-car'] || 'Carenza'} onChange={e => handleOverride('h-mal-car', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
+                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-mal-car'] || 'Carenza'}</span>
                                 </th>
-                                <th className="border-0 border-black w-[37px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[7px]">al <input type="text" value={overrides['h-mal-1'] || '___'} onChange={e => handleOverride('h-mal-1', e.target.value)} className="w-6 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[7px]">al {overrides['h-mal-1'] || '___'} %</span>
+                                <th className="border-0 border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-mal-1'] || '___'} onChange={e => handleOverride('h-mal-1', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
+                                    <span className="only-print text-[6.5px]">al {overrides['h-mal-1'] || '___'} %</span>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[37px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[7px]">al <input type="text" value={overrides['h-mal-2'] || '___'} onChange={e => handleOverride('h-mal-2', e.target.value)} className="w-6 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[7px]">al {overrides['h-mal-2'] || '___'} %</span>
+                                <th className="border-r-[2px] border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-mal-2'] || '___'} onChange={e => handleOverride('h-mal-2', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
+                                    <span className="only-print text-[6.5px]">al {overrides['h-mal-2'] || '___'} %</span>
                                 </th>
-                                <th className="border-0 border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <input type="text" value={overrides['h-gior-lav'] || 'Lavorati'} onChange={e => handleOverride('h-gior-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">{overrides['h-gior-lav'] || 'Lavorati'}</span>
+                                <th className="border-0 border-black w-[24px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <input type="text" value={overrides['h-gior-lav'] || 'Lavorati'} onChange={e => handleOverride('h-gior-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
+                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-gior-lav'] || 'Lavorati'}</span>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[45px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
-                                    <input type="text" value={overrides['h-gior-ret'] || 'Retribuiti'} onChange={e => handleOverride('h-gior-ret', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[7px]" />
-                                    <span className="only-print text-[7px]">{overrides['h-gior-ret'] || 'Retribuiti'}</span>
+                                <th className="border-r-[2px] border-black w-[24px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                    <input type="text" value={overrides['h-gior-ret'] || 'Retribuiti'} onChange={e => handleOverride('h-gior-ret', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
+                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-gior-ret'] || 'Retribuiti'}</span>
                                 </th>
                             </tr>
                         </thead>
@@ -250,13 +250,13 @@ export default function FoglioPresenzePage() {
                                 return (
                                     <React.Fragment key={op.id}>
                                         <tr className="h-[15px]">
-                                            <td rowSpan={3} className="border-x border-t border-black text-center text-[10px] bg-white p-0 align-top">
+                                            <td rowSpan={3} className="border-x border-t border-black text-center text-[9px] bg-white p-0 align-top">
                                                 <div className="h-[22px] border-b border-black flex items-center justify-center font-black">{idx + 1}</div>
                                             </td>
-                                            <td rowSpan={3} className="border-r-[2px] border-x border-t border-black px-2 font-black uppercase truncate max-w-[170px] text-[10px] leading-tight bg-white align-middle">
+                                            <td rowSpan={3} className="border-r-[2px] border-x border-t border-black px-1 font-black uppercase truncate max-w-[125px] text-[9px] leading-tight bg-white align-middle">
                                                 {op.lastName} {op.firstName}
                                             </td>
-                                            <td className="border-r-[2px] border-b border-black text-center text-[9px] font-black bg-[#e1effe]">O</td>
+                                            <td className="border-r-[2px] border-b border-black text-center text-[8px] font-black bg-[#e1effe]">O</td>
                                             {[...Array(31)].map((_, i) => {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
@@ -286,24 +286,24 @@ export default function FoglioPresenzePage() {
                                                 }
                                                 return (
                                                     <td key={i} className={`border border-black text-center p-0 bg-[#e1effe] ${day === 31 ? 'border-r-[2px]' : ''}`}>
-                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-O-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                        <span className="only-print text-[9px]">{m}</span>
+                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-O-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8.5px]" />
+                                                        <span className="only-print text-[8.5px] font-black whitespace-nowrap tracking-tighter leading-none px-0.5">{m}</span>
                                                     </td>
                                                 );
                                             })}
                                             {[...Array(10)].map((_, i) => (
-                                                <td key={i} className={`border-x border-b border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
-                                                    <input type="text" value={overrides[`${op.id}-O-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-O-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                    <span className="only-print text-[9px]">{overrides[`${op.id}-O-sum-${i}`]}</span>
+                                                <td key={i} className={`border-x border-b border-black bg-white p-0 text-center ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
+                                                    <input type="text" value={overrides[`${op.id}-O-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-O-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8px]" />
+                                                    <span className="only-print text-[8px] font-bold">{overrides[`${op.id}-O-sum-${i}`]}</span>
                                                 </td>
                                             ))}
                                             <td rowSpan={3} className="border-x border-b border-black bg-white p-0 text-center font-bold">
-                                                <input type="text" value={overrides[`${op.id}-RETR`] || ''} onChange={e => handleOverride(`${op.id}-RETR`, e.target.value)} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                <span className="only-print text-[9px]">{overrides[`${op.id}-RETR`]}</span>
+                                                <input type="text" value={overrides[`${op.id}-RETR`] || ''} onChange={e => handleOverride(`${op.id}-RETR`, e.target.value)} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8px]" />
+                                                <span className="only-print text-[8px] font-bold">{overrides[`${op.id}-RETR`]}</span>
                                             </td>
                                         </tr>
                                         <tr className="h-[15px] bg-white text-center font-bold">
-                                            <td className="border-r-[2px] border-b border-black text-center text-[9px] font-black">S</td>
+                                            <td className="border-r-[2px] border-b border-black text-center text-[8px] font-black">S</td>
                                             {[...Array(31)].map((_, i) => {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
@@ -315,20 +315,20 @@ export default function FoglioPresenzePage() {
                                                 }
                                                 return (
                                                     <td key={i} className={`border-x border-b border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
-                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-S-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                        <span className="only-print text-[9px]">{m}</span>
+                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-S-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8.5px]" />
+                                                        <span className="only-print text-[8.5px] font-black whitespace-nowrap tracking-tighter leading-none px-0.5">{m}</span>
                                                     </td>
                                                 );
                                             })}
                                             {[...Array(10)].map((_, i) => (
-                                                <td key={i} className={`border-x border-b border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
-                                                    <input type="text" value={overrides[`${op.id}-S-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-S-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                    <span className="only-print text-[9px]">{overrides[`${op.id}-S-sum-${i}`]}</span>
+                                                <td key={i} className={`border-x border-b border-black bg-white p-0 text-center ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
+                                                    <input type="text" value={overrides[`${op.id}-S-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-S-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8px]" />
+                                                    <span className="only-print text-[8px] font-bold">{overrides[`${op.id}-S-sum-${i}`]}</span>
                                                 </td>
                                             ))}
                                         </tr>
                                         <tr className="h-[15px] bg-white text-center font-bold border-b-2 border-black" style={{ borderBottomWidth: '2.5px' }}>
-                                            <td className="border-r-[2px] border-b border-black text-center text-[9px] font-black"></td>
+                                            <td className="border-r-[2px] border-b border-black text-center text-[8px] font-black"></td>
                                             {[...Array(31)].map((_, i) => {
                                                 const day = i + 1;
                                                 const dayDate = day <= daysOfMonth.length ? daysOfMonth[i] : null;
@@ -340,15 +340,15 @@ export default function FoglioPresenzePage() {
                                                 }
                                                 return (
                                                     <td key={i} className={`border-x border-b border-black text-center p-0 ${day === 31 ? 'border-r-[2px]' : ''}`}>
-                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-B-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                        <span className="only-print text-[9px]">{m}</span>
+                                                        <input type="text" value={m || ''} onChange={e => handleOverride(`${op.id}-B-${day}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8.5px]" />
+                                                        <span className="only-print text-[8.5px] font-black whitespace-nowrap tracking-tighter leading-none px-0.5">{m}</span>
                                                     </td>
                                                 );
                                             })}
                                             {[...Array(10)].map((_, i) => (
-                                                <td key={i} className={`border-x border-b border-black bg-white p-0 ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
-                                                    <input type="text" value={overrides[`${op.id}-B-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-B-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[9px]" />
-                                                    <span className="only-print text-[9px]">{overrides[`${op.id}-B-sum-${i}`]}</span>
+                                                <td key={i} className={`border-x border-b border-black bg-white p-0 text-center ${[2, 4, 7, 9].includes(i) ? 'border-r-[2px]' : ''}`}>
+                                                    <input type="text" value={overrides[`${op.id}-B-sum-${i}`] || ''} onChange={e => handleOverride(`${op.id}-B-sum-${i}`, e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center border-none outline-none p-0 no-print font-bold text-[8px]" />
+                                                    <span className="only-print text-[8px] font-bold">{overrides[`${op.id}-B-sum-${i}`]}</span>
                                                 </td>
                                             ))}
                                         </tr>
@@ -403,14 +403,18 @@ export default function FoglioPresenzePage() {
                 }
                 @page { 
                     size: A4 landscape !important; 
-                    margin: 3mm !important; 
+                    margin: 5mm !important; 
                 }
                 @media print {
+                    *, *::before, *::after {
+                        box-sizing: border-box !important;
+                    }
                     html, body { 
                         background: white !important; 
                         color: black !important;
                         margin: 0 !important;
                         padding: 0 !important;
+                        width: 100% !important;
                         height: auto !important;
                         min-height: 0 !important;
                         max-height: none !important;
@@ -446,6 +450,7 @@ export default function FoglioPresenzePage() {
                         max-width: 100% !important;
                         min-width: 0 !important;
                         width: 100% !important;
+                        box-sizing: border-box !important;
                     }
                     .attendance-sheet { 
                         display: block !important;
@@ -460,13 +465,16 @@ export default function FoglioPresenzePage() {
                         background: white !important;
                         border: none !important;
                         box-shadow: none !important;
+                        box-sizing: border-box !important;
                     }
                     .attendance-sheet table {
                         width: 100% !important;
+                        max-width: 100% !important;
                         table-layout: fixed !important;
                         border-collapse: collapse !important;
                         page-break-inside: auto !important;
                         border: 2px solid black !important;
+                        box-sizing: border-box !important;
                     }
                     tr {
                         page-break-inside: avoid !important;
@@ -477,6 +485,7 @@ export default function FoglioPresenzePage() {
                     th, td {
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
+                        box-sizing: border-box !important;
                     }
                     .only-print { 
                         display: inline-block !important; 
