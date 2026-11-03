@@ -138,6 +138,8 @@ export default function FoglioPresenzePage() {
 
         const prevTitle = document.title;
         document.title = printTitle;
+        const shieldEl = document.getElementById('anti-screenshot-styles');
+        if (shieldEl) shieldEl.remove();
         window.print();
         setTimeout(() => {
             document.title = prevTitle;
@@ -180,8 +182,8 @@ export default function FoglioPresenzePage() {
                 </CardContent>
             </Card>
 
-            <div className="attendance-sheet-container bg-white p-0 overflow-x-auto shadow-inner rounded-lg border max-w-full">
-                <div className="attendance-sheet relative p-0 pb-16 min-w-[1180px] mx-auto overflow-hidden">
+            <div className="attendance-sheet-container bg-white p-0 overflow-x-auto shadow-inner rounded-lg border max-w-full print:border-none print:shadow-none print:p-0">
+                <div className="attendance-sheet relative p-0 pb-16 min-w-[1180px] print:min-w-0 print:pb-0 mx-auto overflow-hidden print:overflow-visible">
                     <table className="w-full border-collapse border-[2.5px] border-black text-black leading-tight">
                         <thead>
                             <tr className="bg-[#4a6da7] text-white text-[9px] h-8">
@@ -271,7 +273,10 @@ export default function FoglioPresenzePage() {
                                                         if (isWeekend) {
                                                             m = '-';
                                                         } else if (d) {
-                                                            if (d.status === 'lavorato') m = 'P';
+                                                            const isPresence = d.status === 'lavorato' || 
+                                                                               d.status === 'recupero_effettuato' || 
+                                                                               (d.shift && ((d.shift.ordinaryHours || 0) > 0 || (d.shift.recuperoHours || 0) > 0));
+                                                            if (isPresence) m = 'P';
                                                             else if (d.status === 'festa') m = 'FG';
                                                             else if (d.status === 'ferie') m = 'F';
                                                             else if (d.status === 'malattia') m = 'M';
@@ -382,10 +387,9 @@ export default function FoglioPresenzePage() {
                 </div>
             </div>
 
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{ __html: `
                 @media screen { 
-                    .only-print { display: none; }
-                    /* Custom scrollbar for the table container */
+                    .only-print { display: none !important; }
                     .attendance-sheet-container::-webkit-scrollbar {
                         height: 8px;
                     }
@@ -397,23 +401,42 @@ export default function FoglioPresenzePage() {
                         border-radius: 4px;
                     }
                 }
+                @page { 
+                    size: A4 landscape !important; 
+                    margin: 3mm !important; 
+                }
                 @media print {
-                    @page { 
-                        size: A4 landscape !important; 
-                        margin: 4mm !important; 
-                    }
                     html, body { 
                         background: white !important; 
+                        color: black !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
                         height: auto !important;
                         min-height: 0 !important;
+                        max-height: none !important;
                         overflow: visible !important;
                         -webkit-print-color-adjust: exact !important; 
                         print-color-adjust: exact !important;
                     }
-                    header, nav, aside, .no-print { 
+                    header, nav, aside, .no-print, [role="navigation"] { 
                         display: none !important; 
                     }
-                    main, .attendance-sheet-container {
+                    div, main {
+                        overflow: visible !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        max-height: none !important;
+                    }
+                    main {
+                        display: block !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        max-width: 100% !important;
+                        width: 100% !important;
+                    }
+                    .attendance-sheet-container {
                         overflow: visible !important;
                         display: block !important;
                         padding: 0 !important;
@@ -421,10 +444,11 @@ export default function FoglioPresenzePage() {
                         border: none !important;
                         box-shadow: none !important;
                         max-width: 100% !important;
-                        min-height: 0 !important;
-                        height: auto !important;
+                        min-width: 0 !important;
+                        width: 100% !important;
                     }
                     .attendance-sheet { 
+                        display: block !important;
                         width: 100% !important;
                         min-width: 0 !important;
                         max-width: 100% !important;
@@ -432,31 +456,38 @@ export default function FoglioPresenzePage() {
                         padding: 0 !important;
                         overflow: visible !important;
                         transform: none !important;
-                        zoom: 0.77 !important;
+                        zoom: normal !important;
                         background: white !important;
                         border: none !important;
                         box-shadow: none !important;
                     }
                     .attendance-sheet table {
                         width: 100% !important;
+                        table-layout: fixed !important;
                         border-collapse: collapse !important;
-                        page-break-inside: auto;
+                        page-break-inside: auto !important;
+                        border: 2px solid black !important;
                     }
                     tr {
-                        page-break-inside: avoid;
+                        page-break-inside: avoid !important;
                     }
                     thead {
-                        display: table-header-group;
+                        display: table-header-group !important;
+                    }
+                    th, td {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
                     .only-print { 
                         display: inline-block !important; 
+                        color: inherit !important;
                     }
                     input, textarea { 
                         display: none !important; 
                     }
                     table { border-width: 1.5px !important; }
                 }
-            `}</style>
+            ` }} />
         </div>
     );
 }

@@ -1206,6 +1206,12 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
     const limitDate = startOfDay(subDays(today, 3));
     if (isBefore(startOfDay(day), limitDate)) return true;
 
+    // Blocca i giorni in cui il turno è già stato approvato/confermato dall'amministratore
+    const isAlreadyApproved = groupedShifts.some(s => 
+      isSameDay(s.date, day) && (s.status === 'confermata' || (s.entry && s.exit && s.status !== 'sospesa'))
+    );
+    if (isAlreadyApproved) return true;
+
     if (operator?.workSchedule) {
       const dayName = dayIndexToName[getDay(day)];
       const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
@@ -1660,7 +1666,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
           {isLoadingClockings ? (
             <div className="flex justify-center p-8"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
           ) : groupedShifts.length > 0 ? (
-            groupedShifts.map((shift, idx) => (
+            groupedShifts.map((shift, idx) => {
+              const isNotApproved = shift.status !== 'confermata';
+
+              return (
               <Card key={idx} className="overflow-hidden border-none shadow-sm bg-background/50">
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-3">
@@ -1668,6 +1677,16 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                       {format(shift.date, 'eeee dd MMMM', { locale: it })}
                     </p>
                     <div className="flex items-center gap-2">
+                      {isNotApproved && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-6 px-2 text-[10px] font-bold text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                          onClick={() => handleHistoryShiftCorrection(shift)}
+                        >
+                          <Pencil className="h-3 w-3 mr-1" /> Rettifica
+                        </Button>
+                      )}
                       <Badge variant={
                         shift.status === 'confermata' ? 'secondary' :
                           shift.status === 'rifiutata' ? 'destructive' : 'default'
@@ -1759,25 +1778,28 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                     const overtimeH = shiftRes.overtime;
 
                     return (
-                      <div className="mt-3 pt-2 border-t border-border/30 grid grid-cols-3 sm:grid-cols-4 gap-2 text-[10px]">
-                        <div>
-                          <span className="text-muted-foreground block font-medium">Previste</span>
-                          <span className="font-bold">{contractualHours > 0 ? `${contractualHours}h` : '0h'}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block font-medium">Ordinarie</span>
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{ordinaryH > 0 ? `${ordinaryH}h` : '0h'}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block font-medium">Straordinari</span>
-                          <span className="font-bold text-amber-600 dark:text-amber-400">{overtimeH > 0 ? `${overtimeH}h` : '0h'}</span>
+                      <div className="mt-3 pt-2 border-t border-border/30">
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 text-[10px]">
+                          <div>
+                            <span className="text-muted-foreground block font-medium">Previste</span>
+                            <span className="font-bold">{contractualHours > 0 ? `${contractualHours}h` : '0h'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block font-medium">Ordinarie</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{ordinaryH > 0 ? `${ordinaryH}h` : '0h'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block font-medium">Straordinari</span>
+                            <span className="font-bold text-amber-600 dark:text-amber-400">{overtimeH > 0 ? `${overtimeH}h` : '0h'}</span>
+                          </div>
                         </div>
                       </div>
                     );
                   })()}
                 </div>
               </Card>
-            ))
+            );
+          })
           ) : (
             <p className="text-center text-muted-foreground py-8 border border-dashed rounded-xl">
               Nessun turno registrato questo mese.

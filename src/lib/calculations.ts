@@ -852,7 +852,7 @@ export const processMonthlyData = (
             if (r.status !== 'approvato') return false;
             const isMatch = r.type === 'permesso' || r.type === 'recupero_straordinari' || (r.type === 'assenza' && r.deductFromOvertime === true);
             if (!isMatch) return false;
-            const s = toSafeDate(r.startDate);
+            const s = toSafeDate(r.startDate || (r as any).date);
             return s ? isSameDay(s, detail.date) : false;
         });
         const effectivePermissionHours = dayReqs.filter(r => r.type === 'permesso' && !r.deductFromOvertime).reduce((max, r) => Math.max(max, r.hours || 0), 0);
@@ -860,7 +860,7 @@ export const processMonthlyData = (
             if (r.status !== 'approvato') return false;
             const isDeduct = r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true);
             if (!isDeduct) return false;
-            const s = toSafeDate(r.startDate);
+            const s = toSafeDate(r.startDate || (r as any).date);
             return s ? isSameDay(s, detail.date) : false;
         });
         const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -970,13 +970,20 @@ export const processMonthlyData = (
     dailyDetails.forEach(detail => {
         if (!isWithinInterval(detail.date, monthInterval)) return;
         
-        // A shift is considered approved/confirmed only if all its events are 'confermata' or overridden manually by admin
+        // A shift is considered approved/confirmed only if all its events are 'confermata' or overridden manually by admin, or if it is an approved recovery
         const opId = operator.id;
         const day = format(detail.date, 'd');
         const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-        const isApprovedShift = (detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
+        const isRecoveryDay = detail.status === 'recupero_effettuato' || (detail.shift && (detail.shift.recuperoHours || 0) > 0);
+        const isApprovedShift = (detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata')) || 
+            isRecoveryDay || 
+            manualStatus === 'P';
 
-        if ((detail.status === 'lavorato' || detail.status === 'in_corso') && isApprovedShift) {
+        const isWorkedOrRecovered = detail.status === 'lavorato' || 
+            detail.status === 'in_corso' || 
+            isRecoveryDay;
+
+        if (isWorkedOrRecovered && isApprovedShift) {
             const dayName = dayIndexToName[getDay(detail.date)];
             const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
             const isHoliday = isPublicHoliday(detail.date);
@@ -1099,11 +1106,12 @@ export const processMonthlyData = (
             const opId = operator.id;
             const day = format(d.date, 'd');
             const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
-            if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
+            const isRecoveryDay = d.status === 'recupero_effettuato' || (d.shift && (d.shift.recuperoHours || 0) > 0);
+            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || isRecoveryDay || manualStatus === 'P';
+            if ((d.status === 'lavorato' || d.status === 'in_corso' || isRecoveryDay) && isApprovedShift && d.shift) {
                 const clockIn = d.shift.events.find(e => e.type === 'entrata');
                 const isExplicitlyApproved = clockIn?.status === 'confermata' && typeof clockIn.approvedOrdinaryHours === 'number';
-                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata')) {
+                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata') || isRecoveryDay) {
                     explicitApprovedOrd += d.shift.ordinaryHours || 0;
                     explicitApprovedOvt += d.shift.overtimeHours || 0;
                 } else {
@@ -1127,15 +1135,16 @@ export const processMonthlyData = (
             const opId = operator.id;
             const day = format(d.date, 'd');
             const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
-            if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
+            const isRecoveryDay = d.status === 'recupero_effettuato' || (d.shift && (d.shift.recuperoHours || 0) > 0);
+            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || isRecoveryDay || manualStatus === 'P';
+            if ((d.status === 'lavorato' || d.status === 'in_corso' || isRecoveryDay) && isApprovedShift && d.shift) {
                 const weekKey = format(startOfWeek(d.date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
                 if (!weeklyMap[weekKey]) {
                     weeklyMap[weekKey] = { explicitOrd: 0, explicitOvt: 0, otherWorked: 0 };
                 }
                 const clockIn = d.shift.events.find(e => e.type === 'entrata');
                 const isExplicitlyApproved = clockIn?.status === 'confermata' && typeof clockIn.approvedOrdinaryHours === 'number';
-                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata')) {
+                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata') || isRecoveryDay) {
                     weeklyMap[weekKey].explicitOrd += d.shift.ordinaryHours || 0;
                     weeklyMap[weekKey].explicitOvt += d.shift.overtimeHours || 0;
                 } else {

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 export function AntiScreenshotShield() {
   const pathname = usePathname();
-  const isPrintPage = pathname?.includes('/print');
+  const isPrintAllowed = pathname?.includes('/print') || pathname?.includes('/foglio-presenze');
 
   useEffect(() => {
     // 1. Protezione base: disabilita selezione testo selvaggia e trascinamento immagini
@@ -30,7 +30,7 @@ export function AntiScreenshotShield() {
         -webkit-user-drag: none !important;
         user-drag: none !important;
       }
-      ${!isPrintPage ? `
+      ${!isPrintAllowed ? `
       @media print {
         body {
           display: none !important;
@@ -57,7 +57,7 @@ export function AntiScreenshotShield() {
         (e.shiftKey && (e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey)) ||
         (isMac && e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key));
 
-      if (isPrintKey || isScreenshotShortcut || (isPrintShortcut && !isPrintPage)) {
+      if (isPrintKey || isScreenshotShortcut || (isPrintShortcut && !isPrintAllowed)) {
         e.preventDefault();
         e.stopPropagation();
         try {
@@ -77,7 +77,7 @@ export function AntiScreenshotShield() {
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isPrintPage]);
+  }, [isPrintAllowed]);
 
   // Nessun testo, nessun overlay e nessuna schermata "Schermata protetta" invasiva
   return null;

@@ -65,14 +65,14 @@ input[type="time"] {
 }
 
 @media print {
-  @page {
-    margin: 20mm;
-  }
   body {
-    background: white;
-    color: black;
+    background: white !important;
+    color: black !important;
   }
   .no-print {
-    display: none;
+    display: none !important;
+  }
+  .only-print {
+    display: inline-block !important;
   }
 }
