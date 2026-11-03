@@ -244,13 +244,13 @@ export default function MonthlyReportPrintClient() {
 
     const calculateTotalDue = useCallback((opId: string, op: Operator, summary: MonthlySummary | undefined, visibilitySettings: Partial<VisibilitySettings> | undefined) => {
         const override = manualOverrides[opId] || {};
-        if (override.totalDueOverride !== undefined && override.totalDueOverride !== '') {
+        if (override.totalDueOverride !== undefined && (override.totalDueOverride as unknown) !== '') {
             return Number(override.totalDueOverride);
         }
         
         const lordo = calculateLordoDue(opId, op, summary, visibilitySettings);
         
-        const anticipiAmount = override.anticipiAmount !== undefined && override.anticipiAmount !== ''
+        const anticipiAmount = override.anticipiAmount !== undefined && (override.anticipiAmount as unknown) !== ''
             ? Number(override.anticipiAmount) 
             : (summary?.anticipiAmount || 0);
             

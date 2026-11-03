@@ -187,60 +187,101 @@ export default function FoglioPresenzePage() {
                     <table className="w-full border-collapse border-[2.5px] border-black text-black leading-tight">
                         <thead>
                             <tr className="bg-[#4a6da7] text-white text-[9px] h-8">
-                                <th rowSpan={2} className="border border-black w-[28px] p-0 font-bold leading-none align-top bg-[#4a6da7]">
-                                    <div className="h-[28px] border-b border-black flex items-center justify-center text-[7.5px] text-center px-0.5">N. ord.</div>
-                                    <div className="h-[24px] flex items-center justify-center bg-[#4a6da7] text-[7.5px]">Matr.</div>
+                                <th rowSpan={2} className="border border-black w-[26px] p-0 font-bold leading-none align-top bg-[#4a6da7]">
+                                    <div className="h-[28px] border-b border-black flex items-center justify-center text-[7px] text-center px-0.5">N. ord.</div>
+                                    <div className="h-[24px] flex items-center justify-center bg-[#4a6da7] text-[7px]">Matr.</div>
                                 </th>
-                                <th rowSpan={2} className="border-r-[2px] border-black w-[125px] p-0 px-1 text-center font-bold uppercase text-[9px] align-middle bg-[#4a6da7] leading-tight">Cognome e Nome Qualifica</th>
+                                <th rowSpan={2} className="border-r-[2px] border-black w-[95px] p-0 px-1 text-center font-bold uppercase text-[8.5px] align-middle bg-[#4a6da7] leading-tight">Cognome e Nome Qualifica</th>
                                 <th rowSpan={2} className="border-r-[2px] border-black w-[16px] p-0 bg-[#4a6da7]"></th>
                                 <th colSpan={31} className="border-r-[2px] border-black p-0 font-bold uppercase tracking-wider text-[11px] align-middle bg-[#4a6da7] h-4">Prestazioni per ciascuna giornata</th>
-                                <th colSpan={3} className="border-r-[2px] border-black w-[75px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Ore Ordinarie</th>
-                                <th colSpan={2} className="border-r-[2px] border-black w-[46px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Ore Str.</th>
-                                <th colSpan={3} className="border-r-[2px] border-black w-[69px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Malatt.Infort.</th>
-                                <th colSpan={2} className="border-r-[2px] border-black w-[48px] p-0 font-bold uppercase text-[7px] bg-[#4a6da7] h-4">Giorni</th>
-                                <th rowSpan={2} className="border border-black w-[38px] p-0 font-bold uppercase text-[6.5px] leading-tight bg-[#4a6da7]">Retribuz. oraria €</th>
+                                <th colSpan={3} className="border-r-[2px] border-black w-[84px] p-0 font-bold uppercase text-[7.5px] bg-[#4a6da7] h-4">Ore Ordinarie</th>
+                                <th colSpan={2} className="border-r-[2px] border-black w-[68px] p-0 font-bold uppercase text-[7.5px] bg-[#4a6da7] h-4">Ore Str.</th>
+                                <th colSpan={3} className="border-r-[2px] border-black w-[102px] p-0 font-bold uppercase text-[7.5px] bg-[#4a6da7] h-4">Malatt. - Infort.</th>
+                                <th colSpan={2} className="border-r-[2px] border-black w-[72px] p-0 font-bold uppercase text-[7.5px] bg-[#4a6da7] h-4">Giorni</th>
+                                <th rowSpan={2} className="border border-black w-[42px] p-0 font-bold uppercase text-[6.5px] leading-tight bg-[#4a6da7]">
+                                    <div className="flex flex-col items-center justify-center h-full">
+                                        <span>Retribuz.</span>
+                                        <span>oraria €</span>
+                                    </div>
+                                </th>
                             </tr>
                             <tr className="bg-[#4a6da7] text-white text-[8px] h-6">
-                                {[...Array(31)].map((_, i) => <th key={i} className={`border border-black w-[30px] p-0 font-bold text-[8px] ${i === 30 ? 'border-r-[2px]' : ''}`}>{i + 1}</th>)}
-                                <th className="border-0 border-black w-[25px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                {[...Array(31)].map((_, i) => <th key={i} className={`border border-black w-[27px] p-0 font-bold text-[8px] ${i === 30 ? 'border-r-[2px]' : ''}`}>{i + 1}</th>)}
+                                <th className="border-0 border-black w-[28px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-ord-lav'] || 'Lavorate'} onChange={e => handleOverride('h-ord-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
                                     <span className="only-print text-[6.5px] block truncate">{overrides['h-ord-lav'] || 'Lavorate'}</span>
                                 </th>
-                                <th className="border-0 border-black w-[25px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                <th className="border-0 border-black w-[28px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-ord-fes'] || 'Festive'} onChange={e => handleOverride('h-ord-fes', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
                                     <span className="only-print text-[6.5px] block truncate">{overrides['h-ord-fes'] || 'Festive'}</span>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[25px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                <th className="border-r-[2px] border-black w-[28px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
                                     <input type="text" value={overrides['h-ord-fer'] || 'Per ferie'} onChange={e => handleOverride('h-ord-fer', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
                                     <span className="only-print text-[6.5px] block truncate">{overrides['h-ord-fer'] || 'Per ferie'}</span>
                                 </th>
-                                <th className="border-0 border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-str-1'] || '___'} onChange={e => handleOverride('h-str-1', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[6.5px]">al {overrides['h-str-1'] || '___'} %</span>
+                                <th className="border-0 border-black w-[34px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <div className="flex flex-col items-center justify-center h-full text-[6.5px] leading-none no-print">
+                                        <span>al</span>
+                                        <div className="flex items-center justify-center">
+                                            <input type="text" value={overrides['h-str-1'] || '___'} onChange={e => handleOverride('h-str-1', e.target.value)} className="w-5 border-b border-white outline-none text-center bg-transparent font-bold text-white text-[6.5px]" />
+                                            <span>%</span>
+                                        </div>
+                                    </div>
+                                    <div className="only-print text-[6.5px] leading-tight text-center py-0.5">
+                                        <div>al %</div>
+                                        <div className="font-bold">{overrides['h-str-1'] ? `${overrides['h-str-1']}%` : '___%'}</div>
+                                    </div>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-str-2'] || '___'} onChange={e => handleOverride('h-str-2', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[6.5px]">al {overrides['h-str-2'] || '___'} %</span>
+                                <th className="border-r-[2px] border-black w-[34px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                    <div className="flex flex-col items-center justify-center h-full text-[6.5px] leading-none no-print">
+                                        <span>al</span>
+                                        <div className="flex items-center justify-center">
+                                            <input type="text" value={overrides['h-str-2'] || '___'} onChange={e => handleOverride('h-str-2', e.target.value)} className="w-5 border-b border-white outline-none text-center bg-transparent font-bold text-white text-[6.5px]" />
+                                            <span>%</span>
+                                        </div>
+                                    </div>
+                                    <div className="only-print text-[6.5px] leading-tight text-center py-0.5">
+                                        <div>al %</div>
+                                        <div className="font-bold">{overrides['h-str-2'] ? `${overrides['h-str-2']}%` : '___%'}</div>
+                                    </div>
                                 </th>
-                                <th className="border-0 border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                <th className="border-0 border-black w-[34px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-mal-car'] || 'Carenza'} onChange={e => handleOverride('h-mal-car', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
-                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-mal-car'] || 'Carenza'}</span>
+                                    <span className="only-print text-[6.5px] block truncate text-center">{overrides['h-mal-car'] || 'Carenza'}</span>
                                 </th>
-                                <th className="border-0 border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-mal-1'] || '___'} onChange={e => handleOverride('h-mal-1', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[6.5px]">al {overrides['h-mal-1'] || '___'} %</span>
+                                <th className="border-0 border-black w-[34px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                    <div className="flex flex-col items-center justify-center h-full text-[6.5px] leading-none no-print">
+                                        <span>al</span>
+                                        <div className="flex items-center justify-center">
+                                            <input type="text" value={overrides['h-mal-1'] || '___'} onChange={e => handleOverride('h-mal-1', e.target.value)} className="w-5 border-b border-white outline-none text-center bg-transparent font-bold text-white text-[6.5px]" />
+                                            <span>%</span>
+                                        </div>
+                                    </div>
+                                    <div className="only-print text-[6.5px] leading-tight text-center py-0.5">
+                                        <div>al %</div>
+                                        <div className="font-bold">{overrides['h-mal-1'] ? `${overrides['h-mal-1']}%` : '___%'}</div>
+                                    </div>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[23px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
-                                    <div className="flex items-center justify-center h-full px-0.5 text-[6.5px]">al <input type="text" value={overrides['h-mal-2'] || '___'} onChange={e => handleOverride('h-mal-2', e.target.value)} className="w-4 border-none outline-none text-center bg-transparent no-print font-bold" />%</div>
-                                    <span className="only-print text-[6.5px]">al {overrides['h-mal-2'] || '___'} %</span>
+                                <th className="border-r-[2px] border-black w-[34px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                    <div className="flex flex-col items-center justify-center h-full text-[6.5px] leading-none no-print">
+                                        <span>al</span>
+                                        <div className="flex items-center justify-center">
+                                            <input type="text" value={overrides['h-mal-2'] || '___'} onChange={e => handleOverride('h-mal-2', e.target.value)} className="w-5 border-b border-white outline-none text-center bg-transparent font-bold text-white text-[6.5px]" />
+                                            <span>%</span>
+                                        </div>
+                                    </div>
+                                    <div className="only-print text-[6.5px] leading-tight text-center py-0.5">
+                                        <div>al %</div>
+                                        <div className="font-bold">{overrides['h-mal-2'] ? `${overrides['h-mal-2']}%` : '___%'}</div>
+                                    </div>
                                 </th>
-                                <th className="border-0 border-black w-[24px] p-0 bg-[#4a6da7] text-white font-bold h-full">
+                                <th className="border-0 border-black w-[36px] p-0 bg-[#4a6da7] text-white font-bold h-full">
                                     <input type="text" value={overrides['h-gior-lav'] || 'Lavorati'} onChange={e => handleOverride('h-gior-lav', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
-                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-gior-lav'] || 'Lavorati'}</span>
+                                    <span className="only-print text-[6.5px] block truncate text-center">{overrides['h-gior-lav'] || 'Lavorati'}</span>
                                 </th>
-                                <th className="border-r-[2px] border-black w-[24px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
+                                <th className="border-r-[2px] border-black w-[36px] p-0 bg-[#4a6da7] text-white font-bold h-full shadow-[inset_1px_0_0_0_#4a6da7]">
                                     <input type="text" value={overrides['h-gior-ret'] || 'Retribuiti'} onChange={e => handleOverride('h-gior-ret', e.target.value)} className="w-full h-full border-none outline-none text-center bg-transparent no-print text-[6.5px]" />
-                                    <span className="only-print text-[6.5px] block truncate">{overrides['h-gior-ret'] || 'Retribuiti'}</span>
+                                    <span className="only-print text-[6.5px] block truncate text-center">{overrides['h-gior-ret'] || 'Retribuiti'}</span>
                                 </th>
                             </tr>
                         </thead>
@@ -250,11 +291,14 @@ export default function FoglioPresenzePage() {
                                 return (
                                     <React.Fragment key={op.id}>
                                         <tr className="h-[15px]">
-                                            <td rowSpan={3} className="border-x border-t border-black text-center text-[9px] bg-white p-0 align-top">
+                                            <td rowSpan={3} className="border-x border-t border-black text-center text-[8.5px] bg-white p-0 align-top">
                                                 <div className="h-[22px] border-b border-black flex items-center justify-center font-black">{idx + 1}</div>
                                             </td>
-                                            <td rowSpan={3} className="border-r-[2px] border-x border-t border-black px-1 font-black uppercase truncate max-w-[125px] text-[9px] leading-tight bg-white align-middle">
-                                                {op.lastName} {op.firstName}
+                                            <td rowSpan={3} className="border-r-[2px] border-x border-t border-black px-1 font-black uppercase max-w-[95px] text-[8px] leading-tight bg-white align-middle whitespace-normal break-words">
+                                                <div className="flex flex-col justify-center">
+                                                    <span>{op.lastName}</span>
+                                                    <span className="font-bold text-[7.5px]">{op.firstName}</span>
+                                                </div>
                                             </td>
                                             <td className="border-r-[2px] border-b border-black text-center text-[8px] font-black bg-[#e1effe]">O</td>
                                             {[...Array(31)].map((_, i) => {
