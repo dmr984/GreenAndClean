@@ -795,6 +795,7 @@ export default function BossMonitorApp() {
       isMakeupShift?: boolean;
       makeupForDayFormatted?: string | null;
       shifts?: SubShiftInfo[];
+      hasRettifica?: boolean;
     }
 
     const map = new Map<string, AgendaDayItem>();
@@ -910,6 +911,8 @@ export default function BossMonitorApp() {
           // Nessun turno approvato
           item.events = [];
         }
+
+        item.hasRettifica = item.events.some(e => Boolean(e.isRectified || e.originalTime || e.rectificationStatus === 'approvata'));
       });
     }
 
