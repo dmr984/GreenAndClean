@@ -65,9 +65,23 @@ input[type="time"] {
 }
 
 @media print {
-  body {
-    background: white !important;
-    color: black !important;
+  :root, .dark, html, body {
+    --background: 0 0% 100% !important;
+    --foreground: 0 0% 0% !important;
+    --card: 0 0% 100% !important;
+    --card-foreground: 0 0% 0% !important;
+    --popover: 0 0% 100% !important;
+    --popover-foreground: 0 0% 0% !important;
+    --muted: 0 0% 96% !important;
+    --muted-foreground: 0 0% 40% !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  body, #__next, main, div {
+    background-color: transparent;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .no-print {
     display: none !important;

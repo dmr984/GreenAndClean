@@ -712,7 +712,7 @@ export default function MonthlyReportPrintClient() {
     };
 
     return (
-        <div className="bg-background text-foreground min-h-screen">
+        <div className="bg-background text-foreground min-h-screen print:bg-white print:text-black print:min-h-0">
             {/* Stili di stampa: margini adatti per vista sintetica (12mm 15mm), zero margini per le quietanze a 2 slot A5 */}
             <style jsx global>{`
                 @page {
@@ -720,10 +720,19 @@ export default function MonthlyReportPrintClient() {
                     margin: ${globalCompact ? '12mm 15mm' : '0'};
                 }
                 @media print {
-                    html, body {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background: white !important;
+                    :root, .dark, html, body {
+                        --background: 0 0% 100% !important;
+                        --foreground: 0 0% 0% !important;
+                        --card: 0 0% 100% !important;
+                        --card-foreground: 0 0% 0% !important;
+                        background: #ffffff !important;
+                        background-color: #ffffff !important;
+                        color: #000000 !important;
+                    }
+                    html, body, main, #print-content, .bg-background {
+                        background: #ffffff !important;
+                        background-color: #ffffff !important;
+                        color: #000000 !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
@@ -735,6 +744,7 @@ export default function MonthlyReportPrintClient() {
                         margin: 0 !important;
                         background: white !important;
                         display: block !important;
+                        min-height: auto !important;
                     }
                     ${globalCompact ? `
                         #print-content {
@@ -743,6 +753,8 @@ export default function MonthlyReportPrintClient() {
                             width: 100% !important;
                             max-width: 100% !important;
                             display: block !important;
+                            background: #ffffff !important;
+                            min-height: auto !important;
                         }
                         #print-content h1 {
                             color: #000000 !important;
@@ -760,6 +772,7 @@ export default function MonthlyReportPrintClient() {
                             margin: 0 !important;
                             width: 210mm !important;
                             display: block !important;
+                            background: #ffffff !important;
                         }
                         #print-content h1 {
                             color: #000000 !important;
@@ -830,9 +843,9 @@ export default function MonthlyReportPrintClient() {
                 </div>
             </header>
 
-            <main className="flex flex-col items-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
+            <main className="flex flex-col items-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0 print:min-h-0">
                 {globalCompact ? (
-                    <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none print:p-0" style={{ width: '100%', maxWidth: '210mm' }}>
+                    <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none print:p-0 print:bg-white" style={{ width: '100%', maxWidth: '210mm' }}>
                         {currentMonth && (
                             <div className="mb-6 text-center border-b-2 border-black pb-3">
                                 <h1 className="text-2xl sm:text-3xl font-black uppercase text-black tracking-wide" style={{ color: '#000000', fontWeight: 900 }}>
