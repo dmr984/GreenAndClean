@@ -64,6 +64,7 @@ type VisibilitySettings = {
     ferieCost: boolean;
     permessoCost: boolean;
     malattiaCost: boolean;
+    anticipiAmount?: boolean;
     compactMode: boolean;
 };
 
@@ -627,9 +628,9 @@ const OperatorCalculationsPage = () => {
                                                             <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                                                         </Button>
                                                     </div>
-                                                    {(summaryData.anticipiAmount || 0) > 0 && (
+                                                    {(summaryData?.anticipiAmount || 0) > 0 && (
                                                         <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold block text-right">
-                                                            (al netto di € {Number(summaryData.anticipiAmount).toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                            (al netto di € {Number(summaryData?.anticipiAmount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
                                                         </span>
                                                     )}
                                                 </div>

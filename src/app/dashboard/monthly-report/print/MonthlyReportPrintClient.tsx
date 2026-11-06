@@ -395,6 +395,114 @@ export default function MonthlyReportPrintClient() {
                 doc.text('FIRMA PER RICEVUTA E QUIETANZA: __________________________________________', margin, y);
             };
 
+            if (globalCompact) {
+                const margin = 18;
+                const pageHeight = 297;
+                let y = 22;
+
+                const drawCompactHeader = (isFirstPage: boolean) => {
+                    doc.setFontSize(20);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    const monthTitle = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
+                    doc.text(monthTitle, pageWidth / 2, y, { align: 'center' });
+                    y += 5;
+
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(110, 110, 110);
+                    doc.text('REPORT MENSILE - VISTA SINTETICA', pageWidth / 2, y, { align: 'center' });
+                    y += 4;
+
+                    doc.setDrawColor(0, 0, 0);
+                    doc.setLineWidth(0.6);
+                    doc.line(margin, y, pageWidth - margin, y);
+                    y += 8;
+                };
+
+                drawCompactHeader(true);
+
+                for (let i = 0; i < filteredOperators.length; i++) {
+                    const op = filteredOperators[i];
+                    const summary = summaries.get(op.id);
+                    const override = manualOverrides[op.id] || {};
+                    const opVisibility = visibility[op.id] || {};
+                    const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
+                    const anticipiAmount = override.anticipiAmount !== undefined 
+                        ? Number(override.anticipiAmount) 
+                        : (summary?.anticipiAmount || 0);
+
+                    const hasAnticipo = showAnticipiCompact && anticipiAmount > 0;
+                    const itemHeight = hasAnticipo ? 14 : 10;
+
+                    // Salto pagina se non c'è abbastanza spazio
+                    if (y + itemHeight > pageHeight - margin - 5) {
+                        doc.addPage();
+                        y = 20;
+                        drawCompactHeader(false);
+                    }
+
+                    const opFullName = `${op.firstName} ${op.lastName}`.trim().toUpperCase();
+
+                    // Nome operatore a sinistra
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(opFullName, margin, y);
+                    const nameWidth = doc.getTextWidth(opFullName);
+
+                    // Netto a destra
+                    const nettoStr = `NETTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(nettoStr, pageWidth - margin, y, { align: 'right' });
+                    const nettoWidth = doc.getTextWidth(nettoStr);
+
+                    // Linea punteggiata tra nome e netto
+                    const lineStartX = margin + nameWidth + 3;
+                    const lineEndX = pageWidth - margin - nettoWidth - 3;
+                    if (lineEndX > lineStartX + 4) {
+                        doc.setDrawColor(160, 160, 160);
+                        doc.setLineWidth(0.25);
+                        if (typeof (doc as any).setLineDashPattern === 'function') {
+                            (doc as any).setLineDashPattern([0.8, 1.2], 0);
+                            doc.line(lineStartX, y - 0.8, lineEndX, y - 0.8);
+                            (doc as any).setLineDashPattern([], 0);
+                        } else {
+                            doc.line(lineStartX, y - 0.8, lineEndX, y - 0.8);
+                        }
+                    }
+
+                    // Anticipo sotto il netto se presente
+                    if (hasAnticipo) {
+                        doc.setFontSize(8.5);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setTextColor(80, 80, 80);
+                        const anticipoStr = `- anticipo di ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
+                        doc.text(anticipoStr, pageWidth - margin, y + 4.5, { align: 'right' });
+                    }
+
+                    // Riga divisoria sottile tra operatori
+                    doc.setDrawColor(220, 220, 220);
+                    doc.setLineWidth(0.2);
+                    const sepY = y + (hasAnticipo ? 8 : 5.5);
+                    if (typeof (doc as any).setLineDashPattern === 'function') {
+                        (doc as any).setLineDashPattern([1.5, 1.5], 0);
+                        doc.line(margin, sepY, pageWidth - margin, sepY);
+                        (doc as any).setLineDashPattern([], 0);
+                    } else {
+                        doc.line(margin, sepY, pageWidth - margin, sepY);
+                    }
+
+                    y += itemHeight;
+                }
+
+                const blob = doc.output('blob');
+                const fileName = `Report_Sintetico_${format(currentMonth, 'yyyy-MM')}.pdf`;
+                return { blob, fileName };
+            }
+
             for (let pageIdx = 0; pageIdx < operatorPages.length; pageIdx++) {
                 if (pageIdx > 0) doc.addPage();
                 const pair = operatorPages[pageIdx];
@@ -423,13 +531,13 @@ export default function MonthlyReportPrintClient() {
         } finally {
             setIsGenerating(false);
         }
-    }, [currentMonth, filteredOperators, operatorPages, summaries, calculateTotalDue, calculateLordoDue, manualOverrides, toast, visibility]);
+    }, [currentMonth, filteredOperators, operatorPages, summaries, calculateTotalDue, calculateLordoDue, manualOverrides, toast, visibility, globalCompact, showAnticipiCompact]);
 
-    const handlePrint = () => {
+    const handlePrint = useCallback(() => {
         window.print();
-    };
+    }, []);
 
-    const handleDownload = async () => {
+    const handleDownload = useCallback(async () => {
         const pdf = await generatePdf();
         if (!pdf) return;
 
@@ -440,9 +548,9 @@ export default function MonthlyReportPrintClient() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
-    };
+    }, [generatePdf]);
 
-    const handleShare = async () => {
+    const handleShare = useCallback(async () => {
         const pdf = await generatePdf();
         if (!pdf || !navigator.share) {
             toast({ title: 'Condivisione non supportata', description: 'Il tuo browser non supporta la condivisione di file.', variant: 'destructive' });
@@ -461,7 +569,32 @@ export default function MonthlyReportPrintClient() {
                  toast({ title: 'Errore Condivisione', description: 'Impossibile condividere il file.', variant: 'destructive' });
             }
         }
-    };
+    }, [generatePdf, currentMonth, toast]);
+
+    const autoActionHandledRef = React.useRef(false);
+
+    useEffect(() => {
+        if (isLoading || !currentMonth || filteredOperators.length === 0 || autoActionHandledRef.current) {
+            return;
+        }
+
+        const autoPrint = searchParams.get('autoPrint') === 'true';
+        const autoDownload = searchParams.get('autoDownload') === 'true';
+
+        if (autoPrint) {
+            autoActionHandledRef.current = true;
+            const timer = setTimeout(() => {
+                window.print();
+            }, 600);
+            return () => clearTimeout(timer);
+        } else if (autoDownload) {
+            autoActionHandledRef.current = true;
+            const timer = setTimeout(() => {
+                handleDownload();
+            }, 600);
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading, currentMonth, filteredOperators, searchParams, handleDownload]);
 
     if (isLoading || !currentMonth) {
         return (
@@ -580,11 +713,11 @@ export default function MonthlyReportPrintClient() {
 
     return (
         <div className="bg-background text-foreground min-h-screen">
-            {/* Stili di stampa: zero margini pagina predefiniti, 2 slot A5 perfetti per foglio A4 (148.5mm ciascuno) */}
+            {/* Stili di stampa: margini adatti per vista sintetica (12mm 15mm), zero margini per le quietanze a 2 slot A5 */}
             <style jsx global>{`
                 @page {
                     size: A4 portrait;
-                    margin: 0;
+                    margin: ${globalCompact ? '12mm 15mm' : '0'};
                 }
                 @media print {
                     html, body {
@@ -603,52 +736,72 @@ export default function MonthlyReportPrintClient() {
                         background: white !important;
                         display: block !important;
                     }
-                    #print-content {
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        width: 210mm !important;
-                        display: block !important;
-                    }
-                    #print-content h1 {
-                        color: #000000 !important;
-                        font-weight: 900 !important;
-                        -webkit-text-fill-color: #000000 !important;
-                        opacity: 1 !important;
-                    }
-                    .print-page {
-                        width: 210mm !important;
-                        height: 297mm !important;
-                        max-height: 297mm !important;
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
-                        page-break-after: always !important;
-                        break-after: page !important;
-                        box-sizing: border-box !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        overflow: hidden !important;
-                    }
-                    .print-page:last-child {
-                        page-break-after: auto !important;
-                        break-after: auto !important;
-                    }
-                    .half-page-slot {
-                        width: 210mm !important;
-                        height: 148.5mm !important;
-                        max-height: 148.5mm !important;
-                        box-sizing: border-box !important;
-                        padding: 10mm 15mm 6mm 15mm !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: flex-start !important;
-                        overflow: hidden !important;
-                    }
-                    .operator-card {
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
-                    }
+                    ${globalCompact ? `
+                        #print-content {
+                            padding: 0 !important;
+                            margin: 0 auto !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            display: block !important;
+                        }
+                        #print-content h1 {
+                            color: #000000 !important;
+                            font-weight: 900 !important;
+                            -webkit-text-fill-color: #000000 !important;
+                            opacity: 1 !important;
+                        }
+                        .compact-row {
+                            page-break-inside: avoid !important;
+                            break-inside: avoid !important;
+                        }
+                    ` : `
+                        #print-content {
+                            padding: 0 !important;
+                            margin: 0 !important;
+                            width: 210mm !important;
+                            display: block !important;
+                        }
+                        #print-content h1 {
+                            color: #000000 !important;
+                            font-weight: 900 !important;
+                            -webkit-text-fill-color: #000000 !important;
+                            opacity: 1 !important;
+                        }
+                        .print-page {
+                            width: 210mm !important;
+                            height: 297mm !important;
+                            max-height: 297mm !important;
+                            page-break-inside: avoid !important;
+                            break-inside: avoid !important;
+                            page-break-after: always !important;
+                            break-after: page !important;
+                            box-sizing: border-box !important;
+                            display: flex !important;
+                            flex-direction: column !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            overflow: hidden !important;
+                        }
+                        .print-page:last-child {
+                            page-break-after: auto !important;
+                            break-after: auto !important;
+                        }
+                        .half-page-slot {
+                            width: 210mm !important;
+                            height: 148.5mm !important;
+                            max-height: 148.5mm !important;
+                            box-sizing: border-box !important;
+                            padding: 10mm 15mm 6mm 15mm !important;
+                            display: flex !important;
+                            flex-direction: column !important;
+                            justify-content: flex-start !important;
+                            overflow: hidden !important;
+                        }
+                        .operator-card {
+                            page-break-inside: avoid !important;
+                            break-inside: avoid !important;
+                        }
+                    `}
                 }
             `}</style>
 
@@ -679,15 +832,15 @@ export default function MonthlyReportPrintClient() {
 
             <main className="flex flex-col items-center p-4 sm:p-8 bg-gray-300 print:bg-white print:p-0">
                 {globalCompact ? (
-                    <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none" style={{ width: '210mm' }}>
+                    <div id="print-content" className="w-full max-w-4xl bg-white p-6 sm:p-10 shadow-lg print:shadow-none print:p-0" style={{ width: '100%', maxWidth: '210mm' }}>
                         {currentMonth && (
-                            <div className="mb-8 text-center border-b-2 border-black pb-4">
-                                <h1 className="text-3xl font-black uppercase text-black tracking-wide" style={{ color: '#000000', fontWeight: 900 }}>
+                            <div className="mb-6 text-center border-b-2 border-black pb-3">
+                                <h1 className="text-2xl sm:text-3xl font-black uppercase text-black tracking-wide" style={{ color: '#000000', fontWeight: 900 }}>
                                     {format(currentMonth, 'MMMM yyyy', { locale: it })}
                                 </h1>
                             </div>
                         )}
-                        <div className="space-y-4">
+                        <div className="space-y-3.5">
                             {filteredOperators.map((op) => {
                                 const summary = summaries.get(op.id);
                                 if (!summary) return null;
@@ -698,12 +851,14 @@ export default function MonthlyReportPrintClient() {
                                 const anticipiAmount = override.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0);
 
                                 return (
-                                    <div key={op.id} className="text-base text-black pb-3 border-b border-dashed border-gray-300">
+                                    <div key={op.id} className="compact-row text-base text-black pb-2.5 border-b border-dashed border-gray-300">
                                         <div className="flex justify-between items-baseline gap-2">
-                                            <p className="font-bold text-xl text-black uppercase whitespace-nowrap">{op.firstName} {op.lastName}</p>
-                                            <div className="flex-1 border-b border-dotted border-gray-400 mb-1"></div>
-                                            <div className="text-right">
-                                                <p className="font-bold text-xl text-black whitespace-nowrap">
+                                            <p className="font-bold text-base sm:text-lg text-black uppercase tracking-wide shrink-0">
+                                                {op.firstName} {op.lastName}
+                                            </p>
+                                            <div className="flex-1 border-b border-dotted border-gray-400 mb-1 min-w-[20px]"></div>
+                                            <div className="text-right shrink-0">
+                                                <p className="font-bold text-base sm:text-lg text-black whitespace-nowrap">
                                                     NETTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
                                                 </p>
                                                 {showAnticipiCompact && anticipiAmount > 0 && (
