@@ -66,7 +66,13 @@ export default function RequestsPage() {
 
         const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
             const rawData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
-            const data = rawData.filter(r => (r.type as string) !== 'festivita' && (r.type as string) !== 'assenza');
+            const data = rawData.filter(r => {
+                if ((r.type as string) === 'assenza') return false;
+                if ((r.type as string) === 'festivita') {
+                    return r.status === 'approvato' && (r as any).showToOperator !== false;
+                }
+                return true;
+            });
             setRequests(data);
             setIsLoadingData(false);
 
@@ -200,7 +206,9 @@ export default function RequestsPage() {
                                             {req.viewedByOperator === false && <Circle fill="red" className="h-2 w-2 text-red-500" />}
                                         </TableCell>
                                         <TableCell className="font-medium capitalize">
-                                            {req.type.replace('_', ' ')}
+                                            {(req.type as string) === 'festivita'
+                                                ? ((req as any).isPaid !== false ? 'Festività Retribuita' : 'Festività')
+                                                : req.type.replace('_', ' ')}
                                             {req.type === 'permesso' && req.deductFromOvertime && (
                                                 <Badge variant="outline" className="ml-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
                                                     Da Straordinari

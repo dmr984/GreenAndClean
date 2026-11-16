@@ -1663,10 +1663,65 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
         </div>
 
         <div className="space-y-3">
-          {isLoadingClockings ? (
-            <div className="flex justify-center p-8"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
-          ) : groupedShifts.length > 0 ? (
-            groupedShifts.map((shift, idx) => {
+          {(() => {
+            const approvedFestivitaForMonth = (monthlySummaryData.requests || []).filter((r: any) => {
+              if (r.type !== 'festivita' || r.status !== 'approvato') return false;
+              if (r.showToOperator === false) return false;
+              const d = r.startDate?.toDate ? r.startDate.toDate() : null;
+              if (!d) return false;
+              return d >= startOfMonth(summaryMonth) && d <= endOfMonth(summaryMonth);
+            });
+
+            if (isLoadingClockings) {
+              return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>;
+            }
+
+            if (groupedShifts.length === 0 && approvedFestivitaForMonth.length === 0) {
+              return (
+                <p className="text-center text-muted-foreground py-8 border border-dashed rounded-xl">
+                  Nessun turno registrato questo mese.
+                </p>
+              );
+            }
+
+            return (
+              <>
+                {approvedFestivitaForMonth.map((fest: any, fIdx: number) => {
+                  const festDate = fest.startDate?.toDate ? fest.startDate.toDate() : new Date();
+                  const isPaidFest = fest.isPaid !== false;
+                  return (
+                    <Card key={`fest-${fest.id || fIdx}`} className="overflow-hidden border border-indigo-200 dark:border-indigo-800 shadow-sm bg-indigo-50/40 dark:bg-indigo-950/20">
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] text-indigo-800 dark:text-indigo-300 uppercase font-extrabold tracking-widest">
+                            {format(festDate, 'eeee dd MMMM', { locale: it })}
+                          </p>
+                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                            Approvato
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between pt-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-indigo-950 dark:text-indigo-100">
+                              🎉 {isPaidFest ? 'Festività Retribuita' : 'Festività'}
+                            </span>
+                            {fest.holidayName && (
+                              <span className="text-xs text-muted-foreground font-medium">
+                                ({fest.holidayName})
+                              </span>
+                            )}
+                          </div>
+                          {isPaidFest && fest.hours ? (
+                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                              {fest.hours}h
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+                {groupedShifts.map((shift, idx) => {
               const isNotApproved = shift.status !== 'confermata';
 
               return (
@@ -1799,12 +1854,10 @@ export function OperatorDashboard({ user: propUser }: OperatorDashboardProps) {
                 </div>
               </Card>
             );
-          })
-          ) : (
-            <p className="text-center text-muted-foreground py-8 border border-dashed rounded-xl">
-              Nessun turno registrato questo mese.
-            </p>
-          )}
+          })}
+              </>
+            );
+          })()}
         </div>
       </div>
 

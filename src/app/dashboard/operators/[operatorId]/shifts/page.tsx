@@ -184,6 +184,7 @@ type Request = {
     isPaid?: boolean;
     festivitaSubType?: 'goduta' | 'non_goduta';
     holidayName?: string;
+    showToOperator?: boolean;
     deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
@@ -352,6 +353,7 @@ export default function ShiftApprovalPage() {
         holidayName: string;
         festivitaSubType: 'goduta' | 'non_goduta';
         isPaid: boolean;
+        showToOperator: boolean;
         hours: number;
         amount: string;
         reason: string;
@@ -1030,17 +1032,18 @@ export default function ShiftApprovalPage() {
             holidayName,
             festivitaSubType: reqItem.festivitaSubType || 'goduta',
             isPaid: reqItem.isPaid !== false,
+            showToOperator: reqItem.showToOperator !== false,
             hours,
             amount: initialAmount.toFixed(2),
             reason: reqItem.reason || `Festività Nazionale: ${holidayName}`
         });
     };
 
-    const handleSaveFestivitaDialog = async () => {
+    const handleSaveFestivitaDialog = async (shouldNotify: boolean = false) => {
         if (!festivitaDialogState || !firestore || !operatorId || !operator) return;
         setIsSavingFestivita(true);
         try {
-            const { request, date, holidayName, festivitaSubType, isPaid, hours, amount, reason } = festivitaDialogState;
+            const { request, date, holidayName, festivitaSubType, isPaid, showToOperator, hours, amount, reason } = festivitaDialogState;
             const parsedAmount = isPaid ? (parseFloat(String(amount).replace(',', '.')) || 0) : 0;
             const finalAmount = Number(parsedAmount.toFixed(2));
             const dateStr = format(date, 'yyyy-MM-dd');
@@ -1052,18 +1055,36 @@ export default function ShiftApprovalPage() {
                 holidayName,
                 status: 'approvato',
                 isPaid,
+                showToOperator,
                 hours: isPaid ? (Number(hours) || 0) : 0,
                 amount: finalAmount,
                 dailyCosts: { [dateStr]: finalAmount },
                 reason: reason || `Festività ${festivitaSubType === 'non_goduta' ? 'Non Goduta' : 'Goduta'}: ${holidayName}`,
-                viewedByOperator: true,
+                viewedByOperator: shouldNotify ? false : true,
                 updatedAt: serverTimestamp()
             });
+
+            if (shouldNotify) {
+                const dateFormatted = format(date, 'dd MMMM', { locale: it });
+                sendNotificationToOperator(firestore, operator.id, {
+                    type: 'request_approved',
+                    title: isPaid ? 'Festività Retribuita Approvata ✅' : 'Festività Gestita',
+                    body: isPaid
+                        ? `La festività del ${dateFormatted} (${holidayName}) è stata approvata come Festività Retribuita.`
+                        : `La festività del ${dateFormatted} (${holidayName}) è stata registrata.`,
+                    variables: {
+                        data: dateFormatted,
+                        operatore: `${operator.firstName} ${operator.lastName}`.trim(),
+                        tipo: isPaid ? 'Festività Retribuita' : 'Festività',
+                    },
+                    url: '/dashboard'
+                });
+            }
 
             toast({
                 title: isPaid ? 'Festività Contabilizzata' : 'Festività Non Contabilizzata',
                 description: isPaid
-                    ? `${holidayName} (${festivitaSubType === 'non_goduta' ? 'Festività Non Goduta' : 'Festività Goduta'}): accreditato importo di € ${finalAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+                    ? `${holidayName} (${festivitaSubType === 'non_goduta' ? 'Festività Non Goduta' : 'Festività Goduta'}): accreditato importo di € ${finalAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.${shouldNotify ? ' Notifica inviata.' : ''}`
                     : `${holidayName}: registrata come non retribuita (€ 0,00).`
             });
             setFestivitaDialogState(null);
@@ -3031,13 +3052,18 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                 });
             }
             
-            await updateDoc(docRef, {
+            const singleUpdateData: Record<string, any> = {
                 status: 'approvato',
                 viewedByOperator: request.type === 'festivita' ? true : false,
                 dailyCosts,
-                amount: request.type === 'festivita' ? (isPaid ? (request.amount ?? ((request.hours || 1) * (operator.hourlyRate || 0))) : 0) : request.amount,
                 isPaid
-            });
+            };
+            if (request.type === 'festivita') {
+                singleUpdateData.amount = isPaid ? (request.amount ?? ((request.hours || 1) * (operator.hourlyRate || 0))) : 0;
+            } else if (request.amount !== undefined) {
+                singleUpdateData.amount = request.amount;
+            }
+            await updateDoc(docRef, singleUpdateData);
             toast({ title: 'Successo', description: `Richiesta approvata (${isPaid ? 'retribuita' : 'non retribuita'}).` });
 
             const typeLabel = request.type.charAt(0).toUpperCase() + request.type.slice(1);
@@ -3115,13 +3141,18 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                     });
                 }
 
-                batch.update(docRef, {
+                const batchUpdateData: Record<string, any> = {
                     status: 'approvato',
                     viewedByOperator: req.type === 'festivita' ? true : false,
                     dailyCosts,
-                    amount: req.type === 'festivita' ? (isPaidForApproval ? (req.amount ?? ((req.hours || 1) * (operator.hourlyRate || 0))) : 0) : req.amount,
                     isPaid: isPaidForApproval
-                });
+                };
+                if (req.type === 'festivita') {
+                    batchUpdateData.amount = isPaidForApproval ? (req.amount ?? ((req.hours || 1) * (operator.hourlyRate || 0))) : 0;
+                } else if (req.amount !== undefined) {
+                    batchUpdateData.amount = req.amount;
+                }
+                batch.update(docRef, batchUpdateData);
             }
 
             await batch.commit();
@@ -6184,6 +6215,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                 </>
                             )}
 
+                            <div className="flex items-center justify-between p-3 rounded-xl border bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800">
+                                <div className="space-y-0.5 pr-2">
+                                    <Label htmlFor="festivita-show-op" className="text-xs font-bold cursor-pointer text-indigo-950 dark:text-indigo-200">
+                                        Mostra sul riepilogo dell'operatore
+                                    </Label>
+                                    <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+                                        {festivitaDialogState.showToOperator
+                                            ? "Sull'app dell'operatore comparirà 'Festività Retribuita' (Approvato). Su WorkForce Hub apparirà solo 'Festività'."
+                                            : "Nascosta sul riepilogo timbrature dell'operatore (resta solo nel calcolo contabile)."}
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="festivita-show-op"
+                                    checked={festivitaDialogState.showToOperator}
+                                    onCheckedChange={(checked) => setFestivitaDialogState(prev => prev ? ({ ...prev, showToOperator: checked }) : null)}
+                                />
+                            </div>
+
                             <div className="space-y-1">
                                 <Label className="text-xs font-semibold">Nota interna amministratore (opzionale)</Label>
                                 <Input
@@ -6196,14 +6245,24 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                         </div>
                     )}
 
-                    <ResponsiveDialogFooter className="gap-2 pt-2 border-t">
+                    <ResponsiveDialogFooter className="flex-col sm:flex-row gap-2 pt-2 border-t">
                         <Button type="button" variant="outline" onClick={() => setFestivitaDialogState(null)}>
                             Annulla
                         </Button>
                         <Button
                             type="button"
+                            variant="outline"
                             disabled={isSavingFestivita}
-                            onClick={handleSaveFestivitaDialog}
+                            onClick={() => handleSaveFestivitaDialog(false)}
+                            className="font-semibold"
+                        >
+                            {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle className="h-4 w-4 mr-1.5 text-emerald-600" />}
+                            Conferma Senza Notificare
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={isSavingFestivita}
+                            onClick={() => handleSaveFestivitaDialog(true)}
                             className={cn(
                                 "font-bold text-white",
                                 festivitaDialogState?.isPaid
@@ -6211,10 +6270,10 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                     : "bg-slate-700 hover:bg-slate-800"
                             )}
                         >
-                            {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle className="h-4 w-4 mr-1.5" />}
+                            {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Bell className="h-4 w-4 mr-1.5" />}
                             {festivitaDialogState?.isPaid
-                                ? `Conferma e Contabilizza (€ ${parseFloat(String(festivitaDialogState?.amount || '0').replace(',', '.')).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-                                : 'Conferma Non Contabilizzata (€ 0,00)'}
+                                ? `Approva e Invia Notifica (€ ${parseFloat(String(festivitaDialogState?.amount || '0').replace(',', '.')).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+                                : 'Conferma (0,00 €) e Notifica'}
                         </Button>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
