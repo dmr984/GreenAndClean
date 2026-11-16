@@ -42,6 +42,7 @@ type ManualTotals = {
     permessoCost?: number | string;
     ferieCost?: number | string;
     absenceDays?: number | string;
+    bonusAmount?: number | string;
     [key: string]: any;
 };
 
@@ -60,6 +61,7 @@ type VisibilitySettings = {
     permessoCost: boolean;
     malattiaCost: boolean;
     anticipiAmount?: boolean;
+    bonusAmount?: boolean;
     compactMode: boolean;
 };
 
@@ -219,11 +221,12 @@ export default function MonthlyReportPrintClient() {
         
         const finalVisibility = visibilitySettings || {};
 
+        const festivitaCost = summary.festivitaCost || 0;
         const ordinaryCost = override.ordinaryCost !== undefined && override.ordinaryCost !== '' 
             ? Number(override.ordinaryCost) 
-            : (op.salaryType === 'fixed' 
+            : ((op.salaryType === 'fixed' 
                 ? (op.fixedSalary || 0) 
-                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
         
         const overtimeCost = override.overtimeCost !== undefined && override.overtimeCost !== '' 
             ? Number(override.overtimeCost) 
@@ -287,6 +290,10 @@ export default function MonthlyReportPrintClient() {
                 const anticipiAmount = override.anticipiAmount !== undefined 
                     ? Number(override.anticipiAmount) 
                     : (summary?.anticipiAmount || 0);
+                const bonusAmount = (opVisibility.bonusAmount !== false && override.bonusAmount !== undefined && (override.bonusAmount as unknown) !== '')
+                    ? Number(override.bonusAmount)
+                    : 0;
+                const finalTotalWithBonus = totalDue + bonusAmount;
 
                 const periodText = format(currentMonth, 'MMMM yyyy', { locale: it }).toUpperCase();
                 let y = startY;
@@ -309,9 +316,10 @@ export default function MonthlyReportPrintClient() {
                 y += 6;
 
                 // Calcolo voci
-                const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
+                const festivitaCost = summary.festivitaCost || 0;
+                const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : ((op.salaryType === 'fixed' 
                     ? (op.fixedSalary || 0) 
-                    : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+                    : (summary.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
                 const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
                 const absenceDays = override.absenceDays !== undefined ? override.absenceDays : (summary?.absenceDays || 0);
                 const overtimeHours = override.overtimeHours !== undefined ? override.overtimeHours : (summary?.overtimeHours || 0);
@@ -354,7 +362,7 @@ export default function MonthlyReportPrintClient() {
                 doc.line(margin, y, pageWidth - margin, y);
                 y += 5;
 
-                // Sezione Totali e Anticipo
+                // Sezione Totali, Anticipo e Bonus
                 if (anticipiAmount > 0) {
                     doc.setFontSize(9);
                     doc.setTextColor(60, 60, 60);
@@ -363,17 +371,37 @@ export default function MonthlyReportPrintClient() {
                     doc.setFont('helvetica', 'bold');
                     doc.text(`Anticipo Erogato: - ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, margin, y + 4.5);
                     
-                    doc.setFontSize(13);
-                    doc.setFont('helvetica', 'bold');
-                    doc.setTextColor(0, 0, 0);
-                    doc.text(`NETTO A SALDO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3.5, { align: 'right' });
-                    y += 12;
+                    if (bonusAmount > 0) {
+                        doc.setFontSize(9.5);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} + BONUS DI ${bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 0.5, { align: 'right' });
+                        doc.setFontSize(13);
+                        doc.text(`PER UN TOTALE DI: ${finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 6, { align: 'right' });
+                        y += 14;
+                    } else {
+                        doc.setFontSize(13);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(`NETTO A SALDO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3.5, { align: 'right' });
+                        y += 12;
+                    }
                 } else {
-                    doc.setFontSize(13);
-                    doc.setFont('helvetica', 'bold');
-                    doc.setTextColor(0, 0, 0);
-                    doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3, { align: 'right' });
-                    y += 11;
+                    if (bonusAmount > 0) {
+                        doc.setFontSize(9.5);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} + BONUS DI ${bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 0.5, { align: 'right' });
+                        doc.setFontSize(13);
+                        doc.text(`PER UN TOTALE DI: ${finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 6, { align: 'right' });
+                        y += 13;
+                    } else {
+                        doc.setFontSize(13);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(`TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, y + 3, { align: 'right' });
+                        y += 11;
+                    }
                 }
 
                 // Dicitura quietanza ben staccata dal totale (spazi equilibrati)
@@ -382,8 +410,8 @@ export default function MonthlyReportPrintClient() {
                 doc.setFont('helvetica', 'italic');
                 doc.setTextColor(40, 40, 40);
                 const declarationText = anticipiAmount > 0
-                    ? `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma netta di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, calcolata a fronte di competenze totali maturate per ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} e detratto l'anticipo sullo stipendio di ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} già percepito. Rilascio pertanto integrale quietanza liberatoria.`
-                    : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
+                    ? `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma netta di ${finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, calcolata a fronte di competenze totali maturate per ${lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}${bonusAmount > 0 ? `, incluso un bonus di ${bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })},` : ''} e detratto l'anticipo sullo stipendio di ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} già percepito. Rilascio pertanto integrale quietanza liberatoria.`
+                    : `Io sottoscritto/a ${op.firstName} ${op.lastName}, dichiaro di aver ricevuto dal datore di lavoro la somma di ${finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}${bonusAmount > 0 ? ` (totale dovuto ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} più bonus di ${bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })})` : ''} a saldo del periodo ${format(currentMonth, 'MMMM yyyy', { locale: it })}, e di accettare integralmente gli importi indicati rilasciando ricevuta.`;
                 const splitDeclaration = doc.splitTextToSize(declarationText, pageWidth - margin * 2);
                 doc.text(splitDeclaration, margin, y);
                 y += (splitDeclaration.length * 4) + 16;
@@ -431,9 +459,14 @@ export default function MonthlyReportPrintClient() {
                     const anticipiAmount = override.anticipiAmount !== undefined 
                         ? Number(override.anticipiAmount) 
                         : (summary?.anticipiAmount || 0);
+                    const bonusAmount = (opVisibility.bonusAmount !== false && override.bonusAmount !== undefined && (override.bonusAmount as unknown) !== '')
+                        ? Number(override.bonusAmount)
+                        : 0;
+                    const finalTotalWithBonus = totalDue + bonusAmount;
 
                     const hasAnticipo = showAnticipiCompact && anticipiAmount > 0;
-                    const itemHeight = hasAnticipo ? 14 : 10;
+                    const hasBonus = bonusAmount > 0;
+                    const itemHeight = (hasAnticipo && hasBonus) ? 18 : (hasAnticipo || hasBonus) ? 14 : 10;
 
                     // Salto pagina se non c'è abbastanza spazio
                     if (y + itemHeight > pageHeight - margin - 5) {
@@ -452,8 +485,10 @@ export default function MonthlyReportPrintClient() {
                     const nameWidth = doc.getTextWidth(opFullName);
 
                     // Netto a destra
-                    const nettoStr = `NETTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
-                    doc.setFontSize(11);
+                    const nettoStr = hasBonus
+                        ? `TOTALE DOVUTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })} + BONUS DI ${bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`
+                        : `NETTO: ${totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
+                    doc.setFontSize(hasBonus ? 9.5 : 11);
                     doc.setFont('helvetica', 'bold');
                     doc.setTextColor(0, 0, 0);
                     doc.text(nettoStr, pageWidth - margin, y, { align: 'right' });
@@ -474,19 +509,29 @@ export default function MonthlyReportPrintClient() {
                         }
                     }
 
+                    let currentSubY = y;
+                    if (hasBonus) {
+                        currentSubY += 4.5;
+                        doc.setFontSize(11);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(`PER UN TOTALE DI: ${finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`, pageWidth - margin, currentSubY, { align: 'right' });
+                    }
+
                     // Anticipo sotto il netto se presente
                     if (hasAnticipo) {
+                        currentSubY += 4.5;
                         doc.setFontSize(8.5);
                         doc.setFont('helvetica', 'normal');
                         doc.setTextColor(80, 80, 80);
                         const anticipoStr = `- anticipo di ${anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`;
-                        doc.text(anticipoStr, pageWidth - margin, y + 4.5, { align: 'right' });
+                        doc.text(anticipoStr, pageWidth - margin, currentSubY, { align: 'right' });
                     }
 
                     // Riga divisoria sottile tra operatori
                     doc.setDrawColor(220, 220, 220);
                     doc.setLineWidth(0.2);
-                    const sepY = y + (hasAnticipo ? 8 : 5.5);
+                    const sepY = currentSubY + 4;
                     if (typeof (doc as any).setLineDashPattern === 'function') {
                         (doc as any).setLineDashPattern([1.5, 1.5], 0);
                         doc.line(margin, sepY, pageWidth - margin, sepY);
@@ -613,9 +658,10 @@ export default function MonthlyReportPrintClient() {
         const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
         const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
         
-        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
+        const festivitaCost = summary.festivitaCost || 0;
+        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : ((op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
-            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
 
         const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
         
@@ -628,6 +674,10 @@ export default function MonthlyReportPrintClient() {
         const anticipiAmount = override.anticipiAmount !== undefined 
             ? Number(override.anticipiAmount) 
             : (summary?.anticipiAmount || 0);
+        const bonusAmount = (opVisibility.bonusAmount !== false && override.bonusAmount !== undefined && (override.bonusAmount as unknown) !== '')
+            ? Number(override.bonusAmount)
+            : 0;
+        const finalTotalWithBonus = totalDue + bonusAmount;
 
         const ordinaryWorkedDaysDisplay = override.ordinaryWorkedDays !== undefined 
             ? override.ordinaryWorkedDays 
@@ -671,7 +721,7 @@ export default function MonthlyReportPrintClient() {
                     </tbody>
                 </table>
 
-                {/* 3. Totale & Detrazione Anticipi */}
+                {/* 3. Totale, Detrazione Anticipi e Bonus */}
                 <div className="pt-3 mt-3 border-t-2 border-black">
                     {anticipiAmount > 0 ? (
                         <div className="flex justify-between items-end gap-2">
@@ -679,13 +729,39 @@ export default function MonthlyReportPrintClient() {
                                 <div>Totale Competenze: <span className="font-semibold text-black">{lordoDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span></div>
                                 <div className="text-red-600 font-bold">Anticipo già percepito: - {anticipiAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</div>
                             </div>
-                            <div className="text-right font-black text-xl sm:text-2xl text-black">
-                                <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                            <div className="text-right text-black">
+                                {bonusAmount > 0 ? (
+                                    <div className="space-y-0.5">
+                                        <div className="font-bold text-xs sm:text-sm text-gray-800">
+                                            TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} + BONUS DI {bonusAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                        </div>
+                                        <div className="font-black text-xl sm:text-2xl text-black">
+                                            PER UN TOTALE DI: {finalTotalWithBonus.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="font-black text-xl sm:text-2xl">
+                                        <span>NETTO A SALDO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (
-                        <div className="text-right font-black text-xl sm:text-2xl text-black">
-                            <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                        <div className="text-right text-black">
+                            {bonusAmount > 0 ? (
+                                <div className="space-y-0.5">
+                                    <div className="font-bold text-xs sm:text-sm text-gray-800">
+                                        TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} + BONUS DI {bonusAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                    </div>
+                                    <div className="font-black text-xl sm:text-2xl text-black">
+                                        PER UN TOTALE DI: {finalTotalWithBonus.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="font-black text-xl sm:text-2xl">
+                                    <span>TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}</span>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -694,11 +770,11 @@ export default function MonthlyReportPrintClient() {
                 <div className="mt-10 sm:mt-12 italic text-gray-800 text-xs sm:text-[13px] leading-relaxed bg-gray-50/80 print:bg-transparent p-3.5 rounded border border-gray-200 print:border-gray-300">
                     {anticipiAmount > 0 ? (
                         <p>
-                            Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
+                            Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma netta di <span className="font-bold not-italic">{finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, a fronte di competenze totali maturate per <span className="font-bold not-italic">{lordoDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>{bonusAmount > 0 ? <> (incluso un bonus di <span className="font-bold not-italic">{bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>)</> : null} e detratto l'anticipo sullo stipendio di <span className="font-bold not-italic">{anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> già percepito. Rilascio pertanto piena quietanza liberatoria.
                         </p>
                     ) : (
                         <p>
-                            Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
+                            Io sottoscritto/a, <span className="font-bold not-italic">{op.firstName} {op.lastName}</span>, dichiaro di aver ricevuto dal datore di lavoro la somma di <span className="font-bold not-italic">{finalTotalWithBonus.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>{bonusAmount > 0 ? <> (totale dovuto <span className="font-bold not-italic">{totalDue.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span> più bonus di <span className="font-bold not-italic">{bonusAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>)</> : null} a saldo del periodo <span className="font-bold not-italic">{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>, e di accettare integralmente gli importi indicati rilasciando ricevuta.
                         </p>
                     )}
                 </div>
@@ -862,6 +938,10 @@ export default function MonthlyReportPrintClient() {
                                 const lordoDue = calculateLordoDue(op.id, op, summary, opVisibility);
                                 const totalDue = calculateTotalDue(op.id, op, summary, opVisibility);
                                 const anticipiAmount = override.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0);
+                                const bonusAmount = (opVisibility.bonusAmount !== false && override.bonusAmount !== undefined && (override.bonusAmount as unknown) !== '')
+                                    ? Number(override.bonusAmount)
+                                    : 0;
+                                const finalTotalWithBonus = totalDue + bonusAmount;
 
                                 return (
                                     <div key={op.id} className="compact-row text-base text-black pb-2.5 border-b border-dashed border-gray-300">
@@ -871,9 +951,20 @@ export default function MonthlyReportPrintClient() {
                                             </p>
                                             <div className="flex-1 border-b border-dotted border-gray-400 mb-1 min-w-[20px]"></div>
                                             <div className="text-right shrink-0">
-                                                <p className="font-bold text-base sm:text-lg text-black whitespace-nowrap">
-                                                    NETTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
-                                                </p>
+                                                {bonusAmount > 0 ? (
+                                                    <>
+                                                        <p className="font-bold text-xs sm:text-sm text-gray-800 whitespace-nowrap">
+                                                            TOTALE DOVUTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})} + BONUS DI {bonusAmount.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                                        </p>
+                                                        <p className="font-black text-base sm:text-lg text-black whitespace-nowrap">
+                                                            PER UN TOTALE DI: {finalTotalWithBonus.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                                        </p>
+                                                    </>
+                                                ) : (
+                                                    <p className="font-bold text-base sm:text-lg text-black whitespace-nowrap">
+                                                        NETTO: {totalDue.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})}
+                                                    </p>
+                                                )}
                                                 {showAnticipiCompact && anticipiAmount > 0 && (
                                                     <span className="text-xs text-gray-800 font-semibold block mt-0.5">
                                                         - anticipo di {anticipiAmount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}

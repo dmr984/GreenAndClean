@@ -66,11 +66,12 @@ export const calculateTotalDue = (
     
     const finalVisibility = visibilitySettings || {};
 
+    const festivitaCost = summary.festivitaCost || 0;
     const ordinaryCost = overrides?.ordinaryCost !== undefined 
         ? Number(overrides.ordinaryCost) 
-        : (op.salaryType === 'fixed' 
+        : ((op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
-            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
     
     const overtimeCost = overrides?.overtimeCost !== undefined 
         ? Number(overrides.overtimeCost) 
@@ -174,11 +175,12 @@ export const generateDetailedOperatorPdf = async (
         y = (doc as any).lastAutoTable.finalY + 3;
 
         // 3. Costs
+        const festivitaCost = summary.festivitaCost || 0;
         const ordinaryCost = overrides.ordinaryCost !== undefined 
             ? Number(overrides.ordinaryCost) 
-            : (op.salaryType === 'fixed' 
+            : ((op.salaryType === 'fixed' 
                 ? (op.fixedSalary || 0) 
-                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+                : (summary.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
                 
         const overtimeCost = overrides.overtimeCost !== undefined 
             ? Number(overrides.overtimeCost) 

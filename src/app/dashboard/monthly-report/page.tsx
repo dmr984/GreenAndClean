@@ -52,6 +52,7 @@ type ManualTotals = {
     permessoCost?: number;
     ferieCost?: number;
     absenceDays?: number | string;
+    bonusAmount?: number | string;
     [key: string]: any;
 };
 
@@ -70,6 +71,7 @@ type VisibilitySettings = {
     permessoCost: boolean;
     malattiaCost: boolean;
     anticipiAmount?: boolean;
+    bonusAmount?: boolean;
     compactMode: boolean;
 };
 
@@ -192,12 +194,19 @@ const MonthlyReportPage = () => {
                             permessoCost: true,
                             malattiaCost: true,
                             anticipiAmount: true,
+                            bonusAmount: true,
                             compactMode: false,
                         };
                         hasChanges = true;
-                    } else if (newVis[op.id].anticipiAmount === undefined) {
-                        newVis[op.id].anticipiAmount = true;
-                        hasChanges = true;
+                    } else {
+                        if (newVis[op.id].anticipiAmount === undefined) {
+                            newVis[op.id].anticipiAmount = true;
+                            hasChanges = true;
+                        }
+                        if (newVis[op.id].bonusAmount === undefined) {
+                            newVis[op.id].bonusAmount = true;
+                            hasChanges = true;
+                        }
                     }
                 });
                 return hasChanges ? newVis : prev;
@@ -354,9 +363,10 @@ const MonthlyReportPage = () => {
         
         if (!summary || !visibilitySettings) return 0;
         
-        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
+        const festivitaCost = summary.festivitaCost || 0;
+        const ordinaryCost = override.ordinaryCost !== undefined ? Number(override.ordinaryCost) : ((op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
-            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0));
+            : (summary.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
         
         const overtimeCost = override.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary.overtimeHours || 0) * (op.overtimeRate || 0);
         const ferieCost = override.ferieCost !== undefined ? Number(override.ferieCost) : summary.ferieCost || 0;
@@ -534,7 +544,7 @@ const MonthlyReportPage = () => {
             const currentSettings: VisibilitySettings = prev[operatorId] || {
                 ordinaryWorkedDays: true, showWorkedHours: true, ordinaryHours: true, overtimeHours: true, ferieDays: true,
                 permessoHours: true, malattiaDays: true, absenceDays: true, ordinaryCost: true,
-                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, anticipiAmount: true, compactMode: false,
+                overtimeCost: true, ferieCost: true, permessoCost: true, malattiaCost: true, anticipiAmount: true, bonusAmount: true, compactMode: false,
             };
             return {
                 ...prev,
@@ -558,6 +568,7 @@ const MonthlyReportPage = () => {
             case 'ferieCost': return 'Rettifica Totale Ferie (€)';
             case 'absenceDays': return 'Rettifica Assenze (giorni)';
             case 'anticipiAmount': return 'Rettifica Anticipo Stipendio (€)';
+            case 'bonusAmount': return 'Aggiungi / Modifica Bonus Mensile (€)';
             default: return 'Rettifica Valore';
         }
     }
@@ -732,9 +743,10 @@ const MonthlyReportPage = () => {
                                     const finalAbsenceDays = override?.absenceDays !== undefined ? override.absenceDays : summary?.absenceDays ?? 0;
                                     const finalOvertimeHours = override?.overtimeHours !== undefined ? override.overtimeHours : summary?.overtimeHours ?? 0;
 
-                                    const ordinaryCost = override?.ordinaryCost !== undefined ? Number(override.ordinaryCost) : (op.salaryType === 'fixed' 
+                                    const festivitaCost = summary?.festivitaCost || 0;
+                                    const ordinaryCost = override?.ordinaryCost !== undefined ? Number(override.ordinaryCost) : ((op.salaryType === 'fixed' 
                                         ? (op.fixedSalary || 0) 
-                                        : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0));
+                                        : (summary?.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost);
 
                                     const overtimeCost = override?.overtimeCost !== undefined ? Number(override.overtimeCost) : (summary?.overtimeHours || 0) * (op.overtimeRate || 0);
                                     const ferieCost = override?.ferieCost !== undefined ? Number(override.ferieCost) : summary?.ferieCost || 0;
@@ -783,35 +795,74 @@ const MonthlyReportPage = () => {
                                                                 <Trash2 className="h-3 w-3 mr-1" /> Ripristina
                                                             </Button>
                                                         )}
-                                                        <div className="flex flex-col items-end gap-1">
-                                                            <div className='font-bold text-lg flex items-center gap-2'>
-                                                                <Euro className="h-5 w-5" />
-                                                                <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
-                                                                    {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                </span>
-                                                                <Button 
-                                                                    variant="ghost" 
-                                                                    size="icon" 
-                                                                    className="h-6 w-6 ml-1" 
-                                                                    onClick={() => {
-                                                                        setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
-                                                                        setTotalContent(String(totalDue));
-                                                                    }}
-                                                                >
-                                                                    <Pencil className="h-3 w-3" />
-                                                                </Button>
-                                                            </div>
-                                                            {!isCompact && (
-                                                                <div className="text-right">
-                                                                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Totale Dovuto</span>
-                                                                    {((override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0)) > 0) && (
-                                                                        <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold block">
-                                                                            (al netto di € {(override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0)).toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className={cn(
+                                                                "h-8 text-xs font-bold gap-1",
+                                                                (override?.bonusAmount !== undefined && Number(override.bonusAmount) > 0)
+                                                                    ? "border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                                                    : "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400"
+                                                            )}
+                                                            onClick={() => {
+                                                                const currentBonus = override?.bonusAmount !== undefined ? override.bonusAmount : '';
+                                                                setEditingTotal({ operatorId: op.id, type: 'bonusAmount', currentValue: currentBonus });
+                                                                setTotalContent(String(currentBonus));
+                                                            }}
+                                                        >
+                                                            <Plus className="h-3.5 w-3.5" />
+                                                            {(override?.bonusAmount !== undefined && Number(override.bonusAmount) > 0)
+                                                                ? `Bonus: € ${Number(override.bonusAmount).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                                : 'Bonus'}
+                                                        </Button>
+                                                        {(() => {
+                                                            const bonusAmount = (opVisibility.bonusAmount !== false && override?.bonusAmount !== undefined && override.bonusAmount !== '')
+                                                                ? Number(override.bonusAmount)
+                                                                : 0;
+                                                            const finalTotalWithBonus = totalDue + bonusAmount;
+                                                            return (
+                                                                <div className="flex flex-col items-end gap-1">
+                                                                    <div className='font-bold text-lg flex items-center gap-2'>
+                                                                        <Euro className="h-5 w-5" />
+                                                                        <span className={cn(override?.totalDueOverride !== undefined && "text-primary underline decoration-dotted")}>
+                                                                            {finalTotalWithBonus.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                         </span>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="icon" 
+                                                                            className="h-6 w-6 ml-1" 
+                                                                            onClick={() => {
+                                                                                setEditingTotal({ operatorId: op.id, type: 'totalDueOverride', currentValue: totalDue });
+                                                                                setTotalContent(String(totalDue));
+                                                                            }}
+                                                                        >
+                                                                            <Pencil className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                    {!isCompact && (
+                                                                        <div className="text-right">
+                                                                            {bonusAmount > 0 ? (
+                                                                                <div className="text-[11px] leading-tight space-y-0.5">
+                                                                                    <span className="text-muted-foreground font-semibold block">
+                                                                                        Totale dovuto: € {totalDue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Bonus di € {bonusAmount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                    </span>
+                                                                                    <span className="text-emerald-700 dark:text-emerald-400 font-bold block">
+                                                                                        Per un totale di: € {finalTotalWithBonus.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Totale Dovuto</span>
+                                                                            )}
+                                                                            {((override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0)) > 0) && (
+                                                                                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold block">
+                                                                                    (al netto di € {(override?.anticipiAmount !== undefined ? Number(override.anticipiAmount) : (summary?.anticipiAmount || 0)).toLocaleString('it-IT', { minimumFractionDigits: 2 })} di anticipi)
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     )}
                                                                 </div>
-                                                            )}
-                                                        </div>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </CardHeader>
@@ -846,6 +897,17 @@ const MonthlyReportPage = () => {
                                                             currentRawValue={override?.anticipiAmount !== undefined ? override.anticipiAmount : (summary?.anticipiAmount || 0)} 
                                                         />
                                                     )}
+                                                    {(override?.bonusAmount !== undefined && Number(override.bonusAmount) > 0) && (
+                                                        <InfoCard 
+                                                            opId={op.id} 
+                                                            title="Bonus Mensile" 
+                                                            value={`+ ${Number(override.bonusAmount).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}`} 
+                                                            icon={Plus} 
+                                                            visibilityKey="bonusAmount" 
+                                                            editKey="bonusAmount" 
+                                                            currentRawValue={override.bonusAmount} 
+                                                        />
+                                                    )}
                                                 </CardContent>
                                             )}
                                         </Card>
@@ -868,11 +930,15 @@ const MonthlyReportPage = () => {
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="total-content" className="capitalize">
-                        {editingTotal?.type === 'totalDueOverride' ? 'Nuovo Totale Dovuto (€)' : `Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}
+                        {editingTotal?.type === 'totalDueOverride'
+                            ? 'Nuovo Totale Dovuto (€)'
+                            : editingTotal?.type === 'bonusAmount'
+                            ? 'Importo Bonus (€) (lascia vuoto o 0 per rimuovere)'
+                            : `Totale ${editingTotal?.type.replace('Days', ' (giorni)').replace('Hours', ' (ore)')}`}
                     </Label>
                     <Input
                         id="total-content"
-                        type={editingTotal?.type.toLowerCase().includes('cost') || editingTotal?.type === 'totalDueOverride' ? 'number' : 'text'}
+                        type={editingTotal?.type.toLowerCase().includes('cost') || editingTotal?.type === 'totalDueOverride' || editingTotal?.type === 'bonusAmount' ? 'number' : 'text'}
                         value={totalContent}
                         onChange={(e) => setTotalContent(e.target.value)}
                         placeholder="Inserisci il valore..."

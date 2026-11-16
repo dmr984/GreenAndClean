@@ -217,14 +217,15 @@ export default function PrintClient() {
     const permessoCost = monthlySummary.permessoCost || 0;
     const malattiaCost = monthlySummary.malattiaCost || 0;
     const anticipiAmount = monthlySummary.anticipiAmount || 0;
+    const festivitaCost = monthlySummary.festivitaCost || 0;
     let totalDue: number;
     let ordinaryCost: number;
 
     if (operator?.salaryType === 'fixed') {
-        ordinaryCost = operator.fixedSalary || 0;
+        ordinaryCost = (operator.fixedSalary || 0) + festivitaCost;
         totalDue = Math.max(0, ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost - anticipiAmount);
     } else {
-        ordinaryCost = finalOrdinaryHours * (operator?.hourlyRate || 0);
+        ordinaryCost = (finalOrdinaryHours * (operator?.hourlyRate || 0)) + festivitaCost;
         totalDue = Math.max(0, ordinaryCost + overtimeCost + malattiaCost + ferieCost + permessoCost - anticipiAmount);
     }
 

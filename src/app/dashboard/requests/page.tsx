@@ -65,7 +65,8 @@ export default function RequestsPage() {
         );
 
         const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
+            const rawData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Request[];
+            const data = rawData.filter(r => (r.type as string) !== 'festivita' && (r.type as string) !== 'assenza');
             setRequests(data);
             setIsLoadingData(false);
 

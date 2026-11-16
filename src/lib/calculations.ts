@@ -107,12 +107,14 @@ type Timbratura = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza' | 'anticipo';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza' | 'anticipo' | 'festivita';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
     amount?: number;
+    isPaid?: boolean;
+    festivitaSubType?: 'goduta' | 'non_goduta';
     deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
@@ -187,6 +189,7 @@ export type MonthlySummary = {
     isPermessoDeductedFromOvertime?: boolean;
     totalDueOverride?: number;
     anticipiAmount?: number;
+    festivitaCost?: number;
 };
 
 export const roundOrdinaryHours = (minutes: number): number => {
@@ -1047,6 +1050,23 @@ export const processMonthlyData = (
         }
     });
 
+    let totalFestivitaCost = 0;
+    data.requests.forEach(req => {
+        if (req.status !== 'approvato' || req.type !== 'festivita') return;
+        if (req.isPaid === false) return;
+        const reqDate = toSafeDate(req.startDate);
+        if (!reqDate || !isWithinInterval(reqDate, monthInterval)) return;
+        const dateStr = format(reqDate, 'yyyy-MM-dd');
+        if (req.amount !== undefined && req.amount !== null) {
+            totalFestivitaCost += Number(req.amount) || 0;
+        } else if (req.dailyCosts && req.dailyCosts[dateStr] !== undefined) {
+            totalFestivitaCost += Number(req.dailyCosts[dateStr]) || 0;
+        } else {
+            const h = req.hours !== undefined ? Number(req.hours) : 1;
+            totalFestivitaCost += h * (operator.hourlyRate || 0);
+        }
+    });
+
     const totalPermessoHours = data.requests
         .filter(r => {
             if (r.status !== 'approvato' || r.type !== 'permesso') return false;
@@ -1179,6 +1199,7 @@ export const processMonthlyData = (
         permessoCost: totalPermessoCost, ferieDays, ferieHours,
         permessoHours: totalPermessoHours, malattiaDays, malattiaCost: totalMalattiaCost,
         festiveHours,
+        festivitaCost: totalFestivitaCost,
         estimatedTotalCost: 0, // Will calculate below
         expectedMonthlyHours,
         netExpectedHours,
@@ -1243,9 +1264,9 @@ export const processMonthlyData = (
     }
 
     if (operator.salaryType === 'fixed' && operator.fixedSalary) {
-        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
+        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost + totalFestivitaCost;
     } else {
-        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
+        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost + totalFestivitaCost;
     }
 
     // Calcolo e detrazione anticipi sullo stipendio del mese

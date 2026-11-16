@@ -289,9 +289,10 @@ const OperatorCalculationsPage = () => {
         if (!summary || !visibilitySettings) return 0;
         const summaryData = (summary as any).summary || summary; // Handle both old and new format during transition
         
+        const festivitaCost = summaryData.festivitaCost || 0;
         const ordinaryCost = (op.salaryType === 'fixed' 
             ? (op.fixedSalary || 0) 
-            : (summaryData.ordinaryHours || 0) * (op.hourlyRate || 0));
+            : (summaryData.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost;
         
         const overtimeCost = (summaryData.overtimeHours || 0) * (op.overtimeRate || 0);
         const ferieCost = summaryData.ferieCost || 0;
@@ -579,9 +580,10 @@ const OperatorCalculationsPage = () => {
                                 const finalPermessoHours = override?.permessoHours ?? summaryData?.permessoHours ?? 0;
                                 const finalMalattiaDays = override?.malattiaDays ?? summaryData?.malattiaDays ?? 0;
 
+                                const festivitaCost = summaryData?.festivitaCost || 0;
                                 const ordinaryCost = (op.salaryType === 'fixed' 
                                     ? (op.fixedSalary || 0) 
-                                    : (summaryData?.ordinaryHours || 0) * (op.hourlyRate || 0));
+                                    : (summaryData?.ordinaryHours || 0) * (op.hourlyRate || 0)) + festivitaCost;
 
                                 const overtimeCost = (summaryData?.overtimeHours || 0) * (op.overtimeRate || 0);
                                 const ferieCost = summaryData?.ferieCost || 0;
