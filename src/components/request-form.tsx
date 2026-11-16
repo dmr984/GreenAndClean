@@ -40,15 +40,17 @@ type WorkSchedule = {
 type Operator = {
     workSchedule?: WorkSchedule;
     scheduleType?: 'daily' | 'weekly' | 'monthly';
+    hourlyRate?: number;
 };
 
 
 // 1. Define Zod schema
 const requestSchema = z.object({
-  requestType: z.enum(['ferie', 'permesso', 'malattia', 'assenza', 'anticipo'], { required_error: 'Devi selezionare un tipo.' }),
+  requestType: z.enum(['ferie', 'permesso', 'malattia', 'assenza', 'anticipo', 'festivita'], { required_error: 'Devi selezionare un tipo.' }),
   selectedDates: z.array(z.date()).nonempty({ message: 'Devi selezionare almeno un giorno.' }),
   hours: z.string().optional(),
   amount: z.string().optional(),
+  festivitaSubType: z.enum(['goduta', 'non_goduta']).optional(),
   deductFromOvertime: z.boolean().optional(),
   reason: z.string().optional(),
 });
@@ -152,13 +154,14 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
         path: ['amount'],
     });
 
-    const { control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<RequestFormValues>({
+    const { control, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<RequestFormValues>({
         resolver: zodResolver(refinedRequestSchema),
         defaultValues: {
             requestType: undefined,
             selectedDates: [],
             hours: '',
             amount: '',
+            festivitaSubType: 'goduta',
             deductFromOvertime: false,
             reason: '',
         }
@@ -166,9 +169,22 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
 
     const selectedType = watch('requestType');
     const selectedDatesValue = watch('selectedDates');
+
+    useEffect(() => {
+        if (selectedType === 'festivita' && operator) {
+            let defH = 8;
+            if (operator.workSchedule) {
+                const wh = Object.values(operator.workSchedule).map(s => s?.totalHours || 0).filter(h => h > 0);
+                if (wh.length > 0) defH = wh[0];
+            }
+            const rate = operator.hourlyRate || 0;
+            setValue('hours', String(defH));
+            setValue('amount', (defH * rate).toFixed(2));
+        }
+    }, [selectedType, operator, setValue]);
     
     const isDayDisabled = (day: Date): boolean => {
-        if (selectedType === 'anticipo') return false;
+        if (selectedType === 'anticipo' || selectedType === 'festivita') return false;
         if (role === 'operator' && day < startOfDay(new Date())) return true;
         if (bookedDays.some(bookedDay => isSameDay(day, bookedDay))) return true;
 
@@ -188,16 +204,20 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
         const requestCollectionRef = collection(firestore, `app-users/${userId}/requests`);
 
         data.selectedDates.forEach(date => {
-            const newDocRef = doc(requestCollectionRef);
+            const dateStr = format(date, 'yyyy-MM-dd');
+            const newDocRef = data.requestType === 'festivita'
+                ? doc(firestore, `app-users/${userId}/requests`, `festivita_${dateStr}`)
+                : doc(requestCollectionRef);
+            const isSilentType = data.requestType === 'malattia' || data.requestType === 'assenza' || data.requestType === 'anticipo';
             const newRequestData: any = {
                 userId: userId,
                 type: data.requestType,
                 status: (role === 'admin' && (data.requestType === 'assenza' || data.requestType === 'anticipo')) ? 'approvato' : ('in_attesa' as const),
                 startDate: Timestamp.fromDate(startOfDay(date)),
                 endDate: Timestamp.fromDate(startOfDay(date)),
-                reason: data.reason || (data.requestType === 'anticipo' ? 'Anticipo stipendio erogato' : ""),
+                reason: data.reason || (data.requestType === 'anticipo' ? 'Anticipo stipendio erogato' : data.requestType === 'festivita' ? 'Festività inserita manualmente' : ""),
                 createdAt: serverTimestamp(),
-                viewedByOperator: role === 'admin' ? false : true,
+                viewedByOperator: (role === 'admin' && !isSilentType) ? false : true,
             };
 
             if (data.requestType === 'permesso') {
@@ -206,7 +226,18 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
             }
             if (data.requestType === 'anticipo') {
                 newRequestData.amount = parseFloat(data.amount || '0');
-                newRequestData.dailyCosts = { [format(date, 'yyyy-MM-dd')]: parseFloat(data.amount || '0') };
+                newRequestData.dailyCosts = { [dateStr]: parseFloat(data.amount || '0') };
+            }
+            if (data.requestType === 'festivita') {
+                const h = Number(data.hours) || 1;
+                const amt = data.amount !== undefined && data.amount !== '' ? parseFloat(data.amount) : (h * (operator?.hourlyRate || 0));
+                newRequestData.hours = h;
+                newRequestData.amount = amt;
+                newRequestData.isPaid = amt > 0;
+                newRequestData.festivitaSubType = data.festivitaSubType || 'goduta';
+                newRequestData.showToOperator = true;
+                newRequestData.dailyCosts = { [dateStr]: amt };
+                newRequestData.viewedByOperator = true;
             }
             batch.set(newDocRef, newRequestData);
         });
@@ -256,6 +287,7 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                                     {role === 'admin' && <SelectItem value="malattia">Malattia</SelectItem>}
                                     {role === 'admin' && <SelectItem value="assenza">Assenza</SelectItem>}
                                     {role === 'admin' && <SelectItem value="anticipo">Anticipo Stipendio</SelectItem>}
+                                    {role === 'admin' && <SelectItem value="festivita">🎉 Festività</SelectItem>}
                                 </SelectContent>
                             </Select>
                             {errors.requestType && <p className="text-xs text-destructive mt-1">{errors.requestType.message}</p>}
@@ -384,6 +416,80 @@ export function RequestForm({ userId, onFinished, role }: RequestFormProps) {
                         )}
                     />
                 </div>
+            )}
+
+            {/* Fields for Festività */}
+            {(selectedType === 'festivita') && (
+                <>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label className="text-right">Tipologia</Label>
+                        <Controller
+                            name="festivitaSubType"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="col-span-3">
+                                    <Select onValueChange={field.onChange} defaultValue={field.value || 'goduta'}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleziona tipologia" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="goduta">🏖️ Festività Goduta</SelectItem>
+                                            <SelectItem value="non_goduta">💼 Festività Non Goduta</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                        />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="fest-hours" className="text-right">Ore</Label>
+                        <Controller
+                            name="hours"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="col-span-3">
+                                    <Input
+                                        id="fest-hours"
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        value={field.value || ''}
+                                        onChange={(e) => {
+                                            field.onChange(e.target.value);
+                                            const h = parseFloat(e.target.value) || 0;
+                                            const rate = operator?.hourlyRate || 0;
+                                            setValue('amount', (h * rate).toFixed(2));
+                                        }}
+                                        placeholder="Es: 8"
+                                    />
+                                </div>
+                            )}
+                        />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="fest-amount" className="text-right font-bold text-emerald-700">Importo (€)</Label>
+                        <Controller
+                            name="amount"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="col-span-3 flex flex-col">
+                                    <Input
+                                        id="fest-amount"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        {...field}
+                                        value={field.value || ''}
+                                        placeholder="Es: 60.00"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Verrà generata la richiesta in sospeso con questo importo (modificabile anche in approvazione).
+                                    </p>
+                                </div>
+                            )}
+                        />
+                    </div>
+                </>
             )}
 
             {/* Reason */}

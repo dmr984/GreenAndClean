@@ -3054,7 +3054,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
             
             const singleUpdateData: Record<string, any> = {
                 status: 'approvato',
-                viewedByOperator: request.type === 'festivita' ? true : false,
+                viewedByOperator: (request.type === 'festivita' || request.type === 'malattia') ? true : false,
                 dailyCosts,
                 isPaid
             };
@@ -3068,7 +3068,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
             const typeLabel = request.type.charAt(0).toUpperCase() + request.type.slice(1);
             const dateStr = format(start, 'dd MMMM', { locale: it });
-            if (shouldNotify && request.type !== 'anticipo' && request.type !== 'festivita') {
+            if (shouldNotify && request.type !== 'anticipo' && request.type !== 'festivita' && request.type !== 'malattia') {
                 sendNotificationToOperator(firestore, operator.id, {
                     type: 'request_approved',
                     title: `Richiesta ${typeLabel} Approvata ✅`,
@@ -3143,7 +3143,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
                 const batchUpdateData: Record<string, any> = {
                     status: 'approvato',
-                    viewedByOperator: req.type === 'festivita' ? true : false,
+                    viewedByOperator: (req.type === 'festivita' || req.type === 'malattia') ? true : false,
                     dailyCosts,
                     isPaid: isPaidForApproval
                 };
@@ -3157,11 +3157,12 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
             await batch.commit();
 
-            if (shouldNotify) {
+            const notifiableReqs = reqsToApprove.filter(r => r.type !== 'malattia' && r.type !== 'anticipo' && r.type !== 'festivita');
+            if (shouldNotify && notifiableReqs.length > 0) {
                 sendNotificationToOperator(firestore, operator.id, {
                     type: 'request_approved',
-                    title: `Richieste Approvate (${reqsToApprove.length}) ✅`,
-                    body: `${reqsToApprove.length} richieste (${isPaidForApproval ? 'retribuite' : 'non retribuite'}) sono state approvate dall'amministratore.`,
+                    title: `Richieste Approvate (${notifiableReqs.length}) ✅`,
+                    body: `${notifiableReqs.length} richieste (${isPaidForApproval ? 'retribuite' : 'non retribuite'}) sono state approvate dall'amministratore.`,
                     variables: {
                         data: format(new Date(), 'dd MMMM', { locale: it }),
                         operatore: `${operator.firstName} ${operator.lastName}`.trim(),
@@ -5861,6 +5862,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                         <SelectItem value="malattia">Malattia</SelectItem>
                                         <SelectItem value="permesso">Permesso</SelectItem>
                                         <SelectItem value="assenza">Assenza</SelectItem>
+                                        <SelectItem value="festivita">🎉 Festività</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -5927,24 +5929,38 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
                     <AlertDialogFooter className="flex-col sm:flex-row gap-2">
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
-                        <Button 
-                            variant="outline" 
-                            onClick={() => { 
-                                if (requestToApprove) handleApproveRequest(requestToApprove, false, isPaidForApproval); 
-                                setRequestToApprove(null); 
-                            }}
-                        >
-                            Approva Senza Notificare
-                        </Button>
-                        <AlertDialogAction 
-                            onClick={() => { 
-                                if (requestToApprove) handleApproveRequest(requestToApprove, true, isPaidForApproval); 
-                                setRequestToApprove(null); 
-                            }} 
-                            className="gap-1.5"
-                        >
-                            <Bell className="h-4 w-4" /> Approva e Invia Notifica
-                        </AlertDialogAction>
+                        {requestToApprove?.type === 'malattia' ? (
+                            <AlertDialogAction 
+                                onClick={() => { 
+                                    if (requestToApprove) handleApproveRequest(requestToApprove, false, isPaidForApproval); 
+                                    setRequestToApprove(null); 
+                                }} 
+                                className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                            >
+                                <CheckCircle className="h-4 w-4" /> Approva Malattia
+                            </AlertDialogAction>
+                        ) : (
+                            <>
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => { 
+                                        if (requestToApprove) handleApproveRequest(requestToApprove, false, isPaidForApproval); 
+                                        setRequestToApprove(null); 
+                                    }}
+                                >
+                                    Approva Senza Notificare
+                                </Button>
+                                <AlertDialogAction 
+                                    onClick={() => { 
+                                        if (requestToApprove) handleApproveRequest(requestToApprove, true, isPaidForApproval); 
+                                        setRequestToApprove(null); 
+                                    }} 
+                                    className="gap-1.5"
+                                >
+                                    <Bell className="h-4 w-4" /> Approva e Invia Notifica
+                                </AlertDialogAction>
+                            </>
+                        )}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -5983,24 +5999,40 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
                     <AlertDialogFooter className="flex-col sm:flex-row gap-2">
                         <AlertDialogCancel disabled={isBatchApproving}>Annulla</AlertDialogCancel>
-                        <Button
-                            variant="outline"
-                            disabled={isBatchApproving}
-                            onClick={() => handleBatchApprove(false)}
-                        >
-                            Approva Senza Notificare
-                        </Button>
-                        <AlertDialogAction
-                            disabled={isBatchApproving}
-                            onClick={(e) => {
-                                e.preventDefault();
-                                handleBatchApprove(true);
-                            }}
-                            className="gap-1.5"
-                        >
-                            {isBatchApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
-                            Approva e Invia Notifiche
-                        </AlertDialogAction>
+                        {pendingRequests.filter(r => selectedRequestIds.has(r.id)).every(r => r.type === 'malattia') ? (
+                            <AlertDialogAction
+                                disabled={isBatchApproving}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    handleBatchApprove(false);
+                                }}
+                                className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                            >
+                                {isBatchApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                Approva Malattie Selezionate
+                            </AlertDialogAction>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    disabled={isBatchApproving}
+                                    onClick={() => handleBatchApprove(false)}
+                                >
+                                    Approva Senza Notificare
+                                </Button>
+                                <AlertDialogAction
+                                    disabled={isBatchApproving}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        handleBatchApprove(true);
+                                    }}
+                                    className="gap-1.5"
+                                >
+                                    {isBatchApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+                                    Approva e Invia Notifiche
+                                </AlertDialogAction>
+                            </>
+                        )}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
