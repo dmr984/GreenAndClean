@@ -885,9 +885,10 @@ export default function BossMonitorApp() {
       }
     });
 
-    // 4. Richieste del mese
+    // 4. Richieste del mese (escluse festività e anticipi che sono interni admin)
     detailRequests.forEach((req) => {
       if (!req.startDate?.toDate) return;
+      if (req.type === 'festivita' || req.type === 'anticipo') return;
       const d = req.startDate.toDate();
       const key = format(d, 'yyyy-MM-dd');
       if (map.has(key)) {
@@ -1855,9 +1856,9 @@ export default function BossMonitorApp() {
                   ) : null}
 
                   {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO, ASSENZA) */}
-                  {row.requests.filter(req => req.type !== 'anticipo').length > 0 && (
+                  {row.requests.filter(req => req.type !== 'anticipo' && req.type !== 'festivita').length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
-                      {row.requests.filter(req => req.type !== 'anticipo').map((req, qIdx) => (
+                      {row.requests.filter(req => req.type !== 'anticipo' && req.type !== 'festivita').map((req, qIdx) => (
                         <span
                           key={qIdx}
                           className={`px-2 py-0.5 rounded-md font-semibold ${

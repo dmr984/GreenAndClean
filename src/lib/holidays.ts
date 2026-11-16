@@ -1,4 +1,4 @@
-import { format, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
 
 // Note: Easter and Easter Monday are calculated dynamically.
 // Other holidays are fixed. This list includes major Italian public holidays.
@@ -23,27 +23,32 @@ const getEasterSunday = (year: number): Date => {
     return new Date(year, month - 1, day);
 };
 
-const generateHolidaysForYear = (year: number): Date[] => {
+export interface HolidayInfo {
+    date: Date;
+    name: string;
+}
+
+const generateHolidaysForYear = (year: number): HolidayInfo[] => {
     const easterSunday = getEasterSunday(year);
     const easterMonday = new Date(easterSunday);
     easterMonday.setDate(easterSunday.getDate() + 1);
 
     return [
         // Fixed holidays
-        new Date(year, 0, 1),   // Capodanno
-        new Date(year, 0, 6),   // Epifania
-        new Date(year, 3, 25),  // Festa della Liberazione
-        new Date(year, 4, 1),   // Festa dei Lavoratori
-        new Date(year, 5, 2),   // Festa della Repubblica
-        new Date(year, 7, 15),  // Ferragosto
-        new Date(year, 10, 1),  // Ognissanti
-        new Date(year, 11, 8),  // Immacolata Concezione
-        new Date(year, 11, 25), // Natale
-        new Date(year, 11, 26), // Santo Stefano
+        { date: new Date(year, 0, 1), name: 'Capodanno' },
+        { date: new Date(year, 0, 6), name: 'Epifania' },
+        { date: new Date(year, 3, 25), name: 'Festa della Liberazione' },
+        { date: new Date(year, 4, 1), name: 'Festa dei Lavoratori' },
+        { date: new Date(year, 5, 2), name: 'Festa della Repubblica' },
+        { date: new Date(year, 7, 15), name: 'Ferragosto' },
+        { date: new Date(year, 10, 1), name: 'Tutti i Santi (Ognissanti)' },
+        { date: new Date(year, 11, 8), name: 'Immacolata Concezione' },
+        { date: new Date(year, 11, 25), name: 'Natale' },
+        { date: new Date(year, 11, 26), name: 'Santo Stefano' },
 
         // Dynamic holidays
-        easterSunday,
-        easterMonday,
+        { date: easterSunday, name: 'Pasqua' },
+        { date: easterMonday, name: "Lunedì dell'Angelo (Pasquetta)" },
     ];
 };
 
@@ -51,11 +56,24 @@ const generateHolidaysForYear = (year: number): Date[] => {
 const years = Array.from({ length: 27 }, (_, i) => 2024 + i); // 2024 to 2050
 const allHolidays = years.flatMap(year => generateHolidaysForYear(year));
 
-// Use YYYY-MM-DD format for efficient and timezone-safe lookup
-const holidaySet = new Set(
-    allHolidays.map(d => format(d, 'yyyy-MM-dd'))
+// Map YYYY-MM-DD -> Holiday Name
+const holidayMap = new Map<string, string>(
+    allHolidays.map(h => [format(h.date, 'yyyy-MM-dd'), h.name])
 );
 
 export const isPublicHoliday = (date: Date): boolean => {
-    return holidaySet.has(format(date, 'yyyy-MM-dd'));
+    return holidayMap.has(format(date, 'yyyy-MM-dd'));
+};
+
+export const getHolidayName = (date: Date): string | null => {
+    return holidayMap.get(format(date, 'yyyy-MM-dd')) || null;
+};
+
+export const getHolidaysInInterval = (start: Date, end: Date): HolidayInfo[] => {
+    const sTime = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    const eTime = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999).getTime();
+    return allHolidays.filter(h => {
+        const t = h.date.getTime();
+        return t >= sTime && t <= eTime;
+    });
 };

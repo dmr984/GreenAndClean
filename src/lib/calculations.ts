@@ -27,6 +27,33 @@ export const parseEmploymentStartDate = (val: any): Date | undefined => {
     return undefined;
 };
 
+// Helper to safely convert any date/timestamp representation to Date
+export const toSafeDate = (val: any): Date | undefined => {
+    if (!val) return undefined;
+    if (typeof val.toDate === 'function') {
+        try { 
+            const d = val.toDate();
+            return isNaN(d.getTime()) ? undefined : d;
+        } catch (e) { 
+            return undefined; 
+        }
+    }
+    if (val instanceof Date) return isNaN(val.getTime()) ? undefined : val;
+    if (typeof val === 'string') {
+        const d = new Date(val.includes('T') ? val : val + 'T00:00:00');
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    if (typeof val === 'number') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    if (val.seconds !== undefined) {
+        const d = new Date(val.seconds * 1000);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+    return undefined;
+};
+
 // Type Definitions
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 const dayIndexToName: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -80,12 +107,14 @@ type Timbratura = {
 
 type Request = {
     id: string;
-    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza' | 'anticipo';
+    type: 'ferie' | 'permesso' | 'malattia' | 'straordinario' | 'recupero_straordinari' | 'assenza' | 'anticipo' | 'festivita';
     status: 'approvato';
     startDate: Timestamp;
     endDate: Timestamp;
     hours?: number;
     amount?: number;
+    isPaid?: boolean;
+    festivitaSubType?: 'goduta' | 'non_goduta';
     deductFromOvertime?: boolean;
     associatedShiftId?: string;
     dailyCosts?: { [date: string]: number };
@@ -160,6 +189,7 @@ export type MonthlySummary = {
     isPermessoDeductedFromOvertime?: boolean;
     totalDueOverride?: number;
     anticipiAmount?: number;
+    festivitaCost?: number;
 };
 
 export const roundOrdinaryHours = (minutes: number): number => {
@@ -793,31 +823,71 @@ export const processMonthlyData = (
     });
 
     detailsMap.forEach(detail => {
-        const leaveRequest = data.requests.find(r => (r.type === 'ferie' || r.type === 'malattia') && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
+        const detailSchedule = getScheduleForDate(operator, detail.date);
+
+        const leaveRequest = data.requests.find(r => {
+            if (r.type !== 'ferie' && r.type !== 'malattia') return false;
+            const s = toSafeDate(r.startDate);
+            const e = toSafeDate(r.endDate) || s;
+            if (!s || !e) return false;
+            return isWithinInterval(detail.date, { start: startOfDay(s), end: dateFnsEndOfDay(e) });
+        });
         if (leaveRequest) {
             detail.status = leaveRequest.type as 'ferie' | 'malattia';
             detail.request = leaveRequest;
             detail.shift = null;
         }
 
-        const assenzaRequest = data.requests.find(r => r.type === 'assenza' && r.status === 'approvato' && isWithinInterval(detail.date, { start: startOfDay(r.startDate.toDate()), end: dateFnsEndOfDay(r.endDate.toDate()) }));
+        const assenzaRequest = data.requests.find(r => {
+            if (r.type !== 'assenza' || r.status !== 'approvato' || r.deductFromOvertime) return false;
+            const s = toSafeDate(r.startDate);
+            const e = toSafeDate(r.endDate) || s;
+            if (!s || !e) return false;
+            return isWithinInterval(detail.date, { start: startOfDay(s), end: dateFnsEndOfDay(e) });
+        });
         if (assenzaRequest && !detail.shift) {
             detail.status = 'mancata_timbratura';
             detail.request = assenzaRequest;
             detail.shift = null;
         }
 
-        const dayReqs = data.requests.filter(r => r.status === 'approvato' && (r.type === 'permesso' || r.type === 'recupero_straordinari') && isSameDay(r.startDate.toDate(), detail.date));
+        const dayReqs = data.requests.filter(r => {
+            if (r.status !== 'approvato') return false;
+            const isMatch = r.type === 'permesso' || r.type === 'recupero_straordinari' || (r.type === 'assenza' && r.deductFromOvertime === true);
+            if (!isMatch) return false;
+            const s = toSafeDate(r.startDate || (r as any).date);
+            return s ? isSameDay(s, detail.date) : false;
+        });
         const effectivePermissionHours = dayReqs.filter(r => r.type === 'permesso' && !r.deductFromOvertime).reduce((max, r) => Math.max(max, r.hours || 0), 0);
-        const deductPermissi = data.requests.filter(r => r.status === 'approvato' && (r.type === 'recupero_straordinari' || (r.type === 'permesso' && r.deductFromOvertime === true)) && isSameDay(r.startDate.toDate(), detail.date));
+        const deductPermissi = data.requests.filter(r => {
+            if (r.status !== 'approvato') return false;
+            const isDeduct = r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true);
+            if (!isDeduct) return false;
+            const s = toSafeDate(r.startDate || (r as any).date);
+            return s ? isSameDay(s, detail.date) : false;
+        });
         const deductHours = deductPermissi.reduce((sum, r) => sum + (r.hours || 0), 0);
 
-        if (detail.shift) {
-            detail.shift.permissionHours = effectivePermissionHours;
-            detail.shift.recuperoHours = deductHours;
-            if (deductHours > 0) {
+        if (deductHours > 0) {
+            if (!detail.shift) {
+                detail.status = 'recupero_effettuato';
+                detail.shift = {
+                    events: [],
+                    allShifts: [],
+                    contractualHours: detailSchedule?.totalHours || deductHours,
+                    ordinaryHours: deductHours,
+                    overtimeHours: 0,
+                    permissionHours: effectivePermissionHours,
+                    recuperoHours: deductHours,
+                };
+            } else {
+                detail.shift.permissionHours = effectivePermissionHours;
+                detail.shift.recuperoHours = deductHours;
                 detail.shift.ordinaryHours += deductHours;
             }
+        } else if (detail.shift) {
+            detail.shift.permissionHours = effectivePermissionHours;
+            detail.shift.recuperoHours = 0;
         }
 
         const dailyNote = data.dailyNotes?.find(n => n.date === format(detail.date, 'yyyy-MM-dd'));
@@ -825,9 +895,9 @@ export const processMonthlyData = (
             detail.note = { ...dailyNote };
         }
 
-        const isConfirmedShift = detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata');
+        const isConfirmedShift = detail.shift && (detail.shift.events.length === 0 || detail.shift.events.every(e => e.status === 'confermata'));
         if (deductHours > 0 && isConfirmedShift) {
-            const noteText = `${deductHours} ${deductHours === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari precedenti`;
+            const noteText = `${deductHours} ${deductHours === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari`;
             if (!detail.note) {
                 detail.note = {
                     date: format(detail.date, 'yyyy-MM-dd'),
@@ -903,13 +973,20 @@ export const processMonthlyData = (
     dailyDetails.forEach(detail => {
         if (!isWithinInterval(detail.date, monthInterval)) return;
         
-        // A shift is considered approved/confirmed only if all its events are 'confermata' or overridden manually by admin
+        // A shift is considered approved/confirmed only if all its events are 'confermata' or overridden manually by admin, or if it is an approved recovery
         const opId = operator.id;
         const day = format(detail.date, 'd');
         const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-        const isApprovedShift = (detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
+        const isRecoveryDay = detail.status === 'recupero_effettuato' || (detail.shift && (detail.shift.recuperoHours || 0) > 0);
+        const isApprovedShift = (detail.shift && detail.shift.events.length > 0 && detail.shift.events.every(e => e.status === 'confermata')) || 
+            isRecoveryDay || 
+            manualStatus === 'P';
 
-        if ((detail.status === 'lavorato' || detail.status === 'in_corso') && isApprovedShift) {
+        const isWorkedOrRecovered = detail.status === 'lavorato' || 
+            detail.status === 'in_corso' || 
+            isRecoveryDay;
+
+        if (isWorkedOrRecovered && isApprovedShift) {
             const dayName = dayIndexToName[getDay(detail.date)];
             const isContractualDay = (operator.workSchedule[dayName]?.totalHours || 0) > 0;
             const isHoliday = isPublicHoliday(detail.date);
@@ -973,8 +1050,29 @@ export const processMonthlyData = (
         }
     });
 
+    let totalFestivitaCost = 0;
+    data.requests.forEach(req => {
+        if (req.status !== 'approvato' || req.type !== 'festivita') return;
+        if (req.isPaid === false) return;
+        const reqDate = toSafeDate(req.startDate);
+        if (!reqDate || !isWithinInterval(reqDate, monthInterval)) return;
+        const dateStr = format(reqDate, 'yyyy-MM-dd');
+        if (req.amount !== undefined && req.amount !== null) {
+            totalFestivitaCost += Number(req.amount) || 0;
+        } else if (req.dailyCosts && req.dailyCosts[dateStr] !== undefined) {
+            totalFestivitaCost += Number(req.dailyCosts[dateStr]) || 0;
+        } else {
+            const h = req.hours !== undefined ? Number(req.hours) : 1;
+            totalFestivitaCost += h * (operator.hourlyRate || 0);
+        }
+    });
+
     const totalPermessoHours = data.requests
-        .filter(r => r.status === 'approvato' && r.type === 'permesso' && isWithinInterval(r.startDate.toDate(), monthInterval))
+        .filter(r => {
+            if (r.status !== 'approvato' || r.type !== 'permesso') return false;
+            const s = toSafeDate(r.startDate);
+            return s ? isWithinInterval(s, monthInterval) : false;
+        })
         .reduce((sum, r) => sum + (r.hours || 0), 0);
     
     let totalRecuperoStraordinariHours = 0;
@@ -982,10 +1080,10 @@ export const processMonthlyData = (
 
     data.requests.forEach(r => {
         if (r.status !== 'approvato') return;
-        const reqDate = r.startDate?.toDate ? r.startDate.toDate() : null;
+        const reqDate = toSafeDate(r.startDate);
         if (!reqDate || !isWithinInterval(reqDate, monthInterval)) return;
 
-        const isRecupero = r.type === 'recupero_straordinari' || (r.type === 'permesso' && r.deductFromOvertime === true);
+        const isRecupero = r.type === 'recupero_straordinari' || ((r.type === 'permesso' || r.type === 'assenza') && r.deductFromOvertime === true);
         if (!isRecupero) return;
 
         const dayISO = startOfDay(reqDate).toISOString();
@@ -994,10 +1092,13 @@ export const processMonthlyData = (
         const opId = operator.id;
         const day = format(reqDate, 'd');
         const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-        const isApprovedShift = dayDetail?.shift && dayDetail.shift.events.length > 0 && 
-            (dayDetail.shift.events.every(e => e.status === 'confermata') || manualStatus === 'P');
+        const isApprovedShift = (dayDetail?.shift && dayDetail.shift.events.length > 0 && 
+            (dayDetail.shift.events.every(e => e.status === 'confermata') || manualStatus === 'P')) ||
+            dayDetail?.status === 'recupero_effettuato' ||
+            r.type === 'recupero_straordinari' ||
+            r.deductFromOvertime === true;
 
-        // Overtime deduction ONLY applies if there is a confirmed/approved shift on that day
+        // Overtime deduction applies
         if (isApprovedShift) {
             const current = recuperoRequestsByDay.get(dayISO) || 0;
             recuperoRequestsByDay.set(dayISO, Math.max(current, r.hours || 0));
@@ -1025,11 +1126,12 @@ export const processMonthlyData = (
             const opId = operator.id;
             const day = format(d.date, 'd');
             const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
-            if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
+            const isRecoveryDay = d.status === 'recupero_effettuato' || (d.shift && (d.shift.recuperoHours || 0) > 0);
+            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || isRecoveryDay || manualStatus === 'P';
+            if ((d.status === 'lavorato' || d.status === 'in_corso' || isRecoveryDay) && isApprovedShift && d.shift) {
                 const clockIn = d.shift.events.find(e => e.type === 'entrata');
                 const isExplicitlyApproved = clockIn?.status === 'confermata' && typeof clockIn.approvedOrdinaryHours === 'number';
-                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata')) {
+                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata') || isRecoveryDay) {
                     explicitApprovedOrd += d.shift.ordinaryHours || 0;
                     explicitApprovedOvt += d.shift.overtimeHours || 0;
                 } else {
@@ -1053,15 +1155,16 @@ export const processMonthlyData = (
             const opId = operator.id;
             const day = format(d.date, 'd');
             const manualStatus = data.overrides?.[`${opId}-O-${day}`];
-            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || manualStatus === 'P';
-            if ((d.status === 'lavorato' || d.status === 'in_corso') && isApprovedShift && d.shift) {
+            const isRecoveryDay = d.status === 'recupero_effettuato' || (d.shift && (d.shift.recuperoHours || 0) > 0);
+            const isApprovedShift = (d.shift && d.shift.events.length > 0 && d.shift.events.every(e => e.status === 'confermata')) || isRecoveryDay || manualStatus === 'P';
+            if ((d.status === 'lavorato' || d.status === 'in_corso' || isRecoveryDay) && isApprovedShift && d.shift) {
                 const weekKey = format(startOfWeek(d.date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
                 if (!weeklyMap[weekKey]) {
                     weeklyMap[weekKey] = { explicitOrd: 0, explicitOvt: 0, otherWorked: 0 };
                 }
                 const clockIn = d.shift.events.find(e => e.type === 'entrata');
                 const isExplicitlyApproved = clockIn?.status === 'confermata' && typeof clockIn.approvedOrdinaryHours === 'number';
-                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata')) {
+                if (isExplicitlyApproved || d.shift.events.every(e => e.status === 'confermata') || isRecoveryDay) {
                     weeklyMap[weekKey].explicitOrd += d.shift.ordinaryHours || 0;
                     weeklyMap[weekKey].explicitOvt += d.shift.overtimeHours || 0;
                 } else {
@@ -1096,6 +1199,7 @@ export const processMonthlyData = (
         permessoCost: totalPermessoCost, ferieDays, ferieHours,
         permessoHours: totalPermessoHours, malattiaDays, malattiaCost: totalMalattiaCost,
         festiveHours,
+        festivitaCost: totalFestivitaCost,
         estimatedTotalCost: 0, // Will calculate below
         expectedMonthlyHours,
         netExpectedHours,
@@ -1160,19 +1264,45 @@ export const processMonthlyData = (
     }
 
     if (operator.salaryType === 'fixed' && operator.fixedSalary) {
-        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
+        monthlySummary.estimatedTotalCost = operator.fixedSalary + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost + totalFestivitaCost;
     } else {
-        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost;
+        monthlySummary.estimatedTotalCost = (totalOrdinaryHours * rate) + (totalOvertimeHours * overtimeRate) + calculatedFerieCost + calculatedPermessoCost + calculatedMalattiaCost + totalFestivitaCost;
     }
 
     // Calcolo e detrazione anticipi sullo stipendio del mese
-    const anticipiRequests = data.requests.filter(r => 
-        r.status === 'approvato' && 
-        r.type === 'anticipo' && 
-        r.startDate?.toDate && 
-        isWithinInterval(r.startDate.toDate(), monthInterval)
-    );
-    const anticipiAmount = anticipiRequests.reduce((sum, r) => sum + (Number((r as any).amount) || 0), 0);
+    const anticipiRequests = data.requests.filter(r => {
+        if (r.status !== 'approvato' || r.type !== 'anticipo') return false;
+        let reqDate: Date | null = null;
+        if (r.startDate?.toDate && typeof r.startDate.toDate === 'function') {
+            reqDate = r.startDate.toDate();
+        } else if (r.startDate instanceof Date) {
+            reqDate = r.startDate;
+        } else if (r.startDate && typeof (r.startDate as any).seconds === 'number') {
+            reqDate = new Date((r.startDate as any).seconds * 1000);
+        } else if (typeof r.startDate === 'string') {
+            const d = new Date(r.startDate);
+            if (!isNaN(d.getTime())) reqDate = d;
+        } else if (r.dailyCosts && typeof r.dailyCosts === 'object') {
+            const keys = Object.keys(r.dailyCosts);
+            if (keys.length > 0) {
+                const d = parse(keys[0], 'yyyy-MM-dd', new Date());
+                if (!isNaN(d.getTime())) reqDate = d;
+            }
+        }
+        return reqDate ? isWithinInterval(reqDate, monthInterval) : false;
+    });
+
+    const anticipiAmount = anticipiRequests.reduce((sum, r) => {
+        const amt = Number((r as any).amount);
+        if (!isNaN(amt) && amt > 0) return sum + amt;
+        if (r.dailyCosts && typeof r.dailyCosts === 'object') {
+            const costValues = Object.values(r.dailyCosts) as number[];
+            const costSum = costValues.reduce((s, c) => s + (Number(c) || 0), 0);
+            if (costSum > 0) return sum + costSum;
+        }
+        return sum;
+    }, 0);
+
     monthlySummary.anticipiAmount = anticipiAmount;
     monthlySummary.estimatedTotalCost = Math.max(0, monthlySummary.estimatedTotalCost - anticipiAmount);
 
