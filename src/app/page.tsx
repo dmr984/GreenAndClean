@@ -885,10 +885,10 @@ export default function BossMonitorApp() {
       }
     });
 
-    // 4. Richieste del mese (escluse festività e anticipi che sono interni admin)
+    // 4. Richieste del mese (esclusi anticipi)
     detailRequests.forEach((req) => {
       if (!req.startDate?.toDate) return;
-      if (req.type === 'festivita' || req.type === 'anticipo') return;
+      if (req.type === 'anticipo') return;
       const d = req.startDate.toDate();
       const key = format(d, 'yyyy-MM-dd');
       if (map.has(key)) {
@@ -1376,6 +1376,7 @@ export default function BossMonitorApp() {
                             {r.type === 'malattia' && '🤒 Malattia registrata'}
                             {r.type === 'ferie' && '🏖️ Ferie godute'}
                             {r.type === 'permesso' && `⏱️ Permesso (${r.hours}h)`}
+                            {r.type === 'festivita' && '🎉 Festività'}
                             {r.type === 'recupero_straordinari' && (
                               <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 text-xs font-bold flex items-center justify-between">
                                 <span className="flex items-center gap-1.5">
@@ -1855,10 +1856,10 @@ export default function BossMonitorApp() {
                     </div>
                   ) : null}
 
-                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO, ASSENZA) */}
-                  {row.requests.filter(req => req.type !== 'anticipo' && req.type !== 'festivita').length > 0 && (
+                  {/* EVENTUALI GIUSTIFICATIVI (MALATTIA, FERIE, PERMESSO, ASSENZA, FESTIVITÀ) */}
+                  {row.requests.filter(req => req.type !== 'anticipo').length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
-                      {row.requests.filter(req => req.type !== 'anticipo' && req.type !== 'festivita').map((req, qIdx) => (
+                      {row.requests.filter(req => req.type !== 'anticipo').map((req, qIdx) => (
                         <span
                           key={qIdx}
                           className={`px-2 py-0.5 rounded-md font-semibold ${
@@ -1866,12 +1867,15 @@ export default function BossMonitorApp() {
                               ? 'bg-rose-50 text-rose-700 border border-rose-200'
                               : req.type === 'recupero_straordinari'
                               ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : req.type === 'festivita'
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                               : 'bg-blue-50 text-blue-700 border border-blue-200'
                           }`}
                         >
                           {req.type === 'malattia' && '🤒 Malattia'}
                           {req.type === 'ferie' && '🏖️ Ferie'}
                           {req.type === 'permesso' && '⏱️ Permesso'}
+                          {req.type === 'festivita' && '🎉 Festività'}
                           {req.type === 'recupero_straordinari' && `🔄 Recupero Straordinari (${req.hours || 0}h)`}
                           {req.type === 'assenza' && '🚫 Assenza'}
                         </span>
