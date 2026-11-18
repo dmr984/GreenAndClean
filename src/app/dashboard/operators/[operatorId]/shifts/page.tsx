@@ -756,6 +756,10 @@ export default function ShiftApprovalPage() {
             const docId = `festivita_${dateStr}`;
 
             if (ensuredHolidaysRef.current.has(docId)) return;
+            if (typeof window !== 'undefined' && localStorage.getItem(`deleted_${operatorId}_${docId}`) === 'true') {
+                ensuredHolidaysRef.current.add(docId);
+                return;
+            }
 
             const alreadyExists = (allRequests || []).some(r => {
                 if (r.id === docId) return true;
@@ -2357,15 +2361,56 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
     const handleDeleteRequest = async (requestId?: string) => {
         const idToDelete = requestId || requestToDelete?.id;
         if (!firestore || !operatorId || !idToDelete) return;
+        const reqObj = (allRequests || []).find(r => r.id === idToDelete) || requestToDelete;
+        if (reqObj?.type === 'festivita' || idToDelete.startsWith('festivita_')) {
+            const dStr = reqObj?.startDate?.toDate ? format(reqObj.startDate.toDate(), 'yyyy-MM-dd') : idToDelete.replace('festivita_', '');
+            const autoDocId = `festivita_${dStr}`;
+            ensuredHolidaysRef.current.add(autoDocId);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(`deleted_${operatorId}_${autoDocId}`, 'true');
+            }
+        }
         const requestRef = doc(firestore, `app-users/${operatorId}/requests`, idToDelete);
         try {
             await deleteDoc(requestRef);
-            toast({ title: 'Richiesta eliminata', description: 'La richiesta è stata rimossa con successo.' });
+            toast({ title: 'Voce eliminata', description: 'La richiesta è stata rimossa con successo.' });
         } catch (error) {
             console.error('Error deleting request:', error);
             toast({ title: 'Errore', description: 'Impossibile eliminare la richiesta.', variant: 'destructive' });
         } finally {
             setRequestToDelete(null);
+            setSelectedRequestIds(prev => {
+                if (!prev.has(idToDelete)) return prev;
+                const next = new Set(prev);
+                next.delete(idToDelete);
+                return next;
+            });
+        }
+    };
+
+    const handleBatchDeleteRequests = async () => {
+        if (!firestore || !operatorId || selectedRequestIds.size === 0) return;
+        try {
+            const batch = writeBatch(firestore);
+            selectedRequestIds.forEach(reqId => {
+                const reqObj = (allRequests || []).find(r => r.id === reqId);
+                if (reqObj?.type === 'festivita' || reqId.startsWith('festivita_')) {
+                    const dStr = reqObj?.startDate?.toDate ? format(reqObj.startDate.toDate(), 'yyyy-MM-dd') : reqId.replace('festivita_', '');
+                    const autoDocId = `festivita_${dStr}`;
+                    ensuredHolidaysRef.current.add(autoDocId);
+                    if (typeof window !== 'undefined') {
+                        localStorage.setItem(`deleted_${operatorId}_${autoDocId}`, 'true');
+                    }
+                }
+                const docRef = doc(firestore, `app-users/${operatorId}/requests`, reqId);
+                batch.delete(docRef);
+            });
+            await batch.commit();
+            toast({ title: 'Voci eliminate', description: `${selectedRequestIds.size} richieste eliminate con successo.` });
+            setSelectedRequestIds(new Set());
+        } catch (error) {
+            console.error('Error batch deleting requests:', error);
+            toast({ title: 'Errore', description: 'Impossibile eliminare le richieste selezionate.', variant: 'destructive' });
         }
     };
 
@@ -3359,7 +3404,7 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
                                         {/* Bottoni Selezione Multipla */}
                                         {selectedRequestIds.size > 0 && (
-                                            <div className="flex items-center gap-2 animate-in fade-in">
+                                            <div className="flex flex-wrap items-center gap-2 animate-in fade-in">
                                                 <Button 
                                                     onClick={() => {
                                                         setIsPaidForApproval(false);
@@ -3370,6 +3415,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                 >
                                                     <CheckCircle className="h-4 w-4 mr-1.5" />
                                                     Approva Selezionate ({selectedRequestIds.size})
+                                                </Button>
+                                                <Button 
+                                                    variant="destructive"
+                                                    onClick={handleBatchDeleteRequests}
+                                                    className="font-bold h-9 shadow-sm"
+                                                    size="sm"
+                                                >
+                                                    <Trash2 className="h-4 w-4 mr-1.5" />
+                                                    Elimina Selezionate ({selectedRequestIds.size})
                                                 </Button>
                                                 <Button 
                                                     variant="ghost" 
@@ -3571,6 +3625,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                                     className="h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
                                                                                 >
                                                                                     <XCircle className="h-4 w-4 mr-1" /> Non Pagare (0€)
+                                                                                </Button>
+                                                                                <Button 
+                                                                                    variant="ghost" 
+                                                                                    size="icon" 
+                                                                                    onClick={() => handleDeleteRequest(req.id)} 
+                                                                                    title="Elimina voce festività"
+                                                                                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4" />
                                                                                 </Button>
                                                                             </>
                                                                         ) : (
@@ -4119,6 +4182,22 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                             </Button>
                                                             <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(shift)}>
                                                                 <Eye className="h-5 w-5" />
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                title="Elimina turno"
+                                                                onClick={() => {
+                                                                    if (isRegular) {
+                                                                        setShiftToDelete(shift as Shift);
+                                                                        setIsConfirmingDelete(true);
+                                                                    } else {
+                                                                        setOvertimeShiftToDelete(shift as StraordinarioShift);
+                                                                        setIsConfirmingOvertimeDelete(true);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Trash2 className="h-4 w-4 text-destructive" />
                                                             </Button>
                                                         </TableCell>
                                                     </TableRow>
@@ -6277,36 +6356,55 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                         </div>
                     )}
 
-                    <ResponsiveDialogFooter className="flex-col sm:flex-row gap-2 pt-2 border-t">
-                        <Button type="button" variant="outline" onClick={() => setFestivitaDialogState(null)}>
-                            Annulla
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={isSavingFestivita}
-                            onClick={() => handleSaveFestivitaDialog(false)}
-                            className="font-semibold"
-                        >
-                            {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle className="h-4 w-4 mr-1.5 text-emerald-600" />}
-                            Conferma Senza Notificare
-                        </Button>
-                        <Button
-                            type="button"
-                            disabled={isSavingFestivita}
-                            onClick={() => handleSaveFestivitaDialog(true)}
-                            className={cn(
-                                "font-bold text-white",
-                                festivitaDialogState?.isPaid
-                                    ? "bg-emerald-600 hover:bg-emerald-700"
-                                    : "bg-slate-700 hover:bg-slate-800"
+                    <ResponsiveDialogFooter className="flex-col sm:flex-row sm:justify-between gap-2 pt-2 border-t">
+                        <div className="flex items-center gap-2">
+                            {festivitaDialogState?.request?.id && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => {
+                                        if (festivitaDialogState?.request?.id) {
+                                            handleDeleteRequest(festivitaDialogState.request.id);
+                                            setFestivitaDialogState(null);
+                                        }
+                                    }}
+                                    className="text-destructive hover:bg-destructive/10 text-xs font-semibold"
+                                >
+                                    <Trash2 className="h-4 w-4 mr-1" /> Elimina Voce
+                                </Button>
                             )}
-                        >
-                            {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Bell className="h-4 w-4 mr-1.5" />}
-                            {festivitaDialogState?.isPaid
-                                ? `Approva e Invia Notifica (€ ${parseFloat(String(festivitaDialogState?.amount || '0').replace(',', '.')).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-                                : 'Conferma (0,00 €) e Notifica'}
-                        </Button>
+                            <Button type="button" variant="outline" onClick={() => setFestivitaDialogState(null)}>
+                                Annulla
+                            </Button>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isSavingFestivita}
+                                onClick={() => handleSaveFestivitaDialog(false)}
+                                className="font-semibold w-full sm:w-auto"
+                            >
+                                {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle className="h-4 w-4 mr-1.5 text-emerald-600" />}
+                                Conferma Senza Notificare
+                            </Button>
+                            <Button
+                                type="button"
+                                disabled={isSavingFestivita}
+                                onClick={() => handleSaveFestivitaDialog(true)}
+                                className={cn(
+                                    "font-bold text-white w-full sm:w-auto",
+                                    festivitaDialogState?.isPaid
+                                        ? "bg-emerald-600 hover:bg-emerald-700"
+                                        : "bg-slate-700 hover:bg-slate-800"
+                                )}
+                            >
+                                {isSavingFestivita ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Bell className="h-4 w-4 mr-1.5" />}
+                                {festivitaDialogState?.isPaid
+                                    ? `Approva e Invia Notifica (€ ${parseFloat(String(festivitaDialogState?.amount || '0').replace(',', '.')).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+                                    : 'Conferma (0,00 €) e Notifica'}
+                            </Button>
+                        </div>
                     </ResponsiveDialogFooter>
                 </ResponsiveDialogContent>
             </ResponsiveDialog>

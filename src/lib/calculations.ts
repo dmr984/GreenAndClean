@@ -895,6 +895,20 @@ export const processMonthlyData = (
             detail.note = { ...dailyNote };
         }
 
+        if (!detail.request) {
+            const otherReq = data.requests.find(r => {
+                if (r.status !== 'approvato') return false;
+                if (r.type !== 'permesso' && r.type !== 'recupero_straordinari' && r.type !== 'festivita' && r.type !== 'assenza') return false;
+                const s = toSafeDate(r.startDate || (r as any).date);
+                const e = toSafeDate(r.endDate) || s;
+                if (!s || !e) return false;
+                return isWithinInterval(detail.date, { start: startOfDay(s), end: dateFnsEndOfDay(e) });
+            });
+            if (otherReq) {
+                detail.request = otherReq;
+            }
+        }
+
         const isConfirmedShift = detail.shift && (detail.shift.events.length === 0 || detail.shift.events.every(e => e.status === 'confermata'));
         if (deductHours > 0 && isConfirmedShift) {
             const noteText = `${deductHours} ${deductHours === 1 ? 'ora ordinaria recuperata' : 'ore ordinarie recuperate'} dagli straordinari`;
