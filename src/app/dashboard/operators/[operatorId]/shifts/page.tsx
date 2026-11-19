@@ -337,9 +337,13 @@ export default function ShiftApprovalPage() {
         id?: string;
         request?: Request;
         date: Date;
-        type: 'assenza' | 'recupero_straordinari' | 'ferie' | 'permesso' | 'malattia';
+        startDateStr: string;
+        endDateStr: string;
+        type: 'assenza' | 'recupero_straordinari' | 'ferie' | 'permesso' | 'malattia' | 'anticipo_stipendio';
         status: 'approvato' | 'rifiutato' | 'in_attesa';
         hours: number;
+        amount: number;
+        isPaid: boolean;
         reason: string;
         deductFromOvertime: boolean;
     } | null>(null);
@@ -1125,22 +1129,74 @@ export default function ShiftApprovalPage() {
         }
     };
 
+    const computeRequestDailyCosts = (params: {
+        type: string;
+        start: Date;
+        end: Date;
+        hours?: number;
+        isPaid: boolean;
+        amount?: number;
+    }): Record<string, number> => {
+        const dailyCosts: Record<string, number> = {};
+        if (!operator) return dailyCosts;
+        const safeEnd = params.end < params.start ? params.start : params.end;
+        const days = eachDayOfInterval({ start: params.start, end: safeEnd });
+
+        if (!params.isPaid) {
+            days.forEach(day => {
+                dailyCosts[format(day, 'yyyy-MM-dd')] = 0;
+            });
+            return dailyCosts;
+        }
+
+        if (params.type === 'permesso') {
+            const cost = (params.hours || 0) * (operator.hourlyRate || 0);
+            dailyCosts[format(days[0], 'yyyy-MM-dd')] = cost;
+        } else if (params.type === 'ferie') {
+            days.forEach(day => {
+                const dayName = dayIndexToName[getDayFns(day)];
+                const schedHours = operator.workSchedule?.[dayName]?.totalHours || 8;
+                dailyCosts[format(day, 'yyyy-MM-dd')] = schedHours * (operator.hourlyRate || 0);
+            });
+        } else if (params.type === 'malattia') {
+            const cost = 8 * (operator.sickLeaveRate || operator.hourlyRate || 0);
+            days.forEach(day => {
+                dailyCosts[format(day, 'yyyy-MM-dd')] = cost;
+            });
+        } else if (params.type === 'assenza' || params.type === 'recupero_straordinari') {
+            days.forEach(day => {
+                dailyCosts[format(day, 'yyyy-MM-dd')] = 0;
+            });
+        } else if (params.type === 'festivita') {
+            days.forEach(day => {
+                const amt = params.amount !== undefined ? Number(params.amount) : ((params.hours || 1) * (operator.hourlyRate || 0));
+                dailyCosts[format(day, 'yyyy-MM-dd')] = amt;
+            });
+        }
+        return dailyCosts;
+    };
+
     const handleOpenRequestEditDialog = (reqItem: Request) => {
         if (reqItem.type === 'festivita') {
             handleOpenFestivitaDialog(reqItem);
             return;
         }
         const date = reqItem.startDate?.toDate ? reqItem.startDate.toDate() : new Date();
+        const endDate = reqItem.endDate?.toDate ? reqItem.endDate.toDate() : date;
         const schedule = getScheduleForDate(operator, date);
-        const defaultHours = reqItem.hours !== undefined ? reqItem.hours : (schedule?.totalHours || 0);
+        const defaultHours = reqItem.hours !== undefined ? reqItem.hours : (reqItem.type === 'permesso' ? (schedule?.totalHours || 0) : 0);
 
         setSelectedRequestForEdit({
             id: reqItem.id,
             request: reqItem,
             date,
+            startDateStr: format(date, 'yyyy-MM-dd'),
+            endDateStr: format(endDate, 'yyyy-MM-dd'),
             type: reqItem.type as any,
             status: reqItem.status,
             hours: defaultHours,
+            amount: Number((reqItem as any).amount) || 0,
+            isPaid: (reqItem as any).isPaid === true,
             reason: reqItem.reason || '',
             deductFromOvertime: reqItem.deductFromOvertime === true || reqItem.type === 'recupero_straordinari'
         });
@@ -1150,12 +1206,17 @@ export default function ShiftApprovalPage() {
     const handleOpenPendingAbsenceDialog = (absence: { date: Date; contractualHours?: number }) => {
         const schedule = getScheduleForDate(operator, absence.date);
         const defaultHours = absence.contractualHours !== undefined ? absence.contractualHours : (schedule?.totalHours || 0);
+        const dateStr = format(absence.date, 'yyyy-MM-dd');
 
         setSelectedRequestForEdit({
             date: absence.date,
+            startDateStr: dateStr,
+            endDateStr: dateStr,
             type: 'assenza',
             status: 'approvato',
             hours: defaultHours,
+            amount: 0,
+            isPaid: false,
             reason: 'Mancata timbratura',
             deductFromOvertime: false
         });
@@ -1168,28 +1229,50 @@ export default function ShiftApprovalPage() {
         try {
             const isRecupero = selectedRequestForEdit.type === 'recupero_straordinari' || selectedRequestForEdit.deductFromOvertime;
             const hoursVal = Number(selectedRequestForEdit.hours) || 0;
-            const dateStr = format(selectedRequestForEdit.date, 'yyyy-MM-dd');
+            const parsedStart = selectedRequestForEdit.startDateStr
+                ? parse(selectedRequestForEdit.startDateStr, 'yyyy-MM-dd', new Date())
+                : selectedRequestForEdit.date;
+            const parsedEndRaw = selectedRequestForEdit.endDateStr
+                ? parse(selectedRequestForEdit.endDateStr, 'yyyy-MM-dd', new Date())
+                : parsedStart;
+            const parsedEnd = parsedEndRaw < parsedStart ? parsedStart : parsedEndRaw;
+            const dateStr = format(parsedStart, 'yyyy-MM-dd');
+
+            const basePayload: Record<string, any> = {
+                type: selectedRequestForEdit.type,
+                status: selectedRequestForEdit.status,
+                startDate: Timestamp.fromDate(startOfDay(parsedStart)),
+                endDate: Timestamp.fromDate(endOfDay(parsedEnd)),
+                hours: hoursVal,
+                reason: selectedRequestForEdit.reason || (isRecupero ? 'Recuperato dagli straordinari' : ''),
+                deductFromOvertime: isRecupero,
+                isPaid: selectedRequestForEdit.isPaid === true,
+                updatedAt: serverTimestamp()
+            };
+
+            if (selectedRequestForEdit.type === 'anticipo_stipendio') {
+                basePayload.amount = Number(selectedRequestForEdit.amount) || 0;
+            }
+
+            if (selectedRequestForEdit.status === 'approvato') {
+                basePayload.dailyCosts = computeRequestDailyCosts({
+                    type: selectedRequestForEdit.type,
+                    start: parsedStart,
+                    end: parsedEnd,
+                    hours: hoursVal,
+                    isPaid: selectedRequestForEdit.isPaid === true,
+                    amount: selectedRequestForEdit.amount
+                });
+            }
 
             if (selectedRequestForEdit.id) {
                 const reqRef = doc(firestore, `app-users/${operatorId}/requests`, selectedRequestForEdit.id);
-                await updateDoc(reqRef, {
-                    type: selectedRequestForEdit.type,
-                    status: selectedRequestForEdit.status,
-                    hours: hoursVal,
-                    reason: selectedRequestForEdit.reason || (isRecupero ? 'Recuperato dagli straordinari' : ''),
-                    deductFromOvertime: isRecupero,
-                    updatedAt: serverTimestamp()
-                });
+                await updateDoc(reqRef, basePayload);
             } else {
                 const reqRef = collection(firestore, `app-users/${operatorId}/requests`);
                 await addDoc(reqRef, {
-                    type: selectedRequestForEdit.type,
-                    status: selectedRequestForEdit.status,
-                    startDate: Timestamp.fromDate(startOfDay(selectedRequestForEdit.date)),
-                    endDate: Timestamp.fromDate(endOfDay(selectedRequestForEdit.date)),
-                    hours: hoursVal,
-                    reason: selectedRequestForEdit.reason || (isRecupero ? 'Recuperato dagli straordinari' : 'Mancata timbratura approvata come assenza'),
-                    deductFromOvertime: isRecupero,
+                    ...basePayload,
+                    reason: basePayload.reason || 'Mancata timbratura approvata come assenza',
                     createdAt: serverTimestamp(),
                     viewedByOperator: true
                 });
@@ -1211,8 +1294,8 @@ export default function ShiftApprovalPage() {
             toast({
                 title: isRecupero ? 'Recupero Straordinari Salvato' : 'Modifica Salvata',
                 description: isRecupero 
-                    ? `L'assenza del ${format(selectedRequestForEdit.date, 'dd/MM/yyyy')} è stata recuperata dagli straordinari (${hoursVal}h ordinarie).`
-                    : `La richiesta per il ${format(selectedRequestForEdit.date, 'dd/MM/yyyy')} è stata aggiornata.`
+                    ? `L'assenza del ${format(parsedStart, 'dd/MM/yyyy')} è stata recuperata dagli straordinari (${hoursVal}h ordinarie).`
+                    : `La richiesta per il ${format(parsedStart, 'dd/MM/yyyy')} è stata aggiornata.`
             });
             setIsAbsenceDialogOpen(false);
             setSelectedRequestForEdit(null);
@@ -3641,6 +3724,15 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                                                                 <Button 
                                                                                     variant="outline" 
                                                                                     size="sm" 
+                                                                                    onClick={() => handleOpenRequestEditDialog(req)} 
+                                                                                    title="Modifica tipologia, ore o date della richiesta"
+                                                                                    className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                                                                >
+                                                                                    <Pencil className="h-3.5 w-3.5 mr-1" /> Modifica
+                                                                                </Button>
+                                                                                <Button 
+                                                                                    variant="outline" 
+                                                                                    size="sm" 
                                                                                     onClick={() => {
                                                                                         setIsPaidForApproval(false);
                                                                                         setRequestToApprove(req);
@@ -4626,64 +4718,141 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
                                     <Label className="text-xs font-semibold">Tipologia</Label>
                                     <Select 
                                         value={selectedRequestForEdit.type} 
-                                        onValueChange={(val: any) => setSelectedRequestForEdit(prev => prev ? ({
-                                            ...prev,
-                                            type: val,
-                                            deductFromOvertime: val === 'recupero_straordinari'
-                                        }) : null)}
+                                        onValueChange={(val: any) => setSelectedRequestForEdit(prev => {
+                                            if (!prev) return null;
+                                            let nextHours = prev.hours;
+                                            if (val === 'ferie' || val === 'malattia') {
+                                                nextHours = 0;
+                                            } else if (val === 'permesso' && (!prev.hours || prev.hours === 0)) {
+                                                const sch = getScheduleForDate(operator, prev.date);
+                                                nextHours = sch?.totalHours || 4;
+                                            }
+                                            return {
+                                                ...prev,
+                                                type: val,
+                                                hours: nextHours,
+                                                deductFromOvertime: val === 'recupero_straordinari'
+                                            };
+                                        })}
                                     >
                                         <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value="ferie">🏖️ Ferie (Intera giornata)</SelectItem>
+                                            <SelectItem value="permesso">⏱️ Permesso (Ore)</SelectItem>
+                                            <SelectItem value="malattia">🤒 Malattia</SelectItem>
                                             <SelectItem value="assenza">🚫 Assenza (Non lavorato)</SelectItem>
                                             <SelectItem value="recupero_straordinari">🔄 Recupero dagli Straordinari</SelectItem>
-                                            <SelectItem value="ferie">🏖️ Ferie</SelectItem>
-                                            <SelectItem value="malattia">🤒 Malattia</SelectItem>
-                                            <SelectItem value="permesso">⏱️ Permesso</SelectItem>
+                                            <SelectItem value="anticipo_stipendio">💶 Anticipo Stipendio</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
 
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <Label className="text-xs font-semibold">Ore</Label>
-                                        <div className="flex items-center gap-1">
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: 1 }) : null)} 
-                                                className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
-                                            >
-                                                1h
-                                            </button>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: 2 }) : null)} 
-                                                className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
-                                            >
-                                                2h
-                                            </button>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => {
-                                                    const sch = getScheduleForDate(operator, selectedRequestForEdit.date);
-                                                    setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: sch?.totalHours || 4 }) : null);
-                                                }} 
-                                                className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
-                                            >
-                                                Totale ({getScheduleForDate(operator, selectedRequestForEdit.date)?.totalHours || 0}h)
-                                            </button>
-                                        </div>
+                                {selectedRequestForEdit.type === 'anticipo_stipendio' ? (
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold">Importo (€)</Label>
+                                        <Input 
+                                            type="number" 
+                                            step="10" 
+                                            min="0" 
+                                            className="h-9 text-xs font-bold"
+                                            value={selectedRequestForEdit.amount} 
+                                            onChange={(e) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, amount: parseFloat(e.target.value) || 0 }) : null)} 
+                                        />
                                     </div>
+                                ) : (
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-xs font-semibold">
+                                                Ore {selectedRequestForEdit.type === 'ferie' ? '(0 = Intera giornata)' : ''}
+                                            </Label>
+                                            <div className="flex items-center gap-1">
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: 1 }) : null)} 
+                                                    className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
+                                                >
+                                                    1h
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: 2 }) : null)} 
+                                                    className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
+                                                >
+                                                    2h
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        const sch = getScheduleForDate(operator, selectedRequestForEdit.date);
+                                                        setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: sch?.totalHours || 4 }) : null);
+                                                    }} 
+                                                    className="text-[10px] bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded font-bold"
+                                                >
+                                                    Totale ({getScheduleForDate(operator, selectedRequestForEdit.date)?.totalHours || 0}h)
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <Input 
+                                            type="number" 
+                                            step="0.5" 
+                                            min="0" 
+                                            max="24" 
+                                            className="h-9 text-xs font-bold"
+                                            value={selectedRequestForEdit.hours} 
+                                            onChange={(e) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: parseFloat(e.target.value) || 0 }) : null)} 
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold">Dal (Data Inizio)</Label>
                                     <Input 
-                                        type="number" 
-                                        step="0.5" 
-                                        min="0" 
-                                        max="24"
-                                        className="h-9 text-xs font-bold"
-                                        value={selectedRequestForEdit.hours} 
-                                        onChange={(e) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, hours: parseFloat(e.target.value) || 0 }) : null)} 
+                                        type="date" 
+                                        className="h-9 text-xs"
+                                        value={selectedRequestForEdit.startDateStr} 
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setSelectedRequestForEdit(prev => prev ? ({
+                                                ...prev,
+                                                startDateStr: val,
+                                                endDateStr: prev.endDateStr < val ? val : prev.endDateStr
+                                            }) : null);
+                                        }} 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold">Al (Data Fine)</Label>
+                                    <Input 
+                                        type="date" 
+                                        className="h-9 text-xs"
+                                        value={selectedRequestForEdit.endDateStr} 
+                                        min={selectedRequestForEdit.startDateStr}
+                                        onChange={(e) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, endDateStr: e.target.value }) : null)} 
                                     />
                                 </div>
                             </div>
+
+                            {selectedRequestForEdit.type !== 'recupero_straordinari' && selectedRequestForEdit.type !== 'anticipo_stipendio' && (
+                                <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50 dark:bg-slate-900">
+                                    <div className="space-y-0.5 pr-2">
+                                        <Label htmlFor="edit-req-is-paid" className="font-semibold text-xs cursor-pointer">
+                                            Richiesta Retribuita
+                                        </Label>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {selectedRequestForEdit.isPaid
+                                                ? 'Tariffa contrattuale applicata (costo a carico azienda).'
+                                                : 'Non retribuita (costo calcolato a 0€).'}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="edit-req-is-paid"
+                                        checked={selectedRequestForEdit.isPaid}
+                                        onCheckedChange={(checked) => setSelectedRequestForEdit(prev => prev ? ({ ...prev, isPaid: checked }) : null)}
+                                    />
+                                </div>
+                            )}
 
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold">Stato di Approvazione</Label>
@@ -6008,6 +6177,20 @@ const handleRegularShiftApproval = async (currentContext: ApprovalContext, shoul
 
                     <AlertDialogFooter className="flex-col sm:flex-row gap-2">
                         <AlertDialogCancel>Annulla</AlertDialogCancel>
+                        {requestToApprove && requestToApprove.type !== 'festivita' && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                    const req = requestToApprove;
+                                    setRequestToApprove(null);
+                                    handleOpenRequestEditDialog(req);
+                                }}
+                                className="gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+                            >
+                                <Pencil className="h-4 w-4" /> Modifica Richiesta
+                            </Button>
+                        )}
                         {requestToApprove?.type === 'malattia' ? (
                             <AlertDialogAction 
                                 onClick={() => { 
